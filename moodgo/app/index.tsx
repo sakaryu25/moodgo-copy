@@ -484,6 +484,7 @@ export default function Home() {
     return (
       <SlideUp>
       <QuizFlow
+        lang={lang}
         step={step}
         selectedMood={selectedMood}
         selectedArea={selectedArea}

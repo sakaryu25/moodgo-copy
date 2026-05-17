@@ -265,9 +265,144 @@ const TRAVEL_SUBCATEGORIES = [
   { key: 'super_view', label: '絶景・大自然', Icon: Mountain },
 ];
 
+// ─── Translations ─────────────────────────────────────────────────────────────
+
+const T = {
+  ja: {
+    step1Title: '今の気分は？', step1Sub: '一番近いものを選んでください。',
+    step2Title: '誰と？', step2Sub: '誰と行くかでおすすめが変わります。',
+    step3Title: '交通手段は？', step3Sub: '複数選べます。',
+    step4Title: '予算は？', step4Sub: 'ざっくりで大丈夫です。',
+    step5Title: 'エリアは？', step5Sub: '現在地を使うか、エリア名を入力してください。',
+    step6Title: 'どのくらい時間ある？', step6Sub: '空き時間に合う過ごし方を提案します。',
+    step7Title: '自由に教えてください', step7Sub: '行きたい場所のイメージがあれば自由に。なくてもOK。',
+    step10Title: '確認', step10Sub: '条件を確認してください。',
+    next: '次へ', back: '戻る', skip: 'スキップ', submit: 'おすすめを見る',
+    useLocation: '📍 現在地を使う', locating: '現在地を取得中...',
+    orDivider: 'または', areaPlaceholder: '例：渋谷 / 横浜 / 新宿',
+    freeWordPlaceholder: '例：夜景、甘いもの、公園、静かな場所、海が見たい など',
+    free: '無料',
+    onsenTitle: '温泉の種類は？', onsenSub: 'どんな温泉施設をお探しですか？',
+    natureTitle: 'どんな自然？', natureSub: '行きたい自然のタイプを選んでください。',
+    cafeTitle: 'どんなカフェ？', cafeSub: 'お好みのカフェタイプを選んでください。',
+    waiwaiTitle: 'どんな楽しみ方？', waiwaiSub: '盛り上がり方のスタイルを選んでください。',
+    driveTitle: 'どんなドライブ？', driveSub: '行き先のイメージを選んでください。',
+    focusTitle: 'どこで集中する？', focusSub: '作業・勉強の場所を選んでください。',
+    sportsTitle: 'どんな体の動かし方？', sportsSub: 'スタイルを選んでください。',
+    travelTitle: 'どこに行く？', travelSub: '旅のイメージを選んでください。',
+    natureDistTitle: 'どのくらい遠い？', natureDistSub: '現在地からの距離感を選んでください。',
+    cafeDetailTitle: 'もう少し詳しく', cafeDetailSub: 'お好みのタイプを選んでください。',
+    atmTitle: '雰囲気は？', atmSub: '今日の気分に合う空気感を選んでください。',
+    priorTitle: '優先したいのは？', priorSub: 'いちばん大事にしたいポイントを選んでください。',
+    foodSubSub: 'もう少し絞り込みましょう。',
+    reviewMood: '気分', reviewArea: 'エリア', reviewWith: '同伴', reviewTransport: '交通',
+    reviewBudget: '予算', reviewTime: '時間', reviewAtm: '雰囲気', reviewPriority: '優先', reviewMemo: 'メモ',
+    driveDetail: 'ドライブの詳細を教えてください',
+  },
+  en: {
+    step1Title: "What's your mood?", step1Sub: 'Pick the one that feels closest.',
+    step2Title: 'Who are you going with?', step2Sub: 'This helps us suggest the right spots.',
+    step3Title: 'How will you get there?', step3Sub: 'Select all that apply.',
+    step4Title: 'What\'s your budget?', step4Sub: 'Rough estimate is fine.',
+    step5Title: 'Which area?', step5Sub: 'Use your current location or type an area.',
+    step6Title: 'How much time do you have?', step6Sub: "We'll match activities to your schedule.",
+    step7Title: 'Any other requests?', step7Sub: 'Optional — describe what you\'re looking for.',
+    step10Title: 'Review', step10Sub: 'Check your preferences before submitting.',
+    next: 'Next', back: 'Back', skip: 'Skip', submit: 'Show recommendations',
+    useLocation: '📍 Use my location', locating: 'Getting location...',
+    orDivider: 'or', areaPlaceholder: 'e.g. Shibuya / Yokohama / Shinjuku',
+    freeWordPlaceholder: 'e.g. night view, sweets, park, quiet, ocean view...',
+    free: 'Free',
+    onsenTitle: 'Type of hot spring?', onsenSub: 'What kind of facility are you looking for?',
+    natureTitle: 'What kind of nature?', natureSub: 'Choose the type you want to visit.',
+    cafeTitle: 'What kind of café?', cafeSub: 'Choose your preferred café style.',
+    waiwaiTitle: 'How do you want to have fun?', waiwaiSub: 'Pick your vibe.',
+    driveTitle: 'What kind of drive?', driveSub: 'Choose your destination style.',
+    focusTitle: 'Where will you focus?', focusSub: 'Choose your work/study spot.',
+    sportsTitle: 'How do you want to move?', sportsSub: 'Choose your activity style.',
+    travelTitle: 'Where are you headed?', travelSub: 'Choose your travel vibe.',
+    natureDistTitle: 'How far are you willing to go?', natureDistSub: 'Distance from your current location.',
+    cafeDetailTitle: 'A bit more detail', cafeDetailSub: 'Choose your preferred type.',
+    atmTitle: 'What vibe are you after?', atmSub: 'Pick the atmosphere that fits your mood.',
+    priorTitle: 'What matters most?', priorSub: 'Pick your top priority.',
+    foodSubSub: "Let's narrow it down a bit.",
+    reviewMood: 'Mood', reviewArea: 'Area', reviewWith: 'With', reviewTransport: 'Transport',
+    reviewBudget: 'Budget', reviewTime: 'Time', reviewAtm: 'Vibe', reviewPriority: 'Priority', reviewMemo: 'Notes',
+    driveDetail: 'Tell us about your drive',
+  },
+} as const;
+
+const MOOD_EN: Record<string, { label: string; sub: string }> = {
+  'お腹すいた':         { label: "I'm Hungry 🍜",       sub: 'Food & Gourmet' },
+  'まったりしたい':     { label: 'Chill Out 😌',         sub: 'Relaxation & Healing' },
+  'わいわい楽しみたい': { label: 'Have Fun! 🎉',          sub: 'Entertainment & Play' },
+  '自然感じたい':       { label: 'Into Nature 🌿',        sub: 'Nature & Scenery' },
+  'ドライブしたい':     { label: 'Let\'s Drive 🚗',       sub: 'Drive & Touring' },
+  '集中したい':         { label: 'Focus Mode 📚',         sub: 'Work & Study' },
+  '体を動かしたい':     { label: 'Get Moving 💪',         sub: 'Sports & Outdoors' },
+  '遠くに行きたい':     { label: 'Day Trip ✈️',           sub: 'Travel & Excursion' },
+};
+
+const COMPANIONS_EN = ['Solo', 'Friends', 'Partner', 'Family', 'Large Group', 'With Seniors'];
+const TRANSPORT_EN  = ['Walking', 'Bike', 'Train', 'Car', 'Bus', 'Any'];
+const TIME_EN       = ['15-30 min', '30-60 min', '1-2 hrs', '2-4 hrs', '4-6 hrs', '6+ hrs'];
+const ATM_EN        = ['Quiet', 'Lively', 'Active', 'Thrilling', 'Romantic', 'Cozy'];
+const PRIORITY_EN   = ['Value', 'Instagrammable', 'Proximity', 'Comfort', 'Fun', 'Quality'];
+const NATURE_DIST_EN: Record<string, string> = { '近場': 'Nearby', 'ほどほど': 'Moderate', '遠く': 'Far' };
+const ONSEN_EN: Record<string, string> = {
+  '天然温泉・日帰り温泉': 'Natural Hot Spring',
+  '銭湯': 'Public Bath',
+  'スーパー銭湯・健康ランド': 'Super Sentō',
+  'サウナ・岩盤浴': 'Sauna / Stone Bath',
+  '温泉施設全般（おまかせ）': 'Any (Surprise me)',
+};
+const NATURE_EN: Record<string, string> = {
+  '波の音と海風': 'Ocean & Sea Breeze',
+  '森の中で深呼吸': 'Deep Breath in the Forest',
+  '広い芝生でゴロゴロ': 'Sprawling Lawn',
+  '圧倒的なパノラマ': 'Panoramic Views',
+};
+const CAFE_EN: Record<string, string> = {
+  'ブックカフェ・隠れ家': 'Book Café / Hidden Gem',
+  'アニマルカフェ': 'Animal Café',
+  '景色が良いカフェ': 'Café with a View',
+  '絶品スイーツカフェ': 'Amazing Sweets Café',
+};
+const WAIWAI_EN: Record<string, string> = {
+  '体を動かしてはしゃぎたい': 'Active & Physical',
+  '歌って飲んで騒ぎたい': 'Sing, Drink & Party',
+  '非日常の体験で盛り上がりたい': 'Unique Experiences',
+  'ご飯とお酒でワイワイ': 'Food & Drinks',
+};
+const DRIVE_EN: Record<string, string> = {
+  '海沿いドライブ': 'Coastal Drive',
+  '夜景・絶景ドライブ': 'Night View / Scenic Drive',
+  '道の駅・ご当地グルメ': 'Road Station & Local Food',
+  '郊外アウトレット': 'Suburban Outlet Mall',
+};
+const FOCUS_EN: Record<string, string> = {
+  'カフェで作業': 'Work at a Café',
+  'コワーキングスペース': 'Coworking Space',
+  'ファミレスで粘る': 'Family Restaurant',
+  '本に囲まれてこもる': 'Surrounded by Books',
+};
+const SPORTS_EN: Record<string, string> = {
+  'ガッツリトレーニング': 'Intense Training',
+  'ストレス発散': 'Stress Relief',
+  '遊び感覚でワイワイ': 'Fun & Social Sports',
+  '外でスポーツ': 'Outdoor Sports',
+};
+const TRAVEL_EN: Record<string, string> = {
+  'パワースポット': 'Power Spot / Shrine',
+  'テーマパーク': 'Theme Park',
+  '街をぶらぶら': 'Town Stroll',
+  '絶景・大自然': 'Scenic Views / Nature',
+};
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 type Props = {
+  lang: 'ja' | 'en';
   step: number;
   selectedMood: string;
   selectedArea: string;
@@ -325,6 +460,7 @@ type Props = {
 export default function QuizFlow(props: Props) {
   const insets = useSafeAreaInsets();
   const {
+    lang,
     step, selectedMood, selectedArea, locationDisplayArea,
     selectedCompanion, selectedTransports, budget, budgetMin,
     selectedTime, selectedAtmosphere, selectedPriority, freeWord,
@@ -355,6 +491,8 @@ export default function QuizFlow(props: Props) {
       Animated.spring(stepSlide,   { toValue: 0, tension: 200, friction: 26, useNativeDriver: true }),
     ]).start();
   }, [step]);
+
+  const t = T[lang];
 
   const relaxPlace = dynamicAnswers['relax_place'] ?? '';
   const isNatureMode =
@@ -442,7 +580,7 @@ export default function QuizFlow(props: Props) {
 
   // ─── Next button ──────────────────────────────────────────────────────
 
-  const renderNext = (onNext: () => void, label = '次へ', disabled = false) => (
+  const renderNext = (onNext: () => void, label: string = t.next, disabled = false) => (
     <View style={[s.actionBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
       <TouchableOpacity onPress={disabled ? undefined : onNext} activeOpacity={0.85}>
         <LinearGradient
@@ -464,11 +602,12 @@ export default function QuizFlow(props: Props) {
     if (step === 1) {
       return (
         <>
-          <Text style={s.stepTitle}>今の気分は？</Text>
-          <Text style={s.stepSub}>一番近いものを選んでください。</Text>
+          <Text style={s.stepTitle}>{t.step1Title}</Text>
+          <Text style={s.stepSub}>{t.step1Sub}</Text>
           <View style={s.grid}>
             {MOODS.map((m) => {
               const active = selectedMood === m.key;
+              const en = MOOD_EN[m.key];
               return (
                 <TouchableOpacity
                   key={m.key}
@@ -484,8 +623,10 @@ export default function QuizFlow(props: Props) {
                   <View style={s.moodIconWrap}>
                     <m.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
                   </View>
-                  <Text style={[s.moodLabel, active && s.moodLabelActive]}>{m.label}</Text>
-                  <Text style={s.moodSub}>{m.sub}</Text>
+                  <Text style={[s.moodLabel, active && s.moodLabelActive]}>
+                    {lang === 'en' && en ? en.label : m.label}
+                  </Text>
+                  <Text style={s.moodSub}>{lang === 'en' && en ? en.sub : m.sub}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -496,11 +637,15 @@ export default function QuizFlow(props: Props) {
 
     // Step 2: Companion
     if (step === 2) {
+      const companions = lang === 'en' ? COMPANIONS_EN : COMPANIONS;
       return (
         <>
-          <Text style={s.stepTitle}>誰と？</Text>
-          <Text style={s.stepSub}>誰と行くかでおすすめが変わります。</Text>
-          {renderOptions(COMPANIONS, selectedCompanion, onSelectCompanion, 2)}
+          <Text style={s.stepTitle}>{t.step2Title}</Text>
+          <Text style={s.stepSub}>{t.step2Sub}</Text>
+          {renderOptions(companions, selectedCompanion, (v) => {
+            const idx = (lang === 'en' ? COMPANIONS_EN : COMPANIONS).indexOf(v);
+            onSelectCompanion(idx >= 0 ? COMPANIONS[idx] : v);
+          }, 2)}
         </>
       );
     }
@@ -512,26 +657,33 @@ export default function QuizFlow(props: Props) {
         return (
           <>
             <Text style={s.stepTitle}>{dq.question}</Text>
-            <Text style={s.stepSub}>ドライブの詳細を教えてください</Text>
+            <Text style={s.stepSub}>{t.driveDetail}</Text>
             {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
               onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
             )}
           </>
         );
       }
+      const transports = lang === 'en' ? TRANSPORT_EN : TRANSPORT_OPTIONS;
       return (
         <>
-          <Text style={s.stepTitle}>交通手段は？</Text>
-          <Text style={s.stepSub}>複数選べます。</Text>
-          {renderMultiOptions(TRANSPORT_OPTIONS, selectedTransports, (opt) => {
-            if (opt === 'なんでも') {
-              onSelectTransports(selectedTransports.includes(opt) ? [] : ['なんでも']);
+          <Text style={s.stepTitle}>{t.step3Title}</Text>
+          <Text style={s.stepSub}>{t.step3Sub}</Text>
+          {renderMultiOptions(transports, selectedTransports.map(v => {
+            const idx = TRANSPORT_OPTIONS.indexOf(v);
+            return lang === 'en' && idx >= 0 ? TRANSPORT_EN[idx] : v;
+          }), (opt) => {
+            const idx = (lang === 'en' ? TRANSPORT_EN : TRANSPORT_OPTIONS).indexOf(opt);
+            const jaVal = idx >= 0 ? TRANSPORT_OPTIONS[idx] : opt;
+            const anyVal = lang === 'en' ? TRANSPORT_EN[TRANSPORT_OPTIONS.indexOf('なんでも')] : 'なんでも';
+            if (opt === anyVal) {
+              onSelectTransports(selectedTransports.includes('なんでも') ? [] : ['なんでも']);
             } else {
               const without = selectedTransports.filter((t) => t !== 'なんでも');
               onSelectTransports(
-                selectedTransports.includes(opt)
-                  ? without.filter((t) => t !== opt)
-                  : [...without, opt]
+                selectedTransports.includes(jaVal)
+                  ? without.filter((t) => t !== jaVal)
+                  : [...without, jaVal]
               );
             }
           }, 3)}
@@ -543,12 +695,12 @@ export default function QuizFlow(props: Props) {
     if (step === 4) {
       return (
         <>
-          <Text style={s.stepTitle}>予算は？</Text>
-          <Text style={s.stepSub}>ざっくりで大丈夫です。</Text>
+          <Text style={s.stepTitle}>{t.step4Title}</Text>
+          <Text style={s.stepSub}>{t.step4Sub}</Text>
           <View style={s.budgetBox}>
             <Text style={s.budgetValue}>
               {budgetMin > 0 ? `¥${budgetMin.toLocaleString('ja-JP')} 〜 ` : ''}
-              {budget === 0 ? '無料' : `¥${(budget ?? 0).toLocaleString('ja-JP')}`}
+              {budget === 0 ? t.free : `¥${(budget ?? 0).toLocaleString('ja-JP')}`}
             </Text>
             <Slider
               style={{ width: '100%', height: 36 }}
@@ -573,7 +725,7 @@ export default function QuizFlow(props: Props) {
                 style={[s.budgetChip, (budget ?? 0) === p && s.budgetChipActive]}
               >
                 <Text style={[(budget ?? 0) === p ? s.budgetChipTextActive : s.budgetChipText]}>
-                  {p === 0 ? '無料' : `¥${p.toLocaleString('ja-JP')}`}
+                  {p === 0 ? t.free : `¥${p.toLocaleString('ja-JP')}`}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -586,8 +738,8 @@ export default function QuizFlow(props: Props) {
     if (step === 5) {
       return (
         <>
-          <Text style={s.stepTitle}>エリアは？</Text>
-          <Text style={s.stepSub}>現在地を使うか、エリア名を入力してください。</Text>
+          <Text style={s.stepTitle}>{t.step5Title}</Text>
+          <Text style={s.stepSub}>{t.step5Sub}</Text>
           <TouchableOpacity
             onPress={onUseCurrentLocation}
             disabled={isLocating}
@@ -601,7 +753,7 @@ export default function QuizFlow(props: Props) {
               style={s.locationBtn}
             >
               <Text style={s.locationBtnText}>
-                {isLocating ? '現在地を取得中...' : '📍 現在地を使う'}
+                {isLocating ? t.locating : t.useLocation}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -610,11 +762,11 @@ export default function QuizFlow(props: Props) {
               <Text style={s.locatedTagText}>📍 {locationDisplayArea}</Text>
             </View>
           ) : null}
-          <Text style={s.orDivider}>または</Text>
+          <Text style={s.orDivider}>{t.orDivider}</Text>
           <TextInput
             value={selectedArea}
             onChangeText={onSelectArea}
-            placeholder="例：渋谷 / 横浜 / 新宿"
+            placeholder={t.areaPlaceholder}
             placeholderTextColor="#b07080"
             style={s.textInput}
           />
@@ -628,11 +780,18 @@ export default function QuizFlow(props: Props) {
       const moodDqs = dynamicQuestions.filter((dq) =>
         selectedMood === 'ドライブしたい' ? dq.key !== 'drive_distance' : true
       );
+      const timeOpts = lang === 'en' ? TIME_EN : TIME_OPTIONS;
       return (
         <>
-          <Text style={s.stepTitle}>どのくらい時間ある？</Text>
-          <Text style={s.stepSub}>空き時間に合う過ごし方を提案します。</Text>
-          {renderOptions(TIME_OPTIONS, selectedTime, onSelectTime, 2)}
+          <Text style={s.stepTitle}>{t.step6Title}</Text>
+          <Text style={s.stepSub}>{t.step6Sub}</Text>
+          {renderOptions(timeOpts, lang === 'en'
+            ? TIME_EN[TIME_OPTIONS.indexOf(selectedTime)] ?? selectedTime
+            : selectedTime,
+            (v) => {
+              const idx = timeOpts.indexOf(v);
+              onSelectTime(idx >= 0 ? TIME_OPTIONS[idx] : v);
+            }, 2)}
 
           {moodDqs.map((dq) => (
             <View key={dq.key} style={{ marginTop: 24 }}>
@@ -650,12 +809,12 @@ export default function QuizFlow(props: Props) {
     if (step === 7) {
       return (
         <>
-          <Text style={s.stepTitle}>自由に教えてください</Text>
-          <Text style={s.stepSub}>行きたい場所のイメージがあれば自由に。なくてもOK。</Text>
+          <Text style={s.stepTitle}>{t.step7Title}</Text>
+          <Text style={s.stepSub}>{t.step7Sub}</Text>
           <TextInput
             value={freeWord}
             onChangeText={onSetFreeWord}
-            placeholder="例：夜景、甘いもの、公園、静かな場所、海が見たい など"
+            placeholder={t.freeWordPlaceholder}
             placeholderTextColor="#b07080"
             multiline
             numberOfLines={6}
@@ -672,7 +831,7 @@ export default function QuizFlow(props: Props) {
         return (
           <>
             <Text style={s.stepTitle}>{foodSubQ.question}</Text>
-            <Text style={s.stepSub}>もう少し絞り込みましょう。</Text>
+            <Text style={s.stepSub}>{t.foodSubSub}</Text>
             {renderOptions(foodSubQ.options, dynamicAnswers['food_sub_choice'] ?? '', (v) =>
               onSetDynamicAnswers({ ...dynamicAnswers, food_sub_choice: v })
             )}
@@ -683,22 +842,16 @@ export default function QuizFlow(props: Props) {
       if (isDriveMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どんなドライブ？</Text>
-            <Text style={s.stepSub}>行き先のイメージを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.driveTitle}</Text>
+            <Text style={s.stepSub}>{t.driveSub}</Text>
             <View style={s.grid}>
               {DRIVE_SUBCATEGORIES.map((cat) => {
                 const active = dynamicAnswers['drive_subcategory'] === cat.key;
+                const label = lang === 'en' ? (DRIVE_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, drive_subcategory: cat.key })}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, drive_subcategory: cat.key })} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -710,22 +863,16 @@ export default function QuizFlow(props: Props) {
       if (isFocusMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どこで集中する？</Text>
-            <Text style={s.stepSub}>作業・勉強の場所を選んでください。</Text>
+            <Text style={s.stepTitle}>{t.focusTitle}</Text>
+            <Text style={s.stepSub}>{t.focusSub}</Text>
             <View style={s.grid}>
               {FOCUS_SUBCATEGORIES.map((cat) => {
                 const active = dynamicAnswers['focus_subcategory'] === cat.key;
+                const label = lang === 'en' ? (FOCUS_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, focus_subcategory: cat.key })}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, focus_subcategory: cat.key })} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -737,22 +884,16 @@ export default function QuizFlow(props: Props) {
       if (isSportsMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どんな体の動かし方？</Text>
-            <Text style={s.stepSub}>スタイルを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.sportsTitle}</Text>
+            <Text style={s.stepSub}>{t.sportsSub}</Text>
             <View style={s.grid}>
               {SPORTS_SUBCATEGORIES.map((cat) => {
                 const active = dynamicAnswers['sports_subcategory'] === cat.key;
+                const label = lang === 'en' ? (SPORTS_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, sports_subcategory: cat.key })}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, sports_subcategory: cat.key })} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -764,22 +905,16 @@ export default function QuizFlow(props: Props) {
       if (isTravelMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どこに行く？</Text>
-            <Text style={s.stepSub}>旅のイメージを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.travelTitle}</Text>
+            <Text style={s.stepSub}>{t.travelSub}</Text>
             <View style={s.grid}>
               {TRAVEL_SUBCATEGORIES.map((cat) => {
                 const active = dynamicAnswers['travel_subcategory'] === cat.key;
+                const label = lang === 'en' ? (TRAVEL_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, travel_subcategory: cat.key })}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, travel_subcategory: cat.key })} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -791,22 +926,16 @@ export default function QuizFlow(props: Props) {
       if (isOnsenMode) {
         return (
           <>
-            <Text style={s.stepTitle}>温泉の種類は？</Text>
-            <Text style={s.stepSub}>どんな温泉施設をお探しですか？</Text>
+            <Text style={s.stepTitle}>{t.onsenTitle}</Text>
+            <Text style={s.stepSub}>{t.onsenSub}</Text>
             <View style={s.grid}>
               {ONSEN_CATEGORIES.map((cat) => {
                 const active = onsenCategory === cat.key;
+                const label = lang === 'en' ? (ONSEN_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetOnsenCategory(cat.key)}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetOnsenCategory(cat.key)} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -818,22 +947,16 @@ export default function QuizFlow(props: Props) {
       if (isNatureMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どんな自然？</Text>
-            <Text style={s.stepSub}>行きたい自然のタイプを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.natureTitle}</Text>
+            <Text style={s.stepSub}>{t.natureSub}</Text>
             <View style={s.grid}>
               {NATURE_SUBGENRES.map((sg) => {
                 const active = natureSubGenre === sg.key;
+                const label = lang === 'en' ? (NATURE_EN[sg.label] ?? sg.label) : sg.label;
                 return (
-                  <TouchableOpacity
-                    key={sg.key}
-                    onPress={() => onSetNatureSubGenre(sg.key)}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <sg.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{sg.label}</Text>
+                  <TouchableOpacity key={sg.key} onPress={() => onSetNatureSubGenre(sg.key)} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><sg.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -845,22 +968,16 @@ export default function QuizFlow(props: Props) {
       if (isCafeMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どんなカフェ？</Text>
-            <Text style={s.stepSub}>お好みのカフェタイプを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.cafeTitle}</Text>
+            <Text style={s.stepSub}>{t.cafeSub}</Text>
             <View style={s.grid}>
               {CAFE_SUBCATEGORIES.map((cat) => {
                 const active = cafeSubCategory === cat.key;
+                const label = lang === 'en' ? (CAFE_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetCafeSubCategory(cat.key)}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetCafeSubCategory(cat.key)} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -872,22 +989,16 @@ export default function QuizFlow(props: Props) {
       if (isWaiWaiMode) {
         return (
           <>
-            <Text style={s.stepTitle}>どんな楽しみ方？</Text>
-            <Text style={s.stepSub}>盛り上がり方のスタイルを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.waiwaiTitle}</Text>
+            <Text style={s.stepSub}>{t.waiwaiSub}</Text>
             <View style={s.grid}>
               {WAIWAI_SUBCATEGORIES.map((cat) => {
                 const active = waiWaiSubCategory === cat.key;
+                const label = lang === 'en' ? (WAIWAI_EN[cat.label] ?? cat.label) : cat.label;
                 return (
-                  <TouchableOpacity
-                    key={cat.key}
-                    onPress={() => onSetWaiWaiSubCategory(cat.key)}
-                    style={[s.catBtn, active && s.catBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.catIconWrap}>
-                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
-                    </View>
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  <TouchableOpacity key={cat.key} onPress={() => onSetWaiWaiSubCategory(cat.key)} style={[s.catBtn, active && s.catBtnActive]} activeOpacity={0.7}>
+                    <View style={s.catIconWrap}><cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} /></View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -897,33 +1008,36 @@ export default function QuizFlow(props: Props) {
       }
 
       // Default step 8: Atmosphere
+      const atmOpts = lang === 'en' ? ATM_EN : ATMOSPHERE_OPTIONS;
       return (
         <>
-          <Text style={s.stepTitle}>雰囲気は？</Text>
-          <Text style={s.stepSub}>今日の気分に合う空気感を選んでください。</Text>
-          {renderOptions(ATMOSPHERE_OPTIONS, selectedAtmosphere, onSelectAtmosphere, 2)}
+          <Text style={s.stepTitle}>{t.atmTitle}</Text>
+          <Text style={s.stepSub}>{t.atmSub}</Text>
+          {renderOptions(atmOpts, lang === 'en' ? ATM_EN[ATMOSPHERE_OPTIONS.indexOf(selectedAtmosphere)] ?? selectedAtmosphere : selectedAtmosphere, (v) => {
+            const idx = atmOpts.indexOf(v);
+            onSelectAtmosphere(idx >= 0 ? ATMOSPHERE_OPTIONS[idx] : v);
+          }, 2)}
         </>
       );
     }
 
-    // Step 9: Mood-specific detail OR atmosphere
+    // Step 9: Mood-specific detail OR priority
     if (step === 9) {
       if (isNatureMode) {
+        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
         return (
           <>
-            <Text style={s.stepTitle}>どのくらい遠い？</Text>
-            <Text style={s.stepSub}>現在地からの距離感を選んでください。</Text>
+            <Text style={s.stepTitle}>{t.natureDistTitle}</Text>
+            <Text style={s.stepSub}>{t.natureDistSub}</Text>
             <View style={s.grid}>
-              {NATURE_DISTANCES.map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  onPress={() => onSetNatureDistancePref(d)}
-                  style={[s.optBtn, { width: '31%' }, natureDistancePref === d && s.optBtnActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.optText, natureDistancePref === d && s.optTextActive]}>{d}</Text>
-                </TouchableOpacity>
-              ))}
+              {distOpts.map((d, i) => {
+                const jaVal = NATURE_DISTANCES[i];
+                return (
+                  <TouchableOpacity key={d} onPress={() => onSetNatureDistancePref(jaVal)} style={[s.optBtn, { width: '31%' }, natureDistancePref === jaVal && s.optBtnActive]} activeOpacity={0.7}>
+                    <Text style={[s.optText, natureDistancePref === jaVal && s.optTextActive]}>{d}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </>
         );
@@ -933,27 +1047,22 @@ export default function QuizFlow(props: Props) {
         const detailOptions =
           cafeSubCategory === 'animal'
             ? [
-                { key: 'cat' as CafeDetail, label: '猫カフェ 🐱' },
-                { key: 'dog' as CafeDetail, label: '犬カフェ 🐶' },
-                { key: 'rare' as CafeDetail, label: '小動物・珍しい動物 🦔' },
+                { key: 'cat' as CafeDetail, label: lang === 'en' ? 'Cat Café 🐱' : '猫カフェ 🐱' },
+                { key: 'dog' as CafeDetail, label: lang === 'en' ? 'Dog Café 🐶' : '犬カフェ 🐶' },
+                { key: 'rare' as CafeDetail, label: lang === 'en' ? 'Exotic Animals 🦔' : '小動物・珍しい動物 🦔' },
               ]
             : [
-                { key: 'ocean' as CafeDetail, label: '海・水辺 🌊' },
-                { key: 'forest' as CafeDetail, label: '森・緑 🌲' },
-                { key: 'city' as CafeDetail, label: '街並み・高層ビル 🏙️' },
+                { key: 'ocean' as CafeDetail, label: lang === 'en' ? 'Ocean View 🌊' : '海・水辺 🌊' },
+                { key: 'forest' as CafeDetail, label: lang === 'en' ? 'Forest / Green 🌲' : '森・緑 🌲' },
+                { key: 'city' as CafeDetail, label: lang === 'en' ? 'City View 🏙️' : '街並み・高層ビル 🏙️' },
               ];
         return (
           <>
-            <Text style={s.stepTitle}>もう少し詳しく</Text>
-            <Text style={s.stepSub}>お好みのタイプを選んでください。</Text>
+            <Text style={s.stepTitle}>{t.cafeDetailTitle}</Text>
+            <Text style={s.stepSub}>{t.cafeDetailSub}</Text>
             <View style={s.grid}>
               {detailOptions.map((d) => (
-                <TouchableOpacity
-                  key={d.key}
-                  onPress={() => onSetCafeDetail(d.key)}
-                  style={[s.catBtn, cafeDetail === d.key && s.catBtnActive]}
-                  activeOpacity={0.7}
-                >
+                <TouchableOpacity key={d.key} onPress={() => onSetCafeDetail(d.key)} style={[s.catBtn, cafeDetail === d.key && s.catBtnActive]} activeOpacity={0.7}>
                   <Text style={[s.catLabel, cafeDetail === d.key && s.catLabelActive]}>{d.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -963,11 +1072,15 @@ export default function QuizFlow(props: Props) {
       }
 
       // Default step 9: Priority
+      const priorOpts = lang === 'en' ? PRIORITY_EN : PRIORITY_OPTIONS;
       return (
         <>
-          <Text style={s.stepTitle}>優先したいのは？</Text>
-          <Text style={s.stepSub}>いちばん大事にしたいポイントを選んでください。</Text>
-          {renderOptions(PRIORITY_OPTIONS, selectedPriority, onSelectPriority, 2)}
+          <Text style={s.stepTitle}>{t.priorTitle}</Text>
+          <Text style={s.stepSub}>{t.priorSub}</Text>
+          {renderOptions(priorOpts, lang === 'en' ? PRIORITY_EN[PRIORITY_OPTIONS.indexOf(selectedPriority)] ?? selectedPriority : selectedPriority, (v) => {
+            const idx = priorOpts.indexOf(v);
+            onSelectPriority(idx >= 0 ? PRIORITY_OPTIONS[idx] : v);
+          }, 2)}
         </>
       );
     }
@@ -975,21 +1088,21 @@ export default function QuizFlow(props: Props) {
     // Step 10: Review + Submit
     if (step === 10) {
       const summary = [
-        selectedMood && `気分：${selectedMood}`,
-        selectedArea && `エリア：${selectedArea}`,
-        selectedCompanion && `同伴：${selectedCompanion}`,
-        selectedTransports.length > 0 && `交通：${selectedTransports.join('・')}`,
-        budget !== undefined && `予算：¥${budget.toLocaleString('ja-JP')}`,
-        selectedTime && `時間：${selectedTime}`,
-        selectedAtmosphere && `雰囲気：${selectedAtmosphere}`,
-        selectedPriority && `優先：${selectedPriority}`,
-        freeWord && `メモ：${freeWord}`,
+        selectedMood && `${t.reviewMood}：${lang === 'en' ? (MOOD_EN[selectedMood]?.label ?? selectedMood) : selectedMood}`,
+        selectedArea && `${t.reviewArea}：${selectedArea}`,
+        selectedCompanion && `${t.reviewWith}：${lang === 'en' ? (COMPANIONS_EN[COMPANIONS.indexOf(selectedCompanion)] ?? selectedCompanion) : selectedCompanion}`,
+        selectedTransports.length > 0 && `${t.reviewTransport}：${selectedTransports.join('・')}`,
+        budget !== undefined && `${t.reviewBudget}：¥${budget.toLocaleString('ja-JP')}`,
+        selectedTime && `${t.reviewTime}：${lang === 'en' ? (TIME_EN[TIME_OPTIONS.indexOf(selectedTime)] ?? selectedTime) : selectedTime}`,
+        selectedAtmosphere && `${t.reviewAtm}：${lang === 'en' ? (ATM_EN[ATMOSPHERE_OPTIONS.indexOf(selectedAtmosphere)] ?? selectedAtmosphere) : selectedAtmosphere}`,
+        selectedPriority && `${t.reviewPriority}：${lang === 'en' ? (PRIORITY_EN[PRIORITY_OPTIONS.indexOf(selectedPriority)] ?? selectedPriority) : selectedPriority}`,
+        freeWord && `${t.reviewMemo}：${freeWord}`,
       ].filter(Boolean);
 
       return (
         <>
-          <Text style={s.stepTitle}>確認</Text>
-          <Text style={s.stepSub}>条件を確認してください。</Text>
+          <Text style={s.stepTitle}>{t.step10Title}</Text>
+          <Text style={s.stepSub}>{t.step10Sub}</Text>
           <View style={s.reviewCard}>
             {summary.map((line, i) => (
               <Text key={i} style={s.reviewLine}>{line as string}</Text>
@@ -1011,7 +1124,7 @@ export default function QuizFlow(props: Props) {
       <View style={[s.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={onBack} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <ChevronLeft size={20} color="#FF6B35" strokeWidth={2.5} />
-          <Text style={s.backText}>戻る</Text>
+          <Text style={s.backText}>{t.back}</Text>
         </TouchableOpacity>
         <View style={s.progressWrap}>
           <View style={[s.progressBar, { width: `${(step / 10) * 100}%` as any }]} />
@@ -1033,8 +1146,8 @@ export default function QuizFlow(props: Props) {
 
       {/* Next button */}
       {isLastStep
-        ? renderNext(onOpenResults, 'おすすめを見る')
-        : renderNext(nextStep, step === 1 && !selectedMood ? 'スキップ' : '次へ')}
+        ? renderNext(onOpenResults, t.submit)
+        : renderNext(nextStep, step === 1 && !selectedMood ? t.skip : t.next)}
     </View>
   );
 }
