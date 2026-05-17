@@ -82,6 +82,7 @@ type ReportRecord = {
   reason: string;
   note: string | null;
   created_at: string;
+  status?: string; // "blocked" | null
 };
 
 const font = '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif';
@@ -561,6 +562,9 @@ export default function AdminPage() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
   const [reportFilter, setReportFilter] = useState<"all" | "irrelevant" | "dislike" | "misinfoinfo" | "restricted" | "other">("all");
+  const [blockingReport, setBlockingReport] = useState<string | null>(null); // report.id
+  const [globallyBlocked, setGloballyBlocked] = useState<string[]>([]); // spot_names
+  const [blockError, setBlockError] = useState("");
 
   // ─── Supabase Places 登録（スポット追加タブ）──────────────────────────────
   const [registerToPlaces, setRegisterToPlaces] = useState(false);
@@ -1685,15 +1689,61 @@ export default function AdminPage() {
     if (!authed || tab !== "reports") return;
     setReportsLoading(true);
     setReportsError("");
-    fetch("/api/reports")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.ok) setReports(data.reports ?? []);
-        else setReportsError(data.error ?? "取得に失敗しました");
-      })
-      .catch((e) => setReportsError(String(e)))
-      .finally(() => setReportsLoading(false));
+    Promise.all([
+      fetch("/api/reports").then(r => r.json()),
+      fetch("/api/admin/block-place").then(r => r.json()),
+    ]).then(([reportData, blockData]) => {
+      if (reportData.ok) setReports(reportData.reports ?? []);
+      else setReportsError(reportData.error ?? "取得に失敗しました");
+      if (blockData.ok) setGloballyBlocked((blockData.blocked ?? []).map((b: { spot_name: string }) => b.spot_name));
+    })
+    .catch((e) => setReportsError(String(e)))
+    .finally(() => setReportsLoading(false));
   }, [authed, tab]);
+
+  // 全体ブロック実行
+  const handleGlobalBlock = async (report: ReportRecord) => {
+    setBlockingReport(report.id);
+    setBlockError("");
+    try {
+      const res = await fetch("/api/admin/block-place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spot_name: report.spot_name, spot_address: report.spot_address, reason: report.reason, report_id: report.id }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setGloballyBlocked(prev => [...prev, report.spot_name]);
+        setReports(prev => prev.map(r => r.id === report.id ? { ...r, status: "blocked" } : r));
+      } else {
+        setBlockError(`エラー: ${data.error ?? "不明なエラー"}`);
+      }
+    } catch (e) {
+      setBlockError(`通信エラー: ${String(e)}`);
+    } finally {
+      setBlockingReport(null);
+    }
+  };
+
+  // 全体ブロック解除
+  const handleGlobalUnblock = async (spotName: string) => {
+    setBlockError("");
+    try {
+      const res = await fetch("/api/admin/block-place", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spot_name: spotName }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setGloballyBlocked(prev => prev.filter(n => n !== spotName));
+      } else {
+        setBlockError(`解除エラー: ${data.error ?? "不明なエラー"}`);
+      }
+    } catch (e) {
+      setBlockError(`通信エラー: ${String(e)}`);
+    }
+  };
 
   // 重複スポット読み込み（mergeタブ）
   useEffect(() => {
@@ -5204,6 +5254,47 @@ export default function AdminPage() {
               ⚠ 不適切報告一覧
             </div>
 
+            {/* 全体非表示リスト */}
+            <div style={{ background: "#fff5f5", border: "1px solid #fecaca", borderRadius: "16px", padding: "18px 20px", marginBottom: "24px" }}>
+              <div style={{ fontWeight: 900, fontSize: "15px", color: "#dc2626", marginBottom: "12px" }}>
+                🚫 全体非表示リスト（{globallyBlocked.length}件）
+              </div>
+              {blockError && (
+                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px", fontSize: "13px", color: "#dc2626", fontWeight: 700 }}>
+                  ⚠ {blockError}
+                  <div style={{ fontSize: "11px", marginTop: "6px", fontWeight: 400, opacity: 0.8 }}>
+                    globally_blocked_places テーブルが未作成の可能性があります。下記SQLをSupabaseで実行してください：<br/>
+                    <code style={{ display: "block", marginTop: "4px", background: "#fff", padding: "6px 8px", borderRadius: "6px", whiteSpace: "pre-wrap" }}>
+{`create table globally_blocked_places (
+  id uuid primary key default gen_random_uuid(),
+  spot_name text not null unique,
+  spot_address text,
+  reason text,
+  blocked_at timestamptz default now()
+);`}
+                    </code>
+                  </div>
+                </div>
+              )}
+              {globallyBlocked.length === 0 ? (
+                <div style={{ fontSize: "13px", color: "#9ca3af", padding: "8px 0" }}>非表示中のスポットはありません</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {globallyBlocked.map(name => (
+                    <div key={name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fff", border: "1px solid #fecaca", borderRadius: "10px", padding: "10px 14px", gap: "12px" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "#7f1d1d", flex: 1 }}>{name}</span>
+                      <button
+                        onClick={() => handleGlobalUnblock(name)}
+                        style={{ fontSize: "12px", padding: "5px 14px", borderRadius: "999px", border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}
+                      >
+                        解除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* フィルター */}
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px" }}>
               {([
@@ -5313,8 +5404,32 @@ export default function AdminPage() {
                           💬 {r.note}
                         </div>
                       )}
-                      <div style={{ fontSize: "11px", color: "#b0a0a5" }}>
-                        {new Date(r.created_at).toLocaleString("ja-JP")}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "10px" }}>
+                        <div style={{ fontSize: "11px", color: "#b0a0a5" }}>
+                          {new Date(r.created_at).toLocaleString("ja-JP")}
+                        </div>
+                        {globallyBlocked.includes(r.spot_name) ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "12px", background: "#fee2e2", color: "#dc2626", borderRadius: "999px", padding: "4px 12px", fontWeight: 800 }}>🚫 全体非表示中</span>
+                            <button
+                              onClick={() => handleGlobalUnblock(r.spot_name)}
+                              style={{ fontSize: "12px", padding: "4px 12px", borderRadius: "999px", border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: "pointer", fontWeight: 700 }}
+                            >解除</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleGlobalBlock(r)}
+                            disabled={blockingReport === r.id}
+                            style={{
+                              fontSize: "13px", padding: "7px 16px", borderRadius: "999px", border: "none",
+                              background: blockingReport === r.id ? "#e5e7eb" : "linear-gradient(135deg, #dc2626, #b91c1c)",
+                              color: blockingReport === r.id ? "#9ca3af" : "#fff",
+                              fontWeight: 900, cursor: blockingReport === r.id ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {blockingReport === r.id ? "処理中..." : "🚫 全ユーザーに非表示"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

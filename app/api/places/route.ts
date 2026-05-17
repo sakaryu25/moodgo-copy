@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       freeWord,
       minRadiusKm,
       preferFar,
+      prefecture,
     }: {
       genreAnswer?: string;
       subAnswer?:   string;
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
       freeWord?:    string;
       minRadiusKm?: number;
       preferFar?:   boolean;
+      prefecture?:  string;
     } = body;
 
     // time + transport が揃っている場合は calcRadiusKm で上書き
@@ -100,6 +102,7 @@ export async function POST(req: NextRequest) {
       budget,
       minRadiusKm,
       preferFar,
+      prefecture,
     });
 
     return NextResponse.json({

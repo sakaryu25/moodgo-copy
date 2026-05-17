@@ -81,13 +81,14 @@ type HotPepperResponse = {
 // ジャンル・予算コードマップ
 // ─────────────────────────────────────────────────────────────────────────────
 
+// HotPepper マスターAPI準拠のジャンルコード（2024年確認済み）
 const GENRE_CODES: Record<string, string> = {
-  G001: "居酒屋",       G002: "ダイニングバー・バル", G003: "創作料理・無国籍",
-  G004: "和食",         G005: "洋食",                G006: "イタリアン・フレンチ",
-  G007: "中華",         G008: "焼肉・ホルモン",       G009: "アジア・エスニック",
-  G010: "各国料理",     G011: "カラオケ・パーティ",   G012: "バー・カクテル",
-  G013: "ラーメン",     G014: "お好み焼き・もんじゃ", G015: "カフェ・スイーツ",
-  G016: "その他グルメ", G017: "韓国料理",
+  G001: "居酒屋",           G002: "ダイニングバー・バル", G003: "創作料理",
+  G004: "和食",             G005: "洋食",                G006: "イタリアン・フレンチ",
+  G007: "中華",             G008: "焼肉・ホルモン",       G009: "アジア・エスニック料理",
+  G010: "各国料理",         G011: "カラオケ・パーティ",   G012: "バー・カクテル",
+  G013: "ラーメン",         G014: "カフェ・スイーツ",     G015: "その他グルメ",
+  G016: "お好み焼き・もんじゃ", G017: "韓国料理",
 };
 
 const BUDGET_CODES: Record<string, string> = {
@@ -144,81 +145,231 @@ function distanceToRange(
   return 3; // デフォルト
 }
 
-function genreFromAnswers(dynamicQs: { question: string; answer: string }[]): string | undefined {
-  const GENRE_MAP: Record<string, string> = {
-    "居酒屋": "G001",
-    "和食": "G004",   "洋食": "G005",  "イタリアン": "G006",
-    "中華": "G007",   "焼肉": "G008",  "韓国": "G017",
-    "アジア系統": "G009", "各国料理": "G010", "ラーメン": "G013",
-    "お好み焼き": "G014", "もんじゃ": "G014", "カフェ・スイーツ": "G015",
-    // サブ選択
-    "チーズタッカルビ": "G017", "サムギョプサル": "G017",
-    "シュラスコ": "G010",       "タコス": "G010",
-    "ホルモン": "G008",         "ジンギスカン": "G008",
-    "割烹": "G004",             "懐石": "G004",  "寿司": "G004",
-    "天ぷら": "G004",           "うどん": "G004","そば": "G004",
-    "ハンバーグ": "G005",       "オムライス": "G005",
-    "ピザ": "G006",             "パスタ": "G006",
-    "火鍋": "G007",             "四川": "G007",
-    "インド": "G009",           "タイ": "G009",  "ベトナム": "G009",
-    // 後方互換
-    "定食": "G004",  "ご飯もの": "G004",
-    "フレンチ": "G006", "餃子": "G007",
-    "アジア": "G009", "エスニック": "G009",
-    "カフェ": "G015", "スイーツ": "G015", "ケーキ": "G015",  "パフェ": "G015",
-    "パンケーキ": "G015", "クレープ": "G015", "タピオカ": "G015",
-    "甘いもの": "G015", "デザート": "G015", "おやつ": "G015",
-    "バー": "G012",  "カクテル": "G012",
-  };
-  for (const dq of dynamicQs) {
-    for (const [kw, code] of Object.entries(GENRE_MAP)) {
-      if (dq.answer.includes(kw)) return code;
+// ─────────────────────────────────────────────────────────────────────────────
+// ジャンル × 深掘りタグ マッピングテーブル
+// ─────────────────────────────────────────────────────────────────────────────
+
+type DetailRule = {
+  keyword?: string;       // HotPepper keyword（未定義 = キーワードなし）
+  private_room?: true;    // 個室フラグ
+  course?: true;          // コースフラグ
+};
+
+type GenreRule = {
+  code: string;                          // HotPepper genre コード
+  isCafe?: true;                         // カフェ専用パス（genre指定なし・keyword主体）
+  details: Record<string, DetailRule>;   // 深掘りキーワード → パラメータ
+};
+
+/**
+ * ジャンル（food_genre_new の回答テキスト）→ HotPepper パラメータのマッピング定義
+ * matchKey: dynamicQs の answer に部分一致させるキー（長いものを先に書く）
+ */
+const HOTPEPPER_GENRE_MAP: Array<{ matchKey: string; rule: GenreRule }> = [
+  // ① 居酒屋 (G001)
+  {
+    matchKey: "居酒屋",
+    rule: {
+      code: "G001",
+      details: {
+        "魚介":     { keyword: "海鮮" },
+        "海鮮メイン": { keyword: "海鮮" },
+        "焼き鳥":   { keyword: "焼鳥" },
+        "個室あり": { private_room: true },
+        "大衆酒場": { keyword: "大衆酒場" },
+      },
+    },
+  },
+  // ② 和食 (G004)
+  {
+    matchKey: "和食",
+    rule: {
+      code: "G004",
+      details: {
+        "海鮮":   { keyword: "海鮮 刺身" },
+        "お寿司": { keyword: "寿司" },
+        "天ぷら": { keyword: "天ぷら" },
+        "うどん": { keyword: "うどん" },
+        "割烹":   { keyword: "懐石 割烹", course: true },
+        "懐石":   { keyword: "懐石 割烹", course: true },
+      },
+    },
+  },
+  // ③ 洋食 (G005)
+  {
+    matchKey: "洋食",
+    rule: {
+      code: "G005",
+      details: {
+        "ハンバーグ": { keyword: "ハンバーグ" },
+        "オムライス": { keyword: "オムライス" },
+        "ステーキ":   { keyword: "ステーキ" },
+        "レトロ":     { keyword: "レトロ" },
+      },
+    },
+  },
+  // ④ イタリアン (G006)
+  {
+    matchKey: "イタリアン",
+    rule: {
+      code: "G006",
+      details: {
+        "ピザ":           { keyword: "ピザ" },
+        "パスタ":         { keyword: "パスタ" },
+        "バル":           { keyword: "バル" },
+        "イタリアン全般": {},           // キーワードなし・ジャンルのみ
+      },
+    },
+  },
+  // ⑤ 中華 (G007)
+  {
+    matchKey: "中華",
+    rule: {
+      code: "G007",
+      details: {
+        "町中華":       { keyword: "町中華" },
+        "火鍋":         { keyword: "火鍋" },
+        "本格四川料理": { keyword: "四川" },
+        "食べ放題":     { keyword: "食べ放題" },
+      },
+    },
+  },
+  // ⑥ 焼肉 (G008)
+  {
+    matchKey: "焼肉",
+    rule: {
+      code: "G008",
+      details: {
+        "焼肉食べ放題": { keyword: "食べ放題" },
+        "高級焼肉":     { keyword: "高級", private_room: true },
+        "ホルモン焼き": { keyword: "ホルモン" },
+        "ジンギスカン": { keyword: "ジンギスカン" },
+      },
+    },
+  },
+  // ⑦ 韓国 (G017) — 深掘りなし
+  {
+    matchKey: "韓国",
+    rule: {
+      code: "G017",
+      details: {},
+    },
+  },
+  // ⑧ アジア系統 (G009)
+  {
+    matchKey: "アジア系統",
+    rule: {
+      code: "G009",
+      details: {
+        "インドネパール":       { keyword: "インドカレー ネパール" },
+        "タイ料理":             { keyword: "タイ料理" },
+        "ベトナム料理":         { keyword: "ベトナム フォー" },
+        "アジアンエスニック全般": {},   // キーワードなし
+      },
+    },
+  },
+  // ⑨ 各国料理 (G010)
+  {
+    matchKey: "各国料理",
+    rule: {
+      code: "G010",
+      details: {
+        "メキシコ料理": { keyword: "タコス メキシコ" },
+        "ブラジル料理": { keyword: "シュラスコ" },
+        "ロシア料理":   { keyword: "ロシア料理" },
+        "他国料理":     {},
+      },
+    },
+  },
+  // ⑩ ラーメン (G013)
+  {
+    matchKey: "ラーメン",
+    rule: {
+      code: "G013",
+      details: {
+        "こってりラーメン": { keyword: "豚骨 家系" },
+        "あっさりラーメン": { keyword: "醤油 塩" },
+        "味噌ラーメン":     { keyword: "味噌ラーメン" },
+        "つけ麺":           { keyword: "つけ麺 まぜそば" },
+      },
+    },
+  },
+  // ⑪ お好み焼き・もんじゃ (G016) — 深掘りなし
+  {
+    matchKey: "お好み焼き",
+    rule: {
+      code: "G016",
+      details: {},
+    },
+  },
+  // ⑫ カフェ・スイーツ (G014) — keyword主体でgenre指定なし（isCafe=true）
+  {
+    matchKey: "カフェ・スイーツ",
+    rule: {
+      code: "G014",
+      isCafe: true,
+      details: {
+        "スイーツカフェ": { keyword: "スイーツ ケーキ パフェ" },
+        "喫茶店":         { keyword: "喫茶店 コーヒー" },
+        "流行りカフェ":   { keyword: "おしゃれ 映え" },
+      },
+    },
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ジャンル × 深掘りタグ → HotPepper パラメータ解決（単一エントリポイント）
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ResolvedParams = {
+  genre?: string;
+  keyword?: string;
+  private_room?: boolean;
+  course?: boolean;
+  wifi?: boolean;
+  isCafe?: boolean;       // カフェ専用パス
+};
+
+function resolveHotPepperParams(
+  dynamicQs: { question: string; answer: string }[]
+): ResolvedParams {
+  const allAnswers = dynamicQs.map(dq => dq.answer).join(" ");
+
+  // ── ジャンル特定（matchKey の部分一致）────────────────────────────────────
+  const matched = HOTPEPPER_GENRE_MAP.find(({ matchKey }) =>
+    allAnswers.includes(matchKey)
+  );
+  if (!matched) return {};
+
+  const { rule } = matched;
+
+  // ── 深掘りタグ特定（details のキーに部分一致）────────────────────────────
+  let detailRule: DetailRule = {};
+  for (const [detailKey, params] of Object.entries(rule.details)) {
+    if (allAnswers.includes(detailKey)) {
+      detailRule = params;
+      break;
     }
   }
-  return undefined;
-}
 
-function subChoiceToParams(dynamicQs: { question: string; answer: string }[]): {
-  keyword?: string; private_room?: boolean; course?: boolean; wifi?: boolean;
-} {
-  const allAnswers = dynamicQs.map(dq => dq.answer).join(" ");
-  const result: { keyword?: string; private_room?: boolean; course?: boolean; wifi?: boolean } = {};
+  // ── フリーワード・選択肢からのフラグ補完 ─────────────────────────────────
+  const hasPrivateRoom = !!(detailRule.private_room || allAnswers.includes("個室"));
+  const hasCourse      = !!(detailRule.course || allAnswers.includes("割烹") || allAnswers.includes("懐石") || allAnswers.includes("コース料理"));
+  const hasWifi        = allAnswers.includes("Wi-Fi") || allAnswers.includes("wifi") || allAnswers.includes("電源");
 
-  if (allAnswers.includes("個室"))  result.private_room = true;
-  if (allAnswers.includes("割烹") || allAnswers.includes("懐石") || allAnswers.includes("コース料理") || allAnswers.includes("記念日") || allAnswers.includes("リストランテ") || allAnswers.includes("コースディナー")) result.course = true;
-  if (allAnswers.includes("Wi-Fi") || allAnswers.includes("電源") || allAnswers.includes("wifi")) result.wifi = true;
-
-  const KEYWORD_MAP: Array<[string, string]> = [
-    ["海鮮メイン", "海鮮 刺身"],       ["焼き鳥", "焼き鳥 串焼き"],
-    ["大衆酒場", "大衆酒場"],           ["お寿司", "寿司 海鮮丼"],
-    ["天ぷら", "天ぷら 揚げ物"],        ["うどん", "うどん そば"],
-    ["割烹", "割烹 懐石"],              ["ハンバーグ", "ハンバーグ"],
-    ["オムライス", "オムライス"],        ["ステーキ", "ステーキ 肉料理"],
-    ["レトロ", "洋食 定食"],            ["ピザ", "ピザ"],
-    ["パスタ", "パスタ"],               ["バル", "バル"],
-    ["コース料理", "コース"],           ["リストランテ", "コース ディナー イタリアン"],
-    ["コースディナー", "コース ディナー"],["町中華", "チャーハン 餃子"],
-    ["火鍋", "火鍋 鍋"],               ["四川", "四川 麻辣"],
-    ["食べ放題", "食べ放題"],           ["黒毛和牛", "黒毛和牛 和牛"],
-    ["ホルモン焼き", "ホルモン"],       ["ジンギスカン", "ジンギスカン"],
-    ["サムギョプサル", "サムギョプサル"],["チーズタッカルビ", "チーズタッカルビ"],
-    ["スンドゥブ", "スンドゥブ チゲ"], ["冷麺", "冷麺 ビビンバ"],
-    ["インド・ネパール", "インドカレー ネパール"], ["タイ料理", "タイ料理 トムヤムクン"],
-    ["ベトナム料理", "ベトナム料理 フォー"], ["エスニック全般", "アジアン エスニック"],
-    ["タコス", "タコス メキシコ料理"], ["シュラスコ", "シュラスコ ブラジル料理"],
-    ["ロシア料理", "ロシア料理"],       ["西洋・中南米", "各国料理"],
-    ["豚骨", "豚骨ラーメン"],           ["家系", "家系ラーメン"],
-    ["醤油", "醤油ラーメン"],           ["塩など", "塩ラーメン"],
-    ["味噌ラーメン", "味噌ラーメン"],   ["つけ麺", "つけ麺 まぜそば"],
-    ["関西風", "関西風 お好み焼き"],    ["広島風", "広島風 お好み焼き"],
-    ["もんじゃ焼き", "もんじゃ"],       ["プロに美味しく", "お好み焼き"],
-    ["スイーツ目当て", "スイーツ パンケーキ ケーキ"], ["カフェごはん", "カフェ ランチ"],
-    ["コーヒー・紅茶", "コーヒー カフェ"], ["Wi-Fi・電源", "カフェ"],
-  ];
-  for (const [kw, keyword] of KEYWORD_MAP) {
-    if (allAnswers.includes(kw)) { result.keyword = keyword; break; }
+  // ── カフェ専用パス（genre指定なし・keyword主体） ──────────────────────────
+  if (rule.isCafe) {
+    const cafeKeyword = detailRule.keyword ?? "カフェ スイーツ";
+    return { keyword: cafeKeyword, isCafe: true };
   }
-  return result;
+
+  return {
+    genre:        rule.code,
+    keyword:      detailRule.keyword,
+    private_room: hasPrivateRoom || undefined,
+    course:       hasCourse || undefined,
+    wifi:         hasWifi || undefined,
+  };
 }
 
 function budgetFromAnswers(budget?: number, budgetMin?: number): string | undefined {
@@ -304,7 +455,7 @@ async function resolveGooglePhotoUrl(photoRef: string, apiKey: string): Promise<
 }
 
 async function fetchGooglePlacesPhotos(shops: HotPepperShop[], maxShops = 8): Promise<Record<string, string[]>> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) return {};
 
   const entries = await Promise.all(
@@ -425,9 +576,8 @@ export async function POST(request: Request) {
 
     // ── ルールベース パラメータ決定 ───────────────────────────────────────────
     const range      = distanceToRange(dynamicQs, time, transport);
-    const genre      = genreFromAnswers(dynamicQs);
+    const resolved   = resolveHotPepperParams(dynamicQs);
     const budgetCode = budgetFromAnswers(budget, budgetMin);
-    const subParams  = subChoiceToParams(dynamicQs);
 
     // 時間帯
     const isLunch    = currentHour >= 11 && currentHour < 14;
@@ -450,23 +600,23 @@ export async function POST(request: Request) {
     const ruleCourse     = fw.includes("コース") || fw.includes("フルコース");
     const ruleNonSmoking = fw.includes("禁煙") || fw.includes("煙草なし");
 
-    // フラグ確定（subParams + freeWordルール のOR）
-    const usePrivateRoom = !!(subParams.private_room || rulePrivate);
-    const useCourse      = !!(subParams.course       || ruleCourse);
-    const useWifi        = !!(subParams.wifi         || ruleWifi);
+    // フラグ確定（resolved + freeWordルール のOR）
+    const usePrivateRoom = !!(resolved.private_room || rulePrivate);
+    const useCourse      = !!(resolved.course       || ruleCourse);
+    const useWifi        = !!(resolved.wifi         || ruleWifi);
     const useFreeFood    = !!ruleFreeFood;
     const useFreeDrink   = !!ruleFreeDrink;
     const useParking     = !!ruleParking;
     const useNonSmoking  = !!ruleNonSmoking;
 
-    // キーワード: サブ選択 → 同行者補完 → スイーツ接頭辞
-    const isSweetsSearch = genre === "G015";
-    const companionKw    = isCouple ? "デート 雰囲気" : isFamily ? "家族向け" : isGroup ? "大人数 宴会" : "";
-    const baseKeyword    = [subParams.keyword, companionKw].filter(Boolean).join(" ").trim().slice(0, 50) || undefined;
+    // キーワード: resolved → 同行者補完 → カフェ接頭辞
+    const isSweetsSearch   = resolved.isCafe ?? false;
+    const companionKw      = isCouple ? "デート 雰囲気" : isFamily ? "家族向け" : isGroup ? "大人数 宴会" : "";
+    const baseKeyword      = [resolved.keyword, companionKw].filter(Boolean).join(" ").trim().slice(0, 50) || undefined;
     const effectiveKeyword = isSweetsSearch
       ? ("カフェ スイーツ " + (baseKeyword ?? "")).trim().slice(0, 50)
       : baseKeyword;
-    const effectiveGenre = isSweetsSearch ? undefined : genre;
+    const effectiveGenre   = isSweetsSearch ? undefined : resolved.genre;
 
     const finalParams = {
       range, genre: effectiveGenre, budgetCode,
@@ -495,6 +645,16 @@ export async function POST(request: Request) {
     let isFallback = false;
 
     // ── 段階的フォールバック ──────────────────────────────────────────────────
+    // キーワードとジャンルが両方指定されている場合、件数が少なければジャンルのみで追加取得してマージ
+    if (searchParams.keyword && searchParams.genre && shops.length < 10) {
+      console.log(`[hotpepper] ${shops.length}件（キーワード有） → ジャンルのみで追加取得してマージ`);
+      const genreOnly = await searchHotPepper({ ...searchParams, keyword: undefined, count: 20 });
+      // キーワード一致を先頭に、ジャンルのみを後ろに追加（重複除去）
+      const existingIds = new Set(shops.map(s => s.id));
+      const merged = [...shops, ...genreOnly.filter(s => !existingIds.has(s.id))];
+      shops = merged.slice(0, 20);
+      console.log(`[hotpepper] マージ後: ${shops.length}件`);
+    }
     if (shops.length === 0 && searchParams.genre) {
       console.log("[hotpepper] 0件 → キーワード除去・ジャンルのみで再検索");
       shops = await searchHotPepper({ ...searchParams, keyword: undefined });
@@ -510,8 +670,8 @@ export async function POST(request: Request) {
         shops = await searchHotPepper({ ...searchParams, genre: undefined, budget: undefined, keyword: kw, range: 5 });
       }
     }
-    if (shops.length === 0 && genre) {
-      const genreKw = GENRE_CODES[genre];
+    if (shops.length === 0 && resolved.genre) {
+      const genreKw = GENRE_CODES[resolved.genre];
       console.log(`[hotpepper] 0件 → ジャンル名「${genreKw}」をキーワードに変換`);
       shops = await searchHotPepper({ ...searchParams, genre: undefined, budget: undefined, keyword: genreKw, wifi: undefined, private_room: undefined, range: 5 });
       if (shops.length > 0) isFallback = true;

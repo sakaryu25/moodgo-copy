@@ -3508,11 +3508,11 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
 
     if (!apiKey) {
       return json(
-        { error: "GOOGLE_MAPS_API_KEY が設定されていません。" },
+        { error: "GOOGLE_PLACES_API_KEY が設定されていません。" },
         { status: 500 }
       );
     }
@@ -3954,7 +3954,7 @@ export async function POST(request: Request) {
         if (hpRes.ok) {
           const hpData = await hpRes.json();
           if (hpData.ok && hpData.shops && hpData.shops.length > 0) {
-            console.log(`[recommend] お腹すいた: HotPepper ${hpData.shops.length}件 → Google Places スキップ`);
+            console.log(`[recommend] お腹すいた: HotPepper ${hpData.shops.length}件`);
             const warning = urbanWarning || (hpData.isFallback
               ? "ご指定のジャンルが近くに見つからなかったため、条件を緩めて周辺の飲食店を表示しています。"
               : "");
@@ -3965,10 +3965,31 @@ export async function POST(request: Request) {
               warning,
             });
           }
+          // HotPepper 0件 → Google Placesには流さず専用メッセージで終了
+          console.log("[recommend] お腹すいた: HotPepper 0件 → 終了（Google Placesフォールバックなし）");
+          return json({
+            recommendations: [],
+            hotpepperShops: [],
+            usedAI: true,
+            warning: "noResultsFood",
+          });
         }
-        console.log("[recommend] お腹すいた: HotPepper 0件 → Google Placesにフォールバック");
+        // HotPepper API自体がエラーの場合も同様に終了
+        console.warn("[recommend] お腹すいた: HotPepper APIエラー → 終了");
+        return json({
+          recommendations: [],
+          hotpepperShops: [],
+          usedAI: true,
+          warning: "noResultsFood",
+        });
       } catch (e) {
-        console.warn("[recommend] お腹すいた HotPepper エラー、フォールバック:", e);
+        console.warn("[recommend] お腹すいた HotPepper エラー:", e);
+        return json({
+          recommendations: [],
+          hotpepperShops: [],
+          usedAI: true,
+          warning: "noResultsFood",
+        });
       }
     }
     // ── ここより下はお腹すいた以外、またはHotPepper失敗時のGoogle Places検索 ──

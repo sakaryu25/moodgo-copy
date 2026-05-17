@@ -14,6 +14,7 @@ import {
   getWaiWaiTags, getDriveTags, getFocusTags,
   getSportsTags, getTravelTags,
 } from "@/lib/mood-tag-map";
+import { detectUserPrefecture, getNearbyPrefectures } from "@/lib/prefecture-utils";
 
 type RouteByMode = {
   icon: string;
@@ -115,6 +116,7 @@ const FEEDBACK_KEY = "moodgo-feedback";
 const PENDING_VISITED_KEY = "moodgo-pending-visited";
 const BLOCKED_PLACES_KEY = "moodgo-blocked-places";
 const PROFILE_KEY = "moodgo-profile";
+const VISITED_PLACES_KEY = "moodgo-visited-places";
 
 const LOADING_MESSAGES = [
   "AIがあなたにぴったりの場所を探しています...",
@@ -193,6 +195,7 @@ export default function Home() {
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [apiWarning, setApiWarning] = useState("");
   const [blockedPlaces, setBlockedPlaces] = useState<string[]>([]);
+  const [globallyBlockedNames, setGloballyBlockedNames] = useState<string[]>([]);
   // admin判定（管理画面ログイン済みの場合のみtrue）
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [refinementText, setRefinementText] = useState("");
@@ -265,6 +268,34 @@ export default function Home() {
   const [isLoadingRandom, setIsLoadingRandom] = useState(false);
   const [randomRadiusKm, setRandomRadiusKm] = useState<number>(15);
 
+  // 都道府県フィルター
+  const [selectedPrefecture, setSelectedPrefecture] = useState<string>("");
+  const [prefectureButtons, setPrefectureButtons] = useState<string[]>([]);
+  const [userPrefecture, setUserPrefecture] = useState<string>("");
+  const [lastSearchParams, setLastSearchParams] = useState<{
+    mustTags: string[];
+    lat: number;
+    lng: number;
+    radiusKm: number;
+    transport: string[];
+    time?: string;
+    companion?: string;
+    budget?: number;
+    freeWord?: string;
+    minRadiusKm?: number;
+    preferFar?: boolean;
+    path: "sports" | "focus" | "drive" | "nature" | "cafe" | "waiwai" | "onsen" | "travel" | "other";
+  } | null>(null);
+  const [prefFilteredFacilities, setPrefFilteredFacilities] = useState<PlaceResponse[] | null>(null);
+  const [isLoadingPrefFilter, setIsLoadingPrefFilter] = useState(false);
+
+  // Feature 1: 営業中フィルター
+  const [filterOpenNow, setFilterOpenNow] = useState(false);
+  // Feature 2: ソート切り替え
+  const [sortMode, setSortMode] = useState<"default" | "rating" | "near" | "far">("default");
+  // Feature 8: 行った！ボタン
+  const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
+
   // 不適切報告モーダル
   const [reportingSpot, setReportingSpot] = useState<{ title: string; address: string } | null>(null);
   const [reportReason, setReportReason] = useState("");
@@ -286,10 +317,12 @@ export default function Home() {
       const storedFavorites = window.localStorage.getItem(FAVORITES_KEY);
       const storedHistory = window.localStorage.getItem(HISTORY_KEY);
       const storedBlocked = window.localStorage.getItem(BLOCKED_PLACES_KEY);
+      const storedVisited = window.localStorage.getItem(VISITED_PLACES_KEY);
 
       if (storedFavorites) setFavorites(JSON.parse(storedFavorites));
       if (storedHistory) setHistory(JSON.parse(storedHistory));
       if (storedBlocked) setBlockedPlaces(JSON.parse(storedBlocked));
+      if (storedVisited) setVisitedPlaces(JSON.parse(storedVisited));
 
       // プロフィール復元
       const storedProfile = window.localStorage.getItem(PROFILE_KEY);
@@ -303,6 +336,12 @@ export default function Home() {
       console.error("Failed to load local data", error);
     }
     setProfileLoaded(true);
+
+    // グローバルブロックリストを取得
+    fetch("/api/admin/block-place")
+      .then(r => r.json())
+      .then(d => { if (d.ok && Array.isArray(d.blocked)) setGloballyBlockedNames(d.blocked.map((b: { spot_name: string }) => b.spot_name)); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -319,6 +358,11 @@ export default function Home() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(BLOCKED_PLACES_KEY, JSON.stringify(blockedPlaces));
   }, [blockedPlaces]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(VISITED_PLACES_KEY, JSON.stringify(visitedPlaces));
+  }, [visitedPlaces]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -515,34 +559,36 @@ export default function Home() {
   // food_genre_new の回答（キーに部分一致）→ food_sub_choice として動的注入される
   const FOOD_SUB_QUESTIONS_MAP: Record<string, DynamicQuestion> = {
     "居酒屋": { key: "food_sub_choice", question: "お店の雰囲気やメインとなる条件を教えてください", options: [
-      "新鮮な魚介・海鮮メイン🐟", "焼き鳥・串焼きメイン🍡", "個室あり（周りを気にせず話せる）🔒", "大衆酒場・コスパ重視🍻",
+      "魚介・海鮮メイン🐟", "焼き鳥・串焼き🍡", "個室あり🔒", "大衆酒場・コスパ重視🍻",
     ]},
     "和食": { key: "food_sub_choice", question: "本日の和食、どのようなお食事がご希望ですか？", options: [
-      "お寿司・海鮮丼🍣", "天ぷら・揚げ物🍤", "うどん・そば🍜", "割烹・懐石料理（落ち着いた空間）🎋",
+      "海鮮・お寿司🍣", "天ぷら・揚げ物🍤", "うどん・そば🍜", "割烹・懐石料理🎋",
     ]},
     "洋食": { key: "food_sub_choice", question: "メインで食べたい洋食のメニューはどれですか？", options: [
-      "肉汁たっぷりハンバーグ🍔", "ふわとろオムライス🍳", "ガッツリステーキ・肉料理🥩", "昔ながらの定食・レトロな洋食屋さん🍽️",
+      "ハンバーグ🍔", "オムライス🍳", "ステーキ・肉料理🥩", "レトロな洋食屋さん🍽️",
     ]},
     "イタリアン": { key: "food_sub_choice", question: "今日のイタリアン、重視するポイントを教えてください", options: [
-      "本格ピザ（専用窯焼き）🍕", "こだわりパスタ🍝", "カジュアルなバル（お酒と一緒に）🍷", "本格リストランテ・コースディナー🕯️",
+      "本格ピザ🍕", "こだわりパスタ🍝", "バル（お酒と一緒に）🍷", "イタリアン全般🇮🇹",
     ]},
-    // 中華・韓国・お好み焼き・もんじゃ はサブ質問なし（スキップして次へ）
+    "中華": { key: "food_sub_choice", question: "食べたい中華料理のスタイルを教えてください", options: [
+      "町中華（チャーハン・餃子）🥟", "火鍋・鍋料理🫕", "本格四川料理（麻辣）🌶️", "食べ放題🍽️",
+    ]},
     "焼肉": { key: "food_sub_choice", question: "今日のお肉、予算や食べ方の希望を教えてください", options: [
-      "食べ放題でコスパ重視🍽️", "黒毛和牛・厚切り肉（ちょっと贅沢）🥩", "ホルモン焼き（お酒が進む）🍺", "ヘルシーなジンギスカン🐑",
+      "焼肉食べ放題🍽️", "高級焼肉（黒毛和牛）🥩", "ホルモン焼き🍺", "ジンギスカン🐑",
     ]},
+    // 韓国・お好み焼き・もんじゃ はサブ質問なし（スキップして次へ）
     "アジア系統": { key: "food_sub_choice", question: "どこの地域の料理やスパイスを楽しみたいですか？", options: [
-      "インド・ネパールカレー（本格スパイス）🍛", "タイ料理（トムヤムクンなど）🌿", "ベトナム料理・フォー（ヘルシー）🍜", "アジアン・エスニック全般🌏",
+      "インドネパール料理（本格スパイス）🍛", "タイ料理（トムヤムクンなど）🌿", "ベトナム料理・フォー🍜", "アジアンエスニック全般🌏",
     ]},
     "各国料理": { key: "food_sub_choice", question: "体験してみたい世界の食文化はどれですか？", options: [
-      "メキシコ料理・タコス🌮", "ブラジル料理・シュラスコ（お肉食べ放題）🥩", "ロシア料理（ボルシチ・ピロシキ）🥣", "その他の西洋・中南米料理🌍",
+      "メキシコ料理・タコス🌮", "ブラジル料理・シュラスコ🥩", "ロシア料理🥣", "他国料理🌍",
     ]},
     "ラーメン": { key: "food_sub_choice", question: "今日はどんな味のスープの気分ですか？", options: [
-      "こってり濃厚（豚骨・家系など）🍜", "あっさり王道（醤油・塩など）🍜", "コクのある味噌ラーメン🍜", "つけ麺・まぜそば🍝",
+      "こってりラーメン（豚骨・家系）🍜", "あっさりラーメン（醤油・塩）🍜", "味噌ラーメン🍜", "つけ麺・まぜそば🍝",
     ]},
-    "カフェ・スイーツ": { key: "food_sub_choice", question: "カフェを探す一番の目的は何ですか？", options: [
-      "スイーツ目当て（パンケーキ・ケーキ）🍰", "おしゃれカフェごはん（ランチ・ディナー）🥗", "コーヒー・紅茶でゆっくり一息☕", "Wi-Fi・電源あり（作業・読書）💻",
+    "カフェ・スイーツ": { key: "food_sub_choice", question: "どんなカフェを探していますか？", options: [
+      "スイーツカフェ（パンケーキ・ケーキ）🍰", "喫茶店・レトロカフェ☕", "流行りカフェ（インスタ映え）📸",
     ]},
-    // 高層ビル料理はサブ質問なし（専用Google検索パスを使用）
   };
 
   // relax_place の回答（キーに部分一致）→ relax_sub_choice として動的注入される
@@ -977,7 +1023,8 @@ export default function Home() {
     options: string[],
     selectedValue: string,
     onSelect: (value: string) => void,
-    displayLabels?: string[]
+    displayLabels?: string[],
+    hints?: string[]
   ) {
     const columns = options.length === 6 ? 3 : options.length === 3 ? 3 : 2;
 
@@ -1006,6 +1053,7 @@ export default function Home() {
         `}</style>
         {options.map((option, i) => {
           const selected = selectedValue === option;
+          const hint = hints?.[i];
           return (
             <button
               key={option}
@@ -1016,9 +1064,16 @@ export default function Home() {
                 ...(selected ? selectedBubbleStyle : {}),
                 border: selected ? "2.5px solid #ff8f7f" : "2px solid #ead7db",
                 animationDelay: selected ? "0s" : `${(i * 0.4) % 2}s`,
+                flexDirection: "column",
+                gap: "4px",
               }}
             >
-              {displayLabels?.[i] ?? option}
+              <span style={{ fontWeight: 900 }}>{displayLabels?.[i] ?? option}</span>
+              {hint && (
+                <span style={{ fontSize: "11px", fontWeight: 600, opacity: selected ? 0.9 : 0.55, lineHeight: 1.3 }}>
+                  {hint}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1099,8 +1154,14 @@ export default function Home() {
     dynamicQ4: allDynamicQsForAPI[3],
   };
 
+  // 個人ブロック + グローバルブロック の統合セット（recommendationsより前に定義必須）
+  const allBlockedSet = useMemo(
+    () => new Set([...blockedPlaces, ...globallyBlockedNames]),
+    [blockedPlaces, globallyBlockedNames]
+  );
+
   // ブロックされた場所を除外
-  const recommendations = apiRecommendations.filter((r) => !blockedPlaces.includes(r.title));
+  const recommendations = apiRecommendations.filter((r) => !allBlockedSet.has(r.title) && (!filterOpenNow || r.openNow === true));
 
   // 交通手段アイコン（distanceText / durationText の横に表示）
   const travelIcon = (() => {
@@ -1122,6 +1183,173 @@ export default function Home() {
 
   const unblockPlace = (title: string) => {
     setBlockedPlaces((prev) => prev.filter((t) => t !== title));
+  };
+
+  // Feature 2: ソート用ヘルパー
+  // 営業時間テキストを見やすく整形するヘルパー
+  const formatOpeningHours = (text?: string | null): string => {
+    if (!text) return "";
+    // 曜日別に分割（改行 or 「月曜日:」形式）
+    const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return text;
+
+    // 全日24時間営業の判定
+    const all24 = lines.length >= 7 && lines.every(l => /24\s*時間営業/.test(l));
+    if (all24) return "🌙 24時間営業（年中無休）";
+
+    // 全日同じ時間かチェック（例: 9:00〜20:00が7日共通）
+    const timePattern = /[:：]\s*(.+)/;
+    const times = lines.map(l => { const m = l.match(timePattern); return m ? m[1].trim() : null; });
+    const allSame = times.length >= 7 && times[0] && times.every(t => t === times[0]);
+    if (allSame) {
+      const t = times[0]!;
+      if (/24\s*時間/.test(t)) return "🌙 24時間営業（年中無休）";
+      return `毎日 ${t}`;
+    }
+
+    // 平日・週末でグループ化できるか
+    const weekdayKeys = ["月曜日", "火曜日", "水曜日", "木曜日", "金曜日"];
+    const weekendKeys = ["土曜日", "日曜日"];
+    const getTime = (day: string) => {
+      const l = lines.find(ln => ln.startsWith(day));
+      const m = l?.match(timePattern);
+      return m ? m[1].trim() : null;
+    };
+    const weekdayTimes = weekdayKeys.map(getTime);
+    const weekendTimes = weekendKeys.map(getTime);
+    const weekdayAllSame = weekdayTimes[0] && weekdayTimes.every(t => t === weekdayTimes[0]);
+    const weekendAllSame = weekendTimes[0] && weekendTimes.every(t => t === weekendTimes[0]);
+    if (weekdayAllSame && weekendAllSame && weekdayTimes[0] !== weekendTimes[0]) {
+      return `平日 ${weekdayTimes[0]}\n土日 ${weekendTimes[0]}`;
+    }
+    if (weekdayAllSame && weekendAllSame && weekdayTimes[0] === weekendTimes[0]) {
+      return `毎日 ${weekdayTimes[0]}`;
+    }
+
+    // それ以外: 曜日名を短縮して表示
+    const shortMap: Record<string, string> = { "月曜日": "月", "火曜日": "火", "水曜日": "水", "木曜日": "木", "金曜日": "金", "土曜日": "土", "日曜日": "日" };
+    return lines.map(l => {
+      let s = l;
+      Object.entries(shortMap).forEach(([full, short]) => { s = s.replace(full, short); });
+      return s;
+    }).join("\n");
+  };
+
+  const parseKm = (distanceInfo?: string): number => {
+    if (!distanceInfo) return 9999;
+    const m = distanceInfo.match(/(\d+\.?\d*)km/);
+    return m ? parseFloat(m[1]) : 9999;
+  };
+
+  const sortFacilities = (facs: PlaceResponse[]): PlaceResponse[] => {
+    if (sortMode === "rating") return [...facs].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    if (sortMode === "near") return [...facs].sort((a, b) => parseKm(a.distanceInfo) - parseKm(b.distanceInfo));
+    if (sortMode === "far") return [...facs].sort((a, b) => parseKm(b.distanceInfo) - parseKm(a.distanceInfo));
+    return facs;
+  };
+
+  // Feature 4: シャッフル再検索（APIを再呼び出しして新しいスポットを取得）
+  const [isShuffling, setIsShuffling] = useState(false);
+  const reshuffleFacilities = async () => {
+    setSortMode("default");
+
+    // travel モード: Supabase → /api/travel の順で再検索
+    if (travelFacilities && travelSubCategory) {
+      setIsShuffling(true);
+      try {
+        const _sbTravel = getTravelTags(travelSubCategory);
+        const sbRes = await fetch("/api/places", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mustTags: _sbTravel.tags, lat: originLat ?? 0, lng: originLng ?? 0, radiusKm: _sbTravel.radiusKm, transport: selectedTransports.length > 0 ? selectedTransports : undefined, limit: 20, preferFar: true }),
+        });
+        if (sbRes.ok) {
+          const sbData = await sbRes.json();
+          if ((sbData.data ?? []).length >= 1) {
+            setTravelFacilities(sbData.data as PlaceResponse[]);
+            return;
+          }
+        }
+        // fallback: /api/travel
+        const areaLabel = locationDisplayArea || selectedArea || "現在地周辺";
+        const res = await fetch("/api/travel", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subCategory: travelSubCategory, lat: originLat ?? 0, lng: originLng ?? 0, areaLabel, transport: selectedTransports.length > 0 ? selectedTransports : undefined }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTravelFacilities([...(data.data ?? [])].sort(() => Math.random() - 0.5));
+        }
+      } catch (e) { console.error(e); }
+      finally { setIsShuffling(false); }
+      return;
+    }
+
+    // 通常モード: lastSearchParams を使って /api/places を再呼び出し
+    if (!lastSearchParams) return;
+    setIsShuffling(true);
+    try {
+      const res = await fetch("/api/places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mustTags:    lastSearchParams.mustTags,
+          lat:         lastSearchParams.lat,
+          lng:         lastSearchParams.lng,
+          radiusKm:    lastSearchParams.radiusKm,
+          transport:   lastSearchParams.transport.length > 0 ? lastSearchParams.transport : undefined,
+          limit:       20,
+          time:        lastSearchParams.time,
+          companion:   lastSearchParams.companion,
+          budget:      lastSearchParams.budget,
+          freeWord:    lastSearchParams.freeWord,
+          minRadiusKm: lastSearchParams.minRadiusKm,
+          preferFar:   lastSearchParams.preferFar,
+          prefecture:  selectedPrefecture || undefined,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const freshResults = (data.data ?? []) as PlaceResponse[];
+      const path = lastSearchParams.path;
+      if (path === "sports")      setSportsFacilities(freshResults);
+      else if (path === "focus")  setFocusFacilities(freshResults);
+      else if (path === "drive")  setDriveFacilities(freshResults);
+      else if (path === "nature") setNatureFacilities(freshResults);
+      else if (path === "cafe")   setCafeFacilities(freshResults);
+      else if (path === "waiwai") setWaiWaiFacilities(freshResults);
+      else if (path === "onsen")  setOnsenFacilities(freshResults);
+      if (selectedPrefecture) setPrefFilteredFacilities(freshResults);
+    } catch (e) { console.error(e); }
+    finally { setIsShuffling(false); }
+  };
+
+  // Feature 8: 行った！ボタン
+  const toggleVisited = (title: string) => {
+    setVisitedPlaces(prev => prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]);
+  };
+
+  // Feature 9: シェアボタン
+  const handleShare = async () => {
+    const currentResultLabel =
+      randomFacilities !== null ? "今日の運命スポット" :
+      travelFacilities ? (travelSubCategoryLabel || "おでかけスポット") + "の検索結果" :
+      sportsFacilities ? (sportsSubCategoryLabel || "スポーツスポット") + "の検索結果" :
+      focusFacilities ? (focusSubCategoryLabel || "集中スポット") + "の検索結果" :
+      driveFacilities ? (driveSubCategoryLabel || "ドライブスポット") + "の検索結果" :
+      waiWaiFacilities ? (waiWaiSubCategoryLabel || "わいわいスポット") + "の検索結果" :
+      cafeFacilities ? (cafeSubCategoryLabel || "カフェ") + "の検索結果" :
+      onsenFacilities ? (onsenCategoryLabel || "温泉・スパ") + "の検索結果" :
+      natureFacilities ? (natureSubGenreLabel || "自然スポット") + "の検索結果" :
+      answers.area + "でのおすすめ";
+    const title = "MoodGoで見つけたスポット";
+    const text = `気分で選ぶおでかけスポット - ${currentResultLabel}`;
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title, text, url }); } catch { /* ignore */ }
+    } else {
+      await navigator.clipboard.writeText(url);
+      alert("URLをコピーしました！");
+    }
   };
 
   const toggleFavorite = (item: Recommendation) => {
@@ -1213,6 +1441,14 @@ export default function Home() {
 
           setOriginLat(latitude);
           setOriginLng(longitude);
+
+          // 都道府県を自動検出してフィルターボタンを設定
+          const detectedPref = detectUserPrefecture(latitude, longitude);
+          if (detectedPref) {
+            setUserPrefecture(detectedPref);
+            const neighbors = getNearbyPrefectures(detectedPref, 5);
+            setPrefectureButtons([detectedPref, ...neighbors]);
+          }
 
           const res = await fetch("/api/location-to-area", {
             method: "POST",
@@ -1370,6 +1606,11 @@ export default function Home() {
     setSportsFacilities(null);
     setTravelFacilities(null);
     setRandomFacilities(null);
+    setSelectedPrefecture("");
+    setPrefFilteredFacilities(null);
+    setLastSearchParams(null);
+    setFilterOpenNow(false);
+    setSortMode("default");
 
     // ── 遠くに行きたい パス: /api/travel を使う ─────────────────────────────
     const isTravelPath =
@@ -1413,7 +1654,10 @@ export default function Home() {
           }),
         });
         const data = await res.json();
-        setTravelFacilities(data.data ?? []);
+        // 毎回違う順番になるようシャッフル（距離20km帯内でランダム）
+        const rawTravel: PlaceResponse[] = data.data ?? [];
+        const shuffledTravel = [...rawTravel].sort(() => Math.random() - 0.5);
+        setTravelFacilities(shuffledTravel);
         setTravelSubCategoryLabel(data.subCategoryLabel ?? "");
         setStep(11);
       } catch (e) {
@@ -1449,6 +1693,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setSportsFacilities(_sbData.data as PlaceResponse[]);
               setSportsSubCategoryLabel(_sbSports.label);
+              setLastSearchParams({ mustTags: _sbSports.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbSports.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "sports" });
               setStep(11); return;
             }
           }
@@ -1508,6 +1753,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setFocusFacilities(_sbData.data as PlaceResponse[]);
               setFocusSubCategoryLabel(_sbFocus.label);
+              setLastSearchParams({ mustTags: _sbFocus.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbFocus.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "focus" });
               setStep(11); return;
             }
           }
@@ -1567,6 +1813,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setDriveFacilities(_sbData.data as PlaceResponse[]);
               setDriveSubCategoryLabel(_sbDrive.label);
+              setLastSearchParams({ mustTags: _sbDrive.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbDrive.radiusKm, transport: ["車"], time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "drive" });
               setStep(11); return;
             }
           }
@@ -1628,6 +1875,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setNatureFacilities(_sbData.data as PlaceResponse[]);
               setNatureSubGenreLabel(_sbNature.label);
+              setLastSearchParams({ mustTags: _sbNature.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbNature.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "nature" });
               setStep(11); return;
             }
           }
@@ -1688,6 +1936,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setCafeFacilities(_sbData.data as PlaceResponse[]);
               setCafeSubCategoryLabel(_sbCafe.label);
+              setLastSearchParams({ mustTags: _sbCafe.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbCafe.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "cafe" });
               setStep(11); return;
             }
           }
@@ -1749,6 +1998,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setWaiWaiFacilities(_sbData.data as PlaceResponse[]);
               setWaiWaiSubCategoryLabel(_sbWaiWai.label);
+              setLastSearchParams({ mustTags: _sbWaiWai.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbWaiWai.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "waiwai" });
               setStep(11); return;
             }
           }
@@ -1810,6 +2060,7 @@ export default function Home() {
             if ((_sbData.data ?? []).length >= 1) {
               setOnsenFacilities(_sbData.data as PlaceResponse[]);
               setOnsenCategoryLabel(_sbOnsen.label);
+              setLastSearchParams({ mustTags: _sbOnsen.tags, lat: effectiveLat ?? 0, lng: effectiveLng ?? 0, radiusKm: _sbOnsen.radiusKm, transport: selectedTransports, time: selectedTime || undefined, companion: selectedCompanion || undefined, budget, freeWord: freeWord || undefined, minRadiusKm: calcMinRadiusKm(selectedTransports, selectedTime || ""), path: "onsen" });
               setStep(11); return;
             }
           }
@@ -1933,6 +2184,72 @@ export default function Home() {
     } finally {
       setIsLoadingRecommendations(false);
       setIsRefining(false);
+    }
+  };
+
+  // 都道府県フィルターを適用して再検索する
+  const handlePrefectureFilter = async (pref: string) => {
+    setSelectedPrefecture(pref);
+    setPrefFilteredFacilities(null);
+    setIsLoadingPrefFilter(true);
+
+    try {
+      // ── travel モード: Supabase で再検索（県指定） ──────────────────────
+      if (travelFacilities && travelSubCategory) {
+        const _sbTravel = getTravelTags(travelSubCategory);
+        const res = await fetch("/api/places", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mustTags:  _sbTravel.tags,
+            lat:       originLat ?? 0,
+            lng:       originLng ?? 0,
+            radiusKm:  300,       // 広めに取って県フィルターで絞る
+            limit:     20,
+            preferFar: true,
+            prefecture: pref,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPrefFilteredFacilities((data.data ?? []) as PlaceResponse[]);
+        } else {
+          setPrefFilteredFacilities([]);
+        }
+        return;
+      }
+
+      // ── 通常モード ───────────────────────────────────────────────────
+      if (!lastSearchParams) { setPrefFilteredFacilities([]); return; }
+      const body: Record<string, unknown> = {
+        mustTags:    lastSearchParams.mustTags,
+        lat:         lastSearchParams.lat,
+        lng:         lastSearchParams.lng,
+        radiusKm:    lastSearchParams.radiusKm,
+        transport:   lastSearchParams.transport.length > 0 ? lastSearchParams.transport : undefined,
+        limit:       20,
+        time:        lastSearchParams.time,
+        companion:   lastSearchParams.companion,
+        budget:      lastSearchParams.budget,
+        freeWord:    lastSearchParams.freeWord,
+        minRadiusKm: lastSearchParams.minRadiusKm,
+        preferFar:   lastSearchParams.preferFar,
+        prefecture:  pref,
+      };
+      const res = await fetch("/api/places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPrefFilteredFacilities((data.data ?? []) as PlaceResponse[]);
+      }
+    } catch (e) {
+      console.error("[prefecture filter]", e);
+      setPrefFilteredFacilities([]);
+    } finally {
+      setIsLoadingPrefFilter(false);
     }
   };
 
@@ -3887,7 +4204,13 @@ export default function Home() {
                     <p style={{ fontSize: "15px", lineHeight: 1.6, marginBottom: "0px", opacity: 0.7 }}>
                       {lang === "en" ? UI_EN.step6Subtitle : "未選択のままでも進めます。"}
                     </p>
-                    {renderOptionGrid(timeOptions, selectedTime, setSelectedTime, lang === "en" ? OPTIONS_EN.time : undefined)}
+                    {renderOptionGrid(
+                      timeOptions,
+                      selectedTime,
+                      setSelectedTime,
+                      lang === "en" ? OPTIONS_EN.time : undefined,
+                      ["近所のスポット 🏠", "徒歩・自転車圏内 🚶", "電車で数駅 🚃", "隣の市・区 🚇", "同じ県内 🗺️", "県外まで行くよ！ ✈️"]
+                    )}
                   </>
                 )}
                 <button
@@ -5100,6 +5423,196 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* ── 都道府県フィルターボタン ── */}
+                {prefectureButtons.length > 0 && (lastSearchParams || travelFacilities) && !randomFacilities && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", padding: "4px 0 16px" }}>
+                    <button
+                      onClick={() => { setSelectedPrefecture(""); setPrefFilteredFacilities(null); }}
+                      style={{
+                        padding: "6px 14px", borderRadius: "20px", fontSize: "13px",
+                        fontWeight: selectedPrefecture === "" ? 700 : 400,
+                        background: selectedPrefecture === "" ? "#4f46e5" : "#f3f4f6",
+                        color: selectedPrefecture === "" ? "#fff" : "#374151",
+                        border: selectedPrefecture === "" ? "none" : "1px solid #e5e7eb",
+                        cursor: "pointer",
+                      }}
+                    >全て</button>
+                    {prefectureButtons.map(pref => (
+                      <button
+                        key={pref}
+                        onClick={() => handlePrefectureFilter(pref)}
+                        style={{
+                          padding: "6px 14px", borderRadius: "20px", fontSize: "13px",
+                          fontWeight: selectedPrefecture === pref ? 700 : 400,
+                          background: selectedPrefecture === pref ? "#4f46e5" : "#f3f4f6",
+                          color: selectedPrefecture === pref ? "#fff" : "#374151",
+                          border: selectedPrefecture === pref ? "none" : "1px solid #e5e7eb",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {pref === userPrefecture ? `📍 ${pref}` : pref}
+                      </button>
+                    ))}
+                    {isLoadingPrefFilter && (
+                      <span style={{ fontSize: "12px", color: "#9ca3af", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <span style={{ width: "14px", height: "14px", border: "2px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", display: "inline-block", animation: "moodgo-spin 0.8s linear infinite" }} />
+                        検索中...
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* ── フィルター/ソートバー (Feature 1, 2, 4, 5, 9) ── */}
+                {!randomFacilities && (
+                  <div style={{ marginBottom: "16px" }}>
+                    {/* 行1: 営業中フィルター・シャッフル・シェア・設定 */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                      <button
+                        onClick={() => setFilterOpenNow(v => !v)}
+                        style={{
+                          padding: "7px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: 700,
+                          background: filterOpenNow ? "#16a34a" : "#f3f4f6",
+                          color: filterOpenNow ? "#fff" : "#374151",
+                          border: filterOpenNow ? "none" : "1px solid #e5e7eb",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {filterOpenNow ? "🟢 営業中のみ ✓" : "🟢 営業中のみ"}
+                      </button>
+                      <button
+                        onClick={reshuffleFacilities}
+                        disabled={isShuffling}
+                        style={{
+                          padding: "7px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: 700,
+                          background: isShuffling ? "#e5e7eb" : "#f3f4f6",
+                          color: isShuffling ? "#9ca3af" : "#374151",
+                          border: "1px solid #e5e7eb", cursor: isShuffling ? "not-allowed" : "pointer",
+                          display: "flex", alignItems: "center", gap: "6px",
+                        }}
+                      >
+                        {isShuffling
+                          ? <><span style={{ width: "13px", height: "13px", border: "2px solid #d1d5db", borderTopColor: "#6b7280", borderRadius: "50%", display: "inline-block", animation: "moodgo-spin 0.8s linear infinite" }} />検索中...</>
+                          : "🔀 シャッフル"}
+                      </button>
+                      <button
+                        onClick={handleShare}
+                        style={{
+                          padding: "7px 14px", borderRadius: "20px", fontSize: "13px", fontWeight: 700,
+                          background: "#f3f4f6", color: "#374151",
+                          border: "1px solid #e5e7eb", cursor: "pointer",
+                        }}
+                      >
+                        📤 シェア
+                      </button>
+                    </div>
+                    {/* 行2: ソートボタン */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {(["default", "rating", "near", "far"] as const).map(mode => {
+                        const labels: Record<string, string> = { default: "デフォルト", rating: "⭐ 評価順", near: "📍 近い順", far: "🚗 遠い順" };
+                        return (
+                          <button
+                            key={mode}
+                            onClick={() => setSortMode(mode)}
+                            style={{
+                              padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: 700,
+                              background: sortMode === mode ? "#4f46e5" : "#f3f4f6",
+                              color: sortMode === mode ? "#fff" : "#374151",
+                              border: sortMode === mode ? "none" : "1px solid #e5e7eb",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {labels[mode]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+
+                {/* 都道府県フィルター適用時: フィルター結果を上書き表示 */}
+                {selectedPrefecture && prefFilteredFacilities !== null && !isLoadingPrefFilter && lastSearchParams && !travelFacilities && !randomFacilities && (() => {
+                  const visible = sortFacilities(prefFilteredFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
+                  return (
+                    <>
+                      {visible.length === 0 ? (
+                        <div style={{ background: "#f9fafb", borderRadius: "16px", border: "1px solid #e5e7eb", padding: "24px", textAlign: "center", marginBottom: "20px" }}>
+                          <div style={{ fontSize: "32px", marginBottom: "8px" }}>🔍</div>
+                          <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>{selectedPrefecture}でのスポットが見つかりませんでした</div>
+                          <div style={{ fontSize: "13px", color: "#6b7280" }}>「全て」ボタンで全エリアの結果に戻れます。</div>
+                        </div>
+                      ) : (
+                        <div className="result-list" style={{ display: "grid", gap: "18px", marginBottom: "24px" }}>
+                          {visible.map((fac, idx) => {
+                            const photoList = (fac.photoUrls ?? []).length > 0 ? fac.photoUrls : fac.imageUrl ? [fac.imageUrl] : [];
+                            const item: Recommendation = {
+                              title: fac.name,
+                              reason: fac.description || undefined,
+                              address: fac.address,
+                              mapUrl: fac.googleMapsUrl,
+                              rating: fac.rating,
+                              userRatingCount: fac.reviewCount,
+                              photoUrl: fac.imageUrl || undefined,
+                              photoUrls: photoList,
+                              openNow: fac.openNow ?? undefined,
+                              openingHoursText: fac.openingHours ?? undefined,
+                              priceLevel: fac.priceLevel ?? undefined,
+                              features: fac.category ? [fac.category] : [],
+                              distanceText: fac.distanceInfo || undefined,
+                              stationText: fac.stationInfo || undefined,
+                            };
+                            const favorited = isFavorited(item.title);
+                            const visited = visitedPlaces.includes(item.title);
+                            return (
+                              <div key={`pref-${fac.id}-${idx}`} style={resultCardStyle} className="result-card">
+                                <div style={{ position: "relative" }}>
+                                  {(item.photoUrls?.length ?? 0) > 0 ? (() => {
+                                    const photos = item.photoUrls!;
+                                    const pi = photoIndices[item.title] ?? 0;
+                                    return (
+                                      <div className="result-card-photo" style={{ position: "relative", height: "220px", overflow: "hidden" }}>
+                                        <img src={photos[pi]} alt={`${item.title} ${pi + 1}`} onClick={() => setLightboxSrc(photos[pi])} style={{ width: "100%", height: "220px", objectFit: "cover", display: "block", cursor: "zoom-in" }} />
+                                        {pi > 0 && <button onClick={(e) => { e.stopPropagation(); setPhotoIndices(prev => ({ ...prev, [item.title]: pi - 1 })); }} style={{ position: "absolute", left: "8px", top: "50%", transform: "translateY(-50%)", width: "36px", height: "36px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.45)", color: "#fff", fontSize: "18px", cursor: "pointer" }}>‹</button>}
+                                        {pi < photos.length - 1 && <button onClick={(e) => { e.stopPropagation(); setPhotoIndices(prev => ({ ...prev, [item.title]: pi + 1 })); }} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", width: "36px", height: "36px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.45)", color: "#fff", fontSize: "18px", cursor: "pointer" }}>›</button>}
+                                        {photos.length > 1 && <div style={{ position: "absolute", bottom: "8px", left: "50%", transform: "translateX(-50%)", display: "flex", gap: "5px" }}>{photos.map((_, di) => <div key={di} style={{ width: "6px", height: "6px", borderRadius: "999px", background: di === pi ? "#fff" : "rgba(255,255,255,0.45)" }} />)}</div>}
+                                      </div>
+                                    );
+                                  })() : (
+                                    <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #f3f4f6, #e5e7eb)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: 900, color: "#6b7280" }}>MoodGo recommendation</div>
+                                  )}
+                                  <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#ff8fa5" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#ff8fa5", fontSize: "24px", fontWeight: 900, cursor: "pointer", boxShadow: "0 10px 20px rgba(74,48,52,0.16)" }}>{favorited ? "♥" : "♡"}</button>
+                                  <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                                  {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
+                                </div>
+                                <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
+                                  <div style={{ fontWeight: 900, fontSize: "28px", lineHeight: 1.2, letterSpacing: "-0.03em", marginBottom: "10px" }}>{item.title}</div>
+                                  {item.address ? <div style={{ fontSize: "14px", opacity: 0.76, marginBottom: "12px" }}>{item.address}</div> : null}
+                                  {item.reason ? <div style={{ fontSize: "14px", lineHeight: 1.6, marginBottom: "12px", color: "#555" }}>{item.reason}</div> : null}
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
+                                    {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
+                                    {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
+                                    {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
+                                  </div>
+                                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                    {item.mapUrl && (
+                                      <a href={item.mapUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "52px", padding: "0 20px", borderRadius: "999px", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#fff", fontSize: "15px", fontWeight: 900, textDecoration: "none", boxShadow: "0 10px 22px rgba(42,111,230,0.2)" }}>
+                                        Googleマップで見る
+                                      </a>
+                                    )}
+                                    <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                      {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
                 {/* ── 時間潰したい: ランダムスポット ── */}
                 {isLoadingRandom && (
                   <div style={{ background: "linear-gradient(135deg, #f0f4ff 0%, #e8d5ff 100%)", borderRadius: "24px", border: "1px solid #c4b5fd", padding: "32px 24px", marginBottom: "20px", textAlign: "center" }}>
@@ -5119,7 +5632,7 @@ export default function Home() {
                     { bg: "linear-gradient(135deg,#fff1f0,#ffd8bf)", border: "#ffbb96", accent: "#d4380d", emoji: "🔥" },
                     { bg: "linear-gradient(135deg,#feffe6,#ffffb8)", border: "#fffb8f", accent: "#ad8b00", emoji: "⭐" },
                   ];
-                  const visible = randomFacilities.filter(f => !blockedPlaces.includes(f.name));
+                  const visible = randomFacilities.filter(f => !allBlockedSet.has(f.name));
                   if (visible.length === 0) return (
                     <div style={{ background: "linear-gradient(135deg, #f0f4ff 0%, #e8d5ff 100%)", borderRadius: "24px", border: "1px solid #c4b5fd", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                       <div style={{ fontSize: "48px", marginBottom: "12px" }}>🎲</div>
@@ -5173,7 +5686,8 @@ export default function Home() {
                                 </div>
                               )}
                               <button onClick={() => { const item: Recommendation = { title: fac.name, address: fac.address, mapUrl: fac.googleMapsUrl, rating: fac.rating, userRatingCount: fac.reviewCount, photoUrl: fac.imageUrl || undefined, photoUrls: photoList }; toggleFavorite(item); }} style={{ position: "absolute", top: "10px", right: "10px", width: "44px", height: "44px", borderRadius: "999px", border: "none", background: favorited ? col.accent : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : col.accent, fontSize: "22px", cursor: "pointer", boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${fac.name}」を今後の結果から除外しますか？`)) blockPlace(fac.name); }} style={{ position: "absolute", top: photoList.length > 0 ? "auto" : "10px", bottom: photoList.length > 0 ? "10px" : "auto", left: "10px", height: "28px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.45)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: fac.name, address: fac.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "10px", left: "10px", height: "28px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visitedPlaces.includes(fac.name) && <div style={{ position: "absolute", top: "10px", right: "62px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "18px 16px 16px", background: col.bg }}>
                               <div style={{ fontWeight: 900, fontSize: "24px", lineHeight: 1.25, letterSpacing: "-0.02em", marginBottom: "4px", color: col.accent }}>
@@ -5187,14 +5701,21 @@ export default function Home() {
                               )}
                               {fac.address && <div style={{ fontSize: "13px", opacity: 0.7, marginBottom: "10px" }}>{fac.address}</div>}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
+                                {fac.rating != null && <span style={{ background: "rgba(255,255,255,0.7)", border: `1px solid ${col.border}`, borderRadius: "999px", padding: "2px 10px", fontSize: "12px", fontWeight: 700, color: col.accent }}>⭐ {fac.rating}{fac.reviewCount ? ` (${fac.reviewCount})` : ""}</span>}
                                 {fac.distanceInfo && <span style={{ background: "rgba(255,255,255,0.7)", border: `1px solid ${col.border}`, borderRadius: "999px", padding: "2px 10px", fontSize: "12px", fontWeight: 700, color: col.accent }}>📍 {fac.distanceInfo}</span>}
+                                {fac.openNow != null && <span style={{ background: fac.openNow ? "rgba(240,253,244,0.9)" : "rgba(254,242,242,0.9)", border: `1px solid ${fac.openNow ? "#bbf7d0" : "#fecaca"}`, borderRadius: "999px", padding: "2px 10px", fontSize: "12px", fontWeight: 700, color: fac.openNow ? "#16a34a" : "#dc2626" }}>{fac.openNow ? "🟢 営業中" : "🔴 営業時間外"}</span>}
                               </div>
-                              {fac.googleMapsUrl && (
-                                <a href={fac.googleMapsUrl} target="_blank" rel="noopener noreferrer"
-                                  style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: col.accent, color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
-                                  Google マップで見る →
-                                </a>
-                              )}
+                              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                                {fac.googleMapsUrl && (
+                                  <a href={fac.googleMapsUrl} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: col.accent, color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
+                                    Google マップで見る →
+                                  </a>
+                                )}
+                                <button onClick={() => toggleVisited(fac.name)} style={{ padding: "10px 16px", borderRadius: "999px", border: visitedPlaces.includes(fac.name) ? "none" : `1.5px solid ${col.border}`, background: visitedPlaces.includes(fac.name) ? "#16a34a" : "rgba(255,255,255,0.6)", color: visitedPlaces.includes(fac.name) ? "#fff" : col.accent, fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visitedPlaces.includes(fac.name) ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5213,7 +5734,7 @@ export default function Home() {
                 )}
 
                 {/* ── スポーツ結果リスト ── */}
-                {sportsFacilities && !isLoadingSports && (
+                {sportsFacilities && !isLoadingSports && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #fff7ed, #ffedd5)", border: "1px solid #fed7aa", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#c2410c" }}>
@@ -5222,7 +5743,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#ea580c", fontWeight: 700 }}>{sportsFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = sportsFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(sportsFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#fffbf7", borderRadius: "24px", border: "1px solid #fed7aa", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>🏃</div>
@@ -5248,6 +5769,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`sports-${fac.id}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5266,7 +5788,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>🏃</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#ea580c" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#ea580c", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(234,88,12,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5281,12 +5804,17 @@ export default function Home() {
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
                                 {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                               </div>
-                              {item.mapUrl && (
-                                <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
-                                  style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #ea580c, #c2410c)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
-                                  Google マップで見る →
-                                </a>
-                              )}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl && (
+                                  <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #ea580c, #c2410c)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
+                                    Google マップで見る →
+                                  </a>
+                                )}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5305,7 +5833,7 @@ export default function Home() {
                 )}
 
                 {/* ── 集中結果リスト ── */}
-                {focusFacilities && !isLoadingFocus && (
+                {focusFacilities && !isLoadingFocus && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #f3f0ff, #ebe8ff)", border: "1px solid #c4b8ff", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#4a1fa8" }}>
@@ -5314,7 +5842,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#6d28d9", fontWeight: 700 }}>{focusFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = focusFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(focusFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#faf8ff", borderRadius: "24px", border: "1px solid #c4b8ff", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>📚</div>
@@ -5340,6 +5868,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`focus-${fac.id}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5358,7 +5887,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #f3f0ff 0%, #ebe8ff 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>📚</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#7c3aed" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#7c3aed", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(124,58,237,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5373,12 +5903,17 @@ export default function Home() {
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
                                 {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                               </div>
-                              {item.mapUrl && (
-                                <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
-                                  style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #7c3aed, #5b21b6)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
-                                  Google マップで見る →
-                                </a>
-                              )}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl && (
+                                  <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #7c3aed, #5b21b6)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
+                                    Google マップで見る →
+                                  </a>
+                                )}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5399,14 +5934,34 @@ export default function Home() {
                 {/* ── 遠くに行きたい結果リスト ── */}
                 {travelFacilities && !isLoadingTravel && (
                   <>
+                    {/* 県フィルター中ローディング */}
+                    {isLoadingPrefFilter && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px 0 8px", color: "#6b7280", fontSize: "13px" }}>
+                        <span style={{ width: "16px", height: "16px", border: "2px solid #e5e7eb", borderTopColor: "#4f46e5", borderRadius: "50%", display: "inline-block", animation: "moodgo-spin 0.8s linear infinite" }} />
+                        {selectedPrefecture}で検索中...
+                      </div>
+                    )}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #fffbeb, #fef3c7)", border: "1px solid #fde68a", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#92400e" }}>
                         {travelSubCategoryLabel}
                       </span>
-                      <span style={{ fontSize: "13px", color: "#d97706", fontWeight: 700 }}>{travelFacilities.length}件</span>
+                      <span style={{ fontSize: "13px", color: "#d97706", fontWeight: 700 }}>
+                        {selectedPrefecture && prefFilteredFacilities !== null
+                          ? `${prefFilteredFacilities.filter(f => !allBlockedSet.has(f.name)).length}件`
+                          : `${travelFacilities.length}件`}
+                      </span>
+                      {selectedPrefecture && (
+                        <span style={{ fontSize: "12px", background: "#4f46e5", color: "#fff", borderRadius: "999px", padding: "2px 10px", fontWeight: 700 }}>
+                          📍 {selectedPrefecture}
+                        </span>
+                      )}
                     </div>
-                    {(() => {
-                      const visible = travelFacilities.filter(f => !blockedPlaces.includes(f.name));
+                    {!isLoadingPrefFilter && (() => {
+                      // 県フィルター適用時は prefFilteredFacilities を使う
+                      const base = (selectedPrefecture && prefFilteredFacilities !== null)
+                        ? prefFilteredFacilities
+                        : travelFacilities;
+                      const visible = sortFacilities(base.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#fffbeb", borderRadius: "24px", border: "1px solid #fde68a", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>🗺️</div>
@@ -5432,6 +5987,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`travel-${fac.id}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5450,7 +6006,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>🗺️</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#d97706" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#d97706", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(217,119,6,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5465,12 +6022,17 @@ export default function Home() {
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
                                 {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                               </div>
-                              {item.mapUrl && (
-                                <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
-                                  style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #d97706, #b45309)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
-                                  Google マップで見る →
-                                </a>
-                              )}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl && (
+                                  <a href={item.mapUrl} target="_blank" rel="noopener noreferrer"
+                                    style={{ display: "inline-block", padding: "10px 20px", borderRadius: "999px", background: "linear-gradient(135deg, #d97706, #b45309)", color: "#fff", fontSize: "14px", fontWeight: 900, textDecoration: "none" }}>
+                                    Google マップで見る →
+                                  </a>
+                                )}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5480,6 +6042,7 @@ export default function Home() {
                 )}
 
                 {/* ── ドライブローディング ── */}
+
                 {isLoadingDrive && (
                   <div style={{ background: "linear-gradient(135deg, #e3f2fd 0%, #d0e8fa 100%)", borderRadius: "24px", border: "1px solid #90caf9", padding: "32px 24px", marginBottom: "20px", textAlign: "center" }}>
                     <div style={{ width: "56px", height: "56px", borderRadius: "999px", border: "5px solid #90caf9", borderTopColor: "#1976d2", margin: "0 auto 20px", animation: "moodgo-spin 0.9s linear infinite" }} />
@@ -5489,7 +6052,7 @@ export default function Home() {
                 )}
 
                 {/* ── ドライブ結果リスト ── */}
-                {driveFacilities && !isLoadingDrive && (
+                {driveFacilities && !isLoadingDrive && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #e3f2fd, #d0e8fa)", border: "1px solid #90caf9", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#0d47a1" }}>
@@ -5498,7 +6061,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#1565c0", fontWeight: 700 }}>{driveFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = driveFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(driveFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#f8fbff", borderRadius: "24px", border: "1px solid #90caf9", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>🚗</div>
@@ -5524,6 +6087,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`${item.title}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5542,7 +6106,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #e3f2fd 0%, #d0e8fa 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>🚗</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#1976d2" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#1976d2", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(13,74,136,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5554,7 +6119,6 @@ export default function Home() {
                               {item.address ? <div style={{ fontSize: "14px", opacity: 0.76, marginBottom: "12px" }}>{item.address}</div> : null}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                                 {item.openNow !== undefined || item.openingHoursText ? (
                                   <div style={getOpeningChipStyle(item.openNow)}>
                                     🕒 {item.openNow === true ? "営業中" : item.openNow === false ? "閉店中" : "営業時間あり"}
@@ -5565,18 +6129,26 @@ export default function Home() {
                                 {item.openingHoursText || item.openNow !== undefined ? (
                                   <div style={{ ...infoLineStyle, alignItems: "flex-start" }}>
                                     <span style={{ fontSize: "20px", flexShrink: 0 }}>🕒</span>
-                                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>{item.openingHoursText || (item.openNow ? "営業中" : "閉店中")}</span>
+                                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>{formatOpeningHours(item.openingHoursText) || (item.openNow ? "営業中" : "閉店中")}</span>
                                   </div>
+                                ) : null}
+                                {item.stationText ? (
+                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
                                 ) : null}
                                 {item.distanceText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
                                 ) : null}
                               </div>
-                              {item.mapUrl ? (
-                                <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ width: "100%", height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #1976d2 0%, #0d47a1 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(13,71,161,0.22)" }}>
-                                  Googleマップで見る
-                                </a>
-                              ) : null}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl ? (
+                                  <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #1976d2 0%, #0d47a1 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px", boxShadow: "0 10px 22px rgba(13,71,161,0.22)" }}>
+                                    Googleマップで見る
+                                  </a>
+                                ) : null}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5595,7 +6167,7 @@ export default function Home() {
                 )}
 
                 {/* ── わいわい結果リスト ── */}
-                {waiWaiFacilities && !isLoadingWaiWai && (
+                {waiWaiFacilities && !isLoadingWaiWai && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #ffe8f5, #ffd0ec)", border: "1px solid #ffb3d9", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#c0186a" }}>
@@ -5604,7 +6176,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#9a2060", fontWeight: 700 }}>{waiWaiFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = waiWaiFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(waiWaiFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#fffaf8", borderRadius: "24px", border: "1px solid #ffb3d9", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>🎉</div>
@@ -5630,6 +6202,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`${item.title}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5648,7 +6221,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #ffe8f5 0%, #ffd0ec 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>🎉</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#ff8fa5" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#ff8fa5", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(74,48,52,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5660,7 +6234,6 @@ export default function Home() {
                               {item.address ? <div style={{ fontSize: "14px", opacity: 0.76, marginBottom: "12px" }}>{item.address}</div> : null}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                                 {item.openNow !== undefined || item.openingHoursText ? (
                                   <div style={getOpeningChipStyle(item.openNow)}>
                                     🕒 {item.openNow === true ? "営業中" : item.openNow === false ? "閉店中" : "営業時間あり"}
@@ -5671,21 +6244,26 @@ export default function Home() {
                                 {item.openingHoursText || item.openNow !== undefined ? (
                                   <div style={{ ...infoLineStyle, alignItems: "flex-start" }}>
                                     <span style={{ fontSize: "20px", flexShrink: 0 }}>🕒</span>
-                                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>{item.openingHoursText || (item.openNow ? "営業中" : "閉店中")}</span>
+                                    <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>{formatOpeningHours(item.openingHoursText) || (item.openNow ? "営業中" : "閉店中")}</span>
                                   </div>
-                                ) : null}
-                                {item.distanceText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
                                 ) : null}
                                 {item.stationText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
                                 ) : null}
+                                {item.distanceText ? (
+                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
+                                ) : null}
                               </div>
-                              {item.mapUrl ? (
-                                <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ width: "100%", height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #ff4da6 0%, #c0186a 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(192,24,106,0.2)" }}>
-                                  Googleマップで見る
-                                </a>
-                              ) : null}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl ? (
+                                  <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #ff4da6 0%, #c0186a 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px", boxShadow: "0 10px 22px rgba(192,24,106,0.2)" }}>
+                                    Googleマップで見る
+                                  </a>
+                                ) : null}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5704,7 +6282,7 @@ export default function Home() {
                 )}
 
                 {/* ── 自然結果リスト ── */}
-                {natureFacilities && !isLoadingNature && (
+                {natureFacilities && !isLoadingNature && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #e8f5e9, #dcedc8)", border: "1px solid #aed581", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#33691e" }}>
@@ -5713,7 +6291,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#558b5e", fontWeight: 700 }}>{natureFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = natureFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(natureFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#fafff9", borderRadius: "24px", border: "1px solid #c8e6c9", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>🌿</div>
@@ -5739,6 +6317,7 @@ export default function Home() {
                           stationText:      fac.stationInfo  || undefined,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`${item.title}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5757,7 +6336,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #e8f5e9 0%, #dcedc8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>🌿</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#ff8fa5" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#ff8fa5", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(74,48,52,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5766,7 +6346,6 @@ export default function Home() {
                               {item.address ? <div style={{ fontSize: "14px", opacity: 0.76, marginBottom: "12px" }}>{item.address}</div> : null}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                                 {item.openNow !== undefined || item.openingHoursText ? (
                                   <div style={getOpeningChipStyle(item.openNow)}>
                                     🕒 {item.openNow === true ? "営業中" : item.openNow === false ? "閉店中" : "営業時間あり"}
@@ -5778,22 +6357,24 @@ export default function Home() {
                                   <div style={{ ...infoLineStyle, alignItems: "flex-start" }}>
                                     <span style={{ fontSize: "20px", flexShrink: 0 }}>🕒</span>
                                     <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>
-                                      {item.openingHoursText || (item.openNow ? "営業中" : "閉店中")}
+                                      {formatOpeningHours(item.openingHoursText) || (item.openNow ? "営業中" : "閉店中")}
                                     </span>
                                   </div>
                                 ) : null}
                                 {item.distanceText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
                                 ) : null}
-                                {item.stationText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
-                                ) : null}
                               </div>
-                              {item.mapUrl ? (
-                                <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ width: "100%", height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(42,111,230,0.2)" }}>
-                                  Googleマップで見る
-                                </a>
-                              ) : null}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl ? (
+                                  <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px", boxShadow: "0 10px 22px rgba(42,111,230,0.2)" }}>
+                                    Googleマップで見る
+                                  </a>
+                                ) : null}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5813,7 +6394,7 @@ export default function Home() {
                 )}
 
                 {/* ── カフェ結果リスト ── */}
-                {cafeFacilities && !isLoadingCafe && (
+                {cafeFacilities && !isLoadingCafe && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #fff8e1, #fff3cc)", border: "1px solid #ffe082", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#e65100" }}>
@@ -5822,7 +6403,7 @@ export default function Home() {
                       <span style={{ fontSize: "13px", color: "#8a6500", fontWeight: 700 }}>{cafeFacilities.length}件</span>
                     </div>
                     {(() => {
-                      const visible = cafeFacilities.filter(f => !blockedPlaces.includes(f.name));
+                      const visible = sortFacilities(cafeFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true)));
                       if (visible.length === 0) return (
                         <div style={{ background: "#fffdf5", borderRadius: "24px", border: "1px solid #ffe082", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                           <div style={{ fontSize: "40px", marginBottom: "12px" }}>☕</div>
@@ -5850,6 +6431,7 @@ export default function Home() {
                           hotpepperUrl:     fac.hotpepperUrl,
                         };
                         const favorited = isFavorited(item.title);
+                        const visited = visitedPlaces.includes(item.title);
                         return (
                           <div key={`${item.title}-${idx}`} style={resultCardStyle} className="result-card">
                             <div style={{ position: "relative" }}>
@@ -5868,7 +6450,8 @@ export default function Home() {
                                 <div className="result-card-photo" style={{ width: "100%", height: "220px", background: "linear-gradient(135deg, #fff8e1 0%, #ffe082 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "56px" }}>☕</div>
                               )}
                               <button onClick={() => toggleFavorite(item)} style={{ position: "absolute", top: "14px", right: "14px", width: "48px", height: "48px", borderRadius: "999px", border: "none", background: favorited ? "#ff8fa5" : "rgba(255,255,255,0.92)", color: favorited ? "#ffffff" : "#ff8fa5", fontSize: "24px", cursor: "pointer", boxShadow: "0 10px 20px rgba(74,48,52,0.16)" }}>{favorited ? "♥" : "♡"}</button>
-                              <button onClick={() => { if (window.confirm(`「${item.title}」を今後の結果から除外しますか？`)) blockPlace(item.title); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚫 非表示</button>
+                              <button onClick={() => { setReportingSpot({ title: item.title, address: item.address ?? "" }); setReportReason(""); setReportNote(""); setReportDone(false); }} style={{ position: "absolute", top: "14px", left: "14px", height: "30px", padding: "0 10px", borderRadius: "999px", border: "none", background: "rgba(220,38,38,0.82)", color: "#fff", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>🚩 報告</button>
+                              {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                             </div>
                             <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "10px" }}>
@@ -5877,7 +6460,6 @@ export default function Home() {
                               {item.address ? <div style={{ fontSize: "14px", opacity: 0.76, marginBottom: "12px" }}>{item.address}</div> : null}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
                                 {item.openNow !== undefined || item.openingHoursText ? (
                                   <div style={getOpeningChipStyle(item.openNow)}>
                                     🕒 {item.openNow === true ? "営業中" : item.openNow === false ? "閉店中" : "営業時間あり"}
@@ -5889,25 +6471,27 @@ export default function Home() {
                                   <div style={{ ...infoLineStyle, alignItems: "flex-start" }}>
                                     <span style={{ fontSize: "20px", flexShrink: 0 }}>🕒</span>
                                     <span style={{ whiteSpace: "pre-line", lineHeight: 1.7 }}>
-                                      {item.openingHoursText || (item.openNow ? "営業中" : "閉店中")}
+                                      {formatOpeningHours(item.openingHoursText) || (item.openNow ? "営業中" : "閉店中")}
                                     </span>
                                   </div>
                                 ) : null}
                                 {item.distanceText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
                                 ) : null}
-                                {item.stationText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
-                                ) : null}
                                 {item.hotpepperUrl ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🍽️</span><a href={item.hotpepperUrl} target="_blank" rel="noreferrer" style={{ color: "#e65100", fontWeight: 700, textDecoration: "underline" }}>ホットペッパーで見る</a></div>
                                 ) : null}
                               </div>
-                              {item.mapUrl ? (
-                                <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ width: "100%", height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(42,111,230,0.2)" }}>
-                                  Googleマップで見る
-                                </a>
-                              ) : null}
+                              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                                {item.mapUrl ? (
+                                  <a href={item.mapUrl} target="_blank" rel="noreferrer" style={{ height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px", boxShadow: "0 10px 22px rgba(42,111,230,0.2)" }}>
+                                    Googleマップで見る
+                                  </a>
+                                ) : null}
+                                <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visited ? "none" : "1.5px solid #d1d5db", background: visited ? "#16a34a" : "transparent", color: visited ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer" }}>
+                                  {visited ? "✅ 行った！" : "🗺️ 行った！"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -5927,7 +6511,7 @@ export default function Home() {
                 )}
 
                 {/* ── 温泉結果リスト ── */}
-                {onsenFacilities && !isLoadingOnsen && (
+                {onsenFacilities && !isLoadingOnsen && (!selectedPrefecture || prefFilteredFacilities === null || isLoadingPrefFilter) && (
                   <>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
                       <span style={{ background: "linear-gradient(135deg, #fff3e0, #ffe0b2)", border: "1px solid #ffcc80", borderRadius: "999px", padding: "4px 14px", fontSize: "13px", fontWeight: 900, color: "#a04800" }}>
@@ -5935,7 +6519,7 @@ export default function Home() {
                       </span>
                       <span style={{ fontSize: "13px", color: "#9b7060", fontWeight: 700 }}>{onsenFacilities.length}件</span>
                     </div>
-                    {(() => { const visibleOnsen = onsenFacilities.filter(f => !blockedPlaces.includes(f.name)); return visibleOnsen.length === 0 ? (
+                    {(() => { const visibleOnsen = sortFacilities(onsenFacilities.filter(f => !allBlockedSet.has(f.name) && (!filterOpenNow || f.openNow === true))); return visibleOnsen.length === 0 ? (
                       <div style={{ background: "#fffaf8", borderRadius: "24px", border: "1px solid #f0dfe3", padding: "32px 24px", textAlign: "center", marginBottom: "20px" }}>
                         <div style={{ fontSize: "40px", marginBottom: "12px" }}>😢</div>
                         <div style={{ fontWeight: 900, color: "#4a3034", marginBottom: "8px" }}>施設が見つかりませんでした</div>
@@ -5966,6 +6550,7 @@ export default function Home() {
                             stationText:      fac.stationInfo  || undefined,   // 最寄り駅
                           };
                           const favorited = isFavorited(item.title);
+                          const visited = visitedPlaces.includes(item.title);
                           return (
                             <div key={`${item.title}-${idx}`} style={resultCardStyle} className="result-card">
                               <div style={{ position: "relative" }}>
@@ -6024,6 +6609,7 @@ export default function Home() {
                                 >
                                   🚫 {lang === "en" ? "Hide" : "非表示"}
                                 </button>
+                                {visited && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
                               </div>
 
                               <div className="result-card-body" style={{ padding: "20px 18px 18px" }}>
@@ -6032,7 +6618,7 @@ export default function Home() {
                                   const tr = (translatedCards[item.title] ?? {}) as Record<string, unknown>;
                                   const displayTitle = isEN && tr.title ? String(tr.title) : item.title;
                                   const displayVibe = isEN && tr.vibe ? String(tr.vibe) : (item.vibe ?? "");
-                                  const displayHours = isEN && tr.openingHoursText ? String(tr.openingHoursText) : (item.openingHoursText ?? "");
+                                  const displayHours = formatOpeningHours(isEN && tr.openingHoursText ? String(tr.openingHoursText) : (item.openingHoursText ?? ""));
                                   return (
                                     <>
                                       {/* タイトル + EN翻訳ボタン */}
@@ -6070,9 +6656,6 @@ export default function Home() {
                                         {item.rating !== null && item.rating !== undefined ? (
                                           <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div>
                                         ) : null}
-                                        {item.distanceText ? (
-                                          <div style={chipStyle}>📍 {item.distanceText}</div>
-                                        ) : null}
                                         {item.openNow !== undefined || item.openingHoursText ? (
                                           <div style={getOpeningChipStyle(item.openNow)}>
                                             🕒 {item.openNow === true ? ((isEN || lang === "en") ? "Open now" : "営業中") : item.openNow === false ? ((isEN || lang === "en") ? "Closed" : "閉店中") : ((isEN || lang === "en") ? "Hours available" : "営業時間あり")}
@@ -6106,17 +6689,22 @@ export default function Home() {
                                 })()}
 
                                 {/* Googleマップボタン */}
-                                {item.mapUrl ? (
-                                  <a
-                                    href={item.mapUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={() => setMapClickedInSession((prev) => prev.includes(item.title) ? prev : [...prev, item.title])}
-                                    style={{ width: "100%", height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(42,111,230,0.2)", marginBottom: "12px" }}
-                                  >
-                                    {lang === "en" ? "Open in Google Maps" : "Googleマップで見る"}
-                                  </a>
-                                ) : null}
+                                <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
+                                  {item.mapUrl ? (
+                                    <a
+                                      href={item.mapUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={() => setMapClickedInSession((prev) => prev.includes(item.title) ? prev : [...prev, item.title])}
+                                      style={{ flex: 1, height: "52px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)", color: "#ffffff", fontSize: "15px", fontWeight: 900, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 10px 22px rgba(42,111,230,0.2)", minWidth: "140px" }}
+                                    >
+                                      {lang === "en" ? "Open in Google Maps" : "Googleマップで見る"}
+                                    </a>
+                                  ) : null}
+                                  <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visitedPlaces.includes(item.title) ? "none" : "1.5px solid #d1d5db", background: visitedPlaces.includes(item.title) ? "#16a34a" : "transparent", color: visitedPlaces.includes(item.title) ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    {visitedPlaces.includes(item.title) ? "✅ 行った！" : "🗺️ 行った！"}
+                                  </button>
+                                </div>
 
                                 {/* 気分フィードバック */}
                                 {(() => {
@@ -6222,7 +6810,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {apiWarning ? (
+                {apiWarning && apiWarning !== "noResultsFood" ? (
                   <div
                     style={{
                       background: "#fff7e6",
@@ -6388,6 +6976,7 @@ export default function Home() {
                       return filtered;
                     })().map((item, index) => {
                       const favorited = isFavorited(item.title);
+                      const visitedItem = visitedPlaces.includes(item.title);
 
                       return (
                         <div key={`${item.title}-${index}`} style={resultCardStyle} className="result-card">
@@ -6525,6 +7114,7 @@ export default function Home() {
                             >
                               🚫 {lang === "en" ? "Hide" : "非表示"}
                             </button>
+                            {visitedItem && <div style={{ position: "absolute", top: "14px", right: "70px", background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "4px 10px", fontSize: "12px", fontWeight: 900 }}>済</div>}
 
                           </div>
 
@@ -6659,32 +7249,37 @@ export default function Home() {
                               );
                             })()}
 
-                            {item.mapUrl ? (
-                              <a
-                                href={item.mapUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={() => setMapClickedInSession((prev) => prev.includes(item.title) ? prev : [...prev, item.title])}
-                                style={{
-                                  width: "100%",
-                                  height: "52px",
-                                  borderRadius: "999px",
-                                  border: "none",
-                                  background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)",
-                                  color: "#ffffff",
-                                  fontSize: "15px",
-                                  fontWeight: 900,
-                                  textDecoration: "none",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  boxShadow: "0 10px 22px rgba(42, 111, 230, 0.2)",
-                                  marginBottom: "12px",
-                                }}
-                              >
-                                {lang === "en" ? "Open in Google Maps" : "Googleマップで見る"}
-                              </a>
-                            ) : null}
+                            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", marginBottom: "12px" }}>
+                              {item.mapUrl ? (
+                                <a
+                                  href={item.mapUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={() => setMapClickedInSession((prev) => prev.includes(item.title) ? prev : [...prev, item.title])}
+                                  style={{
+                                    flex: 1,
+                                    height: "52px",
+                                    borderRadius: "999px",
+                                    border: "none",
+                                    background: "linear-gradient(135deg, #4184ff 0%, #2a6fe6 100%)",
+                                    color: "#ffffff",
+                                    fontSize: "15px",
+                                    fontWeight: 900,
+                                    textDecoration: "none",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    boxShadow: "0 10px 22px rgba(42, 111, 230, 0.2)",
+                                    minWidth: "140px",
+                                  }}
+                                >
+                                  {lang === "en" ? "Open in Google Maps" : "Googleマップで見る"}
+                                </a>
+                              ) : null}
+                              <button onClick={() => toggleVisited(item.title)} style={{ padding: "10px 16px", borderRadius: "999px", border: visitedItem ? "none" : "1.5px solid #d1d5db", background: visitedItem ? "#16a34a" : "transparent", color: visitedItem ? "#fff" : "#6b7280", fontSize: "13px", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                {visitedItem ? "✅ 行った！" : "🗺️ 行った！"}
+                              </button>
+                            </div>
 
                             {/* 場所ごとの個別評価 */}
                             {(() => {
@@ -6800,42 +7395,24 @@ export default function Home() {
                     >
                       {showUnseenOnly
                         ? (lang === "en" ? "No new spots found. Try switching to \"Show all\"." : "初めての場所が見つかりませんでした。「全て表示」に切り替えてください。")
-                        : (lang === "en" ? "No matches found. Try adjusting your selections and search again." : "条件に合う候補が見つからなかったよ。条件を少し変えてもう一度試してみてね。")
+                        : apiWarning === "noResultsFood"
+                          ? (
+                            <div>
+                              <div style={{ fontSize: "32px", marginBottom: "8px" }}>🍽️</div>
+                              <div style={{ fontWeight: 900, fontSize: "16px", color: "#c0385a", marginBottom: "6px" }}>
+                                周辺に見つかりませんでした
+                              </div>
+                              <div style={{ fontSize: "14px", color: "#7a5860", lineHeight: 1.7 }}>
+                                遠くの場所を検索したら<br />見つかるかもしれません
+                              </div>
+                            </div>
+                          )
+                          : (lang === "en" ? "No matches found. Try adjusting your selections and search again." : "条件に合う候補が見つからなかったよ。条件を少し変えてもう一度試してみてね。")
                       }
                     </div>
                   )}
                 </div>
 
-                {/* 非表示リスト管理 */}
-                {blockedPlaces.length > 0 && (
-                  <div style={{
-                    background: "#f8f5f5",
-                    borderRadius: "18px",
-                    padding: "14px 16px",
-                    border: "1px solid #ead7db",
-                    marginBottom: "14px",
-                    fontSize: "12px",
-                  }}>
-                    <div style={{ fontWeight: 900, color: "#4a3034", marginBottom: "8px" }}>
-                      🚫 {lang === "en" ? "Hidden spots" : "非表示スポット"} ({blockedPlaces.length})
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                      {blockedPlaces.map((name) => (
-                        <span key={name} style={{
-                          display: "inline-flex", alignItems: "center", gap: "4px",
-                          background: "#fff", border: "1px solid #ead7db", borderRadius: "999px",
-                          padding: "4px 10px", color: "#7a5860",
-                        }}>
-                          {name}
-                          <button onClick={() => unblockPlace(name)} style={{
-                            background: "none", border: "none", cursor: "pointer",
-                            color: "#c0385a", fontSize: "12px", padding: "0", lineHeight: 1,
-                          }}>✕</button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* リファインメント（再絞り込み） */}
                 <div

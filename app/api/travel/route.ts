@@ -324,8 +324,9 @@ async function enrichWithGoogle(
     const results = await searchGooglePlaces(query, p.lat, p.lng, googleKey, undefined, 1);
     const gp      = results[0];
     const photos  = gp ? ((gp.photos as Array<Record<string, unknown>>) ?? []) : [];
-    const photoUrls = photos.filter(ph => ph?.name)
+    const rawPhotoUrls = photos.filter(ph => ph?.name)
       .map(ph => `https://places.googleapis.com/v1/${ph.name}/media?maxWidthPx=800&key=${googleKey}`);
+    const photoUrls = rawPhotoUrls;
     const hours   = gp ? (gp.currentOpeningHours as Record<string, unknown> | undefined) : undefined;
     const weekdays = (hours?.weekdayDescriptions as string[] | undefined) ?? [];
     const distKm  = Math.round(haversineKm(originLat, originLng, p.lat, p.lng) * 10) / 10;
@@ -334,7 +335,7 @@ async function enrichWithGoogle(
       name:          p.name,
       category:      label,
       description,
-      imageUrl:      photoUrls[0] ?? "",
+      imageUrl:      photoUrls[0],
       rating:        gp && typeof gp.rating          === "number" ? gp.rating          : null,
       reviewCount:   gp && typeof gp.userRatingCount === "number" ? gp.userRatingCount : null,
       address:       p.address,
@@ -371,6 +372,7 @@ function mapGoogleToPlaceResponse(
   const photos = (place.photos as Array<Record<string, unknown>>) ?? [];
   const photoUrls = photos.filter(p => p?.name)
     .map(p => `https://places.googleapis.com/v1/${p.name}/media?maxWidthPx=800&key=${googleKey}`);
+  const finalPhotoUrls = photoUrls;
   const hours    = place.currentOpeningHours as Record<string, unknown> | undefined;
   const weekdays = (hours?.weekdayDescriptions as string[] | undefined) ?? [];
   const distKm   = Math.round(haversineKm(opts.originLat, opts.originLng, pLat, pLng) * 10) / 10;
@@ -379,12 +381,12 @@ function mapGoogleToPlaceResponse(
     name,
     category:     opts.label,
     description:  opts.description,
-    imageUrl:     photoUrls[0] ?? "",
+    imageUrl:     finalPhotoUrls[0],
     rating:       typeof place.rating          === "number" ? place.rating          : null,
     reviewCount:  typeof place.userRatingCount === "number" ? place.userRatingCount : null,
     address:      String(place.formattedAddress ?? ""),
     distanceInfo: `現在地から約${distKm}km / ${buildTimeStr(distKm, opts.transport)}`,
-    photoUrls,
+    photoUrls:    finalPhotoUrls,
     openNow:      typeof hours?.openNow === "boolean" ? hours.openNow : null,
     openingHours: weekdays.length > 0 ? compactWeekdays(weekdays) : null,
     priceLevel:   typeof place.priceLevel === "string" ? place.priceLevel : null,
@@ -607,7 +609,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+    const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
     if (!googleKey) {
       return NextResponse.json({ error: "GOOGLE_MAPS_API_KEY が設定されていません" }, { status: 500 });
     }

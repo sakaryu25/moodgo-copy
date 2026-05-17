@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     const originLng = lng as number;
     const radiusKm  = calcRadiusKm(transport);
     const config    = CATEGORY_CONFIG[category];
-    const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+    const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
 
     console.log(`[onsen] ▶ ${config.label} (${originLat.toFixed(4)},${originLng.toFixed(4)}) r=${radiusKm}km [${coordSource}]`);
 
@@ -449,7 +449,7 @@ async function enrichWithGoogle(
   yahooPlaces: YahooPlace[],
   opts: { originLat: number; originLng: number; transport?: string | string[]; categoryLabel: string; aiDescription: string },
 ): Promise<PlaceResponse[]> {
-  const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+  const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!googleKey) return yahooPlaces.map(y => yahooFallback(y, opts));
 
   const raw = await Promise.all(yahooPlaces.map(y => enrichOne(y, googleKey, opts)));
@@ -668,7 +668,7 @@ function isValidCoord(lat: unknown, lng: unknown): lat is number {
 }
 
 async function geocodeArea(area: string): Promise<{ lat: number; lng: number } | null> {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return null;
   for (const resultType of [
     "street_address|premise|sublocality_level_2|sublocality_level_3|sublocality_level_4",

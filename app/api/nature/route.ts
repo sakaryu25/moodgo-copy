@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+    const googleKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
     if (!googleKey) {
       return NextResponse.json({ error: "GOOGLE_MAPS_API_KEY が設定されていません" }, { status: 500 });
     }

@@ -12,9 +12,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "area is required" }, { status: 400 });
   }
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ ok: false, error: "GOOGLE_MAPS_API_KEY 未設定" }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "GOOGLE_PLACES_API_KEY 未設定" }, { status: 503 });
   }
 
   try {

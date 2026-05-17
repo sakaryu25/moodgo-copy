@@ -221,12 +221,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
+    // ── グローバルブロック済みスポットを除外 ─────────────────────────
+    const { data: globalBlocked } = await supabase
+      .from("globally_blocked_places")
+      .select("spot_name");
+    const globalBlockedNames = new Set((globalBlocked ?? []).map((r: { spot_name: string }) => r.spot_name));
+    const notGloballyBlocked = (allPlaces ?? []).filter(p => !globalBlockedNames.has(p.name));
+
     // ── 座標フィルタ ──────────────────────────────────────────────────
     const radiusM = radiusKm * 1000;
     const inRadius =
       lat === 0 && lng === 0
-        ? (allPlaces ?? [])
-        : (allPlaces ?? []).filter(
+        ? notGloballyBlocked
+        : notGloballyBlocked.filter(
             (p) => p.lat != null && p.lng != null && haversineM(lat, lng, p.lat, p.lng) <= radiusM,
           );
 
