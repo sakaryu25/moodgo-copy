@@ -15,13 +15,14 @@ import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
 const BG = '#fdf8f9';
 
 const MOODS = [
-  { label: '最高！',       color: '#FFD040', ring: '#FFAA00', bg: '#FFF7D6', faceColor: '#FFE566' },
-  { label: 'いい感じ',     color: '#5DD87A', ring: '#38C058', bg: '#E6F9EC', faceColor: '#7DE898' },
-  { label: 'まあまあ',     color: '#60B0F0', ring: '#3890D8', bg: '#E0EEFB', faceColor: '#80C4F4' },
-  { label: 'ぱっとしない', color: '#A890D0', ring: '#8870B8', bg: '#EEE8F8', faceColor: '#C0A8E0' },
+  { label: '最高！', labelEn: 'Amazing!', color: '#FFD040', ring: '#FFAA00', bg: '#FFF7D6', faceColor: '#FFE566' },
+  { label: 'いい感じ', labelEn: 'Good',   color: '#5DD87A', ring: '#38C058', bg: '#E6F9EC', faceColor: '#7DE898' },
+  { label: 'まあまあ', labelEn: 'OK',     color: '#60B0F0', ring: '#3890D8', bg: '#E0EEFB', faceColor: '#80C4F4' },
+  { label: 'ぱっとしない', labelEn: 'Meh', color: '#A890D0', ring: '#8870B8', bg: '#EEE8F8', faceColor: '#C0A8E0' },
 ];
 
 const DAY_LABELS_JA = ['月', '火', '水', '木', '金', '土', '日'];
+const DAY_LABELS_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 function todayKey() {
   return new Date().toISOString().split('T')[0];
@@ -129,6 +130,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
   const insets = useSafeAreaInsets();
   const [todayMood, setTodayMood]   = useState<number | null>(null);
   const [weekMoods, setWeekMoods]   = useState<Record<string, number>>({});
+  const [streak, setStreak]         = useState(0);
   const scaleAnims = useRef(MOODS.map(() => new Animated.Value(1))).current;
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -141,7 +143,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
     ).start();
   }, [pulseAnim]);
 
-  // load stored moods
+  // load stored moods + calculate streak
   useEffect(() => {
     (async () => {
       const week = getWeekDates();
@@ -158,6 +160,19 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
       setWeekMoods(map);
       const today = map[todayKey()];
       if (today != null) setTodayMood(today);
+
+      // streak: count consecutive days backwards from today
+      let s = 0;
+      const now = new Date();
+      for (let i = 0; i < 90; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const key = `mood_${d.toISOString().split('T')[0]}`;
+        const val = await AsyncStorage.getItem(key);
+        if (val != null) s++;
+        else break;
+      }
+      setStreak(s);
     })();
   }, []);
 
@@ -169,13 +184,16 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
     ]).start();
 
     const key = todayKey();
+    const wasNew = weekMoods[key] == null;
     await AsyncStorage.setItem(`mood_${key}`, String(index));
     setTodayMood(index);
     setWeekMoods((prev) => ({ ...prev, [key]: index }));
-  }, [scaleAnims]);
+    if (wasNew) setStreak((prev) => prev + 1);
+  }, [scaleAnims, weekMoods]);
 
-  const weekDates = getWeekDates();
-  const todayStr  = todayKey();
+  const weekDates  = getWeekDates();
+  const todayStr   = todayKey();
+  const dayLabels  = lang === 'en' ? DAY_LABELS_EN : DAY_LABELS_JA;
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -183,7 +201,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
       {/* ── Header ── */}
       <View style={s.header}>
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <TouchableOpacity style={s.suggestBtn} activeOpacity={0.8} onPress={() => router.push('/suggest')}>
+          <TouchableOpacity style={s.suggestBtn} activeOpacity={0.8} onPress={() => router.push({ pathname: '/suggest', params: { lang } })}>
             <Text style={s.suggestBtnText}>
               📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}
             </Text>
@@ -206,9 +224,16 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
         <Text style={s.checkinTitle}>
           {lang === 'en' ? "Today's mood?" : '今日の気分は？'}
         </Text>
+        {streak >= 2 && (
+          <Text style={s.streak}>
+            {lang === 'en' ? `🔥 ${streak} day streak!` : `🔥 ${streak}日連続チェックイン！`}
+          </Text>
+        )}
         <Text style={s.checkinSub}>
           {todayMood != null
-            ? (lang === 'en' ? `You picked: ${MOODS[todayMood].label}` : `今日は「${MOODS[todayMood].label}」`)
+            ? (lang === 'en'
+                ? `You picked: ${MOODS[todayMood].labelEn}`
+                : `今日は「${MOODS[todayMood].label}」`)
             : (lang === 'en' ? 'Tap a face to record!' : 'タップして記録しよう！')}
         </Text>
 
@@ -235,7 +260,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
                   {selected && <View style={[s.selectedRing, { borderColor: mood.ring }]} />}
                 </TouchableOpacity>
                 <Text style={[s.faceLabel, selected && { color: mood.ring, fontWeight: '800' }]}>
-                  {mood.label}
+                  {lang === 'en' ? mood.labelEn : mood.label}
                 </Text>
               </Animated.View>
             );
@@ -257,7 +282,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowProfileEdit,
                   isToday && moodIdx == null && s.dotToday,
                 ]} />
                 <Text style={[s.dayLabel, isToday && s.dayLabelToday]}>
-                  {DAY_LABELS_JA[i]}
+                  {dayLabels[i]}
                 </Text>
               </View>
             );
@@ -324,6 +349,9 @@ const s = StyleSheet.create({
   },
   checkinSub: {
     fontSize: 13, fontWeight: '400', color: '#8E8E93', marginTop: -10,
+  },
+  streak: {
+    fontSize: 13, fontWeight: '700', color: '#FF6B35', marginTop: -12,
   },
 
   faceRow: {

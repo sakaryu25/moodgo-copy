@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { ChevronLeft, MapPin, Camera, Tag, Send, CheckCircle } from 'lucide-react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { ChevronLeft, MapPin, Camera, Tag, Send } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -20,8 +20,83 @@ import { TAG_CATEGORIES, MOOD_TAGS } from '@/lib/predefined-tags';
 
 const SHOWN_CATEGORIES = ['mood', 'companion', 'scenery', 'activity', 'atmosphere'];
 
+const T = {
+  ja: {
+    headerTitle: '穴場スポットを教えて！',
+    back: '戻る',
+    lead: 'あなたが知っている素敵な場所をMoodGoに投稿しよう。掲載された場合は特典をプレゼント予定です🎁',
+    labelName: 'スポット名',
+    labelDesc: 'どんな場所？おすすめポイント',
+    labelLocation: '場所・住所',
+    labelPhotos: '写真を添付（最大3枚）',
+    labelTags: '🏷 気分タグを選ぼう',
+    labelContact: '連絡先',
+    placeholderName: '例：緑ヶ丘公園の秘密の展望台',
+    placeholderDesc: '例：駐車場が平日2時間無料で穴場だから空いてる。夕日が最高！',
+    placeholderAddr: 'または住所・エリア名を入力（例：神奈川県横浜市中区）',
+    placeholderContact: '例：@line_id / example@email.com',
+    hintPhotos: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！',
+    hintContact: '掲載された場合に特典をお送りするため、LINEのIDやメールアドレスを教えていただけると助かります。',
+    optional: '（任意）',
+    locating: '取得中...',
+    locateDone: '✅ 位置情報取得済み',
+    locateBtn: '📍 現在地を自動取得（推奨）',
+    photoBtn: '📷 写真を選ぶ',
+    tagOpen: '▼ タグを選ぶ',
+    tagClose: '▲ タグ選択を閉じる',
+    submit: '投稿する 🚀',
+    submitting: '送信中...',
+    errName: 'スポット名を入力してください',
+    errLocation: '位置情報の許可が必要です。',
+    errLocationFail: '位置情報の取得に失敗しました。住所を手入力してください。',
+    errPhoto: '写真へのアクセスを許可してください。',
+    errPhotoFail: '画像の選択に失敗しました。',
+    successTitle: 'ありがとうございます！',
+    successBody: '投稿を受け付けました。\nスタッフが確認後、MoodGoに掲載されます。\n掲載された場合はご連絡いたします！',
+    successBtn: 'ホームへ戻る',
+  },
+  en: {
+    headerTitle: 'Share a hidden gem!',
+    back: 'Back',
+    lead: 'Tell MoodGo about a great spot you know. If we feature it, you\'ll get a special reward 🎁',
+    labelName: 'Spot name',
+    labelDesc: 'What\'s it like? Why do you love it?',
+    labelLocation: 'Location / Address',
+    labelPhotos: 'Add photos (up to 3)',
+    labelTags: '🏷 Pick mood tags',
+    labelContact: 'Contact',
+    placeholderName: 'e.g. Secret viewpoint at Midorigaoka Park',
+    placeholderDesc: 'e.g. Free parking on weekdays and it\'s never crowded. Amazing sunset!',
+    placeholderAddr: 'Or enter an address / area name',
+    placeholderContact: 'e.g. @line_id / example@email.com',
+    hintPhotos: 'Parking signs, the spot\'s exterior, scenery — anything that captures the vibe!',
+    hintContact: 'We\'d love a LINE ID or email to send your reward if we feature the spot.',
+    optional: '(optional)',
+    locating: 'Getting location...',
+    locateDone: '✅ Location captured',
+    locateBtn: '📍 Use current location (recommended)',
+    photoBtn: '📷 Choose photos',
+    tagOpen: '▼ Choose tags',
+    tagClose: '▲ Close tag picker',
+    submit: 'Submit 🚀',
+    submitting: 'Sending...',
+    errName: 'Please enter a spot name',
+    errLocation: 'Location permission is required.',
+    errLocationFail: 'Failed to get location. Please enter the address manually.',
+    errPhoto: 'Please allow photo access.',
+    errPhotoFail: 'Failed to select images.',
+    successTitle: 'Thank you!',
+    successBody: 'We received your submission.\nOur team will review it and add it to MoodGo.\nWe\'ll reach out if it gets featured!',
+    successBtn: 'Back to home',
+  },
+};
+
 export default function SuggestScreen() {
   const insets = useSafeAreaInsets();
+  const { lang: langParam } = useLocalSearchParams<{ lang?: string }>();
+  const lang = (langParam === 'en' ? 'en' : 'ja') as 'ja' | 'en';
+  const t = T[lang];
+
   const [spotName, setSpotName]       = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress]         = useState('');
@@ -43,14 +118,14 @@ export default function SuggestScreen() {
       const Location = await import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setError('位置情報の許可が必要です。');
+        setError(t.errLocation);
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setLat(pos.coords.latitude);
       setLng(pos.coords.longitude);
     } catch {
-      setError('位置情報の取得に失敗しました。住所を手入力してください。');
+      setError(t.errLocationFail);
     } finally {
       setIsLocating(false);
     }
@@ -61,7 +136,7 @@ export default function SuggestScreen() {
       const ImagePicker = await import('expo-image-picker');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('写真へのアクセスを許可してください。');
+        Alert.alert(t.errPhoto);
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -75,7 +150,7 @@ export default function SuggestScreen() {
         setImages(result.assets.slice(0, 3).map(a => ({ uri: a.uri, base64: a.base64 ?? undefined })));
       }
     } catch {
-      Alert.alert('画像の選択に失敗しました。');
+      Alert.alert(t.errPhotoFail);
     }
   };
 
@@ -84,7 +159,7 @@ export default function SuggestScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!spotName.trim()) { setError('スポット名を入力してください'); return; }
+    if (!spotName.trim()) { setError(t.errName); return; }
     setIsSubmitting(true);
     setError('');
     try {
@@ -116,13 +191,11 @@ export default function SuggestScreen() {
       <View style={[s.root, { paddingTop: insets.top }]}>
         <View style={s.successWrap}>
           <Text style={s.successEmoji}>🎉</Text>
-          <Text style={s.successTitle}>ありがとうございます！</Text>
-          <Text style={s.successBody}>
-            投稿を受け付けました。{'\n'}スタッフが確認後、MoodGoに掲載されます。{'\n'}掲載された場合はご連絡いたします！
-          </Text>
+          <Text style={s.successTitle}>{t.successTitle}</Text>
+          <Text style={s.successBody}>{t.successBody}</Text>
           <TouchableOpacity onPress={() => router.back()} activeOpacity={0.85}>
             <LinearGradient colors={['#ffbf67', '#ff7b54']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.successBtn}>
-              <Text style={s.successBtnText}>ホームへ戻る</Text>
+              <Text style={s.successBtnText}>{t.successBtn}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -137,43 +210,43 @@ export default function SuggestScreen() {
         <View style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.6}>
             <ChevronLeft size={20} color="#FF6B35" strokeWidth={2.5} />
-            <Text style={s.backText}>戻る</Text>
+            <Text style={s.backText}>{t.back}</Text>
           </TouchableOpacity>
-          <Text style={s.headerTitle}>穴場スポットを教えて！</Text>
+          <Text style={s.headerTitle}>{t.headerTitle}</Text>
           <View style={{ width: 64 }} />
         </View>
 
         <ScrollView style={s.scroll} contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Text style={s.lead}>あなたが知っている素敵な場所をMoodGoに投稿しよう。掲載された場合は特典をプレゼント予定です🎁</Text>
+          <Text style={s.lead}>{t.lead}</Text>
 
           <View style={s.card}>
-            {/* スポット名 */}
-            <Text style={s.label}>スポット名 <Text style={s.required}>*</Text></Text>
-            <TextInput value={spotName} onChangeText={setSpotName} placeholder="例：緑ヶ丘公園の秘密の展望台" placeholderTextColor="#b07080" style={s.input} />
+            {/* Spot name */}
+            <Text style={s.label}>{t.labelName} <Text style={s.required}>*</Text></Text>
+            <TextInput value={spotName} onChangeText={setSpotName} placeholder={t.placeholderName} placeholderTextColor="#b07080" style={s.input} />
 
-            {/* 説明 */}
-            <Text style={[s.label, { marginTop: 16 }]}>どんな場所？おすすめポイント</Text>
-            <TextInput value={description} onChangeText={setDescription} placeholder="例：駐車場が平日2時間無料で穴場だから空いてる。夕日が最高！" placeholderTextColor="#b07080" multiline numberOfLines={4} textAlignVertical="top" style={s.textarea} />
+            {/* Description */}
+            <Text style={[s.label, { marginTop: 16 }]}>{t.labelDesc}</Text>
+            <TextInput value={description} onChangeText={setDescription} placeholder={t.placeholderDesc} placeholderTextColor="#b07080" multiline numberOfLines={4} textAlignVertical="top" style={s.textarea} />
 
-            {/* 場所・住所 */}
-            <Text style={[s.label, { marginTop: 16 }]}>場所・住所</Text>
+            {/* Location */}
+            <Text style={[s.label, { marginTop: 16 }]}>{t.labelLocation}</Text>
             <TouchableOpacity onPress={handleGetLocation} disabled={isLocating} activeOpacity={0.85} style={s.locationBtnWrap}>
               <LinearGradient colors={lat ? ['#d1fae5', '#a7f3d0'] : ['#ffbf67', '#ff7b54']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.locationBtn}>
                 <MapPin size={16} color={lat ? '#065f46' : '#fff'} strokeWidth={2} />
                 <Text style={[s.locationBtnText, lat !== null && { color: '#065f46' }]}>
-                  {isLocating ? '取得中...' : lat ? `✅ 位置情報取得済み` : '📍 現在地を自動取得（推奨）'}
+                  {isLocating ? t.locating : lat ? t.locateDone : t.locateBtn}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
-            <TextInput value={address} onChangeText={setAddress} placeholder="または住所・エリア名を入力（例：神奈川県横浜市中区）" placeholderTextColor="#b07080" style={[s.input, { marginTop: 8 }]} />
-            {lat ? <Text style={s.latText}>緯度: {lat.toFixed(5)} / 経度: {lng?.toFixed(5)}</Text> : null}
+            <TextInput value={address} onChangeText={setAddress} placeholder={t.placeholderAddr} placeholderTextColor="#b07080" style={[s.input, { marginTop: 8 }]} />
+            {lat ? <Text style={s.latText}>{lat.toFixed(5)}, {lng?.toFixed(5)}</Text> : null}
 
-            {/* 写真 */}
-            <Text style={[s.label, { marginTop: 16 }]}>写真を添付（最大3枚）</Text>
-            <Text style={s.hint}>駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！</Text>
+            {/* Photos */}
+            <Text style={[s.label, { marginTop: 16 }]}>{t.labelPhotos}</Text>
+            <Text style={s.hint}>{t.hintPhotos}</Text>
             <TouchableOpacity onPress={handlePickImages} activeOpacity={0.85} style={s.imagePicker}>
               <Camera size={20} color="#b07080" strokeWidth={1.8} />
-              <Text style={s.imagePickerText}>📷 写真を選ぶ</Text>
+              <Text style={s.imagePickerText}>{t.photoBtn}</Text>
             </TouchableOpacity>
             {images.length > 0 && (
               <View style={s.imageRow}>
@@ -183,11 +256,11 @@ export default function SuggestScreen() {
               </View>
             )}
 
-            {/* タグ */}
-            <Text style={[s.label, { marginTop: 16 }]}>🏷 気分タグを選ぼう <Text style={s.optional}>（任意）</Text></Text>
+            {/* Tags */}
+            <Text style={[s.label, { marginTop: 16 }]}>{t.labelTags} <Text style={s.optional}>{t.optional}</Text></Text>
             <TouchableOpacity onPress={() => setTagPickerOpen(p => !p)} activeOpacity={0.85} style={s.tagToggle}>
               <Tag size={16} color="#b07080" strokeWidth={1.8} />
-              <Text style={s.tagToggleText}>{tagPickerOpen ? '▲ タグ選択を閉じる' : '▼ タグを選ぶ'}</Text>
+              <Text style={s.tagToggleText}>{tagPickerOpen ? t.tagClose : t.tagOpen}</Text>
             </TouchableOpacity>
 
             {selectedTags.length > 0 && (
@@ -222,10 +295,10 @@ export default function SuggestScreen() {
               </View>
             )}
 
-            {/* 連絡先 */}
-            <Text style={[s.label, { marginTop: 16 }]}>連絡先 <Text style={s.optional}>（任意）</Text></Text>
-            <Text style={s.hint}>掲載された場合に特典をお送りするため、LINEのIDやメールアドレスを教えていただけると助かります。</Text>
-            <TextInput value={contact} onChangeText={setContact} placeholder="例：@line_id / example@email.com" placeholderTextColor="#b07080" style={s.input} />
+            {/* Contact */}
+            <Text style={[s.label, { marginTop: 16 }]}>{t.labelContact} <Text style={s.optional}>{t.optional}</Text></Text>
+            <Text style={s.hint}>{t.hintContact}</Text>
+            <TextInput value={contact} onChangeText={setContact} placeholder={t.placeholderContact} placeholderTextColor="#b07080" style={s.input} />
           </View>
 
           {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View> : null}
@@ -233,7 +306,7 @@ export default function SuggestScreen() {
           <TouchableOpacity onPress={handleSubmit} disabled={isSubmitting || !spotName.trim()} activeOpacity={0.85} style={{ opacity: spotName.trim() ? 1 : 0.5 }}>
             <LinearGradient colors={['#ffbf67', '#ff7b54']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submitBtn}>
               <Send size={18} color="#fff" strokeWidth={2} />
-              <Text style={s.submitText}>{isSubmitting ? '送信中...' : '投稿する 🚀'}</Text>
+              <Text style={s.submitText}>{isSubmitting ? t.submitting : t.submit}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </ScrollView>

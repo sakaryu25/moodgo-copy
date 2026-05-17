@@ -1,14 +1,36 @@
 import { Image } from 'expo-image';
-import { Clock, Heart, MapPin, Navigation, Star, Train } from 'lucide-react-native';
+import { Clock, Heart, MapPin, Navigation, Share2, Star, Train } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   Linking,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import type { Recommendation } from '@/types/app';
+
+const T = {
+  ja: {
+    openNow: '営業中',
+    closedNow: '閉店中',
+    mapBtn: 'マップで見る',
+    hide: '表示しない',
+    report: '報告する',
+    share: '共有',
+    reviewCount: (n: number) => `(${n.toLocaleString('ja-JP')}件)`,
+  },
+  en: {
+    openNow: 'Open',
+    closedNow: 'Closed',
+    mapBtn: 'View on map',
+    hide: 'Hide',
+    report: 'Report',
+    share: 'Share',
+    reviewCount: (n: number) => `(${n.toLocaleString('en-US')} reviews)`,
+  },
+};
 
 type Props = {
   item: Recommendation;
@@ -17,11 +39,13 @@ type Props = {
   onBlock?: () => void;
   onReport?: () => void;
   accentColor?: string;
+  lang?: 'ja' | 'en';
 };
 
 export default function PlaceCard({
-  item, isFavorited, onToggleFavorite, onBlock, onReport, accentColor = '#FF6B35',
+  item, isFavorited, onToggleFavorite, onBlock, onReport, accentColor = '#FF6B35', lang = 'ja',
 }: Props) {
+  const t = T[lang];
   const photos = (item.photoUrls ?? []).length > 0
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
@@ -31,8 +55,15 @@ export default function PlaceCard({
     item.openNow === true  ? '#34C759' :
     item.openNow === false ? '#8E8E93' : '#8E8E93';
   const openNowLabel =
-    item.openNow === true  ? '営業中' :
-    item.openNow === false ? '閉店中' : '';
+    item.openNow === true  ? t.openNow :
+    item.openNow === false ? t.closedNow : '';
+
+  const handleShare = () => {
+    const parts = [item.title];
+    if (item.address) parts.push(item.address);
+    if (item.mapUrl)  parts.push(item.mapUrl);
+    Share.share({ message: parts.join('\n') });
+  };
 
   return (
     <View style={s.card}>
@@ -99,7 +130,7 @@ export default function PlaceCard({
             <Star size={14} color="#FF9F0A" fill="#FF9F0A" />
             <Text style={s.ratingText}>
               {item.rating.toFixed(1)}
-              {item.userRatingCount ? <Text style={s.ratingCount}>  ({item.userRatingCount.toLocaleString('ja-JP')}件)</Text> : null}
+              {item.userRatingCount ? <Text style={s.ratingCount}>  {t.reviewCount(item.userRatingCount)}</Text> : null}
             </Text>
           </View>
         )}
@@ -159,7 +190,7 @@ export default function PlaceCard({
               activeOpacity={0.75}
             >
               <MapPin size={15} color="#fff" strokeWidth={2.5} />
-              <Text style={s.mapBtnText}>マップで見る</Text>
+              <Text style={s.mapBtnText}>{t.mapBtn}</Text>
             </TouchableOpacity>
           ) : null}
           {item.hotpepperUrl ? (
@@ -173,18 +204,24 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        {/* Block / Report */}
+        {/* Share / Block / Report */}
         <View style={s.footRow}>
-          {onBlock && (
-            <TouchableOpacity onPress={onBlock} style={s.footBtn}>
-              <Text style={s.footBtnText}>表示しない</Text>
-            </TouchableOpacity>
-          )}
-          {onReport && (
-            <TouchableOpacity onPress={onReport} style={s.footBtn}>
-              <Text style={s.footBtnText}>報告する</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={handleShare} style={s.footBtnShare}>
+            <Share2 size={12} color="#8E8E93" strokeWidth={2} />
+            <Text style={s.footBtnText}>{t.share}</Text>
+          </TouchableOpacity>
+          <View style={s.footRight}>
+            {onBlock && (
+              <TouchableOpacity onPress={onBlock} style={s.footBtn}>
+                <Text style={s.footBtnText}>{t.hide}</Text>
+              </TouchableOpacity>
+            )}
+            {onReport && (
+              <TouchableOpacity onPress={onReport} style={s.footBtn}>
+                <Text style={s.footBtnText}>{t.report}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -269,7 +306,9 @@ const s = StyleSheet.create({
   },
   mapBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 
-  footRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 2 },
+  footRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  footBtnShare: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
+  footRight: { flexDirection: 'row', gap: 12 },
   footBtn: { paddingVertical: 2 },
   footBtnText: { fontSize: 12, color: '#C7C7CC' },
 });
