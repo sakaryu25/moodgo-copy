@@ -18,14 +18,33 @@ type Props = {
   onClearHistory: () => void;
   favorites: FavoriteItem[];
   onToggleFavorite: (rec: Recommendation) => void;
+  lang?: 'ja' | 'en';
+};
+
+const T = {
+  ja: {
+    backToList: '← 履歴一覧に戻る',
+    title: '履歴',
+    sub: 'これまで見たおすすめ',
+    clear: 'クリア',
+    empty: 'まだ履歴はありません\n気分から場所を探してみましょう！',
+  },
+  en: {
+    backToList: '← Back to history',
+    title: 'History',
+    sub: 'Past recommendations',
+    clear: 'Clear',
+    empty: 'No history yet\nLet\'s find a place by mood!',
+  },
 };
 
 export default function HistoryView({
   history, selectedHistoryItem, onSelectHistoryItem, onClearHistory,
-  favorites, onToggleFavorite,
+  favorites, onToggleFavorite, lang = 'ja',
 }: Props) {
   const insets = useSafeAreaInsets();
   const isFav = (title: string) => favorites.some((f) => f.title === title);
+  const t = T[lang];
 
   if (selectedHistoryItem) {
     return (
@@ -35,7 +54,7 @@ export default function HistoryView({
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity onPress={() => onSelectHistoryItem(null)} style={s.backRow}>
-          <Text style={s.backText}>← 履歴一覧に戻る</Text>
+          <Text style={s.backText}>{t.backToList}</Text>
         </TouchableOpacity>
         <Text style={s.detailMood}>{selectedHistoryItem.mood}</Text>
         <Text style={s.detailArea}>{selectedHistoryItem.area}</Text>
@@ -59,12 +78,12 @@ export default function HistoryView({
     >
       <View style={s.titleRow}>
         <View>
-          <Text style={s.pageTitle}>履歴</Text>
-          <Text style={s.pageSub}>これまで見たおすすめ</Text>
+          <Text style={s.pageTitle}>{t.title}</Text>
+          <Text style={s.pageSub}>{t.sub}</Text>
         </View>
         {history.length > 0 && (
           <TouchableOpacity onPress={onClearHistory} style={s.clearBtn}>
-            <Text style={s.clearText}>クリア</Text>
+            <Text style={s.clearText}>{t.clear}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -72,7 +91,7 @@ export default function HistoryView({
       {history.length === 0 ? (
         <View style={s.emptyBox}>
           <Clock size={52} color="#C7C7CC" strokeWidth={1.5} />
-          <Text style={s.emptyText}>まだ履歴はありません{'\n'}気分から場所を探してみましょう！</Text>
+          <Text style={s.emptyText}>{t.empty}</Text>
         </View>
       ) : (
         history.map((item) => (

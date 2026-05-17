@@ -10,16 +10,15 @@ type Props = {
   homeView: Tab;
   onChangeView: (v: Tab) => void;
   insets: EdgeInsets;
+  lang?: 'ja' | 'en';
 };
 
 const ACCENT   = '#FF6B35';
 const INACTIVE = '#8E8E93';
 
-const LABELS: Record<Tab, string> = {
-  home:      'ホーム',
-  history:   '履歴',
-  favorites: 'お気に入り',
-  featured:  '特集',
+const LABELS: Record<'ja' | 'en', Record<Tab, string>> = {
+  ja: { home: 'ホーム', history: '履歴', favorites: 'お気に入り', featured: '特集' },
+  en: { home: 'Home',   history: 'History', favorites: 'Favorites', featured: 'Featured' },
 };
 
 function IconHome({ color }: { color: string }) {
@@ -63,7 +62,8 @@ const TABS: { key: Tab; Icon: React.ComponentType<{ color: string }> }[] = [
   { key: 'featured',  Icon: IconFeatured },
 ];
 
-export default function TabBar({ homeView, onChangeView, insets }: Props) {
+export default function TabBar({ homeView, onChangeView, insets, lang = 'ja' }: Props) {
+  const labels = LABELS[lang];
   return (
     <View style={s.container}>
       <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
@@ -80,7 +80,7 @@ export default function TabBar({ homeView, onChangeView, insets }: Props) {
               activeOpacity={0.6}
             >
               <Icon color={color} />
-              <Text style={[s.label, { color }]}>{LABELS[key]}</Text>
+              <Text style={[s.label, { color }]}>{labels[key]}</Text>
             </TouchableOpacity>
           );
         })}

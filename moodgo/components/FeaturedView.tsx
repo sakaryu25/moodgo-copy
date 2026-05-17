@@ -16,11 +16,26 @@ import { useRouter } from 'expo-router';
 type Props = {
   featuredList: FeaturedPageSummary[];
   featuredListLoading: boolean;
+  lang?: 'ja' | 'en';
 };
 
-export default function FeaturedView({ featuredList, featuredListLoading }: Props) {
+const T = {
+  ja: {
+    title: '特集',
+    sub: 'MoodGoが厳選したスポット',
+    empty: '特集コンテンツを読み込み中…\nインターネット接続を確認してください。',
+  },
+  en: {
+    title: 'Featured',
+    sub: 'Spots curated by MoodGo',
+    empty: 'Loading featured content…\nPlease check your internet connection.',
+  },
+};
+
+export default function FeaturedView({ featuredList, featuredListLoading, lang = 'ja' }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const t = T[lang];
 
   return (
     <ScrollView
@@ -28,8 +43,8 @@ export default function FeaturedView({ featuredList, featuredListLoading }: Prop
       contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 80 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={s.pageTitle}>特集</Text>
-      <Text style={s.pageSub}>MoodGoが厳選したスポット</Text>
+      <Text style={s.pageTitle}>{t.title}</Text>
+      <Text style={s.pageSub}>{t.sub}</Text>
 
       {featuredListLoading ? (
         <View style={s.loading}>
@@ -38,7 +53,7 @@ export default function FeaturedView({ featuredList, featuredListLoading }: Prop
       ) : featuredList.length === 0 ? (
         <View style={s.emptyBox}>
           <Star size={52} color="#C7C7CC" strokeWidth={1.5} />
-          <Text style={s.emptyText}>特集コンテンツを読み込み中…{'\n'}インターネット接続を確認してください。</Text>
+          <Text style={s.emptyText}>{t.empty}</Text>
         </View>
       ) : (
         featuredList.map((item) => (

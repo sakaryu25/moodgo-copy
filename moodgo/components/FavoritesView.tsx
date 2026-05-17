@@ -17,10 +17,33 @@ type Props = {
   favoriteSort: 'newest' | 'title';
   onSetFavoriteSort: (v: 'newest' | 'title') => void;
   onRemoveFavorite: (title: string) => void;
+  lang?: 'ja' | 'en';
 };
 
-export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite }: Props) {
+const T = {
+  ja: {
+    title: 'お気に入り',
+    sub: '保存した場所',
+    newest: '新しい順',
+    byName: '名前順',
+    empty: 'まだ保存した場所はありません\n気に入った場所を♡で保存しよう！',
+    map: 'マップ',
+    remove: '削除',
+  },
+  en: {
+    title: 'Favorites',
+    sub: 'Saved places',
+    newest: 'Newest',
+    byName: 'By name',
+    empty: 'No saved places yet\nSave places you like with ♡!',
+    map: 'Map',
+    remove: 'Remove',
+  },
+};
+
+export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, lang = 'ja' }: Props) {
   const insets = useSafeAreaInsets();
+  const t = T[lang];
 
   const sorted = useMemo(() => {
     return [...favorites].sort((a, b) => {
@@ -35,8 +58,8 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
       contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 80 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={s.pageTitle}>お気に入り</Text>
-      <Text style={s.pageSub}>保存した場所</Text>
+      <Text style={s.pageTitle}>{t.title}</Text>
+      <Text style={s.pageSub}>{t.sub}</Text>
 
       {/* iOS segmented control style sort */}
       <View style={s.segmented}>
@@ -48,7 +71,7 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
             activeOpacity={0.7}
           >
             <Text style={[s.segText, favoriteSort === sort && s.segTextActive]}>
-              {sort === 'newest' ? '新しい順' : '名前順'}
+              {sort === 'newest' ? t.newest : t.byName}
             </Text>
           </TouchableOpacity>
         ))}
@@ -57,7 +80,7 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
       {sorted.length === 0 ? (
         <View style={s.emptyBox}>
           <Heart size={52} color="#C7C7CC" strokeWidth={1.5} />
-          <Text style={s.emptyText}>まだ保存した場所はありません{'\n'}気に入った場所を♡で保存しよう！</Text>
+          <Text style={s.emptyText}>{t.empty}</Text>
         </View>
       ) : (
         sorted.map((item) => (
@@ -86,14 +109,14 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
                       style={s.mapBtn}
                     >
                       <MapPin size={12} color="#fff" strokeWidth={2.5} />
-                      <Text style={s.mapBtnText}>マップ</Text>
+                      <Text style={s.mapBtnText}>{t.map}</Text>
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity
                     onPress={() => onRemoveFavorite(item.title)}
                     style={s.deleteBtn}
                   >
-                    <Text style={s.deleteBtnText}>削除</Text>
+                    <Text style={s.deleteBtnText}>{t.remove}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

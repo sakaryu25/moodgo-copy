@@ -546,6 +546,7 @@ export default function Home() {
     return (
       <SlideUp>
       <ResultsView
+        lang={lang}
         selectedMood={selectedMood}
         selectedArea={selectedArea}
         recommendations={apiRecommendations}
@@ -621,6 +622,7 @@ export default function Home() {
       case 'history':
         return (
           <HistoryView
+            lang={lang}
             history={history}
             selectedHistoryItem={selectedHistoryItem}
             onSelectHistoryItem={setSelectedHistoryItem}
@@ -632,6 +634,7 @@ export default function Home() {
       case 'favorites':
         return (
           <FavoritesView
+            lang={lang}
             favorites={favorites}
             favoriteSort={favoriteSort}
             onSetFavoriteSort={setFavoriteSort}
@@ -643,6 +646,7 @@ export default function Home() {
       case 'featured':
         return (
           <FeaturedView
+            lang={lang}
             featuredList={featuredList}
             featuredListLoading={featuredListLoading}
           />
@@ -667,6 +671,7 @@ export default function Home() {
         {renderContent()}
       </Animated.View>
       <TabBar
+        lang={lang}
         homeView={homeView}
         onChangeView={(v) => {
           setHomeView(v);

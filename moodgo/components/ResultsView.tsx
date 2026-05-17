@@ -37,6 +37,53 @@ function placeToRec(fac: PlaceResponse, featLabel?: string): Recommendation {
   };
 }
 
+const T = {
+  ja: {
+    back: '戻る',
+    defaultTitle: '検索結果',
+    areaTitle: (area: string) => `${area}でのおすすめ`,
+    empty: '条件に合う候補が見つかりませんでした。\n条件を変えて再検索してみてください。',
+    refineTitle: '絞り込む',
+    refinePlaceholder: '例：もっと近い場所、夜遅くまで営業、駐車場あり…',
+    searching: '検索中...',
+    searchAgain: '再検索する',
+    feedbackTitle: 'おすすめはいかがでしたか？',
+    feedbackThanks: 'ありがとうございました！🎉',
+    reset: '最初からやり直す',
+    reportTitle: '不適切な内容を報告',
+    reportThanks: '報告ありがとうございました。',
+    close: '閉じる',
+    reasonLabel: '理由',
+    reportReasons: ['不正確な情報', '不適切なコンテンツ', '存在しない場所', 'その他'],
+    notePlaceholder: '詳細（任意）',
+    cancel: 'キャンセル',
+    submitting: '送信中...',
+    submit: '送信',
+  },
+  en: {
+    back: 'Back',
+    defaultTitle: 'Results',
+    areaTitle: (area: string) => `Picks near ${area}`,
+    empty: 'No results found.\nTry changing your search conditions.',
+    refineTitle: 'Refine',
+    refinePlaceholder: 'e.g. closer, open late, has parking…',
+    searching: 'Searching...',
+    searchAgain: 'Search again',
+    feedbackTitle: 'How were the recommendations?',
+    feedbackThanks: 'Thank you! 🎉',
+    reset: 'Start over',
+    reportTitle: 'Report inappropriate content',
+    reportThanks: 'Thanks for your report.',
+    close: 'Close',
+    reasonLabel: 'Reason',
+    reportReasons: ['Incorrect info', 'Inappropriate content', 'Doesn\'t exist', 'Other'],
+    notePlaceholder: 'Details (optional)',
+    cancel: 'Cancel',
+    submitting: 'Sending...',
+    submit: 'Send',
+  },
+};
+
 type Props = {
   selectedMood: string;
   selectedArea: string;
@@ -81,6 +128,7 @@ type Props = {
   reportSubmitting: boolean;
   reportDone: boolean;
   onSubmitReport: () => void;
+  lang?: 'ja' | 'en';
 };
 
 export default function ResultsView(props: Props) {
@@ -96,7 +144,9 @@ export default function ResultsView(props: Props) {
     onReset, onSetReportingSpot, reportingSpot,
     reportReason, onSetReportReason, reportNote, onSetReportNote,
     reportSubmitting, reportDone, onSubmitReport,
+    lang = 'ja',
   } = props;
+  const t = T[lang];
 
   const insets = useSafeAreaInsets();
   const isFav = (title: string) => favorites.some((f) => f.title === title);
@@ -118,8 +168,8 @@ export default function ResultsView(props: Props) {
 
   const pageTitle =
     facilityList
-      ? `${facilityLabel || '検索結果'}`
-      : `${selectedArea}でのおすすめ`;
+      ? (facilityLabel || t.defaultTitle)
+      : t.areaTitle(selectedArea);
 
   // Items to render
   const facilityItems = facilityList
@@ -137,7 +187,7 @@ export default function ResultsView(props: Props) {
         <View style={s.navBarInner}>
           <TouchableOpacity onPress={onReset} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <ChevronLeft size={20} color="#FF6B35" strokeWidth={2.5} />
-            <Text style={s.backText}>戻る</Text>
+            <Text style={s.backText}>{t.back}</Text>
           </TouchableOpacity>
           <Text style={s.navTitle} numberOfLines={1}>{pageTitle}</Text>
           <View style={s.navRight} />
@@ -187,18 +237,18 @@ export default function ResultsView(props: Props) {
         {!isLoading && facilityItems.length === 0 && (
           <View style={s.emptyBox}>
             <Search size={48} color="#C7C7CC" strokeWidth={1.5} />
-            <Text style={s.emptyText}>条件に合う候補が見つかりませんでした。{'\n'}条件を変えて再検索してみてください。</Text>
+            <Text style={s.emptyText}>{t.empty}</Text>
           </View>
         )}
 
         {/* Refinement */}
         {!isLoading && facilityItems.length > 0 && (
           <View style={s.refinementBox}>
-            <Text style={s.refinementTitle}>絞り込む</Text>
+            <Text style={s.refinementTitle}>{t.refineTitle}</Text>
             <TextInput
               value={refinementText}
               onChangeText={onSetRefinementText}
-              placeholder="例：もっと近い場所、夜遅くまで営業、駐車場あり…"
+              placeholder={t.refinePlaceholder}
               placeholderTextColor="#C7C7CC"
               multiline
               style={s.refinementInput}
@@ -210,7 +260,7 @@ export default function ResultsView(props: Props) {
               style={[s.refinementBtn, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
             >
               <Text style={s.refinementBtnText}>
-                {isRefining ? '検索中...' : '再検索する'}
+                {isRefining ? t.searching : t.searchAgain}
               </Text>
             </TouchableOpacity>
           </View>
@@ -219,7 +269,7 @@ export default function ResultsView(props: Props) {
         {/* Feedback */}
         {!isLoading && !feedbackSubmitted && recommendations.length > 0 && !facilityList && (
           <View style={s.feedbackBox}>
-            <Text style={s.feedbackTitle}>おすすめはいかがでしたか？</Text>
+            <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
             <View style={s.stars}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn}>
@@ -233,13 +283,13 @@ export default function ResultsView(props: Props) {
         )}
         {feedbackSubmitted && (
           <View style={s.feedbackBox}>
-            <Text style={s.feedbackThanks}>ありがとうございました！🎉</Text>
+            <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
           </View>
         )}
 
         {/* Reset button */}
         <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.7}>
-          <Text style={s.resetBtnText}>最初からやり直す</Text>
+          <Text style={s.resetBtnText}>{t.reset}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -247,20 +297,20 @@ export default function ResultsView(props: Props) {
       {reportingSpot && (
         <View style={s.modalOverlay}>
           <View style={s.modal}>
-            <Text style={s.modalTitle}>不適切な内容を報告</Text>
+            <Text style={s.modalTitle}>{t.reportTitle}</Text>
             <Text style={s.modalSpotName}>{reportingSpot.title}</Text>
             {reportDone ? (
               <>
-                <Text style={s.modalThanks}>報告ありがとうございました。</Text>
+                <Text style={s.modalThanks}>{t.reportThanks}</Text>
                 <TouchableOpacity onPress={() => onSetReportingSpot(null)} style={s.modalCloseBtn}>
-                  <Text style={s.modalCloseBtnText}>閉じる</Text>
+                  <Text style={s.modalCloseBtnText}>{t.close}</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <Text style={s.modalLabel}>理由</Text>
+                <Text style={s.modalLabel}>{t.reasonLabel}</Text>
                 <View style={s.modalOptions}>
-                  {['不正確な情報', '不適切なコンテンツ', '存在しない場所', 'その他'].map((r) => (
+                  {t.reportReasons.map((r) => (
                     <TouchableOpacity
                       key={r}
                       onPress={() => onSetReportReason(r)}
@@ -273,13 +323,13 @@ export default function ResultsView(props: Props) {
                 <TextInput
                   value={reportNote}
                   onChangeText={onSetReportNote}
-                  placeholder="詳細（任意）"
+                  placeholder={t.notePlaceholder}
                   placeholderTextColor="#b07080"
                   style={s.modalInput}
                 />
                 <View style={s.modalBtns}>
                   <TouchableOpacity onPress={() => onSetReportingSpot(null)} style={s.modalCancelBtn}>
-                    <Text style={s.modalCancelText}>キャンセル</Text>
+                    <Text style={s.modalCancelText}>{t.cancel}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={onSubmitReport}
@@ -287,7 +337,7 @@ export default function ResultsView(props: Props) {
                     style={s.modalSubmitBtn}
                   >
                     <Text style={s.modalSubmitText}>
-                      {reportSubmitting ? '送信中...' : '送信'}
+                      {reportSubmitting ? t.submitting : t.submit}
                     </Text>
                   </TouchableOpacity>
                 </View>
