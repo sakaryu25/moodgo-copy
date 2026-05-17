@@ -225,6 +225,46 @@ const WAIWAI_SUBCATEGORIES = [
   { key: 'food_drink' as WaiWaiSubCategory, label: 'ご飯とお酒でワイワイ', Icon: UtensilsCrossed },
 ];
 
+const FOOD_SUB_QUESTIONS_MAP: Record<string, { question: string; options: string[] }> = {
+  '居酒屋🍺': { question: 'どんな居酒屋？', options: ['海鮮・魚介系🐟', '焼き鳥・串焼き🍡', 'もつ・ホルモン系🔥', '創作料理・おしゃれ系✨', 'なんでもOK'] },
+  '和食🍣': { question: 'どんな和食？', options: ['寿司・海鮮🍣', 'そば・うどん🍜', '天ぷら・揚げ物🍤', '定食・家庭的🍱', 'なんでもOK'] },
+  '洋食🍳': { question: 'どんな洋食？', options: ['ハンバーグ・ステーキ🥩', 'パスタ・ピザ🍝', 'カフェ飯・ランチ🥗', 'ハンバーガー🍔', 'なんでもOK'] },
+  'イタリアン🍝': { question: 'どんなイタリアン？', options: ['本格ピザ🍕', 'パスタ中心🍝', 'トラットリア（家庭的）🏠', 'リストランテ（高級）✨', 'なんでもOK'] },
+  '焼肉🥩': { question: 'どんな焼肉？', options: ['高級和牛🥩', 'コスパ重視💰', 'ホルモン系🔥', '1人焼肉🙋', 'なんでもOK'] },
+  'アジア系統🍛': { question: 'どのアジア料理？', options: ['タイ料理🍛', 'ベトナム料理🍜', 'インド料理🍲', '中東・トルコ料理🌯', 'なんでもOK'] },
+  '各国料理🌍': { question: 'どの国の料理？', options: ['メキシコ・スペイン🌮', 'フレンチ・欧州🥐', 'アフリカ・中東🌍', '珍しい国の料理🗺️', 'なんでもOK'] },
+  'ラーメン🍜': { question: 'どんなラーメン？', options: ['醤油・塩🍜', '豚骨🐖', '味噌🌾', 'つけ麺・まぜそば🍣', 'なんでもOK'] },
+  'カフェ・スイーツ☕': { question: 'どんなスイーツ？', options: ['パンケーキ・ワッフル🥞', 'ケーキ・パティスリー🎂', 'チョコレート系🍫', '和スイーツ・あんこ🍡', 'なんでもOK'] },
+};
+
+const DRIVE_SUBCATEGORIES = [
+  { key: 'ocean_drive', label: '海沿いドライブ', Icon: Waves },
+  { key: 'night_view', label: '夜景・絶景ドライブ', Icon: Sunset },
+  { key: 'road_station', label: '道の駅・ご当地グルメ', Icon: MapPin },
+  { key: 'outlet', label: '郊外アウトレット', Icon: Map },
+];
+
+const FOCUS_SUBCATEGORIES = [
+  { key: 'work_cafe', label: 'カフェで作業', Icon: Coffee },
+  { key: 'coworking', label: 'コワーキングスペース', Icon: Laptop },
+  { key: 'family_restaurant', label: 'ファミレスで粘る', Icon: Utensils },
+  { key: 'netcafe_library', label: '本に囲まれてこもる', Icon: BookOpen },
+];
+
+const SPORTS_SUBCATEGORIES = [
+  { key: 'training', label: 'ガッツリトレーニング', Icon: Dumbbell },
+  { key: 'stress_relief', label: 'ストレス発散', Icon: Zap },
+  { key: 'amusement_sport', label: '遊び感覚でワイワイ', Icon: Smile },
+  { key: 'outdoor_sports', label: '外でスポーツ', Icon: Trees },
+];
+
+const TRAVEL_SUBCATEGORIES = [
+  { key: 'power_spot', label: 'パワースポット', Icon: Landmark },
+  { key: 'theme_park', label: 'テーマパーク', Icon: FerrisWheel },
+  { key: 'town_walk', label: '街をぶらぶら', Icon: Footprints },
+  { key: 'super_view', label: '絶景・大自然', Icon: Mountain },
+];
+
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -323,6 +363,15 @@ export default function QuizFlow(props: Props) {
   const isOnsenMode = selectedMood === 'まったりしたい' && relaxPlace.includes('温泉');
   const isCafeMode = selectedMood === 'まったりしたい' && relaxPlace.includes('カフェ');
   const isWaiWaiMode = selectedMood === 'わいわい楽しみたい';
+  const isHaraMode = selectedMood === 'お腹すいた';
+  const isDriveMode = selectedMood === 'ドライブしたい';
+  const isFocusMode = selectedMood === '集中したい';
+  const isSportsMode = selectedMood === '体を動かしたい';
+  const isTravelMode = selectedMood === '遠くに行きたい';
+
+  const foodGenreAns = dynamicAnswers['food_genre_new'] ?? '';
+  const matchedFoodGenre = Object.keys(FOOD_SUB_QUESTIONS_MAP).find(k => foodGenreAns.includes(k));
+  const foodSubQ = matchedFoodGenre ? FOOD_SUB_QUESTIONS_MAP[matchedFoodGenre] : null;
 
   // ─── Option grid ──────────────────────────────────────────────────────
 
@@ -619,6 +668,126 @@ export default function QuizFlow(props: Props) {
 
     // Step 8: Mood-specific subcategory
     if (step === 8) {
+      if (isHaraMode && foodSubQ) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{foodSubQ.question}</Text>
+            <Text style={s.stepSub}>もう少し絞り込みましょう。</Text>
+            {renderOptions(foodSubQ.options, dynamicAnswers['food_sub_choice'] ?? '', (v) =>
+              onSetDynamicAnswers({ ...dynamicAnswers, food_sub_choice: v })
+            )}
+          </>
+        );
+      }
+
+      if (isDriveMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>どんなドライブ？</Text>
+            <Text style={s.stepSub}>行き先のイメージを選んでください。</Text>
+            <View style={s.grid}>
+              {DRIVE_SUBCATEGORIES.map((cat) => {
+                const active = dynamicAnswers['drive_subcategory'] === cat.key;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, drive_subcategory: cat.key })}
+                    style={[s.catBtn, active && s.catBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={s.catIconWrap}>
+                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
+                    </View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        );
+      }
+
+      if (isFocusMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>どこで集中する？</Text>
+            <Text style={s.stepSub}>作業・勉強の場所を選んでください。</Text>
+            <View style={s.grid}>
+              {FOCUS_SUBCATEGORIES.map((cat) => {
+                const active = dynamicAnswers['focus_subcategory'] === cat.key;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, focus_subcategory: cat.key })}
+                    style={[s.catBtn, active && s.catBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={s.catIconWrap}>
+                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
+                    </View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        );
+      }
+
+      if (isSportsMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>どんな体の動かし方？</Text>
+            <Text style={s.stepSub}>スタイルを選んでください。</Text>
+            <View style={s.grid}>
+              {SPORTS_SUBCATEGORIES.map((cat) => {
+                const active = dynamicAnswers['sports_subcategory'] === cat.key;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, sports_subcategory: cat.key })}
+                    style={[s.catBtn, active && s.catBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={s.catIconWrap}>
+                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
+                    </View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        );
+      }
+
+      if (isTravelMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>どこに行く？</Text>
+            <Text style={s.stepSub}>旅のイメージを選んでください。</Text>
+            <View style={s.grid}>
+              {TRAVEL_SUBCATEGORIES.map((cat) => {
+                const active = dynamicAnswers['travel_subcategory'] === cat.key;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, travel_subcategory: cat.key })}
+                    style={[s.catBtn, active && s.catBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <View style={s.catIconWrap}>
+                      <cat.Icon size={24} color={active ? '#CC6600' : '#4a3034'} strokeWidth={1.8} />
+                    </View>
+                    <Text style={[s.catLabel, active && s.catLabelActive]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        );
+      }
+
       if (isOnsenMode) {
         return (
           <>
