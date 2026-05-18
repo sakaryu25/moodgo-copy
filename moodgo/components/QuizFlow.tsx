@@ -316,6 +316,8 @@ const T = {
     priorTitle: '優先したいのは？', priorSub: 'いちばん大事にしたいポイントを選んでください。',
     foodSubSub: 'もう少し絞り込みましょう。',
     foodDistTitle: '距離感は？', foodDistSub: 'どのくらいの距離のお店が良いですか？',
+    driveVibeTitle: 'ドライブのこだわりは？', driveVibeSub: '気分に合う条件を選んでください。',
+    travelDetailTitle: '旅のプランは？', travelDetailSub: '詳しく教えてください。',
     reviewMood: '気分', reviewArea: 'エリア', reviewWith: '同伴', reviewTransport: '交通',
     reviewBudget: '予算', reviewTime: '時間', reviewAtm: '雰囲気', reviewPriority: '優先', reviewMemo: 'メモ',
     driveDetail: 'ドライブの詳細を教えてください',
@@ -348,6 +350,8 @@ const T = {
     priorTitle: 'What matters most?', priorSub: 'Pick your top priority.',
     foodSubSub: "Let's narrow it down a bit.",
     foodDistTitle: 'How far?', foodDistSub: 'How far are you willing to travel?',
+    driveVibeTitle: 'What\'s your drive vibe?', driveVibeSub: 'Pick what matters most for your drive.',
+    travelDetailTitle: 'Trip details', travelDetailSub: 'Tell us more about your trip.',
     reviewMood: 'Mood', reviewArea: 'Area', reviewWith: 'With', reviewTransport: 'Transport',
     reviewBudget: 'Budget', reviewTime: 'Time', reviewAtm: 'Vibe', reviewPriority: 'Priority', reviewMemo: 'Notes',
     driveDetail: 'Tell us about your drive',
@@ -828,9 +832,44 @@ export default function QuizFlow(props: Props) {
         );
       }
 
-      const moodDqs = dynamicQuestions.filter((dq) =>
-        selectedMood === 'ドライブしたい' ? dq.key !== 'drive_distance' : true
-      );
+      // ドライブしたい: skip time picker, show drive vibe + road questions only
+      if (isDriveMode) {
+        const driveDqs = dynamicQuestions.filter((dq) => dq.key !== 'drive_distance');
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.driveVibeTitle}</Text>
+            <Text style={s.stepSub}>{t.driveVibeSub}</Text>
+            {driveDqs.map((dq, i) => (
+              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
+                <Text style={[s.dynQuestion, i === 0 && { marginBottom: 10 }]}>{dq.question}</Text>
+                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
+                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
+                )}
+              </View>
+            ))}
+          </>
+        );
+      }
+
+      // 遠くに行きたい: dynamicQuestions already include travel_time, skip generic time picker
+      if (isTravelMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.travelDetailTitle}</Text>
+            <Text style={s.stepSub}>{t.travelDetailSub}</Text>
+            {dynamicQuestions.map((dq, i) => (
+              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
+                <Text style={[s.dynQuestion, i === 0 && { marginBottom: 10 }]}>{dq.question}</Text>
+                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
+                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
+                )}
+              </View>
+            ))}
+          </>
+        );
+      }
+
+      const moodDqs = dynamicQuestions.filter((dq) => true);
       const timeOpts = lang === 'en' ? TIME_EN : TIME_OPTIONS;
       return (
         <>
