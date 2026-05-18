@@ -122,12 +122,11 @@ type Props = {
   lang: 'ja' | 'en';
   onStart: () => void;
   onShowSettings: () => void;
-  onToggleLang: () => void;
 };
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-export default function HomeView({ profileAge, lang, onStart, onShowSettings, onToggleLang }: Props) {
+export default function HomeView({ profileAge, lang, onStart, onShowSettings }: Props) {
   const insets = useSafeAreaInsets();
   const [todayMood, setTodayMood]   = useState<number | null>(null);
   const [weekMoods, setWeekMoods]   = useState<Record<string, number>>({});
@@ -209,9 +208,6 @@ export default function HomeView({ profileAge, lang, onStart, onShowSettings, on
           </TouchableOpacity>
         </Animated.View>
         <View style={s.headerRight}>
-          <TouchableOpacity style={s.headerChip} onPress={onToggleLang} activeOpacity={0.8}>
-            <Text style={s.headerChipText}>{lang === 'en' ? 'EN' : 'JP'}</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={s.headerIconBtn} onPress={onShowSettings} activeOpacity={0.7}>
             <Settings size={20} color="#8E8E93" strokeWidth={2} />
           </TouchableOpacity>

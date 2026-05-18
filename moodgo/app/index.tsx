@@ -726,7 +726,6 @@ export default function Home() {
             lang={lang}
             onStart={() => setStarted(true)}
             onShowSettings={() => setShowSettings(true)}
-            onToggleLang={() => setLang(lang === 'ja' ? 'en' : 'ja')}
           />
         );
     }
