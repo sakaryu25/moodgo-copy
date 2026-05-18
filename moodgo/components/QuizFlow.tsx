@@ -316,6 +316,7 @@ const T = {
     priorTitle: '優先したいのは？', priorSub: 'いちばん大事にしたいポイントを選んでください。',
     foodSubSub: 'もう少し絞り込みましょう。',
     foodDistTitle: '距離感は？', foodDistSub: 'どのくらいの距離のお店が良いですか？',
+    cafeDistTitle: 'どのくらいの距離？', cafeDistSub: '現在地からの距離感を選んでください。',
     driveVibeTitle: 'ドライブのこだわりは？', driveVibeSub: '気分に合う条件を選んでください。',
     travelDetailTitle: '旅のプランは？', travelDetailSub: '詳しく教えてください。',
     reviewMood: '気分', reviewArea: 'エリア', reviewWith: '同伴', reviewTransport: '交通',
@@ -350,6 +351,7 @@ const T = {
     priorTitle: 'What matters most?', priorSub: 'Pick your top priority.',
     foodSubSub: "Let's narrow it down a bit.",
     foodDistTitle: 'How far?', foodDistSub: 'How far are you willing to travel?',
+    cafeDistTitle: 'How far?', cafeDistSub: 'Distance from your current location.',
     driveVibeTitle: 'What\'s your drive vibe?', driveVibeSub: 'Pick what matters most for your drive.',
     travelDetailTitle: 'Trip details', travelDetailSub: 'Tell us more about your trip.',
     reviewMood: 'Mood', reviewArea: 'Area', reviewWith: 'With', reviewTransport: 'Transport',
@@ -820,6 +822,40 @@ export default function QuizFlow(props: Props) {
               const idx = distOpts.indexOf(v);
               onSetDynamicAnswers({ ...dynamicAnswers, food_distance: idx >= 0 ? FOOD_DISTANCE_OPTIONS[idx] : v });
             }, 2)}
+            {dynamicQuestions.map((dq) => (
+              <View key={dq.key} style={{ marginTop: 24 }}>
+                <Text style={s.dynQuestion}>{dq.question}</Text>
+                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
+                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
+                )}
+              </View>
+            ))}
+          </>
+        );
+      }
+
+      // カフェモード: show cafe distance instead of time picker
+      if (isCafeMode) {
+        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.cafeDistTitle}</Text>
+            <Text style={s.stepSub}>{t.cafeDistSub}</Text>
+            <View style={s.grid}>
+              {distOpts.map((d, i) => {
+                const jaVal = NATURE_DISTANCES[i];
+                return (
+                  <TouchableOpacity
+                    key={d}
+                    onPress={() => onSetCafeDistancePref(jaVal)}
+                    style={[s.optBtn, { width: '31%' }, cafeDistancePref === jaVal && s.optBtnActive]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[s.optText, cafeDistancePref === jaVal && s.optTextActive]}>{d}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             {dynamicQuestions.map((dq) => (
               <View key={dq.key} style={{ marginTop: 24 }}>
                 <Text style={s.dynQuestion}>{dq.question}</Text>

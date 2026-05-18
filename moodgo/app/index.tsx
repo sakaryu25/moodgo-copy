@@ -95,7 +95,6 @@ export default function Home() {
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileAge, setProfileAge] = useState('');
   const [profileGender, setProfileGender] = useState('');
-  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   // Results

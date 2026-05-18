@@ -5,11 +5,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const AGE_OPTIONS    = ['10代', '20代', '30代', '40代', '50代', '60代以上'];
+const GENDER_OPTIONS = ['男性', '女性', 'その他', '答えたくない'];
 
 type Props = {
   visible: boolean;
@@ -29,10 +31,8 @@ const T = {
     sectionDisplay: '表示',
     language: '言語',
     sectionProfile: 'プロフィール',
-    ageLabel: '年齢',
-    agePlaceholder: '例：20代・25歳',
+    ageLabel: '年代',
     genderLabel: '性別',
-    male: '男性', female: '女性', other: 'その他 / 未設定',
     saveProfile: '保存する',
     sectionData: 'データ',
     clearHistory: '履歴をすべてクリア',
@@ -50,10 +50,8 @@ const T = {
     sectionDisplay: 'Display',
     language: 'Language',
     sectionProfile: 'Profile',
-    ageLabel: 'Age',
-    agePlaceholder: 'e.g. 20s / 25',
+    ageLabel: 'Age group',
     genderLabel: 'Gender',
-    male: 'Male', female: 'Female', other: 'Other / Not set',
     saveProfile: 'Save',
     sectionData: 'Data',
     clearHistory: 'Clear all history',
@@ -66,8 +64,6 @@ const T = {
     versionVal: '1.0.0',
   },
 } as const;
-
-const GENDERS = ['male', 'female', 'other'] as const;
 
 export default function SettingsView({
   visible, onClose, lang, onChangeLang,
@@ -85,12 +81,6 @@ export default function SettingsView({
       setGenderInput(profileGender);
     }
   }, [visible, profileAge, profileGender]);
-
-  const genderLabel = (key: string) => {
-    if (key === 'male') return t.male;
-    if (key === 'female') return t.female;
-    return t.other;
-  };
 
   const handleClearHistory = () => {
     Alert.alert(t.clearConfirmTitle, t.clearConfirmMsg, [
@@ -147,29 +137,31 @@ export default function SettingsView({
           <View style={s.card}>
             <View style={[s.row, s.rowBorder]}>
               <Text style={s.rowLabel}>{t.ageLabel}</Text>
-              <TextInput
-                value={ageInput}
-                onChangeText={setAgeInput}
-                placeholder={t.agePlaceholder}
-                placeholderTextColor="#C7C7CC"
-                style={s.textInput}
-                returnKeyType="done"
-              />
             </View>
-            <View style={s.row}>
-              <Text style={s.rowLabel}>{t.genderLabel}</Text>
-            </View>
-            <View style={s.genderRow}>
-              {GENDERS.map((g) => (
+            <View style={s.optionGrid}>
+              {AGE_OPTIONS.map((opt) => (
                 <TouchableOpacity
-                  key={g}
-                  onPress={() => setGenderInput(g)}
-                  style={[s.genderChip, genderInput === g && s.genderChipActive]}
+                  key={opt}
+                  onPress={() => setAgeInput(opt)}
+                  style={[s.optionChip, ageInput === opt && s.optionChipActive]}
                   activeOpacity={0.7}
                 >
-                  <Text style={[s.genderChipText, genderInput === g && s.genderChipTextActive]}>
-                    {genderLabel(g)}
-                  </Text>
+                  <Text style={[s.optionChipText, ageInput === opt && s.optionChipTextActive]}>{opt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={[s.row, s.rowBorder, { marginTop: 4 }]}>
+              <Text style={s.rowLabel}>{t.genderLabel}</Text>
+            </View>
+            <View style={s.optionGrid}>
+              {GENDER_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => setGenderInput(opt)}
+                  style={[s.optionChip, genderInput === opt && s.optionChipActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.optionChipText, genderInput === opt && s.optionChipTextActive]}>{opt}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -234,9 +226,16 @@ const s = StyleSheet.create({
   rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
   rowLabel: { fontSize: 16, color: '#000', fontWeight: '400' },
   rowValue: { fontSize: 16, color: '#8E8E93' },
-  textInput: {
-    fontSize: 16, color: '#000', textAlign: 'right', flex: 1, paddingLeft: 12,
+
+  // Option grid (age / gender)
+  optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12 },
+  optionChip: {
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: '#F2F2F7', borderWidth: 1, borderColor: '#E5E5EA',
   },
+  optionChipActive: { backgroundColor: '#FF6B3515', borderColor: '#FF6B35' },
+  optionChipText: { fontSize: 14, fontWeight: '500', color: '#3C3C43' },
+  optionChipTextActive: { color: '#FF6B35', fontWeight: '600' },
 
   // Language segmented control
   segmented: {
@@ -248,16 +247,6 @@ const s = StyleSheet.create({
   segmentActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
   segmentText: { fontSize: 14, fontWeight: '500', color: '#8E8E93' },
   segmentTextActive: { color: '#000', fontWeight: '600' },
-
-  // Gender
-  genderRow: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 12, gap: 8 },
-  genderChip: {
-    flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5EA',
-    alignItems: 'center', backgroundColor: '#F2F2F7',
-  },
-  genderChipActive: { backgroundColor: '#FF6B3515', borderColor: '#FF6B35' },
-  genderChipText: { fontSize: 13, fontWeight: '500', color: '#3C3C43' },
-  genderChipTextActive: { color: '#FF6B35', fontWeight: '600' },
 
   saveBtn: {
     marginTop: 10, backgroundColor: '#FF6B35', borderRadius: 10, paddingVertical: 13,
