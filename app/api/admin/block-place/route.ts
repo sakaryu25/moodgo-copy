@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 // /api/admin/block-place
 // 管理者が全ユーザー対象にスポットを非表示にする・解除する
 

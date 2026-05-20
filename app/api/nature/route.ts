@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import type { NatureSubGenre, NatureRequest, NatureApiResponse } from "@/types/nature";
 import type { PlaceResponse } from "@/types/onsen";

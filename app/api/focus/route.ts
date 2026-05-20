@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import type { FocusSubCategory, FocusRequest, FocusApiResponse } from "@/types/focus";
 import type { PlaceResponse } from "@/types/onsen";

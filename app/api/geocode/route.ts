@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 /**
  * エリア名 → 緯度経度変換
  * GET /api/geocode?area=渋谷駅

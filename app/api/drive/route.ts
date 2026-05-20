@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import type { DriveSubCategory, DriveRequest, DriveApiResponse } from "@/types/drive";
 import type { PlaceResponse } from "@/types/onsen";

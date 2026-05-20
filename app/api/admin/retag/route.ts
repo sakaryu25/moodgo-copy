@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 /**
  * 管理者専用: 既存の承認済みスポットを定義済みタグで一括再タグ付け
  *

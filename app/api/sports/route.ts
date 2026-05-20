@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import type { SportsSubCategory, SportsRequest, SportsApiResponse } from "@/types/sports";
 import type { PlaceResponse } from "@/types/onsen";

@@ -1,3 +1,4 @@
+export const runtime = "nodejs";
 /**
  * ホットペッパーグルメAPI連携 — ルールベース方式
  *
