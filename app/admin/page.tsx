@@ -907,6 +907,9 @@ export default function AdminPage() {
   const [spSearchLoading, setSpSearchLoading] = useState(false);
   const [spSearchResults, setSpSearchResults] = useState<Array<{ id: string; name: string; address: string; tags: string[]; is_active: boolean; google_place_id: string | null }> | null>(null);
   const [spSearchError, setSpSearchError]     = useState("");
+  const [spDeleteConfirm, setSpDeleteConfirm] = useState<string | null>(null); // 削除確認中のスポットID
+  const [spDeleting, setSpDeleting]           = useState<Set<string>>(new Set()); // 削除処理中のID集合
+  const [spTagRemoving, setSpTagRemoving]     = useState<Set<string>>(new Set()); // タグ削除処理中 "spotId::tag"
 
   const handleSpSearch = async () => {
     if (!spSearchKeyword.trim()) return;
@@ -924,27 +927,78 @@ export default function AdminPage() {
     setSpSearchLoading(false);
   };
 
+  const handleSpTagRemove = async (spotId: string, tagToRemove: string) => {
+    const key = `${spotId}::${tagToRemove}`;
+    setSpTagRemoving(prev => new Set(prev).add(key));
+    // 現在の結果から対象スポットの新タグ配列を計算
+    const spot = spSearchResults?.find(p => p.id === spotId);
+    if (!spot) { setSpTagRemoving(prev => { const n = new Set(prev); n.delete(key); return n; }); return; }
+    const newTags = spot.tags.filter(t => t !== tagToRemove);
+    try {
+      const res = await fetch("/api/admin/update-place-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, id: spotId, tags: newTags }),
+      });
+      const data = await res.json();
+      if (!data.ok) { alert("タグ削除失敗: " + (data.error ?? "不明なエラー")); }
+      else {
+        // 検索結果を即時更新
+        setSpSearchResults(prev => prev
+          ? prev.map(p => p.id === spotId ? { ...p, tags: data.tags } : p)
+          : prev
+        );
+      }
+    } catch (e) { alert("タグ削除失敗: " + String(e)); }
+    setSpTagRemoving(prev => { const n = new Set(prev); n.delete(key); return n; });
+  };
+
+  const handleSpDelete = async (id: string) => {
+    setSpDeleting(prev => new Set(prev).add(id));
+    setSpDeleteConfirm(null);
+    try {
+      const res = await fetch("/api/admin/delete-place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, id }),
+      });
+      const data = await res.json();
+      if (!data.ok) { alert("削除失敗: " + (data.error ?? "不明なエラー")); }
+      else {
+        // 検索結果から即時除外
+        setSpSearchResults(prev => prev ? prev.filter(p => p.id !== id) : prev);
+      }
+    } catch (e) { alert("削除失敗: " + String(e)); }
+    setSpDeleting(prev => { const next = new Set(prev); next.delete(id); return next; });
+  };
+
   // ─── 有名スポット一括手動登録 ────────────────────────────────────────────────
   const [manualText, setManualText]           = useState("");
+  const [manualFixedTagsInput, setManualFixedTagsInput] = useState(""); // 例: "#夜景 #絶景スポット"
   const [manualDryRun, setManualDryRun]       = useState(true);
   const [manualLoading, setManualLoading]     = useState(false);
   const [manualError, setManualError]         = useState("");
-  const [manualResults, setManualResults]     = useState<Array<{ name: string; status: string; address?: string; tags?: string[]; error?: string }> | null>(null);
-  const [manualSummary, setManualSummary]     = useState<{ inserted: number; skipped: number; notFound: number } | null>(null);
+  const [manualResults, setManualResults]     = useState<Array<{ name: string; status: string; address?: string; tags?: string[]; addedTags?: string[]; error?: string }> | null>(null);
+  const [manualSummary, setManualSummary]     = useState<{ inserted: number; skipped: number; tagUpdated: number; notFound: number } | null>(null);
 
   const handleManualRegister = async () => {
     const names = manualText.split("\n").map(s => s.trim()).filter(Boolean);
     if (names.length === 0) { setManualError("場所名を入力してください"); return; }
+    // 固定タグをスペース・読点・カンマで分割し、#で始まるもののみ採用
+    const fixedTags = manualFixedTagsInput
+      .split(/[\s,、]+/)
+      .map(t => t.trim())
+      .filter(t => t.startsWith("#") && t.length > 1);
     setManualError(""); setManualResults(null); setManualSummary(null); setManualLoading(true);
     try {
       const res = await fetch("/api/admin/manual-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, names, dryRun: manualDryRun }),
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, names, dryRun: manualDryRun, fixedTags }),
       });
       const data = await res.json();
       if (!data.ok) { setManualError(data.error ?? "エラー"); }
-      else { setManualResults(data.results); setManualSummary({ inserted: data.inserted, skipped: data.skipped, notFound: data.notFound }); }
+      else { setManualResults(data.results); setManualSummary({ inserted: data.inserted, skipped: data.skipped, tagUpdated: data.tagUpdated ?? 0, notFound: data.notFound }); }
     } catch (e) { setManualError(String(e)); }
     setManualLoading(false);
   };
@@ -3899,19 +3953,54 @@ export default function AdminPage() {
                   {spSearchResults.length > 0 && (
                     <div style={{ display: "grid", gap: "6px", maxHeight: "400px", overflowY: "auto" }}>
                       {spSearchResults.map(p => (
-                        <div key={p.id} style={{ padding: "8px 12px", borderRadius: "8px", background: "#f0fdff", border: "1px solid #a5f3fc" }}>
+                        <div key={p.id} style={{ padding: "8px 12px", borderRadius: "8px", background: "#f0fdff", border: "1px solid #a5f3fc", position: "relative" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                            <span style={{ fontWeight: 800, fontSize: "13px", color: "#164e63" }}>{p.name}</span>
-                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: p.is_active ? "#d1fae5" : "#fee2e2", color: p.is_active ? "#065f46" : "#991b1b" }}>
+                            <span style={{ fontWeight: 800, fontSize: "13px", color: "#164e63", flex: 1 }}>{p.name}</span>
+                            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: p.is_active ? "#d1fae5" : "#fee2e2", color: p.is_active ? "#065f46" : "#991b1b", flexShrink: 0 }}>
                               {p.is_active ? "公開中" : "非公開"}
                             </span>
-                            {p.google_place_id && <span style={{ fontSize: "10px", color: "#6b7280" }}>Google</span>}
+                            {p.google_place_id && <span style={{ fontSize: "10px", color: "#6b7280", flexShrink: 0 }}>Google</span>}
+                            {/* 削除ボタン */}
+                            {spDeleteConfirm === p.id ? (
+                              <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+                                <button
+                                  onClick={() => handleSpDelete(p.id)}
+                                  disabled={spDeleting.has(p.id)}
+                                  style={{ ...btnBase, padding: "3px 10px", fontSize: "11px", fontWeight: 800, background: "#dc2626", color: "#fff", border: "none", borderRadius: "6px" }}>
+                                  {spDeleting.has(p.id) ? "削除中…" : "削除する"}
+                                </button>
+                                <button
+                                  onClick={() => setSpDeleteConfirm(null)}
+                                  style={{ ...btnBase, padding: "3px 8px", fontSize: "11px", fontWeight: 700, background: "#e5e7eb", color: "#374151", border: "none", borderRadius: "6px" }}>
+                                  キャンセル
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setSpDeleteConfirm(p.id)}
+                                style={{ ...btnBase, padding: "3px 8px", fontSize: "13px", background: "transparent", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: "6px", flexShrink: 0 }}
+                                title="このスポットを削除">
+                                🗑
+                              </button>
+                            )}
                           </div>
                           {p.address && <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>📍 {p.address}</div>}
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
-                            {(p.tags ?? []).map(tag => (
-                              <span key={tag} style={{ fontSize: "10px", padding: "1px 7px", borderRadius: "999px", background: "#cffafe", color: "#0e7490", fontWeight: 700 }}>{tag}</span>
-                            ))}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "2px" }}>
+                            {(p.tags ?? []).map(tag => {
+                              const removing = spTagRemoving.has(`${p.id}::${tag}`);
+                              return (
+                                <span key={tag} style={{ display: "inline-flex", alignItems: "center", gap: "2px", fontSize: "10px", padding: "2px 6px 2px 8px", borderRadius: "999px", background: removing ? "#e5e7eb" : "#cffafe", color: removing ? "#9ca3af" : "#0e7490", fontWeight: 700, opacity: removing ? 0.6 : 1, transition: "all 0.15s" }}>
+                                  {tag}
+                                  <button
+                                    onClick={() => handleSpTagRemove(p.id, tag)}
+                                    disabled={removing}
+                                    style={{ background: "none", border: "none", cursor: removing ? "default" : "pointer", padding: "0 1px", fontSize: "10px", lineHeight: 1, color: removing ? "#9ca3af" : "#0e7490", fontWeight: 900, display: "flex", alignItems: "center" }}
+                                    title={`#${tag} を削除`}>
+                                    ×
+                                  </button>
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       ))}
@@ -4932,6 +5021,44 @@ export default function AdminPage() {
                 style={{ width: "100%", minHeight: "180px", borderRadius: "12px", border: "1.5px solid #c4b5fd", padding: "12px 14px", fontSize: "13px", fontFamily: font, outline: "none", resize: "vertical", background: "#faf5ff", boxSizing: "border-box", lineHeight: 1.7 }}
               />
 
+              {/* ── 固定タグ入力 ── */}
+              <div style={{ marginTop: "14px", padding: "14px 16px", borderRadius: "12px", background: "#fefce8", border: "1.5px solid #fde68a" }}>
+                <div style={{ fontWeight: 800, fontSize: "13px", color: "#92400e", marginBottom: "6px" }}>
+                  📌 全件に固定する#タグ（自分で指定）
+                </div>
+                <div style={{ fontSize: "12px", color: "#78350f", marginBottom: "10px", lineHeight: 1.6 }}>
+                  ここに入力した#タグは<strong>全スポットに必ず付与</strong>されます。AIが生成したタグに追加してマージします。<br />
+                  スペース区切りで複数指定可。例：<code style={{ background: "#fef3c7", padding: "1px 5px", borderRadius: "4px" }}>#夜景 #絶景スポット #ドライブしたい</code>
+                </div>
+                <input
+                  type="text"
+                  value={manualFixedTagsInput}
+                  onChange={e => setManualFixedTagsInput(e.target.value)}
+                  placeholder="#夜景 #絶景スポット（空欄ならAIに全任せ）"
+                  style={{ width: "100%", borderRadius: "10px", border: "1.5px solid #fcd34d", padding: "10px 14px", fontSize: "13px", fontFamily: font, outline: "none", background: "#fffbeb", boxSizing: "border-box" }}
+                />
+                {/* 入力されたタグのプレビュー */}
+                {manualFixedTagsInput.trim() && (() => {
+                  const preview = manualFixedTagsInput.split(/[\s,、]+/).map(t => t.trim()).filter(t => t.startsWith("#") && t.length > 1);
+                  const invalid = manualFixedTagsInput.split(/[\s,、]+/).map(t => t.trim()).filter(t => t && !t.startsWith("#"));
+                  return (
+                    <div style={{ marginTop: "8px" }}>
+                      {preview.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: invalid.length > 0 ? "6px" : 0 }}>
+                          {preview.map(tag => (
+                            <span key={tag} style={{ background: "#d97706", color: "#fff", borderRadius: "999px", padding: "2px 10px", fontSize: "11px", fontWeight: 800 }}>{tag}</span>
+                          ))}
+                          <span style={{ fontSize: "11px", color: "#92400e", alignSelf: "center", marginLeft: "4px" }}>← 全{preview.length}件のスポットに付与されます</span>
+                        </div>
+                      )}
+                      {invalid.length > 0 && (
+                        <div style={{ fontSize: "11px", color: "#dc2626" }}>⚠ #始まりでない語は無視されます: {invalid.join(", ")}</div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "14px 0", padding: "10px 14px", background: manualDryRun ? "#fefce8" : "#f5f3ff", borderRadius: "10px", border: `1px solid ${manualDryRun ? "#fde68a" : "#ddd6fe"}` }}>
                 <button onClick={() => setManualDryRun(!manualDryRun)}
                   style={{ ...btnBase, padding: "6px 16px", fontSize: "13px", fontWeight: 800, background: manualDryRun ? "#d97706" : "#7c3aed", color: "#fff", border: "none" }}>
@@ -4960,25 +5087,38 @@ export default function AdminPage() {
                   <div style={{ fontWeight: 900, fontSize: "14px", color: manualDryRun ? "#92400e" : "#7c3aed", marginBottom: "10px" }}>
                     {manualDryRun ? "📋 確認結果" : "✅ 登録完了"}
                   </div>
-                  <div style={{ display: "flex", gap: "20px", fontSize: "13px", fontWeight: 700, marginBottom: "12px" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", fontSize: "13px", fontWeight: 700, marginBottom: "12px" }}>
                     <span style={{ color: "#059669" }}>✅ 登録: {manualSummary.inserted}件</span>
+                    {manualSummary.tagUpdated > 0 && <span style={{ color: "#2563eb" }}>🏷 タグ追記: {manualSummary.tagUpdated}件</span>}
                     <span style={{ color: "#d97706" }}>⏭ スキップ: {manualSummary.skipped}件</span>
                     <span style={{ color: "#6b7280" }}>❓ 未発見: {manualSummary.notFound}件</span>
                   </div>
                   {manualResults && manualResults.length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "300px", overflowY: "auto" }}>
                       {manualResults.map((r, i) => (
-                        <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start", padding: "6px 10px", borderRadius: "8px", background: r.status === "inserted" ? "#ecfdf5" : r.status === "skipped" ? "#fffbeb" : r.status === "error" ? "#fef2f2" : "#f9fafb", border: `1px solid ${r.status === "inserted" ? "#6ee7b7" : r.status === "skipped" ? "#fde68a" : r.status === "error" ? "#fca5a5" : "#e5e7eb"}` }}>
+                        <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start", padding: "6px 10px", borderRadius: "8px",
+                          background: r.status === "inserted" ? "#ecfdf5" : r.status === "tag_updated" ? "#eff6ff" : r.status === "skipped" ? "#fffbeb" : r.status === "error" ? "#fef2f2" : "#f9fafb",
+                          border: `1px solid ${r.status === "inserted" ? "#6ee7b7" : r.status === "tag_updated" ? "#93c5fd" : r.status === "skipped" ? "#fde68a" : r.status === "error" ? "#fca5a5" : "#e5e7eb"}` }}>
                           <span style={{ fontSize: "14px", flexShrink: 0 }}>
-                            {r.status === "inserted" ? "✅" : r.status === "skipped" ? "⏭" : r.status === "not_found" ? "❓" : "❌"}
+                            {r.status === "inserted" ? "✅" : r.status === "tag_updated" ? "🏷" : r.status === "skipped" ? "⏭" : r.status === "not_found" ? "❓" : "❌"}
                           </span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 700, fontSize: "12px", color: "#1f2937" }}>{r.name}</div>
                             {r.address && <div style={{ fontSize: "11px", color: "#6b7280" }}>📍 {r.address}</div>}
-                            {r.tags && r.tags.length > 0 && (
+                            {/* tag_updated: 追記したタグを強調表示 */}
+                            {r.status === "tag_updated" && r.addedTags && r.addedTags.length > 0 && (
+                              <div style={{ fontSize: "11px", color: "#1d4ed8", marginTop: "2px", fontWeight: 700 }}>
+                                追加した#: {r.addedTags.join(" ")}
+                              </div>
+                            )}
+                            {r.tags && r.tags.length > 0 && r.status !== "skipped" && (
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "3px" }}>
                                 {r.tags.map(tag => (
-                                  <span key={tag} style={{ background: "#ede9fe", color: "#7c3aed", borderRadius: "999px", padding: "1px 7px", fontSize: "10px", fontWeight: 700 }}>{tag}</span>
+                                  <span key={tag} style={{
+                                    background: r.addedTags?.includes(tag) ? "#2563eb" : "#ede9fe",
+                                    color: r.addedTags?.includes(tag) ? "#fff" : "#7c3aed",
+                                    borderRadius: "999px", padding: "1px 7px", fontSize: "10px", fontWeight: 700
+                                  }}>{tag}</span>
                                 ))}
                               </div>
                             )}

@@ -57,50 +57,78 @@ export async function POST(req: NextRequest) {
 
   const names: string[] = Array.isArray(body.names) ? body.names.filter((n: string) => n.trim()) : [];
   const dryRun: boolean = body.dryRun === true;
+  // 管理者が手動で指定した固定タグ（全スポットに強制付与）
+  const fixedTags: string[] = Array.isArray(body.fixedTags)
+    ? body.fixedTags.map((t: string) => t.trim()).filter((t: string) => t.startsWith("#") && t.length > 1)
+    : [];
 
   if (names.length === 0) return NextResponse.json({ ok: false, error: "names が必要です" }, { status: 400 });
 
   // 既存スポットを全件取得（Supabase 1000件上限をページネーションで回避）
-  const existingNames = new Set<string>();
-  const existingIds   = new Set<string>();
+  // tags も取得して、固定タグ不足の場合に上書きできるようにする
+  type ExistingPlace = { id: string; name: string; google_place_id: string | null; tags: string[] | null };
+  const existingByPlaceId = new Map<string, ExistingPlace>();
+  const existingByName    = new Map<string, ExistingPlace>();
   const batchSize = 1000;
   let from = 0;
   while (true) {
     const { data, error } = await supabase
       .from("places")
-      .select("name, google_place_id")
+      .select("id, name, google_place_id, tags")
       .range(from, from + batchSize - 1);
     if (error || !data || data.length === 0) break;
     for (const p of data) {
-      existingNames.add((p.name as string).toLowerCase().trim());
-      if (p.google_place_id) existingIds.add(p.google_place_id as string);
+      const ep: ExistingPlace = { id: p.id as string, name: p.name as string, google_place_id: p.google_place_id as string | null, tags: p.tags as string[] | null };
+      existingByName.set(ep.name.toLowerCase().trim(), ep);
+      if (ep.google_place_id) existingByPlaceId.set(ep.google_place_id, ep);
     }
     if (data.length < batchSize) break;
     from += batchSize;
   }
 
-  const results: Array<{ name: string; status: "inserted" | "skipped" | "not_found" | "error"; address?: string; tags?: string[]; error?: string }> = [];
-  let inserted = 0, skipped = 0, notFound = 0;
+  const results: Array<{ name: string; status: "inserted" | "skipped" | "tag_updated" | "not_found" | "error"; address?: string; tags?: string[]; addedTags?: string[]; error?: string }> = [];
+  let inserted = 0, skipped = 0, tagUpdated = 0, notFound = 0;
 
   for (const query of names) {
     try {
       const place = await searchPlace(query);
       if (!place) { results.push({ name: query, status: "not_found" }); notFound++; continue; }
 
-      if (existingIds.has(place.place_id) || existingNames.has(place.name.toLowerCase().trim())) {
-        results.push({ name: place.name, status: "skipped", address: place.formatted_address });
+      const existing = existingByPlaceId.get(place.place_id) ?? existingByName.get(place.name.toLowerCase().trim());
+      if (existing) {
+        // 既存スポット: 固定タグが指定されていて、かつ不足しているタグがあれば上書き追記
+        if (fixedTags.length > 0) {
+          const currentTags: string[] = existing.tags ?? [];
+          const currentSet = new Set(currentTags);
+          const missingTags = fixedTags.filter(t => !currentSet.has(t));
+          if (missingTags.length > 0) {
+            const updatedTags = [...missingTags, ...currentTags]; // 固定タグを先頭に追加
+            if (!dryRun) {
+              await supabase.from("places").update({ tags: updatedTags }).eq("id", existing.id);
+            }
+            results.push({ name: existing.name, status: "tag_updated", address: place.formatted_address, tags: updatedTags, addedTags: missingTags });
+            tagUpdated++;
+            continue;
+          }
+        }
+        results.push({ name: existing.name, status: "skipped", address: place.formatted_address });
         skipped++;
         continue;
       }
 
-      const tags = await generateTags(place.name, place.formatted_address ?? "");
-      const finalTags = addUrbanTagIfNeeded(tags, place.geometry?.location.lat ?? 0, place.geometry?.location.lng ?? 0);
+      const aiTags = await generateTags(place.name, place.formatted_address ?? "");
+      const withUrban = addUrbanTagIfNeeded(aiTags, place.geometry?.location.lat ?? 0, place.geometry?.location.lng ?? 0);
+      // 固定タグを先頭に入れ、AIタグで重複するものは除外してマージ
+      const fixedSet = new Set(fixedTags);
+      const finalTags = fixedTags.length > 0
+        ? [...fixedTags, ...withUrban.filter(t => !fixedSet.has(t))]
+        : withUrban;
 
       results.push({ name: place.name, status: "inserted", address: place.formatted_address, tags: finalTags });
 
       // dryRun問わずバッチ内重複を防ぐためにセットを更新
-      existingIds.add(place.place_id);
-      existingNames.add(place.name.toLowerCase().trim());
+      existingByPlaceId.set(place.place_id, { id: "", name: place.name, google_place_id: place.place_id, tags: finalTags });
+      existingByName.set(place.name.toLowerCase().trim(), { id: "", name: place.name, google_place_id: place.place_id, tags: finalTags });
 
       if (!dryRun) {
         await supabase.from("places").insert({
@@ -121,5 +149,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, dryRun, inserted, skipped, notFound, results });
+  return NextResponse.json({ ok: true, dryRun, inserted, skipped, tagUpdated, notFound, results });
 }

@@ -4963,12 +4963,27 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── 管理者追加スポットを直接注入（気分タグが合致するもの、最大3件） ──────────
-    // auto_tags に対応する気分タグが含まれているスポットのみ注入する
+    // ── 管理者追加スポットを直接注入（気分タグ＋サブカテゴリタグが合致するもの、最大3件） ──────────
+    // ① 大カテゴリ（#ドライブしたい 等）が一致すること
+    // ② ユーザーのサブカテゴリに対応するタグ（#夜景 #絶景スポット 等）が
+    //    スポットの auto_tags に1つ以上含まれること
+    //    ※ サブカテゴリタグが1件もない場合は大カテゴリ一致のみで表示（後方互換）
     const matchingAdminSpots = adminSpots.filter((s) => {
-      const tags = s.auto_tags ?? [];
+      const spotTags = new Set(s.auto_tags ?? []);
+
+      // ① 大カテゴリチェック
       if (!moodTagForCurrentMood) return false;
-      return tags.includes(moodTagForCurrentMood);
+      if (!spotTags.has(moodTagForCurrentMood)) return false;
+
+      // ② サブカテゴリタグチェック
+      // userTags.mustTags から大カテゴリタグを除いた残り = サブ絞り込みタグ
+      const subTags = userTags.mustTags.filter(t => t !== moodTagForCurrentMood);
+      if (subTags.length === 0) {
+        // サブタグ未指定（大カテゴリのみ選択）→ 大カテゴリ一致だけで表示
+        return true;
+      }
+      // サブタグが1つでも一致していれば表示
+      return subTags.some(t => spotTags.has(t));
     }).slice(0, 3);
 
     for (const s of matchingAdminSpots) {

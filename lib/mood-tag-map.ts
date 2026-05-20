@@ -119,7 +119,7 @@ export function getDriveTags(subCategory: DriveSubCategory | null): SubcategoryT
     case "ocean_drive":
       return { tags: ["#海辺"],          fallback: fallbackBase, label: "🌊 海沿いドライブ",           radiusKm: 80 };
     case "night_view":
-      return { tags: ["#絶景スポット"],  fallback: fallbackBase, label: "🌉 夜景・絶景ドライブ",       radiusKm: 80 };
+      return { tags: ["#絶景スポット", "#お散歩"],  fallback: fallbackBase, label: "🌉 夜景・絶景ドライブ",       radiusKm: 80 };
     case "road_station":
       return { tags: ["#ご当地グルメ"],  fallback: fallbackBase, label: "🏪 道の駅・ご当地グルメ",     radiusKm: 100 };
     case "outlet":
