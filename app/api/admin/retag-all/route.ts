@@ -8,6 +8,7 @@ const supabaseAdmin = createClient(
 );
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const ADMIN_PASSWORD = "moodgoadmin123";

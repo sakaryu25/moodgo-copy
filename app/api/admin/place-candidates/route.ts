@@ -23,6 +23,7 @@ const DEFAULT_LAT = 35.3328;
 const DEFAULT_LNG = 139.6236;
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export interface PlaceCandidate {
   placeId: string;

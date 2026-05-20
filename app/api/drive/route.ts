@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import type { DriveSubCategory, DriveRequest, DriveApiResponse } from "@/types/drive";
 import type { PlaceResponse } from "@/types/onsen";

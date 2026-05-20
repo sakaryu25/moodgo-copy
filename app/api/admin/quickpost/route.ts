@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";

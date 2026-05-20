@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import type { WaiWaiSubCategory, WaiWaiRequest, WaiWaiApiResponse } from "@/types/waiwai";
 import type { PlaceResponse } from "@/types/onsen";

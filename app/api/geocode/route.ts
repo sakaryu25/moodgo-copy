@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 /**
  * エリア名 → 緯度経度変換
  * GET /api/geocode?area=渋谷駅

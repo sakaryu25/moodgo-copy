@@ -7,6 +7,7 @@ const ADMIN_SECRET  = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 async function searchPlace(query: string) {
   const params = new URLSearchParams({ query, language: "ja", key: GOOGLE_API_KEY });

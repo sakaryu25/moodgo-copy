@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function isSubFacility(address: string): boolean {
   // 商業・エンタメ系の大型施設に限定して「〇〇内」を検出

@@ -16,6 +16,7 @@ import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5分まで許容
 
 // ── 都道府県ごとの主要都市リスト [名前, lat, lng, 半径km] ──────────────────────

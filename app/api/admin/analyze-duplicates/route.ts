@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type Place = { id: string; name: string; address: string; tags: string[] | null; google_place_id: string | null };
 

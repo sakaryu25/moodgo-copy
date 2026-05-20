@@ -21,6 +21,7 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // ── 宿泊施設除外 ──────────────────────────────────────────────────────────────
 const LODGING_KEYWORDS = ["旅館", "ホテル", "ペンション", "民宿", "ゲストハウス", "ホステル", "宿", "hotel", "inn", "resort", "lodge"];

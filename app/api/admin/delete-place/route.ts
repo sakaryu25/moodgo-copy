@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });

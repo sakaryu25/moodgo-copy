@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 // /api/admin/block-place
 // 管理者が全ユーザー対象にスポットを非表示にする・解除する
 

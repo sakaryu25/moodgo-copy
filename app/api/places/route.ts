@@ -22,6 +22,7 @@ import { searchPlacesByTags } from "@/lib/supabase-places";
 import { calcRadiusKm } from "@/lib/calc-radius";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {

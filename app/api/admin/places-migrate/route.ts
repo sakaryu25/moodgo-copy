@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 const ADMIN_PASSWORD = "moodgoadmin123";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 interface SuggestionRow {
   id: string;

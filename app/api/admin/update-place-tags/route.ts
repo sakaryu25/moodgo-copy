@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /** POST — スポットのタグ配列を上書き保存 */
 export async function POST(req: NextRequest) {
