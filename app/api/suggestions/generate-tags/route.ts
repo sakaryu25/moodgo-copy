@@ -8,7 +8,7 @@ import {
   TAG_CATEGORIES,
 } from "@/lib/predefined-tags";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 // Google place types → 推奨タグのヒント（ルールベース補助用）
 const PLACE_TYPE_HINT_TAGS: Record<string, string[]> = {

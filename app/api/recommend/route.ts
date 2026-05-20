@@ -153,7 +153,7 @@ type ScoredItem = {
   isPinned?: boolean;    // AI がピンポイント指定した場所の先頭結果（必ず表示）
 };
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 function json(data: unknown, init?: ResponseInit) {
   return NextResponse.json(data, init);
