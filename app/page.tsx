@@ -132,12 +132,14 @@ function proxyPhoto(url?: string): string {
   if (!url) return "";
   // すでにプロキシ済み or 内部パス はそのまま
   if (url.startsWith("/") || url.includes("/api/photo-proxy")) return url;
-  // Google Places の写真 URL はプロキシ経由で返す
+  // Google 系の写真 URL はすべてプロキシ経由で返す
   if (
     url.includes("places.googleapis.com") ||
+    url.includes("maps.googleapis.com") ||
     url.includes("lh3.googleusercontent.com") ||
     url.includes("maps.gstatic.com") ||
-    url.includes("streetviewpixels-pa.googleapis.com")
+    url.includes("streetviewpixels-pa.googleapis.com") ||
+    url.includes("googleapis.com")
   ) {
     return `/api/photo-proxy?url=${encodeURIComponent(url)}`;
   }

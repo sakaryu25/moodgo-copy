@@ -10,9 +10,11 @@ function proxyPhoto(url?: string): string {
   if (url.startsWith("/") || url.includes("/api/photo-proxy")) return url;
   if (
     url.includes("places.googleapis.com") ||
+    url.includes("maps.googleapis.com") ||
     url.includes("lh3.googleusercontent.com") ||
     url.includes("maps.gstatic.com") ||
-    url.includes("streetviewpixels-pa.googleapis.com")
+    url.includes("streetviewpixels-pa.googleapis.com") ||
+    url.includes("googleapis.com")
   ) {
     return `/api/photo-proxy?url=${encodeURIComponent(url)}`;
   }
