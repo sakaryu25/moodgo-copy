@@ -929,14 +929,16 @@ export default function AdminPage() {
   const [spTagAddInputs, setSpTagAddInputs]   = useState<Record<string, string>>({}); // spotId → 入力中テキスト
   const [spTagAdding, setSpTagAdding]         = useState<Set<string>>(new Set()); // タグ追加処理中 "spotId::tag"
 
-  const handleSpSearch = async () => {
-    if (!spSearchKeyword.trim()) return;
+  const handleSpSearch = async (overrideKeyword?: string) => {
+    const kw = (overrideKeyword ?? spSearchKeyword).trim();
+    if (!kw) return;
+    if (overrideKeyword) setSpSearchKeyword(overrideKeyword);
     setSpSearchLoading(true); setSpSearchError(""); setSpSearchResults(null);
     try {
       const res = await fetch("/api/admin/search-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: spSearchKeyword }),
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: kw }),
       });
       const data = await res.json();
       if (!data.ok) setSpSearchError(data.error ?? "エラーが発生しました");
@@ -4001,7 +4003,12 @@ export default function AdminPage() {
                       {spSearchResults.map(p => (
                         <div key={p.id} style={{ padding: "8px 12px", borderRadius: "8px", background: "#f0fdff", border: "1px solid #a5f3fc", position: "relative" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                            <span style={{ fontWeight: 800, fontSize: "13px", color: "#164e63", flex: 1 }}>{p.name}</span>
+                            <button
+                              onClick={() => handleSpSearch(p.name)}
+                              style={{ background: "none", border: "none", padding: 0, fontWeight: 800, fontSize: "13px", color: "#0891b2", flex: 1, textAlign: "left", cursor: "pointer", textDecoration: "underline dotted", fontFamily: "inherit" }}
+                              title="この名前で再検索">
+                              {p.name}
+                            </button>
                             <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: p.is_active ? "#d1fae5" : "#fee2e2", color: p.is_active ? "#065f46" : "#991b1b", flexShrink: 0 }}>
                               {p.is_active ? "公開中" : "非公開"}
                             </span>
