@@ -1,10 +1,8 @@
 // ── 集中したい カテゴリの型定義 ─────────────────────────────────────────────────
 
 export type FocusSubCategory =
-  | "work_cafe"         // ☕ カフェでコーヒーを飲みながら作業したい
-  | "coworking"         // 🖥️ 雑音のない専用スペースで黙々とやりたい
-  | "family_restaurant" // 🍳 時間を気にせず深夜まで粘りたい
-  | "netcafe_library";  // 📚 漫画や本に囲まれて完全にこもりたい
+  | "work_cafe"       // ☕ カフェ・ファミレスで作業・勉強したい（深夜OK）
+  | "coworking";      // 🖥️ 静かな専用スペース・ネカフェ・図書館でこもりたい
 
 export interface FocusRequest {
   subCategory:  FocusSubCategory;

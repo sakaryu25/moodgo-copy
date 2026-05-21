@@ -33,49 +33,20 @@ interface CategoryConfig {
 }
 
 const CATEGORY_CONFIG: Record<OnsenCategory, CategoryConfig> = {
-  // ① 天然温泉・日帰り温泉
-  natural_onsen: {
-    label: "天然温泉・日帰り温泉",
+  // ① 温泉全般（天然温泉・銭湯・スーパー銭湯すべて含む）
+  all_onsen: {
+    label: "温泉全般",
     keywordSearches: [
-      { keyword: "天然温泉", nameRe: /天然温泉|鉱泉|源泉|の湯|湯処|湯屋|温浴|温泉/i },
-      { keyword: "日帰り温泉", nameRe: /日帰り温泉|天然温泉|温泉|の湯|湯/i },
-      { keyword: "温泉",      nameRe: /天然温泉|日帰り温泉|温泉|鉱泉|源泉|の湯|湯処|湯屋|温浴/i },
+      { keyword: "温泉",         nameRe: /温泉|銭湯|サウナ|岩盤浴|浴場|SPA|RAKU|湯|ゆ|健康ランド/i },
+      { keyword: "銭湯",         nameRe: /銭湯|浴場|温泉|の湯|湯$|COCOFURO/i },
+      { keyword: "スーパー銭湯", nameRe: /スーパー銭湯|健康ランド|SPA|RAKU|おふろ|温泉|湯/i },
+      { keyword: "天然温泉",     nameRe: /天然温泉|鉱泉|源泉|の湯|湯処|湯屋|温浴|温泉/i },
+      { keyword: "日帰り温泉",   nameRe: /日帰り温泉|天然温泉|温泉|の湯|湯/i },
+      { keyword: "健康ランド",   nameRe: /健康ランド|スーパー銭湯|SPA|温泉|サウナ|湯/i },
     ],
   },
 
-  // ② 銭湯
-  //   「○○湯」「COCOFUROますの湯」など名前に「銭湯」が入らない施設が多い
-  //   → Yahoo + Google 両方で検索し、nameRe を広めに設定
-  sento: {
-    label: "銭湯",
-    keywordSearches: [
-      // 「銭湯」「公衆浴場」→ 名前に銭湯/浴場を含む施設
-      { keyword: "銭湯",    nameRe: /銭湯|浴場/i },
-      { keyword: "公衆浴場", nameRe: /銭湯|浴場/i },
-      // 「銭湯 温浴」→ 「○○湯」「○○の湯」「恵びす温泉」系も拾う
-      { keyword: "銭湯 温浴", nameRe: /銭湯|浴場|の湯|湯$|温泉|COCOFURO/i },
-    ],
-    googleQueries: ["銭湯", "公衆浴場"],   // Google で補完
-    // Google 検索では「小松湯」「富士見湯」など名前が "湯" で終わる銭湯を広く拾う
-    googleNameRe: /銭湯|浴場|の湯|湯$|温泉|COCOFURO|スーパー銭湯/i,
-  },
-
-  // ③ スーパー銭湯・健康ランド
-  super_sento: {
-    label: "スーパー銭湯・健康ランド",
-    keywordSearches: [
-      { keyword: "スーパー銭湯", nameRe: /スーパー銭湯|健康ランド|SPA|RAKU|おふろ|ユーランド|テルマ|万葉|極楽湯|湯楽|湯快|竜泉|温泉|サウナ|銭湯|湯/i },
-      { keyword: "健康ランド",   nameRe: /健康ランド|スーパー銭湯|SPA|温泉|サウナ|湯|スパ/i },
-      { keyword: "RAKU SPA",     nameRe: /RAKU|SPA|スパ|温泉|銭湯|サウナ|健康|湯/i },
-      { keyword: "ラクスパ",     nameRe: /RAKU|SPA|ラクスパ|スパ|温泉|銭湯|サウナ|湯/i },
-    ],
-  },
-
-  // ④ サウナ・岩盤浴
-  //   Yahoo 単体では弱いため Google Places 直接検索も併用
-  //   「サウナ 銭湯」→ 銭湯系サウナ19件（ノイズなし）
-  //   「サウナ スパ」→ スカイスパYOKOHAMAなどスパ系
-  //   「岩盤浴」     → 岩盤浴専門施設
+  // ② サウナ・岩盤浴（本格的サウナ・岩盤浴）
   sauna_ganban: {
     label: "サウナ・岩盤浴",
     keywordSearches: [
@@ -84,20 +55,7 @@ const CATEGORY_CONFIG: Record<OnsenCategory, CategoryConfig> = {
       { keyword: "岩盤浴",      nameRe: /岩盤浴|サウナ|温泉|スパ|SPA|健康|湯/i },
       { keyword: "サウナ",      nameRe: /サウナ|sauna/i },
     ],
-    googleQueries: ["サウナ", "岩盤浴"],  // Google も直接検索
-  },
-
-  // ⑤ 温泉施設全般
-  all_onsen: {
-    label: "温泉施設全般",
-    keywordSearches: [
-      { keyword: "温泉",       nameRe: /温泉|銭湯|サウナ|岩盤浴|浴場|SPA|RAKU|湯|ゆ|健康ランド/i },
-      { keyword: "銭湯",       nameRe: /銭湯|浴場|温泉|湯/i },
-      { keyword: "スーパー銭湯", nameRe: /スーパー銭湯|健康ランド|SPA|RAKU|おふろ|温泉|湯/i },
-      { keyword: "サウナ 銭湯", nameRe: /サウナ|銭湯|浴場|温泉|湯|スパ|SPA/i },
-      { keyword: "岩盤浴",      nameRe: /岩盤浴|サウナ|温泉|スパ|SPA|湯/i },
-      { keyword: "健康ランド",   nameRe: /健康ランド|スーパー銭湯|SPA|温泉|サウナ|湯/i },
-    ],
+    googleQueries: ["サウナ", "岩盤浴"],
   },
 };
 
@@ -124,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     if (!category || !CATEGORY_CONFIG[category]) {
       return NextResponse.json(
-        { error: "category は natural_onsen / sento / super_sento / sauna_ganban / all_onsen のいずれかを指定してください" },
+        { error: "category は all_onsen / sauna_ganban のいずれかを指定してください" },
         { status: 400 }
       );
     }
@@ -230,11 +188,8 @@ function buildDescription(opts: {
   if (c.includes("友達") || c.includes("友人"))     return "友達と一緒にリフレッシュしよう。";
 
   const msgs: Record<OnsenCategory, string> = {
-    natural_onsen: "天然温泉でしっかり疲れを癒せますよ。",
-    sento:         "地元の銭湯でさっぱりリフレッシュしよう。",
-    super_sento:   "スーパー銭湯でのんびり過ごすのが最高です。",
-    sauna_ganban:  "サウナ・岩盤浴でデトックス、気分すっきり。",
-    all_onsen:     "近くの温浴施設でゆったりリラックスしよう。",
+    all_onsen:    "近くの温浴施設でゆったりリラックスしよう。",
+    sauna_ganban: "サウナ・岩盤浴でデトックス、気分すっきり。",
   };
 
   const key = (Object.keys(CATEGORY_CONFIG) as OnsenCategory[])

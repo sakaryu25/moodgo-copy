@@ -68,62 +68,65 @@ interface YahooConfig {
 
 type SubCategoryConfig = GoogleConfig | YahooConfig;
 
-const FOCUS_CONFIG: Record<FocusSubCategory, SubCategoryConfig> = {
+const FOCUS_CONFIG: Record<string, SubCategoryConfig> = {
   work_cafe: {
     api:            "google",
-    label:          "☕ カフェ作業",
-    description:    "Wi-Fi・電源完備で集中して作業が捗るカフェ！",
+    label:          "☕ カフェ・ファミレス作業",
+    description:    "Wi-Fi・電源完備で集中して作業が捗るカフェやファミレス！",
     strictQueries:  [
       "{area} カフェ Wi-Fi 電源 作業 落ち着く",
       "{area} ワークカフェ Wi-Fi 電源あり",
+      "{area} ファミリーレストラン 24時間営業 ドリンクバー",
     ],
     relaxedQueries: [
       "{area} 落ち着くカフェ 作業",
       "{area} カフェ 長居OK",
       "{area} コーヒーショップ 作業",
+      "{area} ファミレス 長居",
     ],
     initialMinRating: 3.8,
   },
   coworking: {
     api:            "google",
-    label:          "🖥️ コワーキング・自習室",
-    description:    "静かな空間で集中できる専用スペース！",
+    label:          "🖥️ コワーキング・ネカフェ・図書館",
+    description:    "静かな空間でとにかくこもれる場所！",
     strictQueries:  [
       "{area} コワーキングスペース ドロップイン",
       "{area} 自習室 コワーキング",
+      "{area} インターネットカフェ 個室 漫画喫茶",
     ],
     relaxedQueries: [
       "{area} コワーキング",
       "{area} 自習室",
-      "{area} シェアオフィス",
+      "{area} ネットカフェ マンガ喫茶",
+      "{area} 図書館 自習スペース",
     ],
     // 施設数が少ないため initialMinRating は設定しない
   },
+  // 後方互換: 旧カテゴリキーが来た場合は work_cafe / coworking にフォールバック
   family_restaurant: {
-    api:                   "yahoo",
-    label:                 "🍳 ファミレス・深夜作業",
-    description:           "24時間営業で時間を気にせず粘れるお店！",
-    yahooGcCodes:          ["0108", "0106"],   // 洋食レストラン / ファーストフード系
-    yahooStrictKeyword:    "ファミリーレストラン 24時間",
-    yahooRelaxedKeyword:   "ファミリーレストラン 深夜営業",
-    yahooInitialDistKm:    5,
-    googleFallbackQueries: [
-      "{area} ファミリーレストラン 24時間営業",
-      "{area} ドリンクバー 深夜 勉強",
+    api:            "google",
+    label:          "☕ カフェ・ファミレス作業",
+    description:    "Wi-Fi・電源完備で集中して作業が捗るカフェやファミレス！",
+    strictQueries:  [
+      "{area} ファミリーレストラン 24時間営業 ドリンクバー",
+      "{area} カフェ Wi-Fi 電源 作業",
+    ],
+    relaxedQueries: [
       "{area} ファミレス 長居",
+      "{area} ドリンクバー 深夜 勉強",
     ],
   },
   netcafe_library: {
-    api:                   "yahoo",
-    label:                 "📚 ネットカフェ・図書館",
-    description:           "漫画や本に囲まれて完全にこもれる場所！",
-    yahooGcCodes:          ["0422", "0704"],   // インターネットカフェ / 図書館
-    yahooStrictKeyword:    "インターネットカフェ 漫画喫茶",
-    yahooRelaxedKeyword:   "ネットカフェ",
-    yahooInitialDistKm:    5,
-    googleFallbackQueries: [
-      "{area} インターネットカフェ 個室",
-      "{area} マンガ喫茶 ドリンクバー",
+    api:            "google",
+    label:          "🖥️ コワーキング・ネカフェ・図書館",
+    description:    "静かな空間でとにかくこもれる場所！",
+    strictQueries:  [
+      "{area} インターネットカフェ 個室 漫画喫茶",
+      "{area} コワーキングスペース 自習室",
+    ],
+    relaxedQueries: [
+      "{area} ネットカフェ マンガ喫茶",
       "{area} 図書館 自習スペース",
     ],
   },

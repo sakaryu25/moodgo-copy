@@ -1,11 +1,8 @@
 // ── 温泉SPA機能の型定義 ─────────────────────────────────────────────────────
 
 export type OnsenCategory =
-  | "natural_onsen"   // 天然温泉・日帰り温泉
-  | "sento"           // 銭湯
-  | "super_sento"     // スーパー銭湯・健康ランド
-  | "sauna_ganban"    // サウナ・岩盤浴
-  | "all_onsen";      // 温泉施設全般（おまかせ）
+  | "all_onsen"       // 温泉全般（天然温泉・銭湯・スーパー銭湯含む）
+  | "sauna_ganban";   // サウナ・岩盤浴（本格的サウナ・岩盤浴）
 
 // ── クライアントへ返すデータ構造（グルメ画面と同じプロパティ名）──────────────
 export interface PlaceResponse {

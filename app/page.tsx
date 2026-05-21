@@ -4478,7 +4478,6 @@ export default function Home() {
                 { key: "active",      emoji: "💪", label: "体を動かしてはしゃぎたい", sub: "ボウリング・トランポリン・スポッチャ" },
                 { key: "party",       emoji: "🎤", label: "歌って飲んで騒ぎたい",     sub: "カラオケ・ダーツ・ビリヤード" },
                 { key: "experience",  emoji: "🎲", label: "非日常の体験で盛り上がりたい", sub: "ボードゲームカフェ・脱出ゲーム" },
-                { key: "food_drink",  emoji: "🍻", label: "美味しいご飯とお酒でワイワイ", sub: "居酒屋・焼肉・食べ放題・飲み放題" },
               ];
               return (
                 <>
@@ -4607,10 +4606,8 @@ export default function Home() {
             {/* Step 8: 集中したい → サブカテゴリ選択 */}
             {step === 8 && selectedMood === "集中したい" && (() => {
               const FOCUS_CATS: { key: FocusSubCategory; emoji: string; label: string; sub: string }[] = [
-                { key: "work_cafe",         emoji: "☕", label: "カフェで作業・勉強したい",         sub: "Wi-Fi・電源完備・落ち着いた雰囲気" },
-                { key: "coworking",         emoji: "🖥️", label: "静かな専用スペースで集中したい",   sub: "コワーキング・自習室・ドロップイン" },
-                { key: "family_restaurant", emoji: "🍳", label: "時間を気にせず深夜まで粘りたい",   sub: "ファミレス・ドリンクバー・24時間営業" },
-                { key: "netcafe_library",   emoji: "📚", label: "漫画・本に囲まれて完全にこもりたい", sub: "ネットカフェ・マンガ喫茶・図書館" },
+                { key: "work_cafe",  emoji: "☕", label: "カフェ・ファミレスで作業・勉強したい", sub: "Wi-Fi・電源完備・ドリンクバー・深夜営業" },
+                { key: "coworking", emoji: "🖥️", label: "静かな場所でとにかくこもりたい",        sub: "コワーキング・ネカフェ・マンガ喫茶・図書館" },
               ];
               return (
                 <>
@@ -4985,11 +4982,8 @@ export default function Home() {
             {/* Step 9: 温泉・スパ カテゴリ選択 */}
             {step === 9 && selectedMood === "まったりしたい" && (dynamicAnswers["relax_place"] ?? "").includes("温泉") && (() => {
               const ONSEN_CATS: { key: OnsenCategory; emoji: string; label: string; sub: string }[] = [
-                { key: "natural_onsen",  emoji: "♨️",  label: "天然温泉・日帰り温泉", sub: "源泉かけ流し・日帰り入浴" },
-                { key: "sento",          emoji: "🛁",  label: "銭湯",               sub: "昔ながらの公衆浴場" },
-                { key: "super_sento",    emoji: "🏊",  label: "スーパー銭湯・健康ランド", sub: "岩盤浴・休憩・食事も" },
-                { key: "sauna_ganban",   emoji: "🔥",  label: "サウナ・岩盤浴",       sub: "ととのい・デトックス" },
-                { key: "all_onsen",      emoji: "🌊",  label: "温泉施設全般",          sub: "とにかく近くの温浴施設を探す" },
+                { key: "all_onsen",    emoji: "♨️",  label: "温泉全般",           sub: "天然温泉・銭湯・スーパー銭湯・日帰り入浴" },
+                { key: "sauna_ganban", emoji: "🔥",  label: "サウナ・岩盤浴",     sub: "本格的サウナ・岩盤浴でととのう" },
               ];
               return (
                 <>
