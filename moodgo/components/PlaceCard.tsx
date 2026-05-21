@@ -78,7 +78,11 @@ export default function PlaceCard({
       {/* Photo */}
       <View style={s.photoWrap}>
         {photos.length > 0 ? (
-          <Image source={{ uri: photos[photoIdx] }} style={s.photo} contentFit="cover" />
+          <Image
+            source={{ uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/photo-proxy?url=${encodeURIComponent(photos[photoIdx])}` }}
+            style={s.photo}
+            contentFit="cover"
+          />
         ) : (
           <View style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color="#C7C7CC" strokeWidth={1.5} />
