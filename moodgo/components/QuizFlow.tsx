@@ -213,7 +213,7 @@ const NATURE_SUBGENRES = [
   { key: 'sea' as NatureSubGenre, label: '波の音と海風', Icon: Waves },
   { key: 'forest' as NatureSubGenre, label: '森の中で深呼吸', Icon: TreePine },
   { key: 'park' as NatureSubGenre, label: '広い芝生でゴロゴロ', Icon: Sun },
-  { key: 'panorama' as NatureSubGenre, label: '圧倒的なパノラマ', Icon: Mountain },
+  { key: 'panorama' as NatureSubGenre, label: '圧倒的な絶景', Icon: Mountain },
 ];
 
 const NATURE_DISTANCES: NatureDistancePref[] = ['近場', 'ほどほど', '遠く'];
@@ -239,10 +239,10 @@ const CAFE_SUBCATEGORIES = [
 ];
 
 const WAIWAI_SUBCATEGORIES = [
-  { key: 'active' as WaiWaiSubCategory, label: '体を動かしてはしゃぎたい', Icon: Dumbbell },
+  { key: 'active' as WaiWaiSubCategory, label: '体を動かして遊びたい', Icon: Dumbbell },
   { key: 'party' as WaiWaiSubCategory, label: '歌って飲んで騒ぎたい', Icon: Mic },
   { key: 'experience' as WaiWaiSubCategory, label: '非日常の体験で盛り上がりたい', Icon: Sparkles },
-  { key: 'food_drink' as WaiWaiSubCategory, label: 'ご飯とお酒でワイワイ', Icon: UtensilsCrossed },
+  { key: 'food_drink' as WaiWaiSubCategory, label: '美味しいご飯とお酒でわいわい', Icon: UtensilsCrossed },
 ];
 
 const FOOD_SUB_QUESTIONS_MAP: Record<string, { question: string; options: string[] }> = {
@@ -258,31 +258,31 @@ const FOOD_SUB_QUESTIONS_MAP: Record<string, { question: string; options: string
 };
 
 const DRIVE_SUBCATEGORIES = [
-  { key: 'ocean_drive', label: '海沿いドライブ', Icon: Waves },
-  { key: 'night_view', label: '夜景・絶景ドライブ', Icon: Sunset },
-  { key: 'road_station', label: '道の駅・ご当地グルメ', Icon: MapPin },
-  { key: 'outlet', label: '郊外アウトレット', Icon: Map },
+  { key: 'ocean_drive', label: '海沿いを爽快に走りたい', Icon: Waves },
+  { key: 'night_view', label: '綺麗な景色や夜景を見に行きたい', Icon: Sunset },
+  { key: 'road_station', label: '道の駅やSAでご当地グルメ', Icon: MapPin },
+  { key: 'outlet', label: '郊外の大型施設に行きたい', Icon: Map },
 ];
 
 const FOCUS_SUBCATEGORIES = [
-  { key: 'work_cafe', label: 'カフェで作業', Icon: Coffee },
-  { key: 'coworking', label: 'コワーキングスペース', Icon: Laptop },
-  { key: 'family_restaurant', label: 'ファミレスで粘る', Icon: Utensils },
-  { key: 'netcafe_library', label: '本に囲まれてこもる', Icon: BookOpen },
+  { key: 'work_cafe', label: 'カフェで作業・勉強したい', Icon: Coffee },
+  { key: 'coworking', label: '静かな専用スペースで集中したい', Icon: Laptop },
+  { key: 'family_restaurant', label: '時間を気にせず深夜まで粘りたい', Icon: Utensils },
+  { key: 'netcafe_library', label: '漫画・本に囲まれて完全にこもりたい', Icon: BookOpen },
 ];
 
 const SPORTS_SUBCATEGORIES = [
-  { key: 'training', label: 'ガッツリトレーニング', Icon: Dumbbell },
-  { key: 'stress_relief', label: 'ストレス発散', Icon: Zap },
-  { key: 'amusement_sport', label: '遊び感覚でワイワイ', Icon: Smile },
-  { key: 'outdoor_sports', label: '外でスポーツ', Icon: Trees },
+  { key: 'training', label: 'がっつり汗を流してトレーニング', Icon: Dumbbell },
+  { key: 'stress_relief', label: '打って投げてストレス発散', Icon: Zap },
+  { key: 'amusement_sport', label: '遊び感覚でわいわい', Icon: Smile },
+  { key: 'outdoor_sports', label: '外で風を感じながらスポーツ', Icon: Trees },
 ];
 
 const TRAVEL_SUBCATEGORIES = [
   { key: 'power_spot', label: 'パワースポット', Icon: Landmark },
-  { key: 'theme_park', label: 'テーマパーク', Icon: FerrisWheel },
-  { key: 'town_walk', label: '街をぶらぶら', Icon: Footprints },
-  { key: 'super_view', label: '絶景・大自然', Icon: Mountain },
+  { key: 'theme_park', label: '別世界のテーマパーク', Icon: FerrisWheel },
+  { key: 'town_walk', label: '知らない街をぶらぶら', Icon: Footprints },
+  { key: 'super_view', label: '息を呑む絶景', Icon: Mountain },
 ];
 
 const SCENERY_SUBCATEGORIES = [
@@ -622,7 +622,7 @@ export default function QuizFlow(props: Props) {
       isNatureMode ||
       (isCafeMode && (cafeSubCategory === 'animal' || cafeSubCategory === 'view'));
     if (!showsDetail) onSetStep(10);
-  }, [step, selectedMood, cafeSubCategory]);
+  }, [step, selectedMood, cafeSubCategory, relaxPlace]);
 
   const foodGenreAns = dynamicAnswers['food_genre_new'] ?? '';
   const matchedFoodGenre = Object.keys(FOOD_SUB_QUESTIONS_MAP).find(k => foodGenreAns.includes(k));
@@ -1509,7 +1509,7 @@ export default function QuizFlow(props: Props) {
       return null;
     }
 
-    // Step 9: Mood-specific detail OR priority
+    // Step 9: Mood-specific detail
     if (step === 9) {
       if (isNatureMode) {
         const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
