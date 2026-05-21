@@ -114,31 +114,11 @@ const MOOD_QUESTIONS: Record<string, DynamicQuestion[]> = {
     { key: 'relax_place', question: 'どこで癒やされたい？', options: ['自然の中🌿', 'カフェ☕', '温泉・スパ♨️', '絶景スポット🌅'] },
   ],
   'わいわい楽しみたい': [],
-  'ドライブしたい': [
-    { key: 'drive_distance', question: 'どのくらい遠出したい？', options: ['30分（サクッと）', '1時間（ほどよく）', '2時間（ガッツリ）', '3時間〜（旅）'] },
-    { key: 'drive_vibe', question: '雰囲気は？', options: ['絶景🌅', '休憩☕', '遊べる🎡', '穴場🗺️'] },
-    { key: 'drive_road', question: '走りたい道は？', options: ['海沿い🌊', '山⛰️', '都会🌃'] },
-  ],
-  '自然感じたい': [
-    { key: 'nature_view', question: 'どの自然の景色を見たい？', options: ['海・川・湖🌊', '山・森🌲'] },
-    { key: 'nature_how', question: '自然の中でどのように過ごしたい？', options: ['景色を眺める👀', 'カフェでまったり☕', '自然の中を散歩🚶'] },
-    { key: 'nature_scale', question: 'どのくらいの規模の自然？', options: ['近場の公園🌳', '整備された綺麗な公園🌸', '広大な自然や絶景🏔'] },
-  ],
-  '集中したい': [
-    { key: 'focus_task', question: '何をする？', options: ['勉強・受験📖', 'PC作業・リモートワーク💻', '読書📚', '創作・趣味✏️'] },
-    { key: 'focus_needs', question: '必須の設備は？', options: ['wifi・電源🔌', '静かな机🪑', '飲み物☕'] },
-    { key: 'focus_noise', question: '雑音の許容度は？', options: ['無音に近い方が良い🔇', '適度なざわつき🔉', '多少賑やかでも大丈夫🔊', 'BGM程なら🎵'] },
-  ],
-  '体を動かしたい': [
-    { key: 'sports_intensity', question: '運動の強度は？', options: ['ガッツリ汗をかきたい💪', 'ほどよく動きたい🏃', '軽く散歩程度🚶', '外に出るだけでOK🌞'] },
-    { key: 'sports_type', question: 'どんな運動？', options: ['スポーツ・競技🏀', 'ランニング・ウォーキング🏃', 'アウトドア・ハイキング🏔', '水泳・プール🏊'] },
-    { key: 'sports_place', question: '場所は？', options: ['室内施設・ジム🏋️', '広い公園・グラウンド⚽', '山・自然の中🌲', '海・川・湖🌊'] },
-  ],
-  '遠くに行きたい': [
-    { key: 'travel_time', question: 'どのくらい時間がある？', options: ['午前中のみ⏰', '夕方まで🌆', '日跨ぐ前まで🌙', '日越してもOK🌟'] },
-    { key: 'travel_place', question: '行きたい場所のイメージは？', options: ['自然・山・海🌊', '観光地・名所⛩️', '温泉・リゾート♨️', '都市・異文化🌆'] },
-    { key: 'travel_goal', question: '旅の目的は？', options: ['非日常を味わいたい✨', '絶景を見たい🌅', '楽しみたい🎉', 'ゆっくり過ごしたい😴'] },
-  ],
+  'ドライブしたい': [],
+  '自然感じたい': [],
+  '集中したい': [],
+  '体を動かしたい': [],
+  '遠くに行きたい': [],
   '時間潰したい': [],
 };
 
@@ -202,18 +182,18 @@ const ATMOSPHERE_OPTIONS = ['静か', '賑やか', 'アクティブ', 'スリル
 const PRIORITY_OPTIONS = ['コスパ', '映え', '距離', '快適さ', '楽しさ', '質の高さ'];
 
 const ONSEN_CATEGORIES = [
-  { key: 'natural_onsen' as OnsenCategory, label: '天然温泉・日帰り温泉', Icon: Waves },
-  { key: 'sento' as OnsenCategory, label: '銭湯', Icon: Droplets },
-  { key: 'super_sento' as OnsenCategory, label: 'スーパー銭湯・健康ランド', Icon: Activity },
-  { key: 'sauna_ganban' as OnsenCategory, label: 'サウナ・岩盤浴', Icon: Thermometer },
-  { key: 'all_onsen' as OnsenCategory, label: '温泉施設全般（おまかせ）', Icon: Sparkles },
+  { key: 'natural_onsen' as OnsenCategory, label: '天然温泉・日帰り温泉', sub: '源泉かけ流し・日帰り入浴', emoji: '♨️' },
+  { key: 'sento' as OnsenCategory, label: '銭湯', sub: '昔ながらの公衆浴場', emoji: '🛁' },
+  { key: 'super_sento' as OnsenCategory, label: 'スーパー銭湯・健康ランド', sub: '岩盤浴・休憩・食事も', emoji: '🏊' },
+  { key: 'sauna_ganban' as OnsenCategory, label: 'サウナ・岩盤浴', sub: 'ととのい・デトックス', emoji: '🔥' },
+  { key: 'all_onsen' as OnsenCategory, label: '温泉施設全般', sub: 'とにかく近くの温浴施設を探す', emoji: '🌊' },
 ];
 
 const NATURE_SUBGENRES = [
-  { key: 'sea' as NatureSubGenre, label: '波の音と海風', Icon: Waves },
-  { key: 'forest' as NatureSubGenre, label: '森の中で深呼吸', Icon: TreePine },
-  { key: 'park' as NatureSubGenre, label: '広い芝生でゴロゴロ', Icon: Sun },
-  { key: 'panorama' as NatureSubGenre, label: '圧倒的な絶景', Icon: Mountain },
+  { key: 'sea' as NatureSubGenre, label: '波の音と海風', sub: '海岸・海浜公園・ビーチ', emoji: '🌊' },
+  { key: 'forest' as NatureSubGenre, label: '森の中で深呼吸', sub: '森林浴・自然公園・散策路', emoji: '🌳' },
+  { key: 'park' as NatureSubGenre, label: '広い芝生でゴロゴロ', sub: '大型公園・芝生広場・ピクニック', emoji: '🧺' },
+  { key: 'panorama' as NatureSubGenre, label: '圧倒的な絶景', sub: '展望台・絶景スポット・高台', emoji: '⛰️' },
 ];
 
 const NATURE_DISTANCES: NatureDistancePref[] = ['近場', 'ほどほど', '遠く'];
@@ -232,17 +212,23 @@ const FOOD_DISTANCE_EN = [
 ];
 
 const CAFE_SUBCATEGORIES = [
-  { key: 'book_relax' as CafeSubCategory, label: 'ブックカフェ・隠れ家', Icon: BookOpen },
-  { key: 'animal' as CafeSubCategory, label: 'アニマルカフェ', Icon: PawPrint },
-  { key: 'view' as CafeSubCategory, label: '景色が良いカフェ', Icon: Sun },
-  { key: 'sweets' as CafeSubCategory, label: '絶品スイーツカフェ', Icon: Sparkles },
+  { key: 'book_relax' as CafeSubCategory, label: 'ブックカフェ・隠れ家カフェ', sub: '静かに読書・非日常空間でのんびり', emoji: '📚' },
+  { key: 'animal' as CafeSubCategory, label: 'アニマルカフェ', sub: '猫・ふくろう・うさぎと癒し時間', emoji: '🐱' },
+  { key: 'view' as CafeSubCategory, label: '景色が良いカフェ', sub: 'テラス席・絶景・自然の中のカフェ', emoji: '🌅' },
+  { key: 'sweets' as CafeSubCategory, label: '絶品スイーツカフェ', sub: 'パンケーキ・ケーキ・アフタヌーンティー', emoji: '🍰' },
+];
+
+const CAFE_DISTANCE_OPTIONS = [
+  { key: '近場' as CafeDistancePref, label: '近場', sub: '〜5km圏内', emoji: '🚶' },
+  { key: 'ほどほど' as CafeDistancePref, label: 'ほどほど', sub: '3〜15km', emoji: '🚃' },
+  { key: '遠く' as CafeDistancePref, label: '遠く', sub: '10〜40km', emoji: '🚗' },
 ];
 
 const WAIWAI_SUBCATEGORIES = [
-  { key: 'active' as WaiWaiSubCategory, label: '体を動かして遊びたい', Icon: Dumbbell },
-  { key: 'party' as WaiWaiSubCategory, label: '歌って飲んで騒ぎたい', Icon: Mic },
-  { key: 'experience' as WaiWaiSubCategory, label: '非日常の体験で盛り上がりたい', Icon: Sparkles },
-  { key: 'food_drink' as WaiWaiSubCategory, label: '美味しいご飯とお酒でわいわい', Icon: UtensilsCrossed },
+  { key: 'active' as WaiWaiSubCategory, label: '体を動かして遊びたい', sub: 'ボウリング・トランポリン・スポッチャ', emoji: '💪' },
+  { key: 'party' as WaiWaiSubCategory, label: '歌って飲んで騒ぎたい', sub: 'カラオケ・ダーツ・ビリヤード', emoji: '🎤' },
+  { key: 'experience' as WaiWaiSubCategory, label: '非日常の体験で盛り上がりたい', sub: 'ボードゲームカフェ・脱出ゲーム', emoji: '🎲' },
+  { key: 'food_drink' as WaiWaiSubCategory, label: '美味しいご飯とお酒でわいわい', sub: '居酒屋・焼肉・食べ放題・飲み放題', emoji: '🍻' },
 ];
 
 const FOOD_SUB_QUESTIONS_MAP: Record<string, { question: string; options: string[] }> = {
@@ -258,31 +244,31 @@ const FOOD_SUB_QUESTIONS_MAP: Record<string, { question: string; options: string
 };
 
 const DRIVE_SUBCATEGORIES = [
-  { key: 'ocean_drive', label: '海沿いを爽快に走りたい', Icon: Waves },
-  { key: 'night_view', label: '綺麗な景色や夜景を見に行きたい', Icon: Sunset },
-  { key: 'road_station', label: '道の駅やSAでご当地グルメ', Icon: MapPin },
-  { key: 'outlet', label: '郊外の大型施設に行きたい', Icon: Map },
+  { key: 'ocean_drive', label: '海沿いを爽快に走りたい', sub: '海岸線・絶景ドライブ・オーシャンビュー', emoji: '🌊' },
+  { key: 'night_view', label: '綺麗な景色や夜景を見に行きたい', sub: '展望台・夜景スポット・パノラマビュー', emoji: '🌉' },
+  { key: 'road_station', label: '道の駅やSAでご当地グルメ', sub: '道の駅・サービスエリア・ご当地名物', emoji: '🏪' },
+  { key: 'outlet', label: '郊外の大型施設に行きたい', sub: 'アウトレットモール・大型ショッピングモール', emoji: '🛍️' },
 ];
 
 const FOCUS_SUBCATEGORIES = [
-  { key: 'work_cafe', label: 'カフェで作業・勉強したい', Icon: Coffee },
-  { key: 'coworking', label: '静かな専用スペースで集中したい', Icon: Laptop },
-  { key: 'family_restaurant', label: '時間を気にせず深夜まで粘りたい', Icon: Utensils },
-  { key: 'netcafe_library', label: '漫画・本に囲まれて完全にこもりたい', Icon: BookOpen },
+  { key: 'work_cafe', label: 'カフェで作業・勉強したい', sub: 'Wi-Fi・電源完備・落ち着いた雰囲気', emoji: '☕' },
+  { key: 'coworking', label: '静かな専用スペースで集中したい', sub: 'コワーキング・自習室・ドロップイン', emoji: '🖥️' },
+  { key: 'family_restaurant', label: '時間を気にせず深夜まで粘りたい', sub: 'ファミレス・ドリンクバー・24時間営業', emoji: '🍳' },
+  { key: 'netcafe_library', label: '漫画・本に囲まれて完全にこもりたい', sub: 'ネットカフェ・マンガ喫茶・図書館', emoji: '📚' },
 ];
 
 const SPORTS_SUBCATEGORIES = [
-  { key: 'training', label: 'がっつり汗を流してトレーニング', Icon: Dumbbell },
-  { key: 'stress_relief', label: '打って投げてストレス発散', Icon: Zap },
-  { key: 'amusement_sport', label: '遊び感覚でわいわい', Icon: Smile },
-  { key: 'outdoor_sports', label: '外で風を感じながらスポーツ', Icon: Trees },
+  { key: 'training', label: 'がっつり汗を流してトレーニング', sub: 'スポーツジム・市民プール・体育館', emoji: '💪' },
+  { key: 'stress_relief', label: '打って投げてストレス発散', sub: 'バッティングセンター・ゴルフ練習場', emoji: '🏏' },
+  { key: 'amusement_sport', label: '遊び感覚でわいわい', sub: 'スポッチャ・トランポリン・屋内アスレチック', emoji: '🎯' },
+  { key: 'outdoor_sports', label: '外で風を感じながらスポーツ', sub: '公園・コート・運動広場', emoji: '🌳' },
 ];
 
 const TRAVEL_SUBCATEGORIES = [
-  { key: 'power_spot', label: 'パワースポット', Icon: Landmark },
-  { key: 'theme_park', label: '別世界のテーマパーク', Icon: FerrisWheel },
-  { key: 'town_walk', label: '知らない街をぶらぶら', Icon: Footprints },
-  { key: 'super_view', label: '息を呑む絶景', Icon: Mountain },
+  { key: 'power_spot', label: 'パワースポット', sub: '有名な神社・寺院・霊場・歴史的名所', emoji: '⛩️' },
+  { key: 'theme_park', label: '別世界のテーマパーク', sub: '遊園地・テーマパーク・水族館', emoji: '🎡' },
+  { key: 'town_walk', label: '知らない街をぶらぶら', sub: '古い町並み・食べ歩き・レトロ商店街', emoji: '🚶' },
+  { key: 'super_view', label: '息を呑む絶景', sub: '絶景スポット・景勝地・国定公園', emoji: '🌄' },
 ];
 
 const SCENERY_SUBCATEGORIES = [
@@ -605,24 +591,16 @@ export default function QuizFlow(props: Props) {
   useEffect(() => {
     if (step !== 6) return;
     const hasContent =
-      isDriveMode ? false :
-      (isHaraMode && dynamicQuestions.some(q => q.key === 'food_genre_new')) ? true :
-      (selectedMood === 'まったりしたい' && dynamicQuestions.some(q => q.key === 'relax_place')) ? true :
-      (isTravelMode && dynamicQuestions.filter(q => q.key !== 'travel_time').length > 0) ? true :
-      (isFocusMode && dynamicQuestions.length > 0) ? true :
-      (isSportsMode && dynamicQuestions.length > 0) ? true :
-      (isNatureMode && dynamicQuestions.length > 0) ? true :
-      false;
+      (isHaraMode && dynamicQuestions.some(q => q.key === 'food_genre_new')) ||
+      (selectedMood === 'まったりしたい' && dynamicQuestions.some(q => q.key === 'relax_place'));
     if (!hasContent) onSetStep(7);
   }, [step, selectedMood]);
 
   useEffect(() => {
     if (step !== 9) return;
-    const showsDetail =
-      isNatureMode ||
-      (isCafeMode && (cafeSubCategory === 'animal' || cafeSubCategory === 'view'));
-    if (!showsDetail) onSetStep(10);
-  }, [step, selectedMood, cafeSubCategory, relaxPlace]);
+    const showsContent = isNatureMode || isOnsenMode || isCafeMode;
+    if (!showsContent) onSetStep(7);
+  }, [step, selectedMood, relaxPlace]);
 
   const foodGenreAns = dynamicAnswers['food_genre_new'] ?? '';
   const matchedFoodGenre = Object.keys(FOOD_SUB_QUESTIONS_MAP).find(k => foodGenreAns.includes(k));
@@ -722,6 +700,44 @@ export default function QuizFlow(props: Props) {
     );
   };
 
+  // ─── Vertical card list ───────────────────────────────────────────────
+
+  const renderCatCards = <T extends { key: string; label: string; sub?: string; emoji?: string }>(
+    items: T[],
+    selectedKey: string | null | undefined,
+    onSelect: (key: string) => void,
+    getLabel?: (item: T) => string,
+  ) => (
+    <View>
+      {items.map((item) => {
+        const active = selectedKey === item.key;
+        const label = getLabel ? getLabel(item) : item.label;
+        return (
+          <TouchableOpacity
+            key={item.key}
+            onPress={() => onSelect(item.key)}
+            activeOpacity={0.7}
+            style={[s.catCard, active && s.catCardActive]}
+          >
+            {active && (
+              <LinearGradient
+                colors={['#fff8f2', '#ffe5ea']}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+              />
+            )}
+            {item.emoji ? <Text style={s.catCardEmoji}>{item.emoji}</Text> : null}
+            <View style={s.catCardRight}>
+              <Text style={[s.catCardLabel, active && s.catCardLabelActive]}>{label}</Text>
+              {item.sub ? <Text style={s.catCardSub}>{item.sub}</Text> : null}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
   // ─── Next button ──────────────────────────────────────────────────────
 
   const renderNext = (onNext: () => void, label: string = t.next, disabled = false) => (
@@ -760,7 +776,6 @@ export default function QuizFlow(props: Props) {
                     const pool = MOOD_QUESTIONS[m.key] ?? [];
                     onSetDynamicQuestions(pool);
                     onSetDynamicAnswers({});
-                    if (m.key === '時間潰したい') onOpenResults();
                   }}
                   activeOpacity={0.7}
                   style={[s.moodBtn, active && s.moodBtnActive]}
@@ -803,20 +818,8 @@ export default function QuizFlow(props: Props) {
       );
     }
 
-    // Step 3: Transport (or drive distance for ドライブしたい)
+    // Step 3: Transport
     if (step === 3) {
-      if (selectedMood === 'ドライブしたい' && dynamicQuestions[0]) {
-        const dq = dynamicQuestions[0];
-        return (
-          <>
-            <Text style={s.stepTitle}>{dq.question}</Text>
-            <Text style={s.stepSub}>{t.driveDetail}</Text>
-            {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-              onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
-            )}
-          </>
-        );
-      }
       const transports = lang === 'en' ? TRANSPORT_EN : TRANSPORT_OPTIONS;
       return (
         <>
@@ -969,9 +972,8 @@ export default function QuizFlow(props: Props) {
       );
     }
 
-    // Step 5: Time + dynamic questions (for moods that have them)
+    // Step 5: Distance (お腹すいた) or Time (all others)
     if (step === 5) {
-      // For お腹すいた: show food distance instead of time
       if (isHaraMode) {
         const distOpts = lang === 'en' ? FOOD_DISTANCE_EN : FOOD_DISTANCE_OPTIONS;
         const currentDist = dynamicAnswers['food_distance'] ?? '';
@@ -986,112 +988,6 @@ export default function QuizFlow(props: Props) {
               const idx = distOpts.indexOf(v);
               onSetDynamicAnswers({ ...dynamicAnswers, food_distance: idx >= 0 ? FOOD_DISTANCE_OPTIONS[idx] : v });
             }, 2)}
-          </>
-        );
-      }
-
-      // カフェモード: show cafe distance instead of time picker
-      if (isCafeMode) {
-        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.cafeDistTitle}</Text>
-            <Text style={s.stepSub}>{t.cafeDistSub}</Text>
-            <View style={s.grid}>
-              {distOpts.map((d, i) => {
-                const jaVal = NATURE_DISTANCES[i];
-                return (
-                  <TouchableOpacity
-                    key={d}
-                    onPress={() => onSetCafeDistancePref(jaVal)}
-                    style={[s.optBtn, { width: BTN_3, height: BTN_3 }, cafeDistancePref === jaVal && s.optBtnActive]}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[s.optText, cafeDistancePref === jaVal && s.optTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      // 温泉モード: show distance picker
-      if (isOnsenMode) {
-        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.cafeDistTitle}</Text>
-            <Text style={s.stepSub}>{t.cafeDistSub}</Text>
-            <View style={s.grid}>
-              {distOpts.map((d, i) => {
-                const jaVal = NATURE_DISTANCES[i];
-                return (
-                  <TouchableOpacity key={d} onPress={() => onSetOnsenDistancePref(jaVal)}
-                    style={[s.optBtn, { width: BTN_3, height: BTN_3 }, onsenDistancePref === jaVal && s.optBtnActive]}
-                    activeOpacity={0.7}>
-                    <Text style={[s.optText, onsenDistancePref === jaVal && s.optTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      // 絶景モード: show distance picker
-      if (isSceneryMode) {
-        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.cafeDistTitle}</Text>
-            <Text style={s.stepSub}>{t.cafeDistSub}</Text>
-            <View style={s.grid}>
-              {distOpts.map((d, i) => {
-                const jaVal = NATURE_DISTANCES[i];
-                return (
-                  <TouchableOpacity key={d} onPress={() => onSetNatureDistancePref(jaVal)}
-                    style={[s.optBtn, { width: BTN_3, height: BTN_3 }, natureDistancePref === jaVal && s.optBtnActive]}
-                    activeOpacity={0.7}>
-                    <Text style={[s.optText, natureDistancePref === jaVal && s.optTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      // ドライブしたい: skip time picker, show drive vibe + road questions only
-      if (isDriveMode) {
-        const driveDqs = dynamicQuestions.filter((dq) => dq.key !== 'drive_distance');
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.driveVibeTitle}</Text>
-            <Text style={s.stepSub}>{t.driveVibeSub}</Text>
-            {driveDqs.map((dq, i) => (
-              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
-                <Text style={[s.dynQuestion, i === 0 && { marginBottom: 10 }]}>{dq.question}</Text>
-                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
-                )}
-              </View>
-            ))}
-          </>
-        );
-      }
-
-      // 遠くに行きたい: step 5 shows travel_time only, remaining questions in step 6
-      if (isTravelMode) {
-        const travelTimeDq = dynamicQuestions.find(q => q.key === 'travel_time');
-        if (!travelTimeDq) return null;
-        return (
-          <>
-            <Text style={s.stepTitle}>{travelTimeDq.question}</Text>
-            <Text style={s.stepSub}>{t.travelDetailSub}</Text>
-            {renderOptions(travelTimeDq.options, dynamicAnswers[travelTimeDq.key] ?? '', (v) =>
-              onSetDynamicAnswers({ ...dynamicAnswers, [travelTimeDq.key]: v })
-            )}
           </>
         );
       }
@@ -1132,7 +1028,7 @@ export default function QuizFlow(props: Props) {
       );
     }
 
-    // Step 8: Mood-specific subcategory
+    // Step 8: Mood-specific subcategory (vertical catCard list)
     if (step === 8) {
       if (isHaraMode && foodSubQ) {
         return (
@@ -1146,226 +1042,16 @@ export default function QuizFlow(props: Props) {
         );
       }
 
-      if (isDriveMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.driveTitle}</Text>
-            <Text style={s.stepSub}>{t.driveSub}</Text>
-            <View style={s.grid}>
-              {DRIVE_SUBCATEGORIES.map((cat, idx) => {
-                const active = dynamicAnswers['drive_subcategory'] === cat.key;
-                const label = lang === 'en' ? (DRIVE_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, drive_subcategory: cat.key })}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isFocusMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.focusTitle}</Text>
-            <Text style={s.stepSub}>{t.focusSub}</Text>
-            <View style={s.grid}>
-              {FOCUS_SUBCATEGORIES.map((cat, idx) => {
-                const active = dynamicAnswers['focus_subcategory'] === cat.key;
-                const label = lang === 'en' ? (FOCUS_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, focus_subcategory: cat.key })}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isSportsMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.sportsTitle}</Text>
-            <Text style={s.stepSub}>{t.sportsSub}</Text>
-            <View style={s.grid}>
-              {SPORTS_SUBCATEGORIES.map((cat, idx) => {
-                const active = dynamicAnswers['sports_subcategory'] === cat.key;
-                const label = lang === 'en' ? (SPORTS_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, sports_subcategory: cat.key })}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isTravelMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.travelTitle}</Text>
-            <Text style={s.stepSub}>{t.travelSub}</Text>
-            <View style={s.grid}>
-              {TRAVEL_SUBCATEGORIES.map((cat, idx) => {
-                const active = dynamicAnswers['travel_subcategory'] === cat.key;
-                const label = lang === 'en' ? (TRAVEL_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetDynamicAnswers({ ...dynamicAnswers, travel_subcategory: cat.key })}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isSceneryMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.sceneryTitle}</Text>
-            <Text style={s.stepSub}>{t.scenerySub}</Text>
-            <View style={s.grid}>
-              {SCENERY_SUBCATEGORIES.map((cat, idx) => {
-                const active = scenerySubCategory === cat.key;
-                const label = lang === 'en' ? (SCENERY_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetScenerySubCategory(cat.key)}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isOnsenMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.onsenTitle}</Text>
-            <Text style={s.stepSub}>{t.onsenSub}</Text>
-            <View style={s.grid}>
-              {ONSEN_CATEGORIES.map((cat, idx) => {
-                const active = onsenCategory === cat.key;
-                const label = lang === 'en' ? (ONSEN_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetOnsenCategory(cat.key)}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isNatureMode) {
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.natureTitle}</Text>
-            <Text style={s.stepSub}>{t.natureSub}</Text>
-            <View style={s.grid}>
-              {NATURE_SUBGENRES.map((sg, idx) => {
-                const active = natureSubGenre === sg.key;
-                const label = lang === 'en' ? (NATURE_EN[sg.label] ?? sg.label) : sg.label;
-                return (
-                  <FloatingButton
-                    key={sg.key}
-                    active={active}
-                    onPress={() => onSetNatureSubGenre(sg.key)}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <sg.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
       if (isCafeMode) {
         return (
           <>
-            <Text style={s.stepTitle}>{t.cafeTitle}</Text>
-            <Text style={s.stepSub}>{t.cafeSub}</Text>
-            <View style={s.grid}>
-              {CAFE_SUBCATEGORIES.map((cat, idx) => {
-                const active = cafeSubCategory === cat.key;
-                const label = lang === 'en' ? (CAFE_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetCafeSubCategory(cat.key)}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
+            <Text style={s.stepTitle}>{t.cafeDistTitle}</Text>
+            <Text style={s.stepSub}>{t.cafeDistSub}</Text>
+            {renderCatCards(
+              CAFE_DISTANCE_OPTIONS,
+              cafeDistancePref,
+              (key) => onSetCafeDistancePref(key as CafeDistancePref),
+            )}
           </>
         );
       }
@@ -1375,25 +1061,72 @@ export default function QuizFlow(props: Props) {
           <>
             <Text style={s.stepTitle}>{t.waiwaiTitle}</Text>
             <Text style={s.stepSub}>{t.waiwaiSub}</Text>
-            <View style={s.grid}>
-              {WAIWAI_SUBCATEGORIES.map((cat, idx) => {
-                const active = waiWaiSubCategory === cat.key;
-                const label = lang === 'en' ? (WAIWAI_EN[cat.label] ?? cat.label) : cat.label;
-                return (
-                  <FloatingButton
-                    key={cat.key}
-                    active={active}
-                    onPress={() => onSetWaiWaiSubCategory(cat.key)}
-                    delay={idx * 160}
-                    style={[s.catBtn, { width: BTN_2, height: BTN_2 }, active && s.catBtnActive]}
-                  >
-                    {active && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                    <cat.Icon size={28} color={active ? '#c0385a' : '#4a3034'} strokeWidth={1.8} />
-                    <Text style={[s.catLabel, active && s.catLabelActive]}>{label}</Text>
-                  </FloatingButton>
-                );
-              })}
-            </View>
+            {renderCatCards(
+              WAIWAI_SUBCATEGORIES,
+              waiWaiSubCategory,
+              (key) => onSetWaiWaiSubCategory(key as WaiWaiSubCategory),
+              lang === 'en' ? (item) => WAIWAI_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isDriveMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.driveTitle}</Text>
+            <Text style={s.stepSub}>{t.driveSub}</Text>
+            {renderCatCards(
+              DRIVE_SUBCATEGORIES,
+              dynamicAnswers['drive_subcategory'] ?? null,
+              (key) => onSetDynamicAnswers({ ...dynamicAnswers, drive_subcategory: key }),
+              lang === 'en' ? (item) => DRIVE_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isFocusMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.focusTitle}</Text>
+            <Text style={s.stepSub}>{t.focusSub}</Text>
+            {renderCatCards(
+              FOCUS_SUBCATEGORIES,
+              dynamicAnswers['focus_subcategory'] ?? null,
+              (key) => onSetDynamicAnswers({ ...dynamicAnswers, focus_subcategory: key }),
+              lang === 'en' ? (item) => FOCUS_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isSportsMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.sportsTitle}</Text>
+            <Text style={s.stepSub}>{t.sportsSub}</Text>
+            {renderCatCards(
+              SPORTS_SUBCATEGORIES,
+              dynamicAnswers['sports_subcategory'] ?? null,
+              (key) => onSetDynamicAnswers({ ...dynamicAnswers, sports_subcategory: key }),
+              lang === 'en' ? (item) => SPORTS_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isTravelMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.travelTitle}</Text>
+            <Text style={s.stepSub}>{t.travelSub}</Text>
+            {renderCatCards(
+              TRAVEL_SUBCATEGORIES,
+              dynamicAnswers['travel_subcategory'] ?? null,
+              (key) => onSetDynamicAnswers({ ...dynamicAnswers, travel_subcategory: key }),
+              lang === 'en' ? (item) => TRAVEL_EN[item.label] ?? item.label : undefined,
+            )}
           </>
         );
       }
@@ -1401,11 +1134,9 @@ export default function QuizFlow(props: Props) {
       return null;
     }
 
-    // Step 6: Dynamic questions
+    // Step 6: Genre/place sub-question (お腹すいた → food genre, まったり → relax place)
     if (step === 6) {
-      if (isDriveMode) return null;
-
-      if (isHaraMode && dynamicQuestions.some(q => q.key === 'food_genre_new')) {
+      if (isHaraMode) {
         const foodGenreDq = dynamicQuestions.find(q => q.key === 'food_genre_new');
         if (!foodGenreDq) return null;
         return (
@@ -1433,135 +1164,73 @@ export default function QuizFlow(props: Props) {
         );
       }
 
-      if (isTravelMode) {
-        const dqs = dynamicQuestions.filter(q => q.key !== 'travel_time');
-        if (dqs.length === 0) return null;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.travelDetailTitle}</Text>
-            <Text style={s.stepSub}>{t.travelDetailSub}</Text>
-            {dqs.map((dq, i) => (
-              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
-                <Text style={s.dynQuestion}>{dq.question}</Text>
-                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
-                )}
-              </View>
-            ))}
-          </>
-        );
-      }
+      return null;
+    }
 
-      if (isFocusMode) {
-        if (dynamicQuestions.length === 0) return null;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.focusTitle}</Text>
-            <Text style={s.stepSub}>{t.focusSub}</Text>
-            {dynamicQuestions.map((dq, i) => (
-              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
-                <Text style={s.dynQuestion}>{dq.question}</Text>
-                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
-                )}
-              </View>
-            ))}
-          </>
-        );
-      }
-
-      if (isSportsMode) {
-        if (dynamicQuestions.length === 0) return null;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.sportsTitle}</Text>
-            <Text style={s.stepSub}>{t.sportsSub}</Text>
-            {dynamicQuestions.map((dq, i) => (
-              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
-                <Text style={s.dynQuestion}>{dq.question}</Text>
-                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
-                )}
-              </View>
-            ))}
-          </>
-        );
-      }
-
+    // Step 9: Nature subgenre / Onsen category / Cafe subcategory+detail
+    if (step === 9) {
       if (isNatureMode) {
-        if (dynamicQuestions.length === 0) return null;
         return (
           <>
             <Text style={s.stepTitle}>{t.natureTitle}</Text>
             <Text style={s.stepSub}>{t.natureSub}</Text>
-            {dynamicQuestions.map((dq, i) => (
-              <View key={dq.key} style={i > 0 ? { marginTop: 24 } : {}}>
-                <Text style={s.dynQuestion}>{dq.question}</Text>
-                {renderOptions(dq.options, dynamicAnswers[dq.key] ?? '', (v) =>
-                  onSetDynamicAnswers({ ...dynamicAnswers, [dq.key]: v })
+            {renderCatCards(
+              NATURE_SUBGENRES,
+              natureSubGenre,
+              (key) => onSetNatureSubGenre(key as NatureSubGenre),
+              lang === 'en' ? (item) => NATURE_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isOnsenMode) {
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.onsenTitle}</Text>
+            <Text style={s.stepSub}>{t.onsenSub}</Text>
+            {renderCatCards(
+              ONSEN_CATEGORIES,
+              onsenCategory,
+              (key) => onSetOnsenCategory(key as OnsenCategory),
+              lang === 'en' ? (item) => ONSEN_EN[item.label] ?? item.label : undefined,
+            )}
+          </>
+        );
+      }
+
+      if (isCafeMode) {
+        const animalDetailOptions = [
+          { key: 'cat' as CafeDetail, label: lang === 'en' ? 'Cat Café' : '猫カフェ', sub: lang === 'en' ? 'Purring companions' : '猫と一緒にのんびり', emoji: '🐱' },
+          { key: 'dog' as CafeDetail, label: lang === 'en' ? 'Dog Café' : '犬カフェ', sub: lang === 'en' ? 'Playful pups' : '犬と遊ぶ', emoji: '🐶' },
+          { key: 'rare' as CafeDetail, label: lang === 'en' ? 'Exotic Animals' : '小動物・珍しい動物', sub: lang === 'en' ? 'Hedgehogs, owls & more' : 'ふくろう・ハリネズミなど', emoji: '🦔' },
+        ];
+        const viewDetailOptions = [
+          { key: 'ocean' as CafeDetail, label: lang === 'en' ? 'Ocean View' : '海・水辺', sub: lang === 'en' ? 'Sea breeze & waves' : '海が見えるカフェ', emoji: '🌊' },
+          { key: 'forest' as CafeDetail, label: lang === 'en' ? 'Forest / Green' : '森・緑', sub: lang === 'en' ? 'Nature surrounded' : '緑に囲まれたカフェ', emoji: '🌲' },
+          { key: 'city' as CafeDetail, label: lang === 'en' ? 'City View' : '街並み・高層ビル', sub: lang === 'en' ? 'Urban panorama' : '街が一望できるカフェ', emoji: '🏙️' },
+        ];
+        return (
+          <>
+            <Text style={s.stepTitle}>{t.cafeTitle}</Text>
+            <Text style={s.stepSub}>{t.cafeSub}</Text>
+            {renderCatCards(
+              CAFE_SUBCATEGORIES,
+              cafeSubCategory,
+              (key) => onSetCafeSubCategory(key as CafeSubCategory),
+              lang === 'en' ? (item) => CAFE_EN[item.label] ?? item.label : undefined,
+            )}
+            {(cafeSubCategory === 'animal' || cafeSubCategory === 'view') && (
+              <>
+                <Text style={[s.dynQuestion, { marginTop: 24, marginBottom: 10 }]}>{t.cafeDetailTitle}</Text>
+                <Text style={[s.stepSub, { marginBottom: 8 }]}>{t.cafeDetailSub}</Text>
+                {renderCatCards(
+                  cafeSubCategory === 'animal' ? animalDetailOptions : viewDetailOptions,
+                  cafeDetail,
+                  (key) => onSetCafeDetail(key as CafeDetail),
                 )}
-              </View>
-            ))}
-          </>
-        );
-      }
-
-      return null;
-    }
-
-    // Step 9: Mood-specific detail
-    if (step === 9) {
-      if (isNatureMode) {
-        const distOpts = lang === 'en' ? NATURE_DISTANCES.map(d => NATURE_DIST_EN[d] ?? d) : NATURE_DISTANCES;
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.natureDistTitle}</Text>
-            <Text style={s.stepSub}>{t.natureDistSub}</Text>
-            <View style={s.grid}>
-              {distOpts.map((d, i) => {
-                const jaVal = NATURE_DISTANCES[i];
-                return (
-                  <TouchableOpacity key={d} onPress={() => onSetNatureDistancePref(jaVal)} style={[s.optBtn, { width: BTN_3, height: BTN_3 }, natureDistancePref === jaVal && s.optBtnActive]} activeOpacity={0.7}>
-                    <Text style={[s.optText, natureDistancePref === jaVal && s.optTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        );
-      }
-
-      if (isCafeMode && (cafeSubCategory === 'animal' || cafeSubCategory === 'view')) {
-        const detailOptions =
-          cafeSubCategory === 'animal'
-            ? [
-                { key: 'cat' as CafeDetail, label: lang === 'en' ? 'Cat Café 🐱' : '猫カフェ 🐱' },
-                { key: 'dog' as CafeDetail, label: lang === 'en' ? 'Dog Café 🐶' : '犬カフェ 🐶' },
-                { key: 'rare' as CafeDetail, label: lang === 'en' ? 'Exotic Animals 🦔' : '小動物・珍しい動物 🦔' },
-              ]
-            : [
-                { key: 'ocean' as CafeDetail, label: lang === 'en' ? 'Ocean View 🌊' : '海・水辺 🌊' },
-                { key: 'forest' as CafeDetail, label: lang === 'en' ? 'Forest / Green 🌲' : '森・緑 🌲' },
-                { key: 'city' as CafeDetail, label: lang === 'en' ? 'City View 🏙️' : '街並み・高層ビル 🏙️' },
-              ];
-        return (
-          <>
-            <Text style={s.stepTitle}>{t.cafeDetailTitle}</Text>
-            <Text style={s.stepSub}>{t.cafeDetailSub}</Text>
-            <View style={s.grid}>
-              {detailOptions.map((d, idx) => (
-                <FloatingButton
-                  key={d.key}
-                  active={cafeDetail === d.key}
-                  onPress={() => onSetCafeDetail(d.key)}
-                  delay={idx * 160}
-                  style={[s.catBtn, { width: BTN_2, height: BTN_2 }, cafeDetail === d.key && s.catBtnActive]}
-                >
-                  {cafeDetail === d.key && <LinearGradient colors={['#fff8f2', '#ffe5ea']} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} />}
-                  <Text style={[s.catLabel, cafeDetail === d.key && s.catLabelActive]}>{d.label}</Text>
-                </FloatingButton>
-              ))}
-            </View>
+              </>
+            )}
           </>
         );
       }
@@ -1572,7 +1241,36 @@ export default function QuizFlow(props: Props) {
     return null;
   };
 
-  const nextStep = () => onSetStep(step + 1);
+  const handleNext = () => {
+    if (step === 5) {
+      if (selectedMood === '時間潰したい') { onSetStep(7); return; }
+      if (selectedMood === '自然感じたい') { onSetStep(9); return; }
+      if (
+        selectedMood === 'わいわい楽しみたい' ||
+        selectedMood === 'ドライブしたい' ||
+        selectedMood === '集中したい' ||
+        selectedMood === '体を動かしたい' ||
+        selectedMood === '遠くに行きたい'
+      ) { onSetStep(8); return; }
+      onSetStep(6); return;
+    }
+    if (step === 6) {
+      if (selectedMood === 'まったりしたい') {
+        if (isNatureMode || isOnsenMode) { onSetStep(9); return; }
+        if (isCafeMode) { onSetStep(8); return; }
+        onSetStep(7); return;
+      }
+      if (isHaraMode && foodSubQ) { onSetStep(8); return; }
+      onSetStep(7); return;
+    }
+    if (step === 7) { onSetStep(10); return; }
+    if (step === 8) {
+      if (isCafeMode) { onSetStep(9); return; }
+      onSetStep(7); return;
+    }
+    if (step === 9) { onSetStep(7); return; }
+    onSetStep(step + 1);
+  };
   const isLastStep = step === 10;
 
   return (
@@ -1604,7 +1302,7 @@ export default function QuizFlow(props: Props) {
       {/* Next button */}
       {isLastStep
         ? renderNext(onOpenResults, t.submit)
-        : renderNext(nextStep, step === 1 && !selectedMood ? t.skip : t.next)}
+        : renderNext(handleNext, step === 1 && !selectedMood ? t.skip : t.next)}
     </View>
   );
 }
@@ -1726,6 +1424,20 @@ const s = StyleSheet.create({
   catIconWrap: { marginBottom: 2 },
   catLabel: { fontSize: 12, fontWeight: '700', color: '#4a3034', textAlign: 'center', lineHeight: 16 },
   catLabelActive: { color: '#c0385a', fontWeight: '900' },
+  catCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: '#fff', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#ead7db',
+    padding: 16, marginBottom: 10, overflow: 'hidden',
+    shadowColor: '#4a3034', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+  },
+  catCardActive: { borderColor: '#ff8f7f', borderWidth: 2 },
+  catCardEmoji: { fontSize: 28, lineHeight: 34, minWidth: 34, textAlign: 'center' },
+  catCardRight: { flex: 1 },
+  catCardLabel: { fontSize: 15, fontWeight: '700', color: '#4a3034', marginBottom: 2 },
+  catCardLabelActive: { color: '#c0385a' },
+  catCardSub: { fontSize: 12, color: '#9b7b82', lineHeight: 18 },
   reviewCard: {
     backgroundColor: '#fff', borderRadius: 14, padding: 20, gap: 8,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
