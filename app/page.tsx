@@ -1178,6 +1178,24 @@ export default function Home() {
     return "🚶";
   })();
 
+  // 交通手段アイコン → 「〇〇で」ラベル変換
+  const iconToModeLabel = (icon: string): string => {
+    if (icon === "🚶") return "歩きで";
+    if (icon === "🚲") return "自転車で";
+    if (icon === "🚃" || icon === "🚌" || icon === "🚄") return "電車で";
+    if (icon === "🚗") return "車で";
+    return "";
+  };
+  const travelModeLabel = iconToModeLabel(travelIcon);
+
+  // 所要時間テキストを組み立てる（durationText優先、なければdistanceText）
+  const buildTravelChip = (icon: string, durationText: string, distanceText: string) => {
+    const label = iconToModeLabel(icon);
+    if (durationText) return `${icon} ${label}${durationText}`;
+    if (distanceText) return `${icon} ${label ? label : ""}${distanceText}`;
+    return "";
+  };
+
   const isFavorited = (title: string) =>
     favorites.some((item) => item.title === title);
 
@@ -3156,13 +3174,14 @@ export default function Home() {
                           {rec.time && <div style={chipStyle}>{rec.time}</div>}
                           {rec.rating != null && <div style={chipStyle}>⭐ {rec.rating}{rec.userRatingCount ? ` (${rec.userRatingCount})` : ""}</div>}
                           {rec.routesByMode && rec.routesByMode.length > 0
-                            ? rec.routesByMode.map((m, i) => m.distanceText
-                                ? <div key={i} style={chipStyle}>{m.icon} {m.distanceText}</div>
-                                : null
-                              )
-                            : rec.distanceText
-                              ? <div style={chipStyle}>{travelIcon} {rec.distanceText}</div>
-                              : null
+                            ? rec.routesByMode.map((m, i) => {
+                                const chip = buildTravelChip(m.icon, m.durationText, m.distanceText);
+                                return chip ? <div key={i} style={chipStyle}>{chip}</div> : null;
+                              })
+                            : (() => {
+                                const chip = buildTravelChip(travelIcon, rec.durationText ?? "", rec.distanceText ?? "");
+                                return chip ? <div style={chipStyle}>{chip}</div> : null;
+                              })()
                           }
                           {rec.stationText && <div style={chipStyle}>🚉 {rec.stationText}</div>}
                           {rec.openNow !== undefined && (
@@ -5590,7 +5609,7 @@ export default function Home() {
                                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                     {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
                                     {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
-                                    {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
+                                    {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={chipStyle}>{chip}</div> : null; })()}
                                   </div>
                                   <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                     {item.mapUrl && (
@@ -5801,7 +5820,7 @@ export default function Home() {
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={chipStyle}>{chip}</div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl && (
@@ -5900,7 +5919,7 @@ export default function Home() {
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={chipStyle}>{chip}</div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl && (
@@ -6019,7 +6038,7 @@ export default function Home() {
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "16px" }}>
                                 {item.rating !== null && item.rating !== undefined ? <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div> : null}
                                 {item.openNow != null ? <div style={{ ...chipStyle, background: item.openNow ? "#f0fdf4" : "#fef2f2", color: item.openNow ? "#16a34a" : "#dc2626", border: `1px solid ${item.openNow ? "#bbf7d0" : "#fecaca"}` }}>{item.openNow ? "🟢 営業中" : "🔴 営業時間外"}</div> : null}
-                                {item.distanceText ? <div style={chipStyle}>📍 {item.distanceText}</div> : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={chipStyle}>{chip}</div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl && (
@@ -6134,9 +6153,7 @@ export default function Home() {
                                 {item.stationText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
                                 ) : null}
-                                {item.distanceText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
-                                ) : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>{travelIcon}</span><span>{iconToModeLabel(travelIcon)}{item.durationText || item.distanceText}</span></div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl ? (
@@ -6249,9 +6266,7 @@ export default function Home() {
                                 {item.stationText ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🚉</span><span>{item.stationText}</span></div>
                                 ) : null}
-                                {item.distanceText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
-                                ) : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>{travelIcon}</span><span>{iconToModeLabel(travelIcon)}{item.durationText || item.distanceText}</span></div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl ? (
@@ -6360,9 +6375,7 @@ export default function Home() {
                                     </span>
                                   </div>
                                 ) : null}
-                                {item.distanceText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
-                                ) : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>{travelIcon}</span><span>{iconToModeLabel(travelIcon)}{item.durationText || item.distanceText}</span></div> : null; })()}
                               </div>
                               <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                 {item.mapUrl ? (
@@ -6474,9 +6487,7 @@ export default function Home() {
                                     </span>
                                   </div>
                                 ) : null}
-                                {item.distanceText ? (
-                                  <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>📍</span><span>{item.distanceText}</span></div>
-                                ) : null}
+                                {(() => { const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? ""); return chip ? <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>{travelIcon}</span><span>{iconToModeLabel(travelIcon)}{item.durationText || item.distanceText}</span></div> : null; })()}
                                 {item.hotpepperUrl ? (
                                   <div style={infoLineStyle}><span style={{ fontSize: "20px" }}>🍽️</span><a href={item.hotpepperUrl} target="_blank" rel="noreferrer" style={{ color: "#e65100", fontWeight: 700, textDecoration: "underline" }}>ホットペッパーで見る</a></div>
                                 ) : null}
@@ -7196,13 +7207,14 @@ export default function Home() {
                                       <div style={chipStyle}>⭐ {item.rating}{item.userRatingCount ? ` (${item.userRatingCount})` : ""}</div>
                                     ) : null}
                                     {item.routesByMode && item.routesByMode.length > 0
-                                      ? item.routesByMode.map((m, i) => m.distanceText
-                                          ? <div key={i} style={chipStyle}>{m.icon} {m.distanceText}</div>
-                                          : null
-                                        )
-                                      : item.distanceText
-                                        ? <div style={chipStyle}>{travelIcon} {item.distanceText}</div>
-                                        : null
+                                      ? item.routesByMode.map((m, i) => {
+                                          const chip = buildTravelChip(m.icon, m.durationText, m.distanceText);
+                                          return chip ? <div key={i} style={chipStyle}>{chip}</div> : null;
+                                        })
+                                      : (() => {
+                                          const chip = buildTravelChip(travelIcon, item.durationText ?? "", item.distanceText ?? "");
+                                          return chip ? <div style={chipStyle}>{chip}</div> : null;
+                                        })()
                                     }
                                     {item.openNow !== undefined || item.openingHoursText ? (
                                       <div style={getOpeningChipStyle(item.openNow)}>
@@ -7219,21 +7231,26 @@ export default function Home() {
                                       </div>
                                     ) : null}
                                     {item.routesByMode && item.routesByMode.length > 0
-                                      ? item.routesByMode.map((m, i) =>
-                                          m.distanceText || m.durationText ? (
+                                      ? item.routesByMode.map((m, i) => {
+                                          const txt = m.durationText ? `${iconToModeLabel(m.icon)}${m.durationText}` : m.distanceText;
+                                          return txt ? (
                                             <div key={i} style={infoLineStyle}>
                                               <span style={{ fontSize: "20px" }}>{m.icon}</span>
-                                              <span>{[m.distanceText, m.durationText].filter(Boolean).join(" / ")}</span>
+                                              <span>{txt}</span>
                                             </div>
-                                          ) : null
-                                        )
-                                      : item.distanceText || item.durationText
-                                        ? (
-                                          <div style={infoLineStyle}>
-                                            <span style={{ fontSize: "20px" }}>{travelIcon}</span>
-                                            <span>{[item.distanceText, item.durationText].filter(Boolean).join(" / ")}</span>
-                                          </div>
-                                        ) : null
+                                          ) : null;
+                                        })
+                                      : (() => {
+                                          const dur = item.durationText;
+                                          const dist = item.distanceText;
+                                          const txt = dur ? `${travelModeLabel}${dur}` : dist ? `${travelModeLabel}${dist}` : "";
+                                          return txt ? (
+                                            <div style={infoLineStyle}>
+                                              <span style={{ fontSize: "20px" }}>{travelIcon}</span>
+                                              <span>{txt}</span>
+                                            </div>
+                                          ) : null;
+                                        })()
                                     }
                                     {displayStation ? (
                                       <div style={infoLineStyle}>
