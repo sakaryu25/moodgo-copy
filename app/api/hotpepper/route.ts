@@ -174,11 +174,8 @@ const HOTPEPPER_GENRE_MAP: Array<{ matchKey: string; rule: GenreRule }> = [
     rule: {
       code: "G001",
       details: {
-        "魚介":     { keyword: "海鮮" },
-        "海鮮メイン": { keyword: "海鮮" },
-        "焼き鳥":   { keyword: "焼鳥" },
-        "個室あり": { private_room: true },
         "大衆酒場": { keyword: "大衆酒場" },
+        "個室あり": { private_room: true },
       },
     },
   },
@@ -210,30 +207,20 @@ const HOTPEPPER_GENRE_MAP: Array<{ matchKey: string; rule: GenreRule }> = [
       },
     },
   },
-  // ④ イタリアン (G006)
+  // ④ イタリアン (G006) — 深掘りなし
   {
     matchKey: "イタリアン",
     rule: {
       code: "G006",
-      details: {
-        "ピザ":           { keyword: "ピザ" },
-        "パスタ":         { keyword: "パスタ" },
-        "バル":           { keyword: "バル" },
-        "イタリアン全般": {},           // キーワードなし・ジャンルのみ
-      },
+      details: {},
     },
   },
-  // ⑤ 中華 (G007)
+  // ⑤ 中華 (G007) — 深掘りなし
   {
     matchKey: "中華",
     rule: {
       code: "G007",
-      details: {
-        "町中華":       { keyword: "町中華" },
-        "火鍋":         { keyword: "火鍋" },
-        "本格四川料理": { keyword: "四川" },
-        "食べ放題":     { keyword: "食べ放題" },
-      },
+      details: {},
     },
   },
   // ⑥ 焼肉 (G008)
@@ -244,8 +231,7 @@ const HOTPEPPER_GENRE_MAP: Array<{ matchKey: string; rule: GenreRule }> = [
       details: {
         "焼肉食べ放題": { keyword: "食べ放題" },
         "高級焼肉":     { keyword: "高級", private_room: true },
-        "ホルモン焼き": { keyword: "ホルモン" },
-        "ジンギスカン": { keyword: "ジンギスカン" },
+        "単品メニューあり": {},   // ジャンルのみ・キーワードなし
       },
     },
   },
