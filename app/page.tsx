@@ -502,12 +502,21 @@ export default function Home() {
   const MOOD_QUESTIONS: Record<string, DynamicQuestion[]> = {
     "お腹すいた": [
       // food_distance は step5 専用（dynamicQuestions には含めない）
-      // food_sub_choice は food_genre_new 選択時のみ動的注入（step6）
+      // food_sub_choice は food_genre_new 選択時のみ動的注入（step8）
       { key: "food_genre_new", question: "食べたいジャンルは？", options: [
         "居酒屋🍺", "和食🍣", "洋食🍳", "イタリアン🍝",
         "中華🥟", "焼肉🥩", "韓国🌶️", "アジア系統🍛",
         "各国料理🌍", "ラーメン🍜", "お好み焼き・もんじゃ🥞", "カフェ・スイーツ☕",
         "高層ビル料理🏙️",
+      ]},
+      { key: "food_hunger", question: "今の空腹度は？", options: [
+        "軽く食べたい🌱", "ほどほど😊", "ぺこぺこ😋", "ドカ食いしたい🤤",
+      ]},
+      { key: "food_vibe", question: "お店の雰囲気は？", options: [
+        "賑やか🎉", "静か✨", "おしゃれ💅", "密室🔒",
+      ]},
+      { key: "food_pace", question: "どんなペースで食べたい？", options: [
+        "サクッと食べる⚡", "座ってゆっくり🪑", "食べ放題🍽️",
       ]},
     ],
     "まったりしたい": [
@@ -602,6 +611,16 @@ export default function Home() {
         "Izakaya 🍺", "Japanese 🍣", "Western 🍳", "Italian 🍝",
         "Chinese 🥟", "Yakiniku 🥩", "Korean 🌶️", "Asian 🍛",
         "World cuisine 🌍", "Ramen 🍜", "Okonomiyaki 🥞", "Café & Sweets ☕",
+        "Sky-high dining 🏙️",
+      ]},
+      { key: "food_hunger", question: "How hungry are you?", options: [
+        "Just a snack 🌱", "Moderate 😊", "Pretty hungry 😋", "Starving! 🤤",
+      ]},
+      { key: "food_vibe", question: "What's your preferred vibe?", options: [
+        "Lively 🎉", "Quiet ✨", "Stylish 💅", "Private room 🔒",
+      ]},
+      { key: "food_pace", question: "How do you want to eat?", options: [
+        "Quick bite ⚡", "Sit & relax 🪑", "All-you-can-eat 🍽️",
       ]},
     ],
     "まったりしたい": [
