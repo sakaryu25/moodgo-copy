@@ -590,16 +590,15 @@ export async function POST(req: NextRequest) {
 
     // ─── Supabase-first（登録スポットを優先） ────────────────────────────
     try {
-      const { searchPlacesByTags } = await import("@/lib/supabase-places");
+      const { spatialSearch } = await import("@/lib/spatial-search");
       const { getDriveTags } = await import("@/lib/mood-tag-map");
       const tagResult = getDriveTags(subCategory);
-      const sbResults = await searchPlacesByTags({
+      const sbResults = await spatialSearch({
         mustTags: tagResult.tags,
         fallbackTags: tagResult.fallback,
-        orTags: tagResult.orTags,
         lat: searchLat,
         lng: searchLng,
-        radiusKm: tagResult.radiusKm,
+        radiusKm: (calcedRadiusM ?? 30_000) / 1000,
         transport,
         limit: 20,
         googleApiKey: googleKey,

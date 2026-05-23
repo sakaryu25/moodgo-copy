@@ -813,6 +813,34 @@ export async function POST(req: NextRequest) {
 
     console.log(`[cafe] ▶ ${meta.label} detail=${detail ?? "-"} pref=${distancePref ?? "デフォルト"} min=${dc.minDistKm}km max=${dc.maxDistKm}km centers=${centers.length}`);
 
+    // ─── Supabase-first（PostGIS 空間検索で登録済みカフェを優先） ────────────
+    try {
+      const { spatialSearch } = await import("@/lib/spatial-search");
+      const { getCafeTags } = await import("@/lib/mood-tag-map");
+      const tagResult = getCafeTags(subCategory, detail);
+      const sbResults = await spatialSearch({
+        mustTags: tagResult.tags,
+        fallbackTags: tagResult.fallback,
+        lat: searchLat,
+        lng: searchLng,
+        radiusKm: baseRadiusM / 1000,
+        transport,
+        limit: 20,
+        googleApiKey: googleKey,
+      });
+      if (sbResults.length >= 3) {
+        console.log(`[cafe] Supabase ${sbResults.length}件 → 早期リターン`);
+        return NextResponse.json({
+          data: shuffleArray(sbResults),
+          subCategoryLabel: meta.label,
+          areaLabel,
+        });
+      }
+      console.log(`[cafe] Supabase ${sbResults.length}件 → Google Placesにフォールバック`);
+    } catch (e) {
+      console.warn("[cafe] Supabase-first error:", e);
+    }
+
     const opts = { label: meta.label, description, transport, originLat: searchLat, originLng: searchLng };
 
     // ── 検索実行ヘルパー（Google Places）──────────────────────────────
