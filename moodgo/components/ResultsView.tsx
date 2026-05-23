@@ -18,6 +18,8 @@ import PlaceCard from './PlaceCard';
 // Convert PlaceResponse to Recommendation for unified rendering
 function placeToRec(fac: PlaceResponse, featLabel?: string): Recommendation {
   const photos = (fac.photoUrls ?? []).length > 0 ? fac.photoUrls : fac.imageUrl ? [fac.imageUrl] : [];
+  // sb-{uuid} 形式から Supabase UUID を抽出（report-closed API 用）
+  const supabaseId = fac.id?.startsWith('sb-') ? fac.id.replace(/^sb-/, '') : undefined;
   return {
     title: fac.name,
     address: fac.address,
@@ -34,6 +36,7 @@ function placeToRec(fac: PlaceResponse, featLabel?: string): Recommendation {
     features: [fac.description || featLabel || ''].filter(Boolean),
     source: fac.source,
     hotpepperUrl: fac.hotpepperUrl,
+    supabaseId,
   };
 }
 
@@ -54,7 +57,7 @@ const T = {
     reportThanks: '報告ありがとうございました。',
     close: '閉じる',
     reasonLabel: '理由',
-    reportReasons: ['不正確な情報', '不適切なコンテンツ', '存在しない場所', 'その他'],
+    reportReasons: ['閉店・閉業', '不正確な情報', '不適切なコンテンツ', 'その他'],
     notePlaceholder: '詳細（任意）',
     cancel: 'キャンセル',
     submitting: '送信中...',
@@ -88,7 +91,7 @@ const T = {
     reportThanks: 'Thanks for your report.',
     close: 'Close',
     reasonLabel: 'Reason',
-    reportReasons: ['Incorrect info', 'Inappropriate content', 'Doesn\'t exist', 'Other'],
+    reportReasons: ['Closed/Shut down', 'Incorrect info', 'Inappropriate content', 'Other'],
     notePlaceholder: 'Details (optional)',
     cancel: 'Cancel',
     submitting: 'Sending...',
@@ -151,8 +154,8 @@ type Props = {
   isRefining: boolean;
   onRefine: () => void;
   onReset: () => void;
-  reportingSpot: { title: string; address: string } | null;
-  onSetReportingSpot: (v: { title: string; address: string } | null) => void;
+  reportingSpot: { title: string; address: string; supabaseId?: string } | null;
+  onSetReportingSpot: (v: { title: string; address: string; supabaseId?: string } | null) => void;
   reportReason: string;
   onSetReportReason: (v: string) => void;
   reportNote: string;
@@ -387,7 +390,7 @@ export default function ResultsView(props: Props) {
             isFavorited={isFav(item.title)}
             onToggleFavorite={() => onToggleFavorite(item)}
             onBlock={() => onBlockPlace(item.title)}
-            onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '' })}
+            onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '', supabaseId: item.supabaseId })}
             onMarkVisited={() => { setVisitingSpot(item); setVisitingRating(0); }}
             isVisited={visitedTitles.includes(item.title)}
             accentColor={accentColor}

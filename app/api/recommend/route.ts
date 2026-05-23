@@ -3559,12 +3559,13 @@ export async function POST(request: Request) {
       getDynamicQs(answers).some(q => q.answer.includes("カフェ") || q.answer.includes("スイーツ") || q.answer.includes("グルメ"));
     try {
       if (isSkipSupabaseMood) throw new Error("food mood — skip supabase flow");
-      const { searchPlacesByTags } = await import("@/lib/supabase-places");
+      // PostGIS 空間検索（PostGIS 未設定時は searchPlacesByTags に自動フォールバック）
+      const { spatialSearch } = await import("@/lib/spatial-search");
       const sbMustTags = [...userTags.mustTags];
       const sbNiceTags = [...userTags.niceToHaveTags];
       const radiusKm = getRadiusKmFromTransportAndTime(answers.transport, answers.time);
 
-      const sbResults = await searchPlacesByTags({
+      const sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbMustTags.slice(0, 1),
         lat: answers.originLat ?? 0,

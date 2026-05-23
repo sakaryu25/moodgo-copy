@@ -210,7 +210,7 @@ export default function Home() {
   const [prefectureButtons, setPrefectureButtons] = useState<string[]>([]);
 
   // Report
-  const [reportingSpot, setReportingSpot] = useState<{ title: string; address: string } | null>(null);
+  const [reportingSpot, setReportingSpot] = useState<{ title: string; address: string; supabaseId?: string } | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [reportNote, setReportNote] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -1042,6 +1042,17 @@ export default function Home() {
           if (!reportingSpot) return;
           setReportSubmitting(true);
           try {
+            // 閉店・閉業報告 → report_count をインクリメント（3件で自動非活性化）
+            if (reportReason === '閉店・閉業' || reportReason === 'Closed/Shut down') {
+              if (reportingSpot.supabaseId) {
+                await apiFetch('/api/report-closed', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ placeId: reportingSpot.supabaseId }),
+                }).catch(() => {});
+              }
+            }
+            // 通常の報告ログ（内容問わず /api/reports に記録）
             await apiFetch('/api/reports', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

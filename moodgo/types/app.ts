@@ -29,6 +29,8 @@ export type Recommendation = {
   routesByMode?: RouteByMode[];
   source?: 'hotpepper' | 'google' | 'admin' | 'user';
   hotpepperUrl?: string;
+  /** Supabase places.id（UUID）。report-closed API で使用する閉店報告用 */
+  supabaseId?: string;
 };
 
 export type FavoriteItem = {
