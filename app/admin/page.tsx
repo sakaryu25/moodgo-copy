@@ -490,321 +490,325 @@ interface GenreSyncState {
 
 function HotPepperSyncPanel({ secret }: { secret: string }) {
   const [genreStates, setGenreStates] = useState<Record<string, GenreSyncState>>({});
-  const [runningId, setRunningId] = useState<string | null>(null);
-  const [dbStats, setDbStats] = useState<{ total: number; byTag: Record<string, number> } | null>(null);
+  const [runningId, setRunningId]     = useState<string | null>(null);
+  const [fullSyncRunning, setFullSyncRunning] = useState(false);
+  const [fullSyncIndex, setFullSyncIndex]     = useState(0);
+  const [dbStats, setDbStats]         = useState<{ total: number; byTag: Record<string, number> } | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [dryRun, setDryRun] = useState(false);
-  const [batchSize] = useState(20);
-  const abortRef = useRef(false);
+  const [dryRun, setDryRun]           = useState(false);
+  const [batchSize]                   = useState(20);
+  const abortRef                      = useRef(false);
 
-  const cardStyle: React.CSSProperties = {
-    background: "#fff",
-    borderRadius: "16px",
-    padding: "20px",
-    boxShadow: "0 2px 12px rgba(74,48,52,0.10)",
-    marginBottom: "16px",
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "20px",
+    padding: "24px", boxShadow: "0 2px 16px rgba(0,0,0,0.07)", marginBottom: "20px",
+  };
+  const btn: React.CSSProperties = {
+    border: "none", borderRadius: "12px", padding: "10px 20px",
+    fontWeight: 700, cursor: "pointer", fontSize: "14px", transition: "opacity 0.2s",
   };
 
-  const btnBase2: React.CSSProperties = {
-    border: "none",
-    borderRadius: "10px",
-    padding: "8px 18px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: "13px",
-    transition: "opacity 0.2s",
-  };
-
-  // DB統計取得
   const loadStats = async () => {
     setStatsLoading(true);
     try {
-      const res = await fetch(`/api/admin/hotpepper-sync?secret=${encodeURIComponent(secret)}`);
+      const res  = await fetch(`/api/admin/hotpepper-sync?secret=${encodeURIComponent(secret)}`);
       const data = await res.json();
       if (data.ok) {
         const byTag = data.genreStats ?? {};
-        const total = Object.values(byTag as Record<string, number>)
-          .reduce((acc: number, v) => acc + (v as number), 0);
+        const total = Object.values(byTag as Record<string, number>).reduce((a: number, v) => a + (v as number), 0);
         setDbStats({ total, byTag });
       }
     } catch { /* ignore */ }
     setStatsLoading(false);
   };
-
   useEffect(() => { loadStats(); }, []);
 
-  // 1ジャンル全バッチを順次実行
-  const startSync = async (genreId: string) => {
-    if (runningId) return;
-    abortRef.current = false;
-    setRunningId(genreId);
-
+  // ── 1ジャンルの全バッチを順次実行（内部ロジック）──────────────────────────
+  const syncGenre = async (genreId: string): Promise<void> => {
     setGenreStates(prev => ({
       ...prev,
       [genreId]: {
-        status: "running",
-        currentBatch: 0,
-        totalBatches: TOTAL_BATCHES,
-        inserted: 0,
-        updated: 0,
-        skipped: 0,
-        log: [`🚀 ${GENRE_CONFIGS_META.find(g => g.id === genreId)?.label} 同期開始...`],
+        status: "running", currentBatch: 0, totalBatches: TOTAL_BATCHES,
+        inserted: 0, updated: 0, skipped: 0,
+        log: [`🚀 ${GENRE_CONFIGS_META.find(g => g.id === genreId)?.label} 開始`],
       },
     }));
 
-    let totalInserted = 0, totalUpdated = 0, totalSkipped = 0;
-    let totalBatches = TOTAL_BATCHES;
+    let ins = 0, upd = 0, skp = 0, totalBatches = TOTAL_BATCHES;
 
     for (let batch = 0; batch < 999; batch++) {
       if (abortRef.current) {
         setGenreStates(prev => ({
           ...prev,
-          [genreId]: { ...prev[genreId], status: "idle", log: [...(prev[genreId]?.log ?? []), "⛔ 停止しました"] },
+          [genreId]: { ...prev[genreId], status: "idle", log: [...(prev[genreId]?.log ?? []), "⛔ 停止"] },
         }));
-        break;
+        return;
       }
-
       try {
-        const res = await fetch("/api/admin/hotpepper-sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res  = await fetch("/api/admin/hotpepper-sync", {
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ secret, genreId, batchIndex: batch, batchSize, dryRun }),
         });
         const data = await res.json();
-
         if (!data.ok) {
           setGenreStates(prev => ({
             ...prev,
-            [genreId]: { ...prev[genreId], status: "error", error: data.error, log: [...(prev[genreId]?.log ?? []), `❌ エラー: ${data.error}`] },
+            [genreId]: { ...prev[genreId], status: "error", error: data.error,
+              log: [...(prev[genreId]?.log ?? []), `❌ ${data.error}`] },
           }));
-          break;
+          return;
         }
-
         totalBatches = data.totalBatches ?? TOTAL_BATCHES;
-        totalInserted += data.results?.inserted ?? 0;
-        totalUpdated += data.results?.updated ?? 0;
-        totalSkipped += data.results?.skipped ?? 0;
-
-        const logLine = `バッチ ${batch + 1}/${totalBatches}: ${data.pointsProcessed}地点 / 取得${data.uniqueShopsFetched}件 / 新規+${data.results?.inserted ?? 0} / 更新~${data.results?.updated ?? 0}`;
-
+        ins += data.results?.inserted ?? 0;
+        upd += data.results?.updated  ?? 0;
+        skp += data.results?.skipped  ?? 0;
+        const logLine = `[${batch + 1}/${totalBatches}] +${data.results?.inserted ?? 0}件 ~${data.results?.updated ?? 0}件`;
         setGenreStates(prev => ({
           ...prev,
           [genreId]: {
             status: data.done ? "done" : "running",
-            currentBatch: batch + 1,
-            totalBatches,
-            inserted: totalInserted,
-            updated: totalUpdated,
-            skipped: totalSkipped,
-            log: [...(prev[genreId]?.log ?? []).slice(-30), logLine],
+            currentBatch: batch + 1, totalBatches,
+            inserted: ins, updated: upd, skipped: skp,
+            log: [...(prev[genreId]?.log ?? []).slice(-40), logLine],
           },
         }));
-
         if (data.done) {
           setGenreStates(prev => ({
             ...prev,
             [genreId]: {
-              ...prev[genreId],
-              status: "done",
-              log: [...(prev[genreId]?.log ?? []), `✅ 完了！ 合計 新規${totalInserted}件 / 更新${totalUpdated}件 / スキップ${totalSkipped}件`],
+              ...prev[genreId], status: "done",
+              log: [...(prev[genreId]?.log ?? []), `✅ 完了 新規${ins}件 / 更新${upd}件`],
             },
           }));
-          await loadStats();
-          break;
+          return;
         }
-
-        // バッチ間の短い待機（レート制限対策）
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         setGenreStates(prev => ({
           ...prev,
-          [genreId]: { ...prev[genreId], status: "error", error: String(err), log: [...(prev[genreId]?.log ?? []), `❌ ${String(err)}`] },
+          [genreId]: { ...prev[genreId], status: "error", error: String(err),
+            log: [...(prev[genreId]?.log ?? []), `❌ ${String(err)}`] },
         }));
-        break;
+        return;
       }
     }
+  };
 
+  // ── 1ジャンル単独ボタン ─────────────────────────────────────────────────────
+  const startSync = async (genreId: string) => {
+    if (runningId || fullSyncRunning) return;
+    abortRef.current = false;
+    setRunningId(genreId);
+    await syncGenre(genreId);
     setRunningId(null);
+    await loadStats();
+  };
+
+  // ── 全ジャンル一括実行 ───────────────────────────────────────────────────────
+  const startFullSync = async () => {
+    if (runningId || fullSyncRunning) return;
+    abortRef.current = false;
+    setFullSyncRunning(true);
+    for (let i = 0; i < GENRE_CONFIGS_META.length; i++) {
+      if (abortRef.current) break;
+      setFullSyncIndex(i);
+      setRunningId(GENRE_CONFIGS_META[i].id);
+      await syncGenre(GENRE_CONFIGS_META[i].id);
+      setRunningId(null);
+    }
+    setFullSyncRunning(false);
+    setFullSyncIndex(0);
+    await loadStats();
   };
 
   const stopSync = () => { abortRef.current = true; };
 
-  const getStatusColor = (status: SyncStatus) => {
-    switch (status) {
-      case "running": return "#ED8936";
-      case "done":    return "#48BB78";
-      case "error":   return "#E53E3E";
-      default:        return "#A0AEC0";
-    }
-  };
-  const getStatusLabel = (status: SyncStatus) => {
-    switch (status) {
-      case "running": return "🔄 同期中";
-      case "done":    return "✅ 完了";
-      case "error":   return "❌ エラー";
-      default:        return "待機中";
-    }
-  };
+  const statusColor = (s: SyncStatus) =>
+    s === "running" ? "#ED8936" : s === "done" ? "#38A169" : s === "error" ? "#E53E3E" : "#A0AEC0";
+  const statusLabel = (s: SyncStatus) =>
+    s === "running" ? "同期中…" : s === "done" ? "✅ 完了" : s === "error" ? "❌ エラー" : "待機中";
+
+  const doneCount  = GENRE_CONFIGS_META.filter(g => genreStates[g.id]?.status === "done").length;
+  const totalFood  = dbStats?.byTag["#お腹すいた"] ?? 0;
+  const isAnyBusy  = !!(runningId || fullSyncRunning);
 
   return (
-    <div>
-      {/* ヘッダー */}
-      <div style={cardStyle}>
-        <h2 style={{ fontSize: "20px", fontWeight: 900, marginBottom: "8px" }}>🍽 HotPepper全国店舗同期</h2>
-        <p style={{ fontSize: "13px", opacity: 0.7, marginBottom: "16px", lineHeight: 1.6 }}>
-          ホットペッパーグルメAPIから全国約260地点の飲食店を取得し、<br />
-          ジャンル・深掘りタグを自動付与してSupabaseに保存します。<br />
-          ⚠️ 事前に <code style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: "4px" }}>supabase-hotpepper-migration.sql</code> をSupabaseで実行してください。
-        </p>
+    <div style={{ maxWidth: "900px" }}>
 
-        {/* DB統計 */}
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "16px" }}>
-          <div style={{ background: "#FFF5EB", border: "1.5px solid #FBD38D", borderRadius: "12px", padding: "12px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: "24px", fontWeight: 900, color: "#C05621" }}>
-              {statsLoading ? "..." : (dbStats?.byTag["#お腹すいた"] ?? 0).toLocaleString()}
-            </div>
-            <div style={{ fontSize: "12px", opacity: 0.7 }}>登録済み飲食店</div>
+      {/* ── ヘッダーカード ─────────────────────────────────────────────── */}
+      <div style={{
+        ...card,
+        background: "linear-gradient(135deg, #FF9A5C 0%, #FF5C8A 100%)",
+        color: "#fff", padding: "28px 28px 24px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "16px" }}>
+          <div>
+            <h2 style={{ fontSize: "24px", fontWeight: 900, margin: 0 }}>🍽 HotPepper 全国店舗同期</h2>
+            <p style={{ margin: "6px 0 0", fontSize: "13px", opacity: 0.85 }}>
+              全国 3,417 地点 × 14ジャンルの飲食店を Supabase に一括登録
+            </p>
           </div>
-          {GENRE_CONFIGS_META.filter(g => !g.id.startsWith("skyscraper2")).map(g => (
-            <div key={g.id} style={{ background: "#F7FAFC", border: "1.5px solid #E2E8F0", borderRadius: "12px", padding: "8px 14px", textAlign: "center" }}>
-              <div style={{ fontSize: "16px", fontWeight: 700, color: "#2D3748" }}>
-                {statsLoading ? "..." : (dbStats?.byTag[g.tags[0]] ?? 0).toLocaleString()}
-              </div>
-              <div style={{ fontSize: "11px", opacity: 0.65 }}>{g.label}</div>
+          {/* 登録済み合計 */}
+          <div style={{ background: "rgba(255,255,255,0.2)", borderRadius: "16px", padding: "12px 24px", textAlign: "center", backdropFilter: "blur(4px)" }}>
+            <div style={{ fontSize: "32px", fontWeight: 900, lineHeight: 1 }}>
+              {statsLoading ? "…" : totalFood.toLocaleString()}
             </div>
-          ))}
-          <button onClick={loadStats} style={{ ...btnBase2, background: "#EDF2F7", color: "#4A5568" }}>
+            <div style={{ fontSize: "12px", opacity: 0.85, marginTop: "4px" }}>登録済み飲食店</div>
+          </div>
+        </div>
+
+        {/* 全ジャンル一括ボタン */}
+        <div style={{ marginTop: "20px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          {!isAnyBusy ? (
+            <button
+              onClick={startFullSync}
+              style={{
+                ...btn,
+                background: "#fff",
+                color: "#FF5C8A",
+                fontSize: "16px",
+                padding: "14px 32px",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+              }}
+            >
+              🚀 全14ジャンルを一括同期する
+            </button>
+          ) : (
+            <button onClick={stopSync} style={{ ...btn, background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: "15px", padding: "12px 24px" }}>
+              ⛔ 停止する
+            </button>
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#fff", cursor: "pointer" }}>
+            <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} />
+            ドライラン（テスト・DB書き込みなし）
+          </label>
+          <button onClick={loadStats} style={{ ...btn, background: "rgba(255,255,255,0.2)", color: "#fff", fontSize: "13px", padding: "8px 16px" }}>
             🔄 統計更新
           </button>
         </div>
 
-        {/* 設定 */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
-            <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} />
-            <span>ドライラン（DB書き込みなし・テスト用）</span>
-          </label>
-          {runningId && (
-            <button onClick={stopSync} style={{ ...btnBase2, background: "#FED7D7", color: "#C53030" }}>
-              ⛔ 停止
-            </button>
-          )}
+        {/* 全体プログレス */}
+        {(fullSyncRunning || doneCount > 0) && (
+          <div style={{ marginTop: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "6px", opacity: 0.9 }}>
+              <span>
+                {fullSyncRunning
+                  ? `ジャンル ${fullSyncIndex + 1} / ${GENRE_CONFIGS_META.length} を処理中…`
+                  : `${doneCount} / ${GENRE_CONFIGS_META.length} ジャンル完了`}
+              </span>
+              <span>{Math.round((doneCount / GENRE_CONFIGS_META.length) * 100)}%</span>
+            </div>
+            <div style={{ background: "rgba(255,255,255,0.3)", borderRadius: "99px", height: "10px" }}>
+              <div style={{
+                width: `${(doneCount / GENRE_CONFIGS_META.length) * 100}%`,
+                background: "#fff",
+                height: "100%", borderRadius: "99px",
+                transition: "width 0.6s ease",
+              }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── ジャンル別カウント ─────────────────────────────────────────── */}
+      <div style={{ ...card, padding: "20px" }}>
+        <h3 style={{ fontSize: "15px", fontWeight: 800, marginBottom: "14px", color: "#2D3748" }}>📊 ジャンル別 登録件数</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "10px" }}>
+          {GENRE_CONFIGS_META.filter(g => g.id !== "skyscraper2").map(g => (
+            <div key={g.id} style={{
+              background: genreStates[g.id]?.status === "done" ? "#F0FFF4" : "#F7FAFC",
+              border: `1.5px solid ${genreStates[g.id]?.status === "done" ? "#9AE6B4" : "#E2E8F0"}`,
+              borderRadius: "12px", padding: "10px 12px", textAlign: "center",
+            }}>
+              <div style={{ fontSize: "18px", fontWeight: 900, color: "#2D3748" }}>
+                {statsLoading ? "…" : (dbStats?.byTag[g.tags[0]] ?? 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: "11px", color: "#718096", marginTop: "2px" }}>{g.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* SQLマイグレーション案内 */}
-      <div style={{ ...cardStyle, background: "#FFFBF0", border: "2px solid #F6E05E" }}>
-        <h3 style={{ fontSize: "15px", fontWeight: 800, marginBottom: "8px" }}>📋 初回セットアップ（Supabaseで実行）</h3>
-        <p style={{ fontSize: "12px", opacity: 0.7, marginBottom: "8px" }}>Supabase Dashboard → SQL Editor → New query → 以下を貼り付けて実行</p>
-        <pre style={{ background: "#1a1a1a", color: "#f0f0f0", borderRadius: "8px", padding: "12px", fontSize: "11px", overflow: "auto", maxHeight: "200px" }}>
-{`-- 1. placesテーブルにHotPepperフィールドを追加
-ALTER TABLE places ADD COLUMN IF NOT EXISTS hotpepper_id    TEXT;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS source_type     TEXT DEFAULT 'manual';
-ALTER TABLE places ADD COLUMN IF NOT EXISTS report_count    INTEGER DEFAULT 0;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS last_reported_at TIMESTAMPTZ;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS photo_url       TEXT;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS open_hours      TEXT;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS close_day       TEXT;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS budget          TEXT;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS hotpepper_url   TEXT;
-
--- 2. インデックス追加
-CREATE UNIQUE INDEX IF NOT EXISTS idx_places_hotpepper_id
-  ON places(hotpepper_id) WHERE hotpepper_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_places_source_type ON places(source_type);
-CREATE INDEX IF NOT EXISTS idx_places_report_count ON places(report_count);
-
--- 3. 閉店報告ログテーブル
-CREATE TABLE IF NOT EXISTS closed_reports (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  place_id UUID REFERENCES places(id) ON DELETE SET NULL,
-  hotpepper_id TEXT,
-  user_session_id TEXT,
-  reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);`}
-        </pre>
-        <p style={{ fontSize: "11px", opacity: 0.6, marginTop: "8px" }}>
-          詳細は <code>supabase-hotpepper-migration.sql</code> を参照（プロジェクトルートに保存済み）
-        </p>
-      </div>
-
-      {/* ジャンル別同期コントロール */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "16px" }}>📡 ジャンル別同期</h3>
-        <div style={{ display: "grid", gap: "14px" }}>
+      {/* ── ジャンル別同期コントロール ────────────────────────────────── */}
+      <div style={card}>
+        <h3 style={{ fontSize: "15px", fontWeight: 800, marginBottom: "16px", color: "#2D3748" }}>
+          📡 ジャンル別 個別実行
+          <span style={{ fontSize: "12px", fontWeight: 400, color: "#718096", marginLeft: "8px" }}>
+            ※ 一括同期でも個別に進捗が表示されます
+          </span>
+        </h3>
+        <div style={{ display: "grid", gap: "12px" }}>
           {GENRE_CONFIGS_META.map(genre => {
-            const state = genreStates[genre.id];
+            const state     = genreStates[genre.id];
             const isRunning = runningId === genre.id;
-            const progress = state ? (state.currentBatch / Math.max(state.totalBatches, 1)) * 100 : 0;
+            const progress  = state ? (state.currentBatch / Math.max(state.totalBatches, 1)) * 100 : 0;
+            const borderColor =
+              isRunning              ? "#F6AD55" :
+              state?.status === "done"  ? "#68D391" :
+              state?.status === "error" ? "#FC8181" : "#E2E8F0";
 
             return (
               <div key={genre.id} style={{
-                border: `2px solid ${isRunning ? "#F6AD55" : state?.status === "done" ? "#68D391" : state?.status === "error" ? "#FC8181" : "#E2E8F0"}`,
-                borderRadius: "12px",
-                padding: "14px",
+                border: `2px solid ${borderColor}`,
+                borderRadius: "14px", padding: "14px 16px",
                 transition: "border-color 0.3s",
+                background: state?.status === "done" ? "#F9FFFC" : "#fff",
               }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                  <div>
-                    <span style={{ fontWeight: 800, fontSize: "15px" }}>{genre.label}</span>
-                    <span style={{ marginLeft: "8px", fontSize: "12px", color: getStatusColor(state?.status ?? "idle"), fontWeight: 700 }}>
-                      {getStatusLabel(state?.status ?? "idle")}
+                {/* 上段：ラベル・ステータス・ボタン */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: "15px", whiteSpace: "nowrap" }}>{genre.label}</span>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: statusColor(state?.status ?? "idle"), whiteSpace: "nowrap" }}>
+                      {statusLabel(state?.status ?? "idle")}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    {state && (
-                      <span style={{ fontSize: "12px", opacity: 0.7 }}>
-                        +{state.inserted}件 ~{state.updated}件
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
+                    {state?.status === "running" && (
+                      <span style={{ fontSize: "11px", color: "#ED8936", fontWeight: 700 }}>
+                        {state.currentBatch}/{state.totalBatches}
                       </span>
                     )}
-                    {!runningId && (
+                    {state && (state.inserted > 0 || state.updated > 0) && (
+                      <span style={{ fontSize: "11px", color: "#718096" }}>
+                        +{state.inserted} ~{state.updated}
+                      </span>
+                    )}
+                    {!isAnyBusy && (
                       <button
                         onClick={() => startSync(genre.id)}
                         style={{
-                          ...btnBase2,
+                          ...btn,
+                          fontSize: "12px", padding: "6px 14px",
                           background: state?.status === "done"
-                            ? "#C6F6D5"
-                            : "linear-gradient(135deg, #FF9A5C 0%, #FF5C8A 100%)",
+                            ? "#C6F6D5" : "linear-gradient(135deg, #FF9A5C, #FF5C8A)",
                           color: state?.status === "done" ? "#276749" : "#fff",
                         }}
                       >
-                        {state?.status === "done" ? "🔄 再同期" : "▶ 同期開始"}
+                        {state?.status === "done" ? "🔄 再同期" : "▶ 実行"}
                       </button>
-                    )}
-                    {isRunning && (
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#ED8936" }}>
-                        バッチ {state?.currentBatch}/{state?.totalBatches}
-                      </span>
                     )}
                   </div>
                 </div>
 
-                {/* タグ表示 */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "8px" }}>
+                {/* タグチップ */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}>
                   {genre.tags.map(tag => (
                     <span key={tag} style={{
-                      background: "#FFF5EB",
-                      color: "#C05621",
-                      border: "1px solid #FBD38D",
-                      borderRadius: "6px",
-                      padding: "2px 8px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}>
-                      {tag}
-                    </span>
+                      background: "#FFF5EB", color: "#C05621",
+                      border: "1px solid #FBD38D", borderRadius: "6px",
+                      padding: "2px 7px", fontSize: "10px", fontWeight: 600,
+                    }}>{tag}</span>
                   ))}
                 </div>
 
                 {/* プログレスバー */}
                 {(isRunning || state?.status === "done") && (
-                  <div style={{ background: "#E2E8F0", borderRadius: "4px", height: "6px", marginBottom: "8px" }}>
+                  <div style={{ background: "#E2E8F0", borderRadius: "99px", height: "5px", marginTop: "10px" }}>
                     <div style={{
                       width: `${state?.status === "done" ? 100 : progress}%`,
-                      background: state?.status === "done" ? "#48BB78" : "linear-gradient(90deg, #FF9A5C, #FF5C8A)",
-                      height: "100%",
-                      borderRadius: "4px",
-                      transition: "width 0.5s ease",
+                      background: state?.status === "done"
+                        ? "#48BB78" : "linear-gradient(90deg, #FF9A5C, #FF5C8A)",
+                      height: "100%", borderRadius: "99px", transition: "width 0.5s ease",
                     }} />
                   </div>
                 )}
@@ -812,17 +816,14 @@ CREATE TABLE IF NOT EXISTS closed_reports (
                 {/* ログ */}
                 {state?.log && state.log.length > 0 && (
                   <div style={{
-                    background: "#1a1a1a",
-                    borderRadius: "8px",
-                    padding: "8px 12px",
-                    maxHeight: "120px",
-                    overflow: "auto",
-                    fontSize: "11px",
-                    fontFamily: "monospace",
-                    color: "#f0f0f0",
+                    background: "#111827", borderRadius: "8px",
+                    padding: "8px 12px", marginTop: "10px",
+                    maxHeight: "100px", overflow: "auto",
+                    fontSize: "10px", fontFamily: "monospace", color: "#d1fae5",
+                    lineHeight: 1.6,
                   }}>
-                    {state.log.slice(-8).map((line, i) => (
-                      <div key={i} style={{ marginBottom: "2px" }}>{line}</div>
+                    {state.log.slice(-6).map((line, i) => (
+                      <div key={i}>{line}</div>
                     ))}
                   </div>
                 )}
@@ -832,43 +833,6 @@ CREATE TABLE IF NOT EXISTS closed_reports (
         </div>
       </div>
 
-      {/* 閉店報告管理 */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "8px" }}>🚫 自動閉店除外の仕組み</h3>
-        <div style={{ background: "#F0FFF4", border: "1.5px solid #9AE6B4", borderRadius: "12px", padding: "14px", fontSize: "13px", lineHeight: 1.7 }}>
-          <p><strong>閉店報告が3件</strong>に達した店舗は自動的に <code>is_active = false</code> となり検索結果から除外されます。</p>
-          <p style={{ marginTop: "8px" }}>
-            フロントエンドの結果カードに「🚫 閉店を報告」ボタンを追加することで、<br />
-            <code>POST /api/report-closed</code> が呼ばれ、自動的にカウントアップします。
-          </p>
-          <p style={{ marginTop: "8px", fontSize: "12px", opacity: 0.7 }}>
-            API: <code>POST /api/report-closed</code> &nbsp;|&nbsp; body: <code>{"{ placeId, hotpepperId, sessionId }"}</code>
-          </p>
-        </div>
-      </div>
-
-      {/* 事業活用ヒント */}
-      <div style={cardStyle}>
-        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px" }}>💡 事業精度アップのアドバイス</h3>
-        <div style={{ display: "grid", gap: "10px" }}>
-          {[
-            { icon: "📸", title: "TikTok話題店の手動追加", desc: "TikTokでバズったカフェ・飲食店はユーザー投稿機能（既存の📍スポット追加）から管理者が手動で #流行りカフェ タグを付けて登録。HotPepperに載っていない穴場を差別化要素に。" },
-            { icon: "⏰", title: "定期再同期でデータ鮮度維持", desc: "HotPepperのデータは定期的に変わるため、月1回の再同期を推奨。同期ボタンで「再同期」すると photo_url・open_hours・budget が最新に更新されます。" },
-            { icon: "📊", title: "予約連携（将来）", desc: "HotPepperの店舗URLからそのままオンライン予約ページへ誘導できます。予約完了をトラッキングすることで人気店ランキング生成が可能。" },
-            { icon: "🏅", title: "プレミアム掲載（マネタイズ）", desc: "飲食店オーナーに対してMoodGo内での「優先表示」「専用バナー」「期間限定クーポン表示」を月額課金で提供。#流行りカフェ タグを付与するだけで上位表示できる仕組みに。" },
-            { icon: "🔁", title: "閉店報告を活用した信頼性スコア", desc: "report_countが低い（報告なし）店舗は「信頼度◎」としてカードにバッジ表示。ユーザーの報告データがDB品質向上に直接貢献します。" },
-            { icon: "🗺️", title: "エリア別ランディングページ", desc: "「渋谷のカフェ」「梅田の居酒屋」のようなエリア×ジャンルのページを自動生成し、SEO流入を獲得。Supabaseのデータをそのまま活用できます。" },
-          ].map(({ icon, title, desc }) => (
-            <div key={title} style={{ display: "flex", gap: "12px", padding: "12px", background: "#F7FAFC", borderRadius: "10px" }}>
-              <span style={{ fontSize: "24px", flexShrink: 0 }}>{icon}</span>
-              <div>
-                <p style={{ fontWeight: 700, fontSize: "14px", marginBottom: "4px" }}>{title}</p>
-                <p style={{ fontSize: "12px", opacity: 0.75, lineHeight: 1.6 }}>{desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
