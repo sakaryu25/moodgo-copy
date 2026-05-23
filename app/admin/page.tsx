@@ -186,7 +186,7 @@ const GENRE_CONFIGS_META = [
   { id: "skyscraper",  label: "高層ビル料理",   tags: ["#高層ビル料理"] },
   { id: "skyscraper2", label: "高層ビル料理(スカイ)", tags: ["#高層ビル料理"] },
 ];
-const TOTAL_BATCHES = 13; // Math.ceil(260 grid points / 20 per batch)
+const TOTAL_BATCHES = 171; // Math.ceil(3417 grid points / 20 per batch)
 
 type SyncStatus = "idle" | "running" | "done" | "error";
 interface GenreSyncState {

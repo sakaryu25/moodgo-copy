@@ -213,8 +213,8 @@ export function isKoreanShop(shopName: string, catchCopy: string, genreCatch: st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 日本全国グリッドポイント（lat, lng, エリア名）
-// 3km半径の円でカバーするため、約5km間隔で配置
+// 日本全国グリッドポイント（プログラム生成）
+// 各エリアを密度別に分けて格子点を自動生成
 // ─────────────────────────────────────────────────────────────────────────────
 export interface GridPoint {
   lat: number;
@@ -222,249 +222,167 @@ export interface GridPoint {
   area: string;
 }
 
-export const JAPAN_GRID_POINTS: GridPoint[] = [
-  // ── 北海道 ──────────────────────────────────────────────────────────────────
-  { lat: 43.0642, lng: 141.3469, area: "北海道・札幌中心" },
-  { lat: 43.0800, lng: 141.3300, area: "北海道・札幌北" },
-  { lat: 43.0500, lng: 141.3700, area: "北海道・札幌東" },
-  { lat: 43.0250, lng: 141.3400, area: "北海道・札幌南" },
-  { lat: 43.0642, lng: 141.4000, area: "北海道・札幌すすきの" },
-  { lat: 41.7688, lng: 140.7290, area: "北海道・函館" },
-  { lat: 43.7706, lng: 142.3650, area: "北海道・旭川" },
-  { lat: 42.9750, lng: 144.3747, area: "北海道・釧路" },
-  { lat: 42.9239, lng: 143.1969, area: "北海道・帯広" },
-  { lat: 43.8036, lng: 143.8906, area: "北海道・北見" },
-  { lat: 43.1907, lng: 141.0019, area: "北海道・小樽" },
-  { lat: 42.3500, lng: 140.9998, area: "北海道・室蘭" },
-  // ── 東北 ────────────────────────────────────────────────────────────────────
-  { lat: 40.8246, lng: 140.7406, area: "青森市" },
-  { lat: 40.5126, lng: 141.4882, area: "八戸市" },
-  { lat: 40.6031, lng: 140.4644, area: "弘前市" },
-  { lat: 39.7036, lng: 141.1527, area: "岩手・盛岡" },
-  { lat: 38.9307, lng: 141.1290, area: "岩手・一関" },
-  { lat: 39.3438, lng: 141.0205, area: "岩手・花巻" },
-  { lat: 38.2688, lng: 140.8721, area: "宮城・仙台中心" },
-  { lat: 38.2530, lng: 140.8920, area: "宮城・仙台東" },
-  { lat: 38.2850, lng: 140.8700, area: "宮城・仙台北" },
-  { lat: 38.4144, lng: 141.3027, area: "宮城・石巻" },
-  { lat: 39.7186, lng: 140.1023, area: "秋田市" },
-  { lat: 39.4413, lng: 141.1378, area: "秋田・大館" },
-  { lat: 38.2404, lng: 140.3636, area: "山形市" },
-  { lat: 38.9177, lng: 139.8361, area: "山形・酒田" },
-  { lat: 38.4302, lng: 140.3593, area: "山形・天童" },
-  { lat: 37.7609, lng: 140.4748, area: "福島市" },
-  { lat: 37.3991, lng: 140.3844, area: "郡山市" },
-  { lat: 37.0505, lng: 140.8877, area: "いわき市" },
-  { lat: 37.1522, lng: 140.2780, area: "福島・白河" },
-  // ── 関東 ────────────────────────────────────────────────────────────────────
-  { lat: 36.3413, lng: 140.4468, area: "茨城・水戸" },
-  { lat: 36.0831, lng: 140.0766, area: "茨城・つくば" },
-  { lat: 36.5550, lng: 139.8829, area: "栃木・宇都宮" },
-  { lat: 36.7065, lng: 139.7967, area: "栃木・鹿沼" },
-  { lat: 36.8153, lng: 139.5025, area: "栃木・小山" },
-  { lat: 36.3891, lng: 139.0633, area: "群馬・前橋" },
-  { lat: 36.3226, lng: 139.0006, area: "群馬・高崎" },
-  { lat: 36.5799, lng: 139.2111, area: "群馬・伊勢崎" },
-  { lat: 35.8616, lng: 139.6455, area: "さいたま市大宮" },
-  { lat: 35.9085, lng: 139.6568, area: "さいたま市北" },
-  { lat: 35.9252, lng: 139.4856, area: "川越市" },
-  { lat: 35.8070, lng: 139.7241, area: "川口市" },
-  { lat: 35.8886, lng: 139.7907, area: "越谷市" },
-  { lat: 35.7990, lng: 139.4688, area: "所沢市" },
-  { lat: 35.7397, lng: 139.6012, area: "和光市" },
-  { lat: 36.0000, lng: 139.7600, area: "埼玉・春日部" },
-  { lat: 36.0443, lng: 139.3796, area: "埼玉・熊谷" },
-  { lat: 35.9857, lng: 139.6315, area: "埼玉・さいたま北" },
-  // 千葉
-  { lat: 35.6073, lng: 140.1063, area: "千葉市中心" },
-  { lat: 35.6350, lng: 140.0680, area: "千葉市北" },
-  { lat: 35.7878, lng: 139.9024, area: "松戸市" },
-  { lat: 35.6946, lng: 139.9816, area: "船橋市" },
-  { lat: 35.7219, lng: 139.9316, area: "市川市" },
-  { lat: 35.8584, lng: 139.9690, area: "柏市" },
-  { lat: 35.7783, lng: 140.3181, area: "成田市" },
-  { lat: 35.5036, lng: 140.0122, area: "千葉・市原" },
-  { lat: 35.3308, lng: 139.9920, area: "千葉・木更津" },
-  { lat: 35.9200, lng: 140.1100, area: "千葉・我孫子" },
-  // 東京
-  { lat: 35.6938, lng: 139.7034, area: "東京・新宿" },
-  { lat: 35.6618, lng: 139.7041, area: "東京・渋谷" },
-  { lat: 35.7023, lng: 139.7745, area: "東京・秋葉原" },
-  { lat: 35.7147, lng: 139.7966, area: "東京・浅草" },
-  { lat: 35.6716, lng: 139.7658, area: "東京・銀座" },
-  { lat: 35.6627, lng: 139.7316, area: "東京・六本木" },
-  { lat: 35.7295, lng: 139.7109, area: "東京・池袋" },
-  { lat: 35.6613, lng: 139.6680, area: "東京・下北沢" },
-  { lat: 35.6415, lng: 139.6996, area: "東京・中目黒" },
-  { lat: 35.7079, lng: 139.7748, area: "東京・上野" },
-  { lat: 35.6487, lng: 139.7025, area: "東京・代官山" },
-  { lat: 35.6436, lng: 139.6682, area: "東京・三軒茶屋" },
-  { lat: 35.6340, lng: 139.7157, area: "東京・目黒" },
-  { lat: 35.6668, lng: 139.7581, area: "東京・新橋・汐留" },
-  { lat: 35.6288, lng: 139.7399, area: "東京・品川" },
-  { lat: 35.6970, lng: 139.6912, area: "東京・西新宿" },
-  { lat: 35.6750, lng: 139.7635, area: "東京・有楽町" },
-  { lat: 35.6476, lng: 139.7400, area: "東京・田町" },
-  { lat: 35.7054, lng: 139.6503, area: "東京・高円寺" },
-  { lat: 35.7022, lng: 139.5770, area: "東京・吉祥寺" },
-  { lat: 35.6196, lng: 139.7282, area: "東京・大崎" },
-  { lat: 35.6973, lng: 139.4116, area: "東京・立川" },
-  { lat: 35.6667, lng: 139.3156, area: "東京・八王子" },
-  { lat: 35.7163, lng: 139.5659, area: "東京・武蔵野" },
-  { lat: 35.6841, lng: 139.5601, area: "東京・三鷹" },
-  { lat: 35.7274, lng: 139.7104, area: "東京・大塚" },
-  { lat: 35.7440, lng: 139.7300, area: "東京・巣鴨" },
-  { lat: 35.7353, lng: 139.7706, area: "東京・日暮里" },
-  { lat: 35.6788, lng: 139.6823, area: "東京・恵比寿" },
-  { lat: 35.6480, lng: 139.7750, area: "東京・天王洲" },
-  { lat: 35.7500, lng: 139.5900, area: "東京・練馬" },
-  { lat: 35.7777, lng: 139.6200, area: "東京・赤羽" },
-  { lat: 35.6800, lng: 139.7500, area: "東京・浜松町" },
-  { lat: 35.7390, lng: 139.6640, area: "東京・中野" },
-  { lat: 35.7700, lng: 139.7000, area: "東京・十条" },
-  // 神奈川
-  { lat: 35.4437, lng: 139.6380, area: "横浜中心" },
-  { lat: 35.4710, lng: 139.6230, area: "横浜・横浜駅" },
-  { lat: 35.4050, lng: 139.6420, area: "横浜・みなとみらい" },
-  { lat: 35.3900, lng: 139.6100, area: "横浜・上大岡" },
-  { lat: 35.4950, lng: 139.6100, area: "横浜・神奈川" },
-  { lat: 35.5309, lng: 139.7020, area: "川崎市" },
-  { lat: 35.5200, lng: 139.6800, area: "川崎・武蔵小杉" },
-  { lat: 35.5714, lng: 139.3733, area: "相模原市" },
-  { lat: 35.2841, lng: 139.6720, area: "横須賀市" },
-  { lat: 35.3387, lng: 139.4874, area: "藤沢市" },
-  { lat: 35.2547, lng: 139.1560, area: "小田原市" },
-  { lat: 35.3197, lng: 139.5484, area: "鎌倉市" },
-  { lat: 35.5635, lng: 139.5420, area: "川崎・鶴川" },
-  { lat: 35.4700, lng: 139.3800, area: "神奈川・厚木" },
-  // ── 中部 ────────────────────────────────────────────────────────────────────
-  { lat: 37.9161, lng: 139.0364, area: "新潟市" },
-  { lat: 37.4469, lng: 138.8493, area: "長岡市" },
-  { lat: 37.6500, lng: 138.8600, area: "新潟・三条" },
-  { lat: 36.6953, lng: 137.2113, area: "富山市" },
-  { lat: 36.5947, lng: 136.6256, area: "金沢市" },
-  { lat: 36.5500, lng: 136.6300, area: "金沢・片町" },
-  { lat: 36.0652, lng: 136.2217, area: "福井市" },
-  { lat: 35.6631, lng: 138.5681, area: "山梨・甲府" },
-  { lat: 36.6513, lng: 138.1811, area: "長野市" },
-  { lat: 36.2373, lng: 137.9720, area: "松本市" },
-  { lat: 36.0050, lng: 137.8410, area: "長野・飯田" },
-  { lat: 34.9769, lng: 138.3831, area: "静岡市" },
-  { lat: 34.7108, lng: 137.7274, area: "浜松市" },
-  { lat: 35.1120, lng: 138.9060, area: "静岡・沼津" },
-  { lat: 35.1815, lng: 136.9066, area: "名古屋・栄" },
-  { lat: 35.1700, lng: 136.8840, area: "名古屋・名駅" },
-  { lat: 35.1550, lng: 136.9200, area: "名古屋・金山" },
-  { lat: 35.1230, lng: 136.9310, area: "名古屋・天白" },
-  { lat: 35.2200, lng: 136.9600, area: "名古屋・守山" },
-  { lat: 34.7692, lng: 137.3916, area: "豊橋市" },
-  { lat: 35.0839, lng: 137.1564, area: "豊田市" },
-  { lat: 34.9498, lng: 137.1640, area: "岡崎市" },
-  { lat: 35.3953, lng: 136.7220, area: "岐阜市" },
-  { lat: 36.1500, lng: 137.2500, area: "岐阜・高山" },
-  { lat: 34.7303, lng: 136.5057, area: "三重・津" },
-  { lat: 34.9662, lng: 136.6195, area: "三重・四日市" },
-  // ── 関西 ────────────────────────────────────────────────────────────────────
-  { lat: 35.0166, lng: 135.8665, area: "滋賀・大津" },
-  { lat: 35.0169, lng: 135.9648, area: "滋賀・草津" },
-  { lat: 35.0116, lng: 135.7681, area: "京都・京都駅" },
-  { lat: 35.0034, lng: 135.7741, area: "京都・河原町" },
-  { lat: 35.0200, lng: 135.7720, area: "京都・四条烏丸" },
-  { lat: 34.9950, lng: 135.7850, area: "京都・東山" },
-  { lat: 35.0094, lng: 135.6744, area: "京都・嵐山" },
-  { lat: 34.7024, lng: 135.4959, area: "大阪・梅田" },
-  { lat: 34.6950, lng: 135.5020, area: "大阪・心斎橋" },
-  { lat: 34.6736, lng: 135.5013, area: "大阪・なんば" },
-  { lat: 34.6523, lng: 135.5061, area: "大阪・天王寺" },
-  { lat: 34.7335, lng: 135.5001, area: "大阪・新大阪" },
-  { lat: 34.6974, lng: 135.4934, area: "大阪・北新地" },
-  { lat: 34.6641, lng: 135.5337, area: "大阪・鶴橋" },
-  { lat: 34.7060, lng: 135.5089, area: "大阪・天神橋筋" },
-  { lat: 34.7617, lng: 135.5179, area: "大阪・吹田" },
-  { lat: 34.7805, lng: 135.4703, area: "大阪・豊中" },
-  { lat: 34.8180, lng: 135.6518, area: "大阪・枚方" },
-  { lat: 34.5735, lng: 135.4830, area: "堺市" },
-  { lat: 34.6796, lng: 135.5927, area: "東大阪市" },
-  { lat: 34.7680, lng: 135.6271, area: "寝屋川市" },
-  { lat: 34.6650, lng: 135.4350, area: "大阪・難波西" },
-  { lat: 34.7200, lng: 135.4650, area: "大阪・十三" },
-  { lat: 34.6901, lng: 135.1956, area: "神戸・三宮" },
-  { lat: 34.6940, lng: 135.1900, area: "神戸・元町" },
-  { lat: 34.6750, lng: 135.2050, area: "神戸・新開地" },
-  { lat: 34.8148, lng: 134.6860, area: "姫路市" },
-  { lat: 34.7323, lng: 135.4140, area: "尼崎市" },
-  { lat: 34.7371, lng: 135.3410, area: "西宮市" },
-  { lat: 34.7991, lng: 135.3572, area: "宝塚市" },
-  { lat: 34.6851, lng: 135.8050, area: "奈良市" },
-  { lat: 34.2260, lng: 135.1675, area: "和歌山市" },
-  // ── 中国・四国 ──────────────────────────────────────────────────────────────
-  { lat: 35.5011, lng: 134.2351, area: "鳥取市" },
-  { lat: 35.4680, lng: 133.0486, area: "松江市" },
-  { lat: 35.4300, lng: 133.0700, area: "出雲市" },
-  { lat: 34.6551, lng: 133.9194, area: "岡山市" },
-  { lat: 34.6650, lng: 133.9100, area: "岡山・表町" },
-  { lat: 34.4859, lng: 133.3625, area: "福山市" },
-  { lat: 34.3853, lng: 132.4553, area: "広島・紙屋町" },
-  { lat: 34.3970, lng: 132.4650, area: "広島・本通り" },
-  { lat: 34.3600, lng: 132.4700, area: "広島・宇品" },
-  { lat: 34.1861, lng: 131.4706, area: "山口市" },
-  { lat: 33.9545, lng: 130.9416, area: "下関市" },
-  { lat: 34.0658, lng: 134.5593, area: "徳島市" },
-  { lat: 34.3401, lng: 134.0434, area: "高松市" },
-  { lat: 33.8392, lng: 132.7657, area: "松山市" },
-  { lat: 33.5597, lng: 133.5311, area: "高知市" },
-  // ── 九州 ────────────────────────────────────────────────────────────────────
-  { lat: 33.5894, lng: 130.3977, area: "福岡・天神" },
-  { lat: 33.5880, lng: 130.4200, area: "福岡・博多" },
-  { lat: 33.5700, lng: 130.4150, area: "福岡・中洲" },
-  { lat: 33.5540, lng: 130.3900, area: "福岡・大濠" },
-  { lat: 33.6000, lng: 130.4050, area: "福岡・薬院" },
-  { lat: 33.8834, lng: 130.8751, area: "北九州・小倉" },
-  { lat: 33.3193, lng: 130.5086, area: "久留米市" },
-  { lat: 33.6000, lng: 130.8000, area: "直方市" },
-  { lat: 33.2494, lng: 130.2988, area: "佐賀市" },
-  { lat: 33.1700, lng: 130.1780, area: "佐賀・唐津" },
-  { lat: 32.7503, lng: 129.8779, area: "長崎市" },
-  { lat: 32.8350, lng: 129.9150, area: "長崎・諫早" },
-  { lat: 32.8031, lng: 130.7079, area: "熊本市" },
-  { lat: 32.8200, lng: 130.7200, area: "熊本・花畑" },
-  { lat: 33.2382, lng: 131.6127, area: "大分市" },
-  { lat: 33.2200, lng: 131.6000, area: "大分・トキハ" },
-  { lat: 31.9110, lng: 131.4235, area: "宮崎市" },
-  { lat: 31.5969, lng: 130.5571, area: "鹿児島市" },
-  { lat: 31.6100, lng: 130.5450, area: "鹿児島・天文館" },
-  { lat: 32.7500, lng: 130.7000, area: "熊本・荒尾" },
-  // ── 沖縄 ────────────────────────────────────────────────────────────────────
-  { lat: 26.2124, lng: 127.6792, area: "那覇市" },
-  { lat: 26.2200, lng: 127.6850, area: "那覇・国際通り" },
-  { lat: 26.3344, lng: 127.8056, area: "沖縄市" },
-  { lat: 26.4600, lng: 127.9250, area: "沖縄・うるま" },
-  { lat: 26.1200, lng: 127.6600, area: "沖縄・糸満" },
-  { lat: 26.3950, lng: 127.7850, area: "沖縄・北中城" },
-  // ── 追加エリア（主要観光・商業地区）────────────────────────────────────────
-  { lat: 35.6800, lng: 139.7700, area: "東京・築地" },
-  { lat: 35.6550, lng: 139.7650, area: "東京・汐留" },
-  { lat: 35.6700, lng: 139.7900, area: "東京・門前仲町" },
-  { lat: 35.6950, lng: 139.7550, area: "東京・御茶ノ水" },
-  { lat: 35.7200, lng: 139.7350, area: "東京・本郷" },
-  { lat: 35.7450, lng: 139.6900, area: "東京・板橋" },
-  { lat: 35.8050, lng: 139.7150, area: "東京・赤羽北" },
-  { lat: 35.6550, lng: 139.6600, area: "東京・蒲田" },
-  { lat: 35.5650, lng: 139.7200, area: "東京・蒲田南" },
-  { lat: 35.6350, lng: 139.6850, area: "東京・大井町" },
-  { lat: 34.7100, lng: 135.5400, area: "大阪・城東" },
-  { lat: 34.6450, lng: 135.5000, area: "大阪・堺筋本町" },
-  { lat: 34.6900, lng: 135.5650, area: "大阪・今里" },
-  { lat: 34.7600, lng: 135.5500, area: "大阪・守口" },
-  { lat: 34.8650, lng: 135.5400, area: "大阪・茨木" },
-  { lat: 34.9000, lng: 135.6200, area: "大阪・高槻" },
-  { lat: 34.6350, lng: 135.5500, area: "大阪・住吉" },
-  { lat: 34.5600, lng: 135.5100, area: "堺市北" },
-  { lat: 35.0250, lng: 135.7500, area: "京都・西陣" },
-  { lat: 35.0450, lng: 135.7300, area: "京都・金閣寺近辺" },
-  { lat: 34.9700, lng: 135.8100, area: "京都・山科" },
-  { lat: 34.9500, lng: 135.7400, area: "京都・伏見" },
-];
+/** 格子点自動生成（エリア別に密度を変えて全国をカバー） */
+function generateJapanGrid(): GridPoint[] {
+  // ── エリア定義 ────────────────────────────────────────────────────────────
+  // step: 緯度・経度方向の刻み幅（度）
+  //   0.04° ≈ 4.4km  → 主要都市中心
+  //   0.08° ≈ 8.9km  → 都市近郊
+  //   0.14° ≈ 15.5km → 地方都市
+  //   0.22° ≈ 24.5km → 郊外・農村
+  //   0.35° ≈ 39km   → 過疎地・北海道内陸
+  const REGIONS: Array<{
+    name: string;
+    latMin: number; latMax: number;
+    lngMin: number; lngMax: number;
+    step: number;
+  }> = [
+    // ━━━━━━ 主要都市中心部（超高密度: 約4km間隔）━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    { name: "東京23区",       latMin: 35.59, latMax: 35.81, lngMin: 139.57, lngMax: 139.93, step: 0.04 },
+    { name: "横浜川崎",       latMin: 35.38, latMax: 35.55, lngMin: 139.58, lngMax: 139.74, step: 0.04 },
+    { name: "さいたま市",     latMin: 35.81, latMax: 35.95, lngMin: 139.58, lngMax: 139.75, step: 0.04 },
+    { name: "千葉市",         latMin: 35.57, latMax: 35.66, lngMin: 140.07, lngMax: 140.19, step: 0.04 },
+    { name: "大阪市",         latMin: 34.62, latMax: 34.79, lngMin: 135.43, lngMax: 135.59, step: 0.04 },
+    { name: "名古屋市",       latMin: 35.08, latMax: 35.26, lngMin: 136.82, lngMax: 137.00, step: 0.04 },
+    { name: "福岡市",         latMin: 33.53, latMax: 33.66, lngMin: 130.34, lngMax: 130.49, step: 0.04 },
+    { name: "札幌市",         latMin: 42.96, latMax: 43.13, lngMin: 141.25, lngMax: 141.44, step: 0.04 },
+    { name: "仙台市",         latMin: 38.22, latMax: 38.36, lngMin: 140.80, lngMax: 140.98, step: 0.04 },
+    { name: "京都市",         latMin: 34.93, latMax: 35.09, lngMin: 135.69, lngMax: 135.85, step: 0.04 },
+    { name: "神戸市",         latMin: 34.65, latMax: 34.78, lngMin: 135.13, lngMax: 135.47, step: 0.04 },
+    { name: "広島市",         latMin: 34.35, latMax: 34.45, lngMin: 132.40, lngMax: 132.53, step: 0.04 },
+    { name: "北九州市",       latMin: 33.85, latMax: 33.95, lngMin: 130.81, lngMax: 130.95, step: 0.04 },
+    { name: "那覇市",         latMin: 26.18, latMax: 26.26, lngMin: 127.66, lngMax: 127.74, step: 0.04 },
+    { name: "熊本市",         latMin: 32.79, latMax: 32.83, lngMin: 130.69, lngMax: 130.77, step: 0.04 },
+    { name: "新潟市",         latMin: 37.89, latMax: 37.95, lngMin: 139.00, lngMax: 139.12, step: 0.04 },
+    { name: "静岡市",         latMin: 34.95, latMax: 35.01, lngMin: 138.35, lngMax: 138.43, step: 0.04 },
+    { name: "浜松市",         latMin: 34.69, latMax: 34.74, lngMin: 137.71, lngMax: 137.78, step: 0.04 },
+    { name: "岡山市",         latMin: 34.64, latMax: 34.69, lngMin: 133.90, lngMax: 133.96, step: 0.04 },
+    { name: "金沢市",         latMin: 36.55, latMax: 36.61, lngMin: 136.61, lngMax: 136.68, step: 0.04 },
+    { name: "松山市",         latMin: 33.82, latMax: 33.87, lngMin: 132.73, lngMax: 132.79, step: 0.04 },
+
+    // ━━━━━━ 都市近郊（高密度: 約8km間隔）━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 首都圏
+    { name: "東京多摩",       latMin: 35.55, latMax: 35.82, lngMin: 138.98, lngMax: 139.58, step: 0.08 },
+    { name: "神奈川内陸",     latMin: 35.18, latMax: 35.60, lngMin: 139.12, lngMax: 139.58, step: 0.08 },
+    { name: "埼玉",           latMin: 35.68, latMax: 36.22, lngMin: 139.00, lngMax: 139.85, step: 0.08 },
+    { name: "千葉北",         latMin: 35.66, latMax: 35.95, lngMin: 139.90, lngMax: 140.55, step: 0.08 },
+    { name: "千葉南",         latMin: 35.14, latMax: 35.57, lngMin: 139.88, lngMax: 140.36, step: 0.08 },
+    // 関西
+    { name: "大阪近郊",       latMin: 34.45, latMax: 34.95, lngMin: 135.30, lngMax: 135.75, step: 0.08 },
+    { name: "兵庫東部",       latMin: 34.60, latMax: 35.00, lngMin: 134.90, lngMax: 135.30, step: 0.08 },
+    { name: "京都府南部",     latMin: 34.85, latMax: 35.15, lngMin: 135.57, lngMax: 135.88, step: 0.08 },
+    { name: "奈良",           latMin: 34.38, latMax: 34.73, lngMin: 135.75, lngMax: 136.00, step: 0.08 },
+    // 中京
+    { name: "名古屋近郊",     latMin: 34.95, latMax: 35.35, lngMin: 136.58, lngMax: 137.20, step: 0.08 },
+    { name: "愛知東部",       latMin: 34.65, latMax: 35.10, lngMin: 136.80, lngMax: 137.55, step: 0.08 },
+    // 福岡・北九州周辺
+    { name: "福岡近郊",       latMin: 33.40, latMax: 33.90, lngMin: 130.20, lngMax: 130.90, step: 0.08 },
+    { name: "北九州近郊",     latMin: 33.60, latMax: 34.00, lngMin: 130.70, lngMax: 131.30, step: 0.08 },
+    // 仙台近郊
+    { name: "宮城南部",       latMin: 37.90, latMax: 38.55, lngMin: 140.55, lngMax: 141.15, step: 0.08 },
+    // 札幌近郊
+    { name: "石狩平野",       latMin: 42.85, latMax: 43.35, lngMin: 141.00, lngMax: 141.65, step: 0.08 },
+    // 広島・山口
+    { name: "広島近郊",       latMin: 34.10, latMax: 34.52, lngMin: 132.20, lngMax: 132.80, step: 0.08 },
+
+    // ━━━━━━ 各道府県（中密度: 約14km間隔）━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 東北
+    { name: "青森県",         latMin: 40.40, latMax: 41.50, lngMin: 140.00, lngMax: 141.70, step: 0.14 },
+    { name: "岩手県",         latMin: 38.60, latMax: 40.40, lngMin: 140.60, lngMax: 141.80, step: 0.14 },
+    { name: "宮城県",         latMin: 37.65, latMax: 38.90, lngMin: 140.20, lngMax: 141.50, step: 0.14 },
+    { name: "秋田県",         latMin: 38.80, latMax: 40.30, lngMin: 139.55, lngMax: 140.80, step: 0.14 },
+    { name: "山形県",         latMin: 37.75, latMax: 39.00, lngMin: 139.50, lngMax: 140.75, step: 0.14 },
+    { name: "福島県",         latMin: 36.75, latMax: 37.85, lngMin: 139.50, lngMax: 141.00, step: 0.14 },
+    // 関東（外周部）
+    { name: "茨城県",         latMin: 35.72, latMax: 36.58, lngMin: 139.88, lngMax: 140.88, step: 0.14 },
+    { name: "栃木県",         latMin: 36.20, latMax: 36.97, lngMin: 139.38, lngMax: 140.25, step: 0.14 },
+    { name: "群馬県",         latMin: 36.15, latMax: 36.88, lngMin: 138.42, lngMax: 139.60, step: 0.14 },
+    { name: "山梨県",         latMin: 35.40, latMax: 35.78, lngMin: 138.30, lngMax: 139.00, step: 0.14 },
+    { name: "長野県北部",     latMin: 36.40, latMax: 37.05, lngMin: 137.65, lngMax: 138.60, step: 0.14 },
+    { name: "長野県南部",     latMin: 35.42, latMax: 36.40, lngMin: 137.55, lngMax: 138.30, step: 0.14 },
+    // 中部
+    { name: "新潟県",         latMin: 36.85, latMax: 38.55, lngMin: 137.70, lngMax: 139.60, step: 0.14 },
+    { name: "富山県",         latMin: 36.42, latMax: 36.80, lngMin: 136.70, lngMax: 137.62, step: 0.14 },
+    { name: "石川県",         latMin: 36.22, latMax: 37.00, lngMin: 136.45, lngMax: 137.10, step: 0.14 },
+    { name: "福井県",         latMin: 35.52, latMax: 36.20, lngMin: 135.80, lngMax: 136.55, step: 0.14 },
+    { name: "静岡県東部",     latMin: 34.88, latMax: 35.32, lngMin: 138.42, lngMax: 139.18, step: 0.14 },
+    { name: "静岡県西部",     latMin: 34.62, latMax: 35.10, lngMin: 137.45, lngMax: 138.45, step: 0.14 },
+    { name: "岐阜県",         latMin: 35.20, latMax: 36.30, lngMin: 136.60, lngMax: 137.65, step: 0.14 },
+    { name: "三重県",         latMin: 33.75, latMax: 35.00, lngMin: 135.95, lngMax: 136.75, step: 0.14 },
+    // 関西外周
+    { name: "滋賀県",         latMin: 34.80, latMax: 35.58, lngMin: 135.80, lngMax: 136.30, step: 0.14 },
+    { name: "兵庫西部",       latMin: 34.60, latMax: 35.18, lngMin: 134.28, lngMax: 135.00, step: 0.14 },
+    { name: "和歌山県",       latMin: 33.45, latMax: 34.35, lngMin: 135.00, lngMax: 136.00, step: 0.14 },
+    // 中国
+    { name: "鳥取県",         latMin: 35.15, latMax: 35.58, lngMin: 133.18, lngMax: 134.50, step: 0.14 },
+    { name: "島根県",         latMin: 34.68, latMax: 35.60, lngMin: 131.85, lngMax: 133.25, step: 0.14 },
+    { name: "岡山県",         latMin: 34.32, latMax: 35.10, lngMin: 133.35, lngMax: 134.32, step: 0.14 },
+    { name: "広島県東部",     latMin: 34.20, latMax: 34.70, lngMin: 132.80, lngMax: 133.62, step: 0.14 },
+    { name: "山口県",         latMin: 33.75, latMax: 34.42, lngMin: 130.62, lngMax: 132.45, step: 0.14 },
+    // 四国
+    { name: "徳島県",         latMin: 33.62, latMax: 34.18, lngMin: 133.80, lngMax: 134.78, step: 0.14 },
+    { name: "香川県",         latMin: 34.02, latMax: 34.35, lngMin: 133.62, lngMax: 134.45, step: 0.14 },
+    { name: "愛媛県",         latMin: 33.22, latMax: 34.00, lngMin: 132.38, lngMax: 133.40, step: 0.14 },
+    { name: "高知県",         latMin: 32.95, latMax: 33.78, lngMin: 132.65, lngMax: 134.20, step: 0.14 },
+    // 九州
+    { name: "佐賀県",         latMin: 33.05, latMax: 33.55, lngMin: 129.85, lngMax: 130.42, step: 0.14 },
+    { name: "長崎県",         latMin: 32.48, latMax: 33.45, lngMin: 129.35, lngMax: 130.08, step: 0.14 },
+    { name: "大分県",         latMin: 32.90, latMax: 33.62, lngMin: 130.95, lngMax: 131.78, step: 0.14 },
+    { name: "宮崎県",         latMin: 31.35, latMax: 32.82, lngMin: 130.72, lngMax: 131.68, step: 0.14 },
+    { name: "鹿児島県",       latMin: 30.88, latMax: 31.98, lngMin: 130.05, lngMax: 131.05, step: 0.14 },
+    { name: "熊本県",         latMin: 32.00, latMax: 33.05, lngMin: 130.20, lngMax: 131.22, step: 0.14 },
+
+    // ━━━━━━ 北海道（低密度: 約22km間隔）━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    { name: "北海道道央",     latMin: 42.60, latMax: 43.80, lngMin: 140.85, lngMax: 143.00, step: 0.22 },
+    { name: "北海道道南",     latMin: 41.35, latMax: 42.60, lngMin: 139.80, lngMax: 141.60, step: 0.22 },
+    { name: "北海道道北",     latMin: 43.80, latMax: 45.55, lngMin: 141.40, lngMax: 143.50, step: 0.22 },
+    { name: "北海道道東",     latMin: 42.60, latMax: 44.35, lngMin: 142.85, lngMax: 145.85, step: 0.22 },
+    // 北海道内陸は店が少ないため粗め
+    { name: "北海道内陸",     latMin: 43.05, latMax: 44.80, lngMin: 141.50, lngMax: 143.20, step: 0.35 },
+
+    // ━━━━━━ 沖縄諸島（中密度: 主要島のみ）━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    { name: "沖縄本島北部",   latMin: 26.22, latMax: 26.90, lngMin: 127.65, lngMax: 128.28, step: 0.14 },
+    { name: "沖縄本島南部",   latMin: 26.00, latMax: 26.22, lngMin: 127.60, lngMax: 127.80, step: 0.08 },
+    { name: "石垣島",         latMin: 24.28, latMax: 24.55, lngMin: 124.10, lngMax: 124.35, step: 0.10 },
+    { name: "宮古島",         latMin: 24.70, latMax: 24.90, lngMin: 125.20, lngMax: 125.40, step: 0.10 },
+  ];
+
+  const seen = new Set<string>();
+  const points: GridPoint[] = [];
+
+  for (const r of REGIONS) {
+    // 浮動小数点誤差を避けるため整数演算で制御
+    const latSteps = Math.ceil((r.latMax - r.latMin) / r.step) + 1;
+    const lngSteps = Math.ceil((r.lngMax - r.lngMin) / r.step) + 1;
+
+    for (let i = 0; i < latSteps; i++) {
+      const lat = Math.round((r.latMin + i * r.step) * 100000) / 100000;
+      if (lat > r.latMax + 0.001) break;
+
+      for (let j = 0; j < lngSteps; j++) {
+        const lng = Math.round((r.lngMin + j * r.step) * 100000) / 100000;
+        if (lng > r.lngMax + 0.001) break;
+
+        // 0.04°単位（約4.4km）で丸めて重複排除
+        const keyLat = Math.round(lat / 0.04) * 0.04;
+        const keyLng = Math.round(lng / 0.04) * 0.04;
+        const key = `${keyLat.toFixed(2)},${keyLng.toFixed(2)}`;
+
+        if (!seen.has(key)) {
+          seen.add(key);
+          points.push({ lat, lng, area: r.name });
+        }
+      }
+    }
+  }
+
+  return points;
+}
+
+export const JAPAN_GRID_POINTS: GridPoint[] = generateJapanGrid();
+
+// 生成されたポイント数を確認したい場合: console.log(JAPAN_GRID_POINTS.length)
+
 
 // グリッドポイントをバッチに分割
 export function getGridBatch(batchIndex: number, batchSize: number = 20): GridPoint[] {
