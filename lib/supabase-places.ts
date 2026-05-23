@@ -1,9 +1,11 @@
 // ─── Supabase 場所検索ヘルパー ────────────────────────────────────────────────
 // places テーブルからタグ検索 → Google Places で補強 → PlaceResponse[] に変換
+// PostGIS が有効な場合は find_nearby_places RPC を優先使用
 
 import { supabase } from "@/lib/supabase";
 import type { PlaceResponse } from "@/types/onsen";
 import { isPriceWithinBudget } from "@/lib/calc-radius";
+import { scheduleBackgroundVitalityCheck } from "@/lib/place-vitality-check";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supabase レコード型
@@ -449,6 +451,17 @@ export async function searchPlacesByTags(
   const enriched = results
     .filter(r => r.status === "fulfilled")
     .map(r => (r as PromiseFulfilledResult<PlaceResponse>).value);
+
+  // ── バックグラウンド生存確認（fire-and-forget）───────────────────────────
+  // 返す結果の上位スポットをレスポンス後に非同期で生存確認
+  // ユーザーの応答速度に影響しない（supabase IDを渡す）
+  const supabaseIds = candidates
+    .slice(0, limit)
+    .map(c => c.place.id)
+    .filter(Boolean);
+  if (supabaseIds.length > 0 && googleApiKey) {
+    scheduleBackgroundVitalityCheck(supabaseIds, googleApiKey, 2000);
+  }
 
   // 予算フィルタ（budget > 0 の場合のみ適用）
   if (budget && budget > 0) {
