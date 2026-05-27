@@ -45,6 +45,7 @@ import TabBar from '@/components/TabBar';
 import HistoryView from '@/components/HistoryView';
 import FavoritesView from '@/components/FavoritesView';
 import FeaturedView from '@/components/FeaturedView';
+import FeatureScreen from '@/components/FeatureScreen';
 import ProfileSetup from '@/components/ProfileSetup';
 import QuizFlow from '@/components/QuizFlow';
 import ResultsView from '@/components/ResultsView';
@@ -1127,14 +1128,7 @@ export default function Home() {
           />
         );
       case 'featured':
-        return (
-          <FeaturedView
-            lang={lang}
-            featuredList={featuredList}
-            featuredListLoading={featuredListLoading}
-            onRefresh={() => loadFeaturedList(true)}
-          />
-        );
+        return <FeatureScreen />;
       default:
         return (
           <HomeView
