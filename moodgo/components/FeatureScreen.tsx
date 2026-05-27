@@ -16,7 +16,7 @@
  *   - REGIONS       : 地方ボタンの追加・変更
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dimensions,
   Image,
@@ -30,6 +30,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { apiFetch } from "@/lib/api";
 import {
   Bookmark,
   Building2,
@@ -119,6 +120,16 @@ type TabContentData = {
   categories: string[];
   sections: SectionData[];
   prefectures?: string[];
+};
+
+type FeaturedPageRecord = {
+  id: string;
+  slug: string;
+  partner_name: string;
+  spot_name: string;
+  catch_copy?: string;
+  cover_image_url?: string;
+  tags: string[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -570,10 +581,11 @@ function PrefectureGrid({ prefectures, onSelectPref }: PrefectureGridProps) {
 type FeatureContentViewProps = {
   selectedTab: Tab;
   onTabChange: (t: Tab) => void;
+  apiTabData: Partial<Record<Tab, TabContentData>>;
 };
 
-function FeatureContentView({ selectedTab, onTabChange }: FeatureContentViewProps) {
-  const data = TAB_DATA[selectedTab];
+function FeatureContentView({ selectedTab, onTabChange, apiTabData }: FeatureContentViewProps) {
+  const data = apiTabData[selectedTab] ?? TAB_DATA[selectedTab];
 
   const handlePrefSelect = (pref: string) => {
     if (pref === "神奈川") {
@@ -629,10 +641,62 @@ function FeatureContentView({ selectedTab, onTabChange }: FeatureContentViewProp
 // 親（index.tsx）の TabBar・SafeAreaView に内包されるため
 // 自前のタブバー・SafeAreaView は持たない
 // ─────────────────────────────────────────────────────────────────────────────
+function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabContentData>> {
+  const TABS: Tab[] = ["全国", "関東", "神奈川"];
+  const grouped: Record<Tab, FeaturedPageRecord[]> = { 全国: [], 関東: [], 神奈川: [] };
+
+  for (const rec of records) {
+    const matched = TABS.filter((t) => rec.tags.includes(t));
+    if (matched.length === 0) {
+      grouped["全国"].push(rec);
+    } else {
+      matched.forEach((t) => grouped[t].push(rec));
+    }
+  }
+
+  const result: Partial<Record<Tab, TabContentData>> = {};
+  for (const tab of TABS) {
+    const recs = grouped[tab];
+    if (!recs.length) continue;
+    const [first, ...rest] = recs;
+    result[tab] = {
+      title: TAB_DATA[tab].title,
+      subtitle: TAB_DATA[tab].subtitle,
+      hero: {
+        image: first.cover_image_url ?? IMG.fuji,
+        label: first.partner_name || "今月のおすすめ",
+        title: first.spot_name,
+        description: first.catch_copy ?? "",
+        buttonLabel: "特集を読む",
+      },
+      categories: TAB_DATA[tab].categories,
+      sections: rest.length
+        ? [{ title: "今月のおすすめ店舗", cards: rest.map((r) => ({
+            title: r.spot_name,
+            desc: r.catch_copy ?? "",
+            image: r.cover_image_url ?? IMG.cafe,
+          })) }]
+        : [],
+      prefectures: TAB_DATA[tab].prefectures,
+    };
+  }
+  return result;
+}
+
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
   const [hasSelectedArea, setHasSelectedArea] = useState(false);
   const [selectedTab, setSelectedTab] = useState<Tab>("全国");
+  const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, TabContentData>>>({});
+
+  useEffect(() => {
+    apiFetch("/api/featured")
+      .then((r) => r.json())
+      .then(({ ok, data }: { ok: boolean; data: FeaturedPageRecord[] }) => {
+        if (ok && data?.length) setApiTabData(buildTabData(data));
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSelectRegion = (tab: Tab) => {
     setSelectedTab(tab);
@@ -663,6 +727,7 @@ export default function FeatureScreen() {
           <FeatureContentView
             selectedTab={selectedTab}
             onTabChange={setSelectedTab}
+            apiTabData={apiTabData}
           />
         )}
       </View>
