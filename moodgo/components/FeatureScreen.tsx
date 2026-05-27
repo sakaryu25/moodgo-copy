@@ -269,7 +269,8 @@ const REGION_OVERLAY: RegionOverlayItem[] = [
   { id: "chugoku",  label: "中国",   emoji: "🌉",  color: "#7BA84A", tab: "全国", top: 51, side: "left",  offset: 2  },
   { id: "shikoku",  label: "四国",   emoji: "🌊",  color: "#3BAAA0", tab: "全国", top: 71, side: "left",  offset: 21 },
   { id: "kyushu",   label: "九州",   emoji: "🌴",  color: "#E07070", tab: "全国", top: 76, side: "left",  offset: 2  },
-  { id: "okinawa",  label: "沖縄",   emoji: "🌺",  color: "#E06080", tab: "全国", top: 83, side: "right", offset: 2  },
+  // 沖縄ボタンは左下に配置（インセットは右下）
+  { id: "okinawa",  label: "沖縄",   emoji: "🌺",  color: "#E06080", tab: "全国", top: 84, side: "left",  offset: 2  },
 ];
 
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {
@@ -293,12 +294,40 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
     >
       {scale > 0 && (
         <>
-          {/* 地図画像 */}
+          {/* 日本地図メイン */}
           <Image
             source={require("../assets/images/japan-map.png")}
             style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH }}
             resizeMode="contain"
           />
+
+          {/* 沖縄インセット（右下） */}
+          <View
+            style={{
+              position: "absolute",
+              bottom: cH * 0.04,
+              right: cW * 0.02,
+              width: cW * 0.22,
+              backgroundColor: "rgba(255,255,255,0.75)",
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "rgba(224,96,128,0.3)",
+              padding: 4,
+              ...Platform.select({
+                ios: { shadowColor: "#E06080", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6 },
+                android: { elevation: 3 },
+              }),
+            }}
+          >
+            <Image
+              source={require("../assets/images/okinawa-map.png")}
+              style={{ width: "100%", aspectRatio: 232 / 173 }}
+              resizeMode="contain"
+            />
+            <Text style={{ textAlign: "center", fontSize: 9, fontWeight: "700", color: "#E06080", paddingBottom: 2 }}>
+              沖縄
+            </Text>
+          </View>
 
           {/* エリアボタン — 画像座標系で配置 */}
           {REGION_OVERLAY.map((r) => {
