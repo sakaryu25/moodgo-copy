@@ -282,6 +282,20 @@ const TAB_DATA: Record<string, TabContentData> = {
     sections: [],
   },
 
+  神奈川: {
+    title: `神奈川 ${CURRENT_MONTH}の特集`,
+    subtitle: "海・山・街並み。魅力あふれる神奈川へ",
+    hero: {
+      image: IMG.yokohama,
+      label: "今月のおすすめ",
+      title: "紫陽花が彩る\n鎌倉・横浜をめぐる旅",
+      description: "初夏の神奈川で、海と街と自然を楽しもう。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🏔️ 絶景", "☕ カフェ", "🚶 おでかけ", "♨️ 温泉", "🍽️ グルメ", "🌃 夜景"],
+    sections: [],
+  },
+
   東京: {
     title: `${CURRENT_MONTH}の東京特集`,
     subtitle: "グルメ・カルチャー・夜景。東京の今を楽しむ",
@@ -836,7 +850,7 @@ function FeatureContentView({ selectedTab, apiTabData }: FeatureContentViewProps
 function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabContentData>> {
   const TABS: Tab[] = ["全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄",
     "東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬"];
-  const grouped: Record<Tab, FeaturedPageRecord[]> = { 全国: [], 関東: [], 神奈川: [] };
+  const grouped = Object.fromEntries(TABS.map(t => [t, []])) as Record<Tab, FeaturedPageRecord[]>;
 
   for (const rec of records) {
     const matched = TABS.filter((t) => rec.tags.includes(t));
