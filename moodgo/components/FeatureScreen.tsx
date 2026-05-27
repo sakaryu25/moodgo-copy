@@ -477,24 +477,26 @@ const KANTO_GRID: (KantoPrefCell | null)[][] = [
 ];
 
 function KantoPrefSelectView({ onSelectPref }: { onSelectPref: (tab: Tab) => void }) {
-  // 日本地図を関東エリアにズームインして背景表示
-  const mapScale = 3.2;
-  const mapW = W * mapScale;
-  const mapH = mapW * (813 / 632);
-  const bgLeft = W * 0.5 - mapW * 0.60;   // 関東は画像幅の約60%あたり
-  const bgTop  = -(mapH * 0.44 - H * 0.28); // 関東は画像高さの約44%あたり
+  // 関東エリアだけを切り抜いて背景に表示
+  // 画像のcontainサイズ(W × W*1.286)を3倍に拡大し
+  // 関東の中心(x:67%, y:44%)が画面上部40%あたりに来るよう配置
+  const SCALE = 3.0;
+  const mapW  = W * SCALE;
+  const mapH  = mapW * (813 / 632);
+  const bgLeft = W * 0.5 - mapW * 0.67;
+  const bgTop  = (H - 120) * 0.38 - mapH * 0.44;
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#FFF5EE", overflow: "hidden" }}>
-      {/* 関東ズームイン背景地図 */}
+    <View style={{ flex: 1, backgroundColor: C.bgSub, overflow: "hidden" }}>
+      {/* 関東エリア切り抜き地図 */}
       <Image
         source={require("../assets/images/japan-map.png")}
-        style={{ position: "absolute", width: mapW, height: mapH, left: bgLeft, top: bgTop, opacity: 0.18 }}
+        style={{ position: "absolute", width: mapW, height: mapH, left: bgLeft, top: bgTop, opacity: 0.82 }}
         resizeMode="contain"
       />
-      {/* グラデーションオーバーレイで馴染ませる */}
+      {/* ボタンの文字が読みやすいよう薄いオーバーレイ */}
       <LinearGradient
-        colors={["rgba(255,245,238,0.6)", "rgba(255,248,242,0.2)", "rgba(255,245,238,0.8)"]}
+        colors={["rgba(250,247,244,0.55)", "rgba(250,247,244,0.25)", "rgba(250,247,244,0.65)"]}
         style={StyleSheet.absoluteFill}
       />
 
