@@ -7,6 +7,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
+import AreaSelectView, { type Region, REGION_LABELS } from './AreaSelectView';
 import {
   Dimensions,
   ImageBackground,
@@ -250,6 +251,12 @@ export default function FeaturedView({
 }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
+
+  // エリア未選択 → エリア選択画面を表示
+  if (!selectedRegion) {
+    return <AreaSelectView onSelectRegion={setSelectedRegion} lang={lang} />;
+  }
 
   // APIデータを SpotItem 形式に変換（空の場合はデモデータを使用）
   const spots: SpotItem[] =
@@ -302,11 +309,22 @@ export default function FeaturedView({
           ) : undefined
         }
       >
-        {/* 号数バッジ + ページタイトル */}
+        {/* 号数バッジ + ページタイトル + 戻るボタン */}
         <View style={s.issueBadge}>
           <Text style={s.issueText}>{pageData.banner.issue}</Text>
         </View>
-        <Text style={s.pageTitle}>特集</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+          <TouchableOpacity
+            onPress={() => setSelectedRegion(null)}
+            style={{ marginRight: 10, paddingVertical: 4, paddingHorizontal: 2 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={{ fontSize: 22, color: '#BBAAAA' }}>‹</Text>
+          </TouchableOpacity>
+          <Text style={[s.pageTitle, { marginBottom: 0 }]}>
+            {REGION_LABELS[selectedRegion]}
+          </Text>
+        </View>
 
         {/* バナーカード */}
         <BannerCard data={pageData.banner} />
