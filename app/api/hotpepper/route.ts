@@ -12,8 +12,28 @@ export const dynamic = "force-dynamic";
  */
 
 import { NextResponse } from "next/server";
+import { scheduleAutoSave } from "@/lib/google-places-auto-save";
 
 const HOTPEPPER_BASE = "https://webservice.recruit.co.jp/hotpepper/gourmet/v1/";
+
+// HotPepper ジャンルコード → Supabase タグ
+const HP_GENRE_TO_TAG: Record<string, string> = {
+  G001: "#居酒屋",
+  G002: "#居酒屋",       // ダイニングバー
+  G003: "#和食",         // 創作料理
+  G004: "#和食",
+  G005: "#洋食",
+  G006: "#イタリアン",
+  G007: "#中華",
+  G008: "#焼肉",
+  G009: "#アジア系統",
+  G010: "#各国料理",
+  G013: "#ラーメン",
+  G014: "#カフェスイーツ",
+  G015: "#居酒屋",       // 鍋
+  G016: "#お好み焼きもんじゃ",
+  G017: "#韓国",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 型定義
@@ -672,6 +692,22 @@ export async function POST(request: Request) {
 
     // ── Google Places で写真補完 → 整形 ─────────────────────────────────────
     const googlePhotoMap = await fetchGooglePlacesPhotos(shops);
+
+    // ── HotPepper 結果を Supabase に自動保存（fire-and-forget）────────────
+    const genreTag = resolved.genre ? HP_GENRE_TO_TAG[resolved.genre] : null;
+    if (genreTag && shops.length > 0 && !isFallback) {
+      scheduleAutoSave(
+        shops.map(s => ({
+          googlePlaceId: "",
+          name: s.name,
+          address: s.address,
+          lat: parseFloat(s.lat),
+          lng: parseFloat(s.lng),
+          photoUrl: s.photo?.pc?.l ?? s.logo_image ?? null,
+        })),
+        genreTag
+      );
+    }
 
     return NextResponse.json({
       ok:         true,

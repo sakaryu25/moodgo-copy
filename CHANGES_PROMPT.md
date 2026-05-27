@@ -17,239 +17,195 @@
 
 ---
 
-## 今回追加・変更した機能（4つの大きな柱）
+## 今回追加・変更した機能
 
 ---
 
 ### ① HotPepper グルメ API 全国店舗一括登録システム
 
-**目的**: TikTokで話題の穴場カフェや流行りの飲食店を Supabase に蓄積し、Google Places API コストを下げながら精度を上げる。
+**目的**: 飲食店を Supabase に蓄積し、Google Places API コストを下げながら精度を上げる。
 
-#### 追加ファイル
+#### ファイル: `lib/hotpepper-sync-config.ts`
 
-**`lib/hotpepper-sync-config.ts`**
-- 14ジャンル（居酒屋・和食・洋食・イタリアン・中華・焼肉・韓国・アジア系・各国料理・ラーメン・お好み焼き・カフェスイーツ・高層料理）のジャンル設定
-- `generateJapanGrid()` 関数：全国を **3,417地点** のグリッドに分割（260地点→大幅拡充）
-  - 主要21都市：0.04° 刻み（密）
-  - 近郊エリア：0.08° 刻み（中）
-  - 地方：0.14〜0.35° 刻み（粗）
-- `assignTagsFromConfig()` 関数：OpenAI コスト不要のルールベースタグ付け
-  - 例：居酒屋で「個室」を含む店名 → `#居酒屋個室` タグを自動付与
-  - 例：焼肉で「食べ放題」を含む → `#焼肉食べ放題` タグを自動付与
+- **18ジャンル**対応（居酒屋・和食・洋食・イタリアン・中華・焼肉・韓国・アジア系・各国料理・ラーメン・お好み焼き・カフェスイーツ・高層料理・ダイニングバー・創作料理・鍋料理・その他グルメ）
+- `generateJapanGrid()` 関数：日本全国を **約25,000〜30,000地点** のグリッドに分割
+  - 全エリア **0.05°（約5.5km）刻み** に統一 → 3km 検索半径で完全カバー
+  - 以前は地方で 15km 間隔 → 9km の空白地帯あり（今回解消）
+  - 47都道府県庁所在地＋主要都市（50都市）に個別の高密度ゾーンを設定
+- `assignTagsFromConfig()` 関数：ルールベースのタグ付け（OpenAI コスト不要）
 
 **タグ体系**（`#お腹すいた` は全飲食店に必ず付与）:
 ```
-居酒屋   → #居酒屋 + [#居酒屋個室 or #大衆酒場]
-和食     → #和食 + [#寿司 or #天ぷら or #しゃぶしゃぶ etc.]
-焼肉     → #焼肉 + [#焼肉食べ放題 or #高級焼肉 or #焼肉単品あり]
-カフェ   → #癒しカフェ + [#スイーツカフェ or #ブックカフェ etc.]
-...（全14ジャンル）
+居酒屋        → #居酒屋 + [#居酒屋個室 or #大衆酒場]
+和食          → #和食 + [#海鮮 or #天ぷら or #うどんそば or #懐石料理]
+洋食          → #洋食 + [#ハンバーグ or #オムライス or #ステーキ or #レトロ洋食]
+焼肉          → #焼肉 + [#焼肉食べ放題 or #高級焼肉 or #焼肉単品あり]
+アジア系統    → #アジア系統 + [#インドネパール料理 or #タイ料理 or #ベトナム料理 or #アジアンエスタニック料理]
+各国料理      → #各国料理 + [#メキシコ料理 or #ブラジル料理 or #ロシア料理 or #他国料理]
+ラーメン      → #ラーメン + [#こってりラーメン or #あっさりラーメン or #味噌ラーメン or #つけ麺まぜそば]
+カフェスイーツ → #カフェスイーツ + [#スイーツカフェ or #喫茶店 or #流行りカフェ]
+（全18ジャンル対応）
 ```
 
-**`app/api/admin/hotpepper-sync/route.ts`**
+#### ファイル: `app/api/admin/hotpepper-sync/route.ts`
+
 - `POST { secret, genreId, batchIndex, batchSize, dryRun }` でジャンル別バッチ同期
 - 1グリッド点あたり最大300件取得（ページネーション対応）
-- `hotpepper_id` で重複排除し upsert（同じ店が2度登録されない）
+- **2段階重複チェック**で同じ店を二重登録しない：
+  1. `hotpepper_id` で一致チェック
+  2. 名前+住所の先頭30文字が一致したら同一店舗とみなす
+- タグはマージ（既存タグ + 新タグ）
 - `GET` で現在のジャンル一覧と DB 登録件数を返す
-- `maxDuration = 300`（Vercel Pro 5分制限対応）
 
-**`app/api/report-closed/route.ts`**
-- `POST { placeId, hotpepperId?, sessionId? }` で閉店報告を受付
-- `report_count` を +1 し、**3件以上で `is_active = false`**（自動非表示）
-- `closed_reports` テーブルにログを残す
+#### 管理画面: `app/admin/page.tsx` HotPepperSyncPanel
 
-**`supabase-hotpepper-migration.sql`**
-- `places` テーブルに追加するカラム：
-  - `hotpepper_id TEXT` (UNIQUE INDEX付き)
-  - `source_type TEXT` (`admin` / `hotpepper` / `google` / `user`)
-  - `report_count INT DEFAULT 0`
-  - `last_reported_at TIMESTAMPTZ`
-  - `photo_url TEXT`
-  - `open_hours TEXT`
-  - `close_day TEXT`
-  - `budget TEXT`
-  - `hotpepper_url TEXT`
-- `closed_reports` テーブル（閉店報告ログ）
-- `hotpepper_sync_logs` テーブル（同期ログ）
-
-#### 管理画面への追加
-`app/admin/page.tsx` に「🍽 HotPepper同期」タブを追加。
-ジャンル選択 → バッチ番号指定 → 「▶ 同期開始」ボタンで実行できる。
+- **「🚀 全18ジャンルを一括同期する」** ボタンで全ジャンルを順番に自動同期
+- ⛔ 停止ボタンで途中停止可能（途中から再開可能）
+- バッチ進捗バー・件数表示（「新規追加 1675件 / 更新 0件」形式）
+- ジャンル別登録件数の統計表示
+- ログ表示を改善（ダークターミナル廃止 → グレーのシンプルテキスト）
 
 ---
 
 ### ② PostGIS 高速空間検索システム
 
-**目的**: 「現在地から〇〇km以内でタグが一致する店を近い順に取得」をミリ秒単位で実現。従来のハバーサイン（JavaScript での距離計算）より大幅に高速。
+**目的**: 「現在地から〇〇km以内でタグが一致する店を近い順に取得」をミリ秒単位で実現。
 
-#### 追加ファイル
+#### Supabase で実行済みの SQL
 
-**`supabase-postgis-migration.sql`**（Supabase SQL Editor で実行済み）
 ```sql
--- PostGIS 拡張（すでに有効化済み: 3.3.7）
 CREATE EXTENSION IF NOT EXISTS postgis;
-
--- places テーブルに空間カラムを追加
 ALTER TABLE places ADD COLUMN IF NOT EXISTS location geometry(Point, 4326);
-ALTER TABLE places ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
-ALTER TABLE places ADD COLUMN IF NOT EXISTS google_place_id TEXT;
-
--- 既存 26,754 件の lat/lng を location に一括変換（実行済み）
-UPDATE places
-SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)
-WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
-
--- GiST 空間インデックス（ST_DWithin を高速化）
+UPDATE places SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)
+WHERE lat IS NOT NULL AND lng IS NOT NULL;
 CREATE INDEX idx_places_location_gist ON places USING GIST(location);
-
--- auto-sync トリガー（lat/lng 変更時に location を自動更新）
-CREATE TRIGGER trg_sync_place_location ...
-
--- RPC: 近い順×タグ検索
-CREATE OR REPLACE FUNCTION find_nearby_places(
-  user_lat, user_lng, radius_m, req_tags, result_limit
-) ...
-
--- RPC: 閉店チェック対象取得
-CREATE OR REPLACE FUNCTION find_places_needing_vitality_check(
-  batch_size, max_age_days
-) ...
 ```
 
-**`lib/spatial-search.ts`**
+26,754件すべての lat/lng を location カラムに変換済み。
+
+#### ファイル: `lib/spatial-search.ts`
+
 ```typescript
-// 主要関数
-spatialSearch(opts)         // PostGIS RPC → フォールバックの順で検索
-findNearbyPlacesRaw(...)    // PostGIS RPC を直接呼び出す低レベル関数
-nearbyRowToPlaceResponse()  // RPC 結果を PlaceResponse 型に変換
-spatialSearchWithTransport() // 交通手段+時間から半径を自動計算して検索
+spatialSearch(opts)  // PostGIS → フォールバックの順で検索
 ```
 
-**フォールバック設計**（PostGIS が未設定でも動く）:
+**フォールバック設計**:
 ```
-① PostGIS RPC `find_nearby_places` で検索
+① PostGIS RPC find_nearby_places で検索
   ↓ 結果が少なければ
 ② タグを緩めて再検索（fallbackTags + 半径×1.5）
   ↓ まだ少なければ
 ③ 半径×2 で再検索
-  ↓ それでも0件 or PostGIS 未設定なら
+  ↓ それでも0件なら
 ④ 既存の searchPlacesByTags（ハバーサイン）にフォールバック
 ```
 
-#### 全ルートへの適用（今回の主要変更）
+#### 全ルートへの適用
 
-以下の全8ルートで `searchPlacesByTags` → `spatialSearch` に変更し、
-**交通手段＋所要時間から算出した半径**を PostGIS に直接渡すように統一：
-
-| ルート | ファイル | 使用する半径変数 |
-|--------|---------|----------------|
-| 温泉   | `app/api/onsen/route.ts`   | `calcRadiusKm(transport)` |
-| 自然   | `app/api/nature/route.ts`  | `calcRadiusKmFromTime(transportArr, time) * 1000` |
-| わいわい | `app/api/waiwai/route.ts` | `googleRadiusM / 1000` |
-| ドライブ | `app/api/drive/route.ts`  | `calcedRadiusM / 1000`（未指定時 30km）|
-| 集中   | `app/api/focus/route.ts`   | `radiusM / 1000` |
-| スポーツ | `app/api/sports/route.ts` | `radiusM / 1000` |
-| 遠出   | `app/api/travel/route.ts`  | `donut.outerM / 1000`、`minRadiusKm: donut.innerM / 1000` |
-| カフェ | `app/api/cafe/route.ts`    | `baseRadiusM / 1000`（今回新規追加）|
-
-また `app/api/recommend/route.ts` のメインフローも `spatialSearch` を使用。
-
-**半径計算の元になる関数** (`lib/calc-radius.ts` の既存ロジック):
-```
-徒歩 + 30分  → 約 2km
-自転車 + 1時間 → 約 10km
-電車 + 1時間  → 約 30km
-車 + 1〜2時間 → 約 40〜80km
-```
+以下の全ルートで `spatialSearch` を使用するように変更済み：
+`onsen` / `nature` / `waiwai` / `drive` / `focus` / `sports` / `travel` / `cafe` / `recommend`
 
 ---
 
 ### ③ 閉業自動検知システム（自浄作用）
 
-**目的**: 飲食店は閉店が多いため、閉業した店舗を自動的に検索結果から除外する仕組みを構築。
-
-#### 検知の3段階
-
-**段階 1: 毎日自動チェック（Vercel Cron）**
+#### 毎日自動チェック（Vercel Cron）
 
 `vercel.json`:
 ```json
-{
-  "crons": [
-    {
-      "path": "/api/cron/vitality-check",
-      "schedule": "0 18 * * *"
-    }
-  ]
-}
+{ "crons": [{ "path": "/api/cron/vitality-check", "schedule": "0 18 * * *" }] }
 ```
-→ 毎朝 3:00 JST（UTC 18:00）に自動実行
+→ 毎朝 3:00 JST に自動実行。Google Places API で `businessStatus` を確認。
+`CLOSED_PERMANENTLY` → `is_active = false`（検索から即座に除外）
 
-`app/api/cron/vitality-check/route.ts`:
-- Google Places API で `businessStatus` を確認（1回あたり最大50件）
-- `CLOSED_PERMANENTLY` → `is_active = false`（即座に検索から除外）
-- `OPERATIONAL` / `CLOSED_TEMPORARILY` → `last_checked_at` を更新
-- 認証: `CRON_SECRET`（Vercel 自動付与）または `ADMIN_SECRET`
-
-**段階 2: ユーザー検索のたびにバックグラウンドチェック**
+#### ユーザー検索のたびにバックグラウンドチェック
 
 `lib/place-vitality-check.ts`:
-```typescript
-scheduleBackgroundVitalityCheck(placeIds, apiKey, 3000)
-// 検索結果を返した 3秒後に fire-and-forget で確認
-// UX への影響ゼロ
-```
+- 検索結果を返した 3秒後に fire-and-forget で確認
+- 7日以内チェック済みはスキップ（API コスト最大95%削減）
 
-- `lib/supabase-places.ts` と `lib/spatial-search.ts` の両方で呼び出す
-- **7日ルール**: `last_checked_at` が7日以内なら API を叩かない（コスト節約）
+#### ユーザーによる手動報告
 
-**段階 3: ユーザーによる手動報告**
-
-`moodgo/components/ResultsView.tsx`:
-- 報告理由に **「閉店・閉業」** を追加
-- `moodgo/types/app.ts` の `Recommendation` 型に `supabaseId?: string` を追加
-- Supabase 由来のスポット（`sb-{uuid}` 形式）から UUID を抽出して渡す
-
-`moodgo/app/index.tsx`:
-```typescript
-// 「閉店・閉業」報告時のみ /api/report-closed を追加で呼ぶ
-if (reportReason === '閉店・閉業') {
-  await apiFetch('/api/report-closed', {
-    method: 'POST',
-    body: JSON.stringify({ placeId: reportingSpot.supabaseId }),
-  });
-}
-// 通常の報告ログは従来通り /api/reports へ
-```
-
-**`lib/place-vitality-check.ts`** の主要な関数:
-```typescript
-fetchBusinessStatus(googlePlaceId, apiKey)  // Google Places New API で businessStatus 確認
-resolveGooglePlaceId(name, address, apiKey) // google_place_id 未登録時は名前+住所で検索して保存
-checkSinglePlace(place, apiKey)             // 1件チェック → DB 更新
-batchVitalityCheck(targets, apiKey)         // 5件並列 × バッチ処理（200ms インターバル）
-fetchVitalityTargets(batchSize)             // RPC 優先、失敗時は直接クエリ
-```
-
-**Admin パネル**（`app/admin/page.tsx`）:
-- 「🔍 生存確認・自浄」タブを追加
-- `app/api/admin/vitality-check/route.ts`（POST: バッチ実行、GET: 統計表示）
+- 報告理由に「閉店・閉業」を追加
+- `report_count` が 3件以上 → 自動的に `is_active = false`
 
 ---
 
-### ④ 閉店報告ボタンの UI 実装
+### ④ 高層ビル料理フィルタ改善
 
-**`moodgo/components/ResultsView.tsx`** の変更点:
-- `placeToRec()` 関数で `supabaseId` を抽出・セット
-- `onSetReportingSpot` の型を拡張: `{ title, address, supabaseId? }`
-- `onReport` コールバックで `supabaseId` を渡す
+**問題**: 「展望」という単語で公園（展望台）がヒットしていた
 
-**`moodgo/types/app.ts`** の変更点:
+**修正** (`app/api/recommend/route.ts`):
+1. Google Places API に `includedType: "restaurant"` を追加（根本解決）
+2. NGワード強化: 「展望台」「展望所」「見晴台」「公園」「神社」「駅」「空港」など
+3. ポジティブフィルタを厳格化:
+   - 以前: 「展望」が含まれれば通過 → 「北台展望台」も通過してしまっていた
+   - 修正後: 「展望レストラン」「展望ダイニング」などの**複合語**が必要
+
+---
+
+### ⑤ Google Places 結果の自動 Supabase 保存
+
+**目的**: ユーザーが食ジャンルを選んで検索した際に Google Places / HotPepper から返ってきたお店を、自動でタグ付きして Supabase に蓄積する。次回以降は API を使わず Supabase から高速取得できる。
+
+#### 仕組み
+
+```
+ユーザーが #居酒屋 を選んで検索
+    ↓
+HotPepper API / Google Places API が結果を返す（即座に表示）
+    ↓（3秒後、バックグラウンドで）
+autoSaveGooglePlaces() / autoSaveHotPepperShops() が実行される
+    ↓
+重複チェック（① google_place_id → ② 名前+住所先頭30文字）
+    ↓
+新規のみ Supabase に保存・タグ付与
+    ↓
+次回同じエリアで検索 → Supabase から返す（API コスト0）
+```
+
+#### ファイル: `lib/google-places-auto-save.ts`（NEW）
+
 ```typescript
-export type Recommendation = {
-  // ... 既存フィールド
-  supabaseId?: string; // 追加: Supabase places.id（report-closed 用）
-};
+// Google Places 結果を自動保存
+autoSaveGooglePlaces(places, genreTag)
+scheduleAutoSave(places, genreTag, delayMs)  // fire-and-forget ラッパー
+
+// HotPepper ライブ結果を自動保存
+autoSaveHotPepperShops(shops, genreTag)
+scheduleHotPepperAutoSave(shops, genreTag, delayMs)  // fire-and-forget ラッパー
+
+// 動的質問回答からジャンルタグを検出
+detectFoodGenreTag(text)  // "居酒屋" → "#居酒屋"
+```
+
+**対応ジャンル（14種）と自動付与サブタグ**:
+
+| ジャンルタグ | サブタグ判定ルール |
+|---|---|
+| #居酒屋 | 個室→#居酒屋個室、大衆→#大衆酒場 |
+| #和食 | 海鮮/天ぷら/うどん/懐石 |
+| #洋食 | ハンバーグ/オムライス/ステーキ/レトロ洋食 |
+| #焼肉 | 食べ放題/高級/（default: #焼肉単品あり）|
+| #アジア系統 | インド・ネパール/タイ/ベトナム/（default: #アジアンエスタニック料理）|
+| #各国料理 | メキシコ/ブラジル/ロシア/（default: #他国料理）|
+| #ラーメン | こってり/あっさり/味噌/つけ麺まぜそば |
+| #カフェスイーツ | スイーツ系/喫茶店/（default: #流行りカフェ）|
+| その他 | #イタリアン/#中華/#韓国/#お好み焼きもんじゃ/#高層ビル料理 |
+
+**フックしている箇所**:
+- `app/api/recommend/route.ts`：高層ビル料理（Google Places）
+- `app/api/recommend/route.ts`：食ジャンル全般（HotPepper ライブ結果）
+
+#### Supabase で実行が必要な SQL（1回だけ）
+
+```sql
+-- google_place_id カラムを追加（重複防止用）
+ALTER TABLE places ADD COLUMN IF NOT EXISTS google_place_id text;
+
+CREATE INDEX IF NOT EXISTS idx_places_google_place_id
+  ON places(google_place_id)
+  WHERE google_place_id IS NOT NULL;
 ```
 
 ---
@@ -267,52 +223,85 @@ export type Recommendation = {
 
 ---
 
-## Supabase で実行済みの SQL
+## Supabase で実行が必要な SQL まとめ
 
-以下の SQL を Supabase Dashboard → SQL Editor で実行済み:
+```sql
+-- ① PostGIS 有効化（1回だけ）
+CREATE EXTENSION IF NOT EXISTS postgis;
 
-1. **PostGIS 有効化**: `CREATE EXTENSION IF NOT EXISTS postgis;`
-2. **カラム追加** (`location`, `last_checked_at`, `google_place_id`, `hotpepper_id`, `source_type`, `report_count`, etc.)
-3. **既存データ変換**: 26,754件すべての `lat/lng` → `location` カラムに変換済み
-4. **インデックス作成**: GiST 空間インデックス、last_checked_at インデックスなど
-5. **RPC 作成**:
-   - `find_nearby_places(user_lat, user_lng, radius_m, req_tags, result_limit)`
-   - `find_places_needing_vitality_check(batch_size, max_age_days)`
+-- ② places テーブルへのカラム追加
+ALTER TABLE places ADD COLUMN IF NOT EXISTS location geometry(Point, 4326);
+ALTER TABLE places ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS google_place_id text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS hotpepper_id text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS source_type text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS report_count int DEFAULT 0;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS photo_url text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS open_hours text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS close_day text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS budget text;
+ALTER TABLE places ADD COLUMN IF NOT EXISTS hotpepper_url text;
+
+-- ③ 既存データを location カラムに変換（全件）
+UPDATE places
+SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)
+WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
+
+-- ④ インデックス作成
+CREATE INDEX IF NOT EXISTS idx_places_location_gist ON places USING GIST(location);
+CREATE INDEX IF NOT EXISTS idx_places_google_place_id
+  ON places(google_place_id) WHERE google_place_id IS NOT NULL;
+
+-- ⑤ RPC 関数（spatial-search.ts から呼ばれる）
+CREATE OR REPLACE FUNCTION find_nearby_places(
+  user_lat float, user_lng float, radius_m float,
+  req_tags text[], result_limit int
+)
+RETURNS TABLE(
+  id uuid, name text, address text, lat float, lng float,
+  tags text[], photo_url text, source_type text,
+  hotpepper_id text, google_place_id text,
+  distance_m float
+) LANGUAGE sql AS $$
+  SELECT id, name, address, lat, lng, tags, photo_url, source_type,
+         hotpepper_id, google_place_id,
+         ST_Distance(location::geography,
+           ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography) AS distance_m
+  FROM places
+  WHERE is_active = true
+    AND location IS NOT NULL
+    AND ST_DWithin(
+          location::geography,
+          ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography,
+          radius_m
+        )
+    AND tags && req_tags
+  ORDER BY distance_m
+  LIMIT result_limit;
+$$;
+```
 
 ---
 
-## 残りの作業（まだ実施していないもの）
-
-### HotPepper データ投入
-`https://moodgo-main.vercel.app/admin` にアクセス → 「🍽 HotPepper同期」タブ
-→ ジャンルを選んで「▶ 同期開始」（14ジャンル × 171バッチ分）
-
-### Google Places API キーの確認
-Vercel 環境変数に `GOOGLE_PLACES_API_KEY` が設定されているか確認
-→ 閉業自動チェックに必要
-
----
-
-## ファイル構成（今回追加・変更したもの一覧）
+## ファイル構成（追加・変更したもの一覧）
 
 ```
 moodgo-main/
 ├── vercel.json                              ← NEW: Cron スケジュール設定
-├── supabase-postgis-migration.sql           ← NEW: PostGIS SQL（実行済み）
-├── supabase-hotpepper-migration.sql         ← NEW: HotPepper カラム SQL
 │
 ├── lib/
-│   ├── hotpepper-sync-config.ts             ← NEW: ジャンル設定・グリッド3,417点
-│   ├── spatial-search.ts                    ← NEW: PostGIS 空間検索ラッパー
-│   └── place-vitality-check.ts             ← NEW: 閉業チェックロジック
+│   ├── hotpepper-sync-config.ts             ← MODIFIED: 18ジャンル・全国0.05°グリッド
+│   ├── spatial-search.ts                    ← MODIFIED: 自動保存フック追加
+│   ├── place-vitality-check.ts              ← NEW: 閉業チェックロジック
+│   └── google-places-auto-save.ts           ← NEW: Google Places/HotPepper 自動保存
 │
 ├── app/api/
 │   ├── cron/vitality-check/route.ts         ← NEW: Vercel Cron エンドポイント
 │   ├── admin/
-│   │   ├── hotpepper-sync/route.ts          ← NEW: HotPepper 一括同期 API
+│   │   ├── hotpepper-sync/route.ts          ← MODIFIED: 2段階重複チェック追加
 │   │   └── vitality-check/route.ts          ← NEW: 管理者向け閉業チェック API
 │   ├── report-closed/route.ts               ← NEW: ユーザー閉店報告 API
-│   ├── recommend/route.ts                   ← MODIFIED: spatialSearch を使用
+│   ├── recommend/route.ts                   ← MODIFIED: 自動保存・高層ビルフィルタ改善
 │   ├── onsen/route.ts                       ← MODIFIED: spatialSearch を使用
 │   ├── nature/route.ts                      ← MODIFIED: spatialSearch を使用
 │   ├── waiwai/route.ts                      ← MODIFIED: spatialSearch を使用
@@ -322,7 +311,7 @@ moodgo-main/
 │   ├── travel/route.ts                      ← MODIFIED: spatialSearch を使用
 │   └── cafe/route.ts                        ← MODIFIED: Supabase-first 追加
 │
-├── app/admin/page.tsx                       ← MODIFIED: 2タブ追加
+├── app/admin/page.tsx                       ← MODIFIED: 全18ジャンル一括同期・UI改善
 │
 └── moodgo/
     ├── types/app.ts                         ← MODIFIED: supabaseId フィールド追加
@@ -335,28 +324,31 @@ moodgo-main/
 ## アーキテクチャ全体像
 
 ```
-ユーザーが気分を選んで検索
+ユーザーが気分・食ジャンルを選んで検索
         ↓
 [Next.js API Routes]
         ↓
 ① PostGIS RPC find_nearby_places()
   「現在地から○km以内 × タグ一致」を距離順で瞬時に取得
-  （26,754件から数ミリ秒）
-        ↓ 3件以上 → そのまま返す
-        ↓ 足りない → Google Places / Yahoo で補完
+        ↓ 結果十分 → そのまま返す
+        ↓ 足りない → HotPepper / Google Places で補完
         ↓
-② 結果を Expo アプリに返す
+② 結果を Expo アプリに返す（ユーザーはここで結果を見る）
         ↓
-③ バックグラウンドで生存確認（3秒後 fire-and-forget）
-   Google Places businessStatus を確認
-   CLOSED_PERMANENTLY → is_active = false（次回から非表示）
+③ バックグラウンドで2つの処理が走る（fire-and-forget）
 
-[毎日自動]
-Vercel Cron 3:00 JST
-→ 未チェックスポット50件を Google Places で確認
+  [自動保存] 3秒後
+  Google Places / HotPepper の結果を Supabase に保存
+  → 次回同じエリアで検索 → Supabase から高速返却（API コスト0）
+
+  [生存確認] 3秒後
+  Google Places businessStatus を確認
+  CLOSED_PERMANENTLY → is_active = false（次回から非表示）
+
+[毎日自動 / Vercel Cron]
+毎朝 3:00 JST → 未チェックスポット50件を Google Places で確認
 → 閉業していたら即座に非表示
 
 [ユーザー報告]
-「閉店・閉業」ボタン → report_count +1
-3件以上報告 → 自動非表示
+「閉店・閉業」ボタン → report_count +1 → 3件以上で自動非表示
 ```

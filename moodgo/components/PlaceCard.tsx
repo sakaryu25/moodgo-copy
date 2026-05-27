@@ -1,8 +1,12 @@
+// ── PlaceCard ──────────────────────────────────────────────────────────────
+// UI UX Pro Max: Purple brand + Glassmorphism badge + Spring press
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { Clock, Heart, MapPin, Navigation, Share2, Star, Train } from 'lucide-react-native';
-import React, { useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Clock, Heart, MapPin, Navigation, Share2, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import React, { useRef, useState } from 'react';
 import {
+  Animated,
   Linking,
   Share,
   StyleSheet,
@@ -11,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import type { Recommendation } from '@/types/app';
+import { COLORS } from '@/constants/Colors';
 
 const T = {
   ja: {
@@ -23,6 +28,10 @@ const T = {
     reviewCount: (n: number) => `(${n.toLocaleString('ja-JP')}件)`,
     visited: '行った！',
     visitedDone: '✓ 行った',
+    moodMatch: 'この気分に合う',
+    moodNotMatch: '気分には合わない',
+    moodMatchDone: '👍 気分に合う！と評価しました',
+    moodNotMatchDone: '👎 気分には合わないと評価しました',
   },
   en: {
     openNow: 'Open',
@@ -34,6 +43,10 @@ const T = {
     reviewCount: (n: number) => `(${n.toLocaleString('en-US')} reviews)`,
     visited: 'Been there!',
     visitedDone: '✓ Visited',
+    moodMatch: 'Matches my mood',
+    moodNotMatch: "Doesn't match",
+    moodMatchDone: '👍 Marked as mood match!',
+    moodNotMatchDone: '👎 Marked as not matching',
   },
 };
 
@@ -47,11 +60,15 @@ type Props = {
   isVisited?: boolean;
   accentColor?: string;
   lang?: 'ja' | 'en';
+  moodRating?: 'good' | 'bad' | null;
+  onMoodMatch?: () => void;
+  onMoodNotMatch?: () => void;
 };
 
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
-  accentColor = '#FF6B35', lang = 'ja',
+  accentColor = COLORS.primary, lang = 'ja',
+  moodRating, onMoodMatch, onMoodNotMatch,
 }: Props) {
   const t = T[lang];
   const photos = (item.photoUrls ?? []).length > 0
@@ -59,9 +76,23 @@ export default function PlaceCard({
     : item.photoUrl ? [item.photoUrl] : [];
   const [photoIdx, setPhotoIdx] = useState(0);
 
+  // スプリングプレスアニメーション
+  const scale = useRef(new Animated.Value(1)).current;
+  const handlePressIn  = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, mass: 1, damping: 20, stiffness: 300 }).start();
+  const handlePressOut = () => Animated.spring(scale, { toValue: 1,    useNativeDriver: true, mass: 1, damping: 15, stiffness: 200 }).start();
+
+  // Heart pulse
+  const heartScale = useRef(new Animated.Value(1)).current;
+  const pulseHeart = () => {
+    Animated.sequence([
+      Animated.spring(heartScale, { toValue: 1.35, useNativeDriver: true, mass: 1, damping: 8, stiffness: 300 }),
+      Animated.spring(heartScale, { toValue: 1,    useNativeDriver: true, mass: 1, damping: 12, stiffness: 200 }),
+    ]).start();
+  };
+
   const openNowColor =
-    item.openNow === true  ? '#34C759' :
-    item.openNow === false ? '#8E8E93' : '#8E8E93';
+    item.openNow === true  ? '#10B981' :
+    item.openNow === false ? '#EF4444' : COLORS.textMuted;
   const openNowLabel =
     item.openNow === true  ? t.openNow :
     item.openNow === false ? t.closedNow : '';
@@ -74,20 +105,31 @@ export default function PlaceCard({
   };
 
   return (
-    <View style={s.card}>
+    <Animated.View style={[s.card, { transform: [{ scale }] }]}>
       {/* Photo */}
       <View style={s.photoWrap}>
         {photos.length > 0 ? (
           <Image
-            source={{ uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/photo-proxy?url=${encodeURIComponent(photos[photoIdx])}` }}
+            source={{ uri: photos[photoIdx] }}
             style={s.photo}
             contentFit="cover"
+            transition={300}
           />
         ) : (
-          <View style={[s.photo, s.photoPlaceholder]}>
-            <Navigation size={36} color="#C7C7CC" strokeWidth={1.5} />
-          </View>
+          <LinearGradient
+            colors={['#FFF0F3', '#FFE4E6']}
+            style={[s.photo, s.photoPlaceholder]}
+          >
+            <Navigation size={36} color={COLORS.primary} strokeWidth={1.5} />
+          </LinearGradient>
         )}
+
+        {/* 下グラデーションオーバーレイ */}
+        <LinearGradient
+          colors={['transparent', 'rgba(15,10,30,0.55)']}
+          style={s.photoOverlay}
+          pointerEvents="none"
+        />
 
         {/* Photo nav */}
         {photos.length > 1 && (
@@ -102,6 +144,7 @@ export default function PlaceCard({
                 <Text style={s.arrowText}>›</Text>
               </TouchableOpacity>
             )}
+            {/* ページドット */}
             <View style={s.pageDots}>
               {photos.map((_, i) => (
                 <View key={i} style={[s.pageDot, i === photoIdx && s.pageDotActive]} />
@@ -110,25 +153,29 @@ export default function PlaceCard({
           </>
         )}
 
-        {/* Fav button */}
+        {/* Fav button（パルスアニメーション） */}
         <TouchableOpacity
           onPress={() => {
             Haptics.impactAsync(isFavorited ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium);
+            pulseHeart();
             onToggleFavorite();
           }}
           style={[s.favBtn, isFavorited && s.favBtnActive]}
+          activeOpacity={0.9}
         >
-          <Heart
-            size={18}
-            color={isFavorited ? '#fff' : '#FF3B30'}
-            fill={isFavorited ? '#fff' : 'none'}
-            strokeWidth={2}
-          />
+          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+            <Heart
+              size={18}
+              color={isFavorited ? '#fff' : COLORS.primary}
+              fill={isFavorited ? '#fff' : 'none'}
+              strokeWidth={2}
+            />
+          </Animated.View>
         </TouchableOpacity>
 
-        {/* Open now badge */}
+        {/* 営業中バッジ（グラスモーフィズム） */}
         {item.openNow !== undefined && openNowLabel ? (
-          <View style={[s.openBadge, { backgroundColor: item.openNow ? '#34C75922' : '#8E8E9322' }]}>
+          <View style={[s.openBadge, { borderColor: openNowColor + '40' }]}>
             <View style={[s.openDot, { backgroundColor: openNowColor }]} />
             <Text style={[s.openText, { color: openNowColor }]}>{openNowLabel}</Text>
           </View>
@@ -139,80 +186,90 @@ export default function PlaceCard({
       <View style={s.body}>
         <Text style={s.title} numberOfLines={2}>{item.title}</Text>
 
-        {/* Rating row */}
+        {/* 評価行 */}
         {item.rating != null && (
           <View style={s.ratingRow}>
-            <Star size={14} color="#FF9F0A" fill="#FF9F0A" />
-            <Text style={s.ratingText}>
-              {item.rating.toFixed(1)}
-              {item.userRatingCount ? <Text style={s.ratingCount}>  {t.reviewCount(item.userRatingCount)}</Text> : null}
-            </Text>
+            <Star size={14} color="#F59E0B" fill="#F59E0B" />
+            <Text style={s.ratingText}>{item.rating.toFixed(1)}</Text>
+            {item.userRatingCount ? (
+              <Text style={s.ratingCount}>{t.reviewCount(item.userRatingCount)}</Text>
+            ) : null}
           </View>
         )}
 
-        {/* Address */}
+        {/* 住所 */}
         {item.address ? (
           <View style={s.infoRow}>
-            <MapPin size={13} color="#8E8E93" strokeWidth={2} />
+            <MapPin size={13} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.infoText} numberOfLines={1}>{item.address}</Text>
           </View>
         ) : null}
 
-        {/* Distance */}
+        {/* 距離 */}
         {item.distanceText ? (
           <View style={s.infoRow}>
-            <Navigation size={13} color="#8E8E93" strokeWidth={2} />
+            <Navigation size={13} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.infoText}>{item.distanceText}{item.durationText ? `  ·  ${item.durationText}` : ''}</Text>
           </View>
         ) : null}
 
-        {/* Station */}
+        {/* 最寄り駅 */}
         {item.stationText ? (
           <View style={s.infoRow}>
-            <Train size={13} color="#8E8E93" strokeWidth={2} />
+            <Train size={13} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.infoText}>{item.stationText}</Text>
           </View>
         ) : null}
 
-        {/* Hours */}
+        {/* 営業時間 */}
         {item.openingHoursText ? (
           <View style={s.infoRow}>
-            <Clock size={13} color="#8E8E93" strokeWidth={2} />
+            <Clock size={13} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.infoText} numberOfLines={1}>{item.openingHoursText}</Text>
           </View>
         ) : null}
 
-        {/* Feature tags */}
+        {/* タグ（パープルtinted） */}
         {item.features && item.features.length > 0 && (
           <View style={s.tagRow}>
             {item.features.map((f, i) => (
-              <View key={i} style={[s.tag, { borderColor: accentColor + '55' }]}>
-                <Text style={[s.tagText, { color: accentColor }]}>{f}</Text>
+              <View key={i} style={s.tag}>
+                <Text style={s.tagText}>{f}</Text>
               </View>
             ))}
           </View>
         )}
 
-        {/* Divider */}
         <View style={s.divider} />
 
-        {/* Actions */}
+        {/* ボタン行 */}
         <View style={s.actions}>
           {item.mapUrl ? (
             <TouchableOpacity
-              onPress={() => Linking.openURL(item.mapUrl!)}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Linking.openURL(item.mapUrl!);
+              }}
               style={s.mapBtn}
-              activeOpacity={0.75}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              activeOpacity={0.9}
             >
-              <MapPin size={15} color="#fff" strokeWidth={2.5} />
-              <Text style={s.mapBtnText}>{t.mapBtn}</Text>
+              <LinearGradient
+                colors={['#F43F5E', '#FB923C']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={s.mapBtnGrad}
+              >
+                <MapPin size={15} color="#fff" strokeWidth={2.5} />
+                <Text style={s.mapBtnText}>{t.mapBtn}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           ) : null}
           {item.hotpepperUrl ? (
             <TouchableOpacity
               onPress={() => Linking.openURL(item.hotpepperUrl!)}
-              style={[s.mapBtn, { backgroundColor: '#CC0000' }]}
-              activeOpacity={0.75}
+              style={[s.mapBtn, { backgroundColor: '#CC0000', borderRadius: 14 }]}
+              activeOpacity={0.8}
             >
               <Text style={s.mapBtnText}>ホットペッパー</Text>
             </TouchableOpacity>
@@ -221,7 +278,7 @@ export default function PlaceCard({
             <TouchableOpacity
               onPress={isVisited ? undefined : onMarkVisited}
               style={[s.visitedBtn, isVisited && s.visitedBtnDone]}
-              activeOpacity={0.75}
+              activeOpacity={0.8}
             >
               <Text style={[s.visitedBtnText, isVisited && s.visitedBtnTextDone]}>
                 {isVisited ? t.visitedDone : t.visited}
@@ -230,10 +287,40 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        {/* Share / Block / Report */}
+        {/* 気分ボタン */}
+        {(onMoodMatch || onMoodNotMatch) && (
+          moodRating ? (
+            <View style={s.moodDoneRow}>
+              <Text style={[s.moodDoneText, { color: moodRating === 'good' ? '#10B981' : '#EF4444' }]}>
+                {moodRating === 'good' ? t.moodMatchDone : t.moodNotMatchDone}
+              </Text>
+            </View>
+          ) : (
+            <View style={s.moodRow}>
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMoodMatch?.(); }}
+                style={s.moodMatchBtn}
+                activeOpacity={0.8}
+              >
+                <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
+                <Text style={s.moodMatchText}>{t.moodMatch}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMoodNotMatch?.(); }}
+                style={s.moodNotMatchBtn}
+                activeOpacity={0.8}
+              >
+                <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />
+                <Text style={s.moodNotMatchText}>{t.moodNotMatch}</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        )}
+
+        {/* フッター */}
         <View style={s.footRow}>
           <TouchableOpacity onPress={handleShare} style={s.footBtnShare}>
-            <Share2 size={12} color="#8E8E93" strokeWidth={2} />
+            <Share2 size={12} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.footBtnText}>{t.share}</Text>
           </TouchableOpacity>
           <View style={s.footRight}>
@@ -250,99 +337,130 @@ export default function PlaceCard({
           </View>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const s = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 16,
+    // インスタ風・自然なシャドウ
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowRadius: 20,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 
   // Photo
   photoWrap: { position: 'relative' },
-  photo: { width: '100%', height: 200 },
-  photoPlaceholder: { backgroundColor: '#F2F2F7', alignItems: 'center', justifyContent: 'center' },
-  arrowBtn: {
-    position: 'absolute', top: '50%', marginTop: -18,
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center',
+  photo: { width: '100%', height: 220 },
+  photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  photoOverlay: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: 80,
   },
-  arrowText: { color: '#fff', fontSize: 20, fontWeight: '600' },
+  arrowBtn: {
+    position: 'absolute', top: '50%', marginTop: -20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(15,10,30,0.45)', alignItems: 'center', justifyContent: 'center',
+  },
+  arrowText: { color: '#fff', fontSize: 22, fontWeight: '600' },
   pageDots: {
-    position: 'absolute', bottom: 10, left: 0, right: 0,
+    position: 'absolute', bottom: 12, left: 0, right: 0,
     flexDirection: 'row', justifyContent: 'center', gap: 5,
   },
-  pageDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.5)' },
-  pageDotActive: { backgroundColor: '#fff', width: 14 },
+  pageDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.45)' },
+  pageDotActive: { backgroundColor: '#fff', width: 16, borderRadius: 3 },
 
   favBtn: {
-    position: 'absolute', top: 12, right: 12,
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    position: 'absolute', top: 14, right: 14,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6,
   },
-  favBtnActive: { backgroundColor: '#FF3B30' },
+  favBtnActive: { backgroundColor: COLORS.primary },
 
+  // グラスモーフィズムバッジ
   openBadge: {
-    position: 'absolute', bottom: 12, left: 12,
+    position: 'absolute', bottom: 14, left: 14,
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
   },
   openDot: { width: 7, height: 7, borderRadius: 3.5 },
   openText: { fontSize: 12, fontWeight: '700' },
 
   // Body
-  body: { padding: 16, gap: 7 },
-  title: { fontSize: 20, fontWeight: '700', color: '#000', letterSpacing: -0.3, lineHeight: 26 },
+  body: { padding: 18, gap: 7 },
+  title: { fontSize: 20, fontWeight: '700', color: COLORS.text, letterSpacing: -0.4, lineHeight: 26 },
 
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  ratingText: { fontSize: 14, fontWeight: '600', color: '#1C1C1E' },
-  ratingCount: { fontSize: 13, fontWeight: '400', color: '#8E8E93' },
+  ratingText: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  ratingCount: { fontSize: 13, fontWeight: '400', color: COLORS.textSub },
 
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  infoText: { flex: 1, fontSize: 13, color: '#6D6D72', lineHeight: 18 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  infoText: { flex: 1, fontSize: 13, color: COLORS.textSub, lineHeight: 18 },
 
+  // パープルtintedタグ
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   tag: {
     paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 6, borderWidth: 1,
-    backgroundColor: 'transparent',
+    borderRadius: 8,
+    backgroundColor: COLORS.muted,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  tagText: { fontSize: 12, fontWeight: '600' },
+  tagText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
 
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#E5E5EA', marginVertical: 4 },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 4 },
 
+  // ボタン
   actions: { flexDirection: 'row', gap: 8 },
-  mapBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    height: 44, borderRadius: 10,
-    backgroundColor: '#007AFF',
+  mapBtn: { flex: 1, borderRadius: 14, overflow: 'hidden' },
+  mapBtnGrad: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 48, borderRadius: 14,
   },
-  mapBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  mapBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
   visitedBtn: {
-    paddingHorizontal: 14, paddingVertical: 0, height: 44, borderRadius: 10,
-    backgroundColor: '#F2F2F7', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: '#E5E5EA',
+    paddingHorizontal: 16, height: 48, borderRadius: 14,
+    backgroundColor: COLORS.muted, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  visitedBtnDone: { backgroundColor: '#34C75915', borderColor: '#34C759' },
-  visitedBtnText: { fontSize: 14, fontWeight: '600', color: '#3C3C43' },
-  visitedBtnTextDone: { color: '#34C759' },
+  visitedBtnDone: { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
+  visitedBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.text },
+  visitedBtnTextDone: { color: '#10B981' },
 
-  footRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+  // 気分ボタン
+  moodRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  moodMatchBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 44, borderRadius: 12,
+    backgroundColor: '#ECFDF5', borderWidth: 1.5, borderColor: '#6EE7B7',
+  },
+  moodMatchText: { fontSize: 13, fontWeight: '600', color: '#10B981' },
+  moodNotMatchBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 44, borderRadius: 12,
+    backgroundColor: '#FEF2F2', borderWidth: 1.5, borderColor: '#FCA5A5',
+  },
+  moodNotMatchText: { fontSize: 13, fontWeight: '600', color: '#EF4444' },
+  moodDoneRow: { alignItems: 'center', paddingVertical: 8 },
+  moodDoneText: { fontSize: 13, fontWeight: '600' },
+
+  footRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   footBtnShare: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
-  footRight: { flexDirection: 'row', gap: 12 },
+  footRight: { flexDirection: 'row', gap: 14 },
   footBtn: { paddingVertical: 2 },
-  footBtnText: { fontSize: 12, color: '#C7C7CC' },
+  footBtnText: { fontSize: 12, color: COLORS.textMuted },
 });

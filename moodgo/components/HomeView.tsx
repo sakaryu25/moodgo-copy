@@ -13,8 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
-
-const BG = '#fdf8f9';
+import { COLORS } from '@/constants/Colors';
 
 const MOODS = [
   { label: '最高！', labelEn: 'Amazing!', color: '#FFD040', ring: '#FFAA00', bg: '#FFF7D6', faceColor: '#FFE566' },
@@ -211,7 +210,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowSettings }: 
         </Animated.View>
         <View style={s.headerRight}>
           <TouchableOpacity style={s.headerIconBtn} onPress={onShowSettings} activeOpacity={0.7}>
-            <Settings size={20} color="#8E8E93" strokeWidth={2} />
+            <Settings size={20} color={COLORS.textSub} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>
@@ -289,7 +288,7 @@ export default function HomeView({ profileAge, lang, onStart, onShowSettings }: 
 
       {/* ── Bottom content ── */}
       <View style={[s.bottom, { paddingBottom: insets.bottom + 64 + 16 }]}>
-        <Text style={s.brand}>MoodGo</Text>
+        <Text style={s.brand}>MoodGo ✨</Text>
         <Text style={s.tagline}>
           {lang === 'en'
             ? 'Find your next outing\nby mood.'
@@ -298,9 +297,9 @@ export default function HomeView({ profileAge, lang, onStart, onShowSettings }: 
         <View style={s.spacer} />
         <TouchableOpacity onPress={onStart} activeOpacity={0.85} style={s.startTouchable}>
           <LinearGradient
-            colors={['#ffbf67', '#ff7b54']}
+            colors={['#F43F5E', '#FB923C']}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            end={{ x: 1, y: 0 }}
             style={s.startBtn}
           >
             <Text style={s.startText}>
@@ -315,26 +314,29 @@ export default function HomeView({ profileAge, lang, onStart, onShowSettings }: 
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  root: { flex: 1, backgroundColor: COLORS.bg },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 10, zIndex: 10,
+    paddingHorizontal: 20, paddingVertical: 12, zIndex: 10,
   },
+  // インスタ風ロゴ風ヘッダーボタン
   suggestBtn: {
     paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999,
-    backgroundColor: 'rgba(255,180,140,0.18)', borderWidth: 1, borderColor: 'rgba(255,150,100,0.25)',
+    backgroundColor: '#FFF0F3',
+    borderWidth: 1.5, borderColor: '#FECDD3',
   },
-  suggestBtnText: { color: '#cc6644', fontSize: 12, fontWeight: '700' },
+  suggestBtnText: { color: '#F43F5E', fontSize: 12, fontWeight: '700' },
   headerRight: { flexDirection: 'row', gap: 8 },
   headerChip: {
     paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#f0dfe3',
+    backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6',
   },
-  headerChipText: { color: '#9b7b82', fontSize: 12, fontWeight: '700' },
+  headerChipText: { color: '#374151', fontSize: 12, fontWeight: '700' },
   headerIconBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#f0dfe3',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1, borderColor: '#F3F4F6',
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -347,18 +349,18 @@ const s = StyleSheet.create({
     gap: 20,
   },
   checkinTitle: {
-    fontSize: 22, fontWeight: '700', color: '#000', letterSpacing: -0.3,
+    fontSize: 24, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5,
   },
   checkinSub: {
-    fontSize: 13, fontWeight: '400', color: '#8E8E93', marginTop: -10,
+    fontSize: 13, color: COLORS.textSub, marginTop: -10,
   },
   streak: {
-    fontSize: 13, fontWeight: '700', color: '#FF6B35', marginTop: -12,
+    fontSize: 13, fontWeight: '700', color: '#F43F5E', marginTop: -12,
   },
 
   faceRow: {
     flexDirection: 'row',
-    gap: 14,
+    gap: 12,
     alignItems: 'flex-start',
   },
   faceBtnOuter: {
@@ -368,14 +370,14 @@ const s = StyleSheet.create({
     padding: 2,
   },
   faceBtnInner: {
-    width: 68, height: 68,
-    borderRadius: 34,
+    width: 70, height: 70,
+    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.10,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 4,
   },
   selectedRing: {
@@ -384,55 +386,53 @@ const s = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   faceLabel: {
-    fontSize: 11, fontWeight: '700', color: '#9b7b82',
+    fontSize: 11, fontWeight: '700', color: COLORS.textSub,
     textAlign: 'center', marginTop: 6,
   },
 
-  // Week dots
+  // Week dots（白カード・明るい）
   weekRow: {
     flexDirection: 'row',
     gap: 10,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 20,
+    paddingVertical: 16,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#f0dfe3',
+    borderColor: COLORS.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
   dayCol: { alignItems: 'center', gap: 6 },
-  dot: {
-    width: 22, height: 22, borderRadius: 11,
-  },
+  dot: { width: 24, height: 24, borderRadius: 12 },
   dotToday: {
-    borderColor: '#cc8899',
+    borderColor: '#FECDD3',
     borderStyle: 'dashed',
   },
-  dayLabel: { fontSize: 11, fontWeight: '600', color: '#c0a8b0' },
-  dayLabelToday: { color: '#cc5580', fontWeight: '800' },
+  dayLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
+  dayLabelToday: { color: '#F43F5E', fontWeight: '800' },
 
   // Bottom
-  bottom: { paddingHorizontal: 28, paddingTop: 8 },
+  bottom: { paddingHorizontal: 24, paddingTop: 8 },
   brand: {
-    fontSize: 28, fontWeight: '700', color: '#000',
-    letterSpacing: -0.5, marginBottom: 4,
+    fontSize: 30, fontWeight: '800', color: COLORS.text,
+    letterSpacing: -0.8, marginBottom: 6,
   },
-  tagline: { fontSize: 15, fontWeight: '400', color: '#8E8E93', lineHeight: 22 },
+  tagline: { fontSize: 15, color: COLORS.textSub, lineHeight: 22 },
   spacer: { height: 20 },
   startTouchable: {
-    shadowColor: '#ff7b54',
+    shadowColor: '#F43F5E',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.40,
+    shadowOpacity: 0.35,
     shadowRadius: 20,
     elevation: 8,
   },
   startBtn: {
-    height: 52, borderRadius: 12,
+    height: 56, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
-  startText: { fontSize: 17, fontWeight: '600', color: '#fff' },
+  startText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: -0.2 },
 });

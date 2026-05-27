@@ -687,6 +687,26 @@ export async function POST(req: NextRequest) {
     const shuffled = shuffleArray(cleaned);
     console.log(`[travel] 最終 ${shuffled.length}件（シャッフル済み）`);
 
+    // ── Supabase に自動保存（fire-and-forget）─────────────────────────────
+    if (shuffled.length > 0) {
+      const { scheduleGenericAutoSave } = await import("@/lib/google-places-auto-save");
+      const { getTravelTags } = await import("@/lib/mood-tag-map");
+      const travelTags = getTravelTags(subCategory ?? null);
+      scheduleGenericAutoSave(
+        shuffled.map(p => ({
+          googlePlaceId: p.id ?? "",
+          name: p.name,
+          address: p.address,
+          lat: originLat,
+          lng: originLng,
+          photoUrl: p.imageUrl ?? null,
+          rating: p.rating ?? null,
+          openNow: p.openNow ?? null,
+        })),
+        travelTags.tags,
+      );
+    }
+
     return NextResponse.json({
       data:             shuffled,
       subCategoryLabel: config.label,

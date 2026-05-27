@@ -65,7 +65,7 @@ export function getCafeTags(
       if (detail === "city")   return { tags: ["#展望台"],        fallback: ["#景色良いカフェ"], label: "🏙️ 夜景・街並みカフェ", radiusKm: 20 };
       return { tags: ["#景色良いカフェ"],  fallback: fallbackBase, label: "🌅 景色が良いカフェ",             radiusKm: 20 };
     case "sweets":
-      return { tags: ["#スイーツカフェ"],  fallback: fallbackBase, label: "🍰 絶品スイーツカフェ",           radiusKm: 15 };
+      return { tags: ["#カフェスイーツ"],  fallback: fallbackBase, label: "🍰 絶品スイーツカフェ",           radiusKm: 15 };
     default:
       return { tags: fallbackBase,         fallback: fallbackBase, label: "カフェ",                         radiusKm: 15 };
   }

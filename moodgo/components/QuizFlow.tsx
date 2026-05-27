@@ -160,7 +160,8 @@ const OPTION_ICONS: Record<string, LucideIcon> = {
   // companions
   '一人': User, '友達': Users, '恋人': Heart, '家族': Home, '大人数グループ': UsersRound, '先輩': UserCheck,
   // transport
-  '徒歩': Footprints, '自転車・バイク': Bike, '電車': TrainFront, '車': Car, 'バス': Bus, 'なんでも': Shuffle,
+  '徒歩': Footprints, '自転車': Bike, '電車・バス': TrainFront, '車・バイク': Car, 'なんでも': Shuffle,
+  '自転車・バイク': Bike, '電車': TrainFront, '車': Car, 'バス': Bus,
   // time
   '15〜30分': Timer, '30〜60分': Clock, '1〜2時間': Hourglass, '2〜4時間': Hourglass, '4〜6時間': Sunset, '6時間以上': Moon,
   // atmosphere
@@ -177,7 +178,7 @@ const OPTION_ICONS: Record<string, LucideIcon> = {
 };
 
 const COMPANIONS = ['一人', '友達', '恋人', '家族', '大人数グループ', '先輩'];
-const TRANSPORT_OPTIONS = ['徒歩', '自転車・バイク', '電車', '車', 'バス', 'なんでも'];
+const TRANSPORT_OPTIONS = ['徒歩', '自転車', '電車・バス', '車・バイク', 'なんでも'];
 const TIME_OPTIONS = ['15〜30分', '30〜60分', '1〜2時間', '2〜4時間', '4〜6時間', '6時間以上'];
 const ATMOSPHERE_OPTIONS = ['静か', '賑やか', 'アクティブ', 'スリル', 'ロマンティック', 'アットホーム'];
 const PRIORITY_OPTIONS = ['コスパ', '映え', '距離', '快適さ', '楽しさ', '質の高さ'];
@@ -374,7 +375,7 @@ const MOOD_EN: Record<string, { label: string; sub: string }> = {
 };
 
 const COMPANIONS_EN = ['Solo', 'Friends', 'Partner', 'Family', 'Large Group', 'With Seniors'];
-const TRANSPORT_EN  = ['Walking', 'Bike', 'Train', 'Car', 'Bus', 'Any'];
+const TRANSPORT_EN  = ['Walking', 'Bike', 'Train / Bus', 'Car / Bike', 'Any'];
 const TIME_EN       = ['15-30 min', '30-60 min', '1-2 hrs', '2-4 hrs', '4-6 hrs', '6+ hrs'];
 const ATM_EN        = ['Quiet', 'Lively', 'Active', 'Thrilling', 'Romantic', 'Cozy'];
 const PRIORITY_EN   = ['Value', 'Instagrammable', 'Proximity', 'Comfort', 'Fun', 'Quality'];
@@ -1296,137 +1297,63 @@ export default function QuizFlow(props: Props) {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff5f7' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 10,
-    backgroundColor: '#fff', gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.12)',
-  },
+  root: { flex: 1, backgroundColor: '#FAFAFA' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 12, backgroundColor: '#fff', gap: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 8, minWidth: 64 },
-  backText: { fontSize: 17, color: '#ff8f7f', fontWeight: '400' },
-  progressWrap: {
-    flex: 1, height: 3, backgroundColor: '#E5E5EA', borderRadius: 2, overflow: 'hidden',
-  },
-  progressBar: { height: '100%', backgroundColor: '#ff8f7f', borderRadius: 2 },
-  stepCount: { fontSize: 13, fontWeight: '500', color: '#8E8E93', minWidth: 36, textAlign: 'right', paddingRight: 8 },
+  backText: { fontSize: 17, color: '#F43F5E', fontWeight: '600' },
+  progressWrap: { flex: 1, height: 4, backgroundColor: '#F3F4F6', borderRadius: 2, overflow: 'hidden' },
+  progressBar: { height: '100%', backgroundColor: '#F43F5E', borderRadius: 2 },
+  stepCount: { fontSize: 13, fontWeight: '600', color: '#9CA3AF', minWidth: 36, textAlign: 'right', paddingRight: 8 },
   scroll: { flex: 1 },
   scrollContent: { padding: 20 },
-  stepTitle: { fontSize: 30, fontWeight: '900', color: '#4a3034', marginBottom: 4, letterSpacing: -0.5 },
-  stepSub: { fontSize: 14, color: '#9b7b82', marginBottom: 20, lineHeight: 22 },
+  stepTitle: { fontSize: 30, fontWeight: '900', color: '#111827', marginBottom: 4, letterSpacing: -0.5 },
+  stepSub: { fontSize: 14, color: '#6B7280', marginBottom: 20, lineHeight: 22 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  optBtn: {
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: '#ead7db',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'column',
-    gap: 6,
-    overflow: 'hidden',
-  },
-  optBtnActive: {
-    borderColor: '#ff8f7f',
-    borderWidth: 2,
-    shadowColor: '#ffd6df',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  optText: { fontSize: 14, fontWeight: '700', color: '#4a3034', textAlign: 'center' },
-  optTextActive: { color: '#c0385a', fontWeight: '900' },
-  check: { position: 'absolute', top: 5, right: 7, fontSize: 10, fontWeight: '700', color: '#ff8f7f' },
-  moodBtn: {
-    width: '48%', paddingVertical: 16, paddingHorizontal: 14, borderRadius: 16,
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#ead7db',
-    alignItems: 'flex-start', gap: 4, overflow: 'hidden',
-    shadowColor: '#4a3034', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6,
-    elevation: 2,
-  },
-  moodBtnActive: { borderColor: '#ff8f7f', borderWidth: 2 },
+  optBtn: { borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 6, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
+  optBtnActive: { borderColor: '#F43F5E', borderWidth: 2, backgroundColor: '#FFF5F6', shadowColor: '#F43F5E', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  optText: { fontSize: 14, fontWeight: '700', color: '#374151', textAlign: 'center' },
+  optTextActive: { color: '#F43F5E', fontWeight: '900' },
+  check: { position: 'absolute', top: 5, right: 7, fontSize: 10, fontWeight: '700', color: '#F43F5E' },
+  moodBtn: { width: '48%', paddingVertical: 18, paddingHorizontal: 14, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6', alignItems: 'flex-start', gap: 4, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  moodBtnActive: { borderColor: '#F43F5E', borderWidth: 2, backgroundColor: '#FFF5F6' },
   moodIconWrap: { marginBottom: 4 },
-  moodLabel: { fontSize: 14, fontWeight: '700', color: '#4a3034' },
-  moodLabelActive: { color: '#c0385a' },
-  moodSub: { fontSize: 11, color: '#9b7b82', fontWeight: '400' },
-  actionBar: {
-    padding: 16, paddingBottom: 16, backgroundColor: '#fff',
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(0,0,0,0.12)',
-  },
-  nextBtn: { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  nextText: { fontSize: 17, fontWeight: '600', color: '#fff' },
-  budgetBox: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 20, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
-  },
-  budgetValue: { fontSize: 34, fontWeight: '700', color: '#000', textAlign: 'center', marginBottom: 8 },
-  budgetRangeLabel: { fontSize: 12, fontWeight: '600', color: '#9b7b82', marginTop: 8, marginBottom: -4 },
+  moodLabel: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  moodLabelActive: { color: '#F43F5E' },
+  moodSub: { fontSize: 11, color: '#9CA3AF', fontWeight: '400' },
+  actionBar: { padding: 16, paddingBottom: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  nextBtn: { height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  nextText: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  budgetBox: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  budgetValue: { fontSize: 36, fontWeight: '800', color: '#111827', textAlign: 'center', marginBottom: 8, letterSpacing: -0.5 },
+  budgetRangeLabel: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', marginTop: 8, marginBottom: -4 },
   budgetLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  budgetLabelText: { fontSize: 11, color: '#9b7b82' },
-  budgetChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-    borderWidth: 1.5, borderColor: '#ead7db', backgroundColor: '#fff',
-  },
-  budgetChipActive: { backgroundColor: '#fff0f3', borderColor: '#ff8f7f', borderWidth: 2 },
-  budgetChipText: { fontSize: 13, fontWeight: '600', color: '#4a3034' },
-  budgetChipTextActive: { fontSize: 13, fontWeight: '700', color: '#c0385a' },
-  locationBtnWrap: {
-    shadowColor: '#FF6B35', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25, shadowRadius: 10, elevation: 4, marginBottom: 12,
-  },
-  locationBtn: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  locationBtnText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  locatedTag: {
-    alignSelf: 'center', backgroundColor: '#FF6B3512', borderRadius: 8,
-    paddingHorizontal: 14, paddingVertical: 6, marginBottom: 8,
-  },
-  locatedTagText: { fontSize: 13, fontWeight: '600', color: '#FF6B35' },
-  orDivider: { textAlign: 'center', fontSize: 13, color: '#8E8E93', marginBottom: 12 },
-  textInput: {
-    height: 52, borderRadius: 10, backgroundColor: '#fff',
-    paddingHorizontal: 14, fontSize: 15, color: '#000',
-    borderWidth: StyleSheet.hairlineWidth, borderColor: '#C6C6C8',
-  },
-  errorText: { fontSize: 13, color: '#FF3B30', marginTop: 8, lineHeight: 20 },
-  dynQuestion: { fontSize: 17, fontWeight: '700', color: '#4a3034', marginBottom: 10 },
-  textarea: {
-    borderRadius: 10, padding: 14, fontSize: 15, backgroundColor: '#fff', color: '#000',
-    lineHeight: 24, minHeight: 140, textAlignVertical: 'top',
-    borderWidth: StyleSheet.hairlineWidth, borderColor: '#C6C6C8',
-  },
-  catBtn: {
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: '#ead7db',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    overflow: 'hidden',
-    shadowColor: '#4a3034', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4,
-    elevation: 1,
-  },
-  catBtnActive: { borderColor: '#ff8f7f', borderWidth: 2 },
+  budgetLabelText: { fontSize: 11, color: '#9CA3AF' },
+  budgetChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: '#F3F4F6', backgroundColor: '#fff' },
+  budgetChipActive: { backgroundColor: '#FFF5F6', borderColor: '#F43F5E', borderWidth: 2 },
+  budgetChipText: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  budgetChipTextActive: { fontSize: 13, fontWeight: '700', color: '#F43F5E' },
+  locationBtnWrap: { shadowColor: '#F43F5E', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 5, marginBottom: 12 },
+  locationBtn: { height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  locationBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  locatedTag: { alignSelf: 'center', backgroundColor: '#F0FDF4', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6, marginBottom: 8, borderWidth: 1, borderColor: '#BBF7D0' },
+  locatedTagText: { fontSize: 13, fontWeight: '700', color: '#10B981' },
+  orDivider: { textAlign: 'center', fontSize: 13, color: '#9CA3AF', marginBottom: 12 },
+  textInput: { height: 54, borderRadius: 14, backgroundColor: '#fff', paddingHorizontal: 16, fontSize: 15, color: '#111827', borderWidth: 1.5, borderColor: '#F3F4F6', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
+  errorText: { fontSize: 13, color: '#EF4444', marginTop: 8, lineHeight: 20 },
+  dynQuestion: { fontSize: 17, fontWeight: '800', color: '#111827', marginBottom: 10 },
+  textarea: { borderRadius: 14, padding: 14, fontSize: 15, backgroundColor: '#fff', color: '#111827', lineHeight: 24, minHeight: 140, textAlignVertical: 'top', borderWidth: 1.5, borderColor: '#F3F4F6' },
+  catBtn: { borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', gap: 8, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  catBtnActive: { borderColor: '#F43F5E', borderWidth: 2, backgroundColor: '#FFF5F6' },
   catIconWrap: { marginBottom: 2 },
-  catLabel: { fontSize: 12, fontWeight: '700', color: '#4a3034', textAlign: 'center', lineHeight: 16 },
-  catLabelActive: { color: '#c0385a', fontWeight: '900' },
-  catCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: '#fff', borderRadius: 14,
-    borderWidth: 1.5, borderColor: '#ead7db',
-    padding: 16, marginBottom: 10, overflow: 'hidden',
-    shadowColor: '#4a3034', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
-  },
-  catCardActive: { borderColor: '#ff8f7f', borderWidth: 2 },
+  catLabel: { fontSize: 12, fontWeight: '700', color: '#374151', textAlign: 'center', lineHeight: 16 },
+  catLabelActive: { color: '#F43F5E', fontWeight: '900' },
+  catCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#fff', borderRadius: 18, borderWidth: 1.5, borderColor: '#F3F4F6', padding: 16, marginBottom: 10, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 },
+  catCardActive: { borderColor: '#F43F5E', borderWidth: 2, backgroundColor: '#FFF5F6' },
   catCardEmoji: { fontSize: 28, lineHeight: 34, minWidth: 34, textAlign: 'center' },
   catCardRight: { flex: 1 },
-  catCardLabel: { fontSize: 15, fontWeight: '700', color: '#4a3034', marginBottom: 2 },
-  catCardLabelActive: { color: '#c0385a' },
-  catCardSub: { fontSize: 12, color: '#9b7b82', lineHeight: 18 },
-  reviewCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 20, gap: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
-  },
-  reviewLine: { fontSize: 14, color: '#3C3C43', fontWeight: '400', lineHeight: 22 },
+  catCardLabel: { fontSize: 15, fontWeight: '700', color: '#111827', marginBottom: 2 },
+  catCardLabelActive: { color: '#F43F5E' },
+  catCardSub: { fontSize: 12, color: '#9CA3AF', lineHeight: 18 },
+  reviewCard: { backgroundColor: '#fff', borderRadius: 18, padding: 20, gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  reviewLine: { fontSize: 14, color: '#374151', fontWeight: '400', lineHeight: 22 },
 });

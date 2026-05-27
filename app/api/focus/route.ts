@@ -650,6 +650,26 @@ export async function POST(req: NextRequest) {
     places = shuffleArray(places);
     console.log(`[focus] 最終 ${places.length}件（シャッフル済み）`);
 
+    // ── Supabase に自動保存（fire-and-forget）─────────────────────────────
+    if (places.length > 0) {
+      const { scheduleGenericAutoSave } = await import("@/lib/google-places-auto-save");
+      const { getFocusTags } = await import("@/lib/mood-tag-map");
+      const focusTags = getFocusTags(subCategory ?? null);
+      scheduleGenericAutoSave(
+        places.map(p => ({
+          googlePlaceId: p.id ?? "",
+          name: p.name,
+          address: p.address,
+          lat: searchLat,
+          lng: searchLng,
+          photoUrl: p.imageUrl ?? null,
+          rating: p.rating ?? null,
+          openNow: p.openNow ?? null,
+        })),
+        focusTags.tags,
+      );
+    }
+
     return NextResponse.json({
       data:             places,
       subCategoryLabel: config.label,

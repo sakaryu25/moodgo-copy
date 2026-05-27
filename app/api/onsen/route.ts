@@ -182,6 +182,26 @@ export async function POST(req: NextRequest) {
     const places = shuffleArray(mergePlaces(yahooEnriched, googleDirect));
     console.log(`[onsen] 最終 ${places.length}件（シャッフル済み）`);
 
+    // ── Supabase に自動保存（fire-and-forget）─────────────────────────────
+    if (places.length > 0) {
+      const { scheduleGenericAutoSave } = await import("@/lib/google-places-auto-save");
+      const { getOnsenTags } = await import("@/lib/mood-tag-map");
+      const onsenTags = getOnsenTags(category ?? null);
+      scheduleGenericAutoSave(
+        places.map(p => ({
+          googlePlaceId: p.id ?? "",
+          name: p.name,
+          address: p.address,
+          lat: originLat,
+          lng: originLng,
+          photoUrl: p.imageUrl ?? null,
+          rating: p.rating ?? null,
+          openNow: p.openNow ?? null,
+        })),
+        onsenTags.tags,
+      );
+    }
+
     return NextResponse.json({
       data:          places,
       categoryLabel: config.label,

@@ -1,4 +1,5 @@
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -10,15 +11,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Search, Shuffle } from 'lucide-react-native';
+import { ChevronLeft, Search, Shuffle, Star } from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
 
-// Convert PlaceResponse to Recommendation for unified rendering
 function placeToRec(fac: PlaceResponse, featLabel?: string): Recommendation {
   const photos = (fac.photoUrls ?? []).length > 0 ? fac.photoUrls : fac.imageUrl ? [fac.imageUrl] : [];
-  // sb-{uuid} 形式から Supabase UUID を抽出（report-closed API 用）
   const supabaseId = fac.id?.startsWith('sb-') ? fac.id.replace(/^sb-/, '') : undefined;
   return {
     title: fac.name,
@@ -62,10 +61,10 @@ const T = {
     cancel: 'キャンセル',
     submitting: '送信中...',
     submit: '送信',
-    sortDefault: 'おすすめ順',
+    sortDefault: 'おすすめ',
     sortRating: '評価順',
     sortNear: '近い順',
-    filterOpenNow: '営業中のみ',
+    filterOpenNow: '営業中',
     filterUnseen: '未見のみ',
     visited: '行った！',
     visitedDone: '✓ 行った',
@@ -74,6 +73,13 @@ const T = {
     visitModalSubmit: '送る',
     visitModalSkip: 'スキップ',
     loadMore: (n: number) => `もっと見る（残り${n}件）`,
+    conditionLabel: '今回の条件',
+    condMood: '気分',
+    condWith: '誰と',
+    condTransport: '交通',
+    condBudget: '予算',
+    condTime: '時間',
+    condArea: 'エリア',
   },
   en: {
     back: 'Back',
@@ -108,12 +114,23 @@ const T = {
     visitModalSubmit: 'Send',
     visitModalSkip: 'Skip',
     loadMore: (n: number) => `Show more (${n} remaining)`,
+    conditionLabel: 'Your search',
+    condMood: 'Mood',
+    condWith: 'With',
+    condTransport: 'Transport',
+    condBudget: 'Budget',
+    condTime: 'Time',
+    condArea: 'Area',
   },
 } as const;
 
 type Props = {
   selectedMood: string;
   selectedArea: string;
+  selectedCompanion?: string;
+  selectedTransports?: string[];
+  budget?: number;
+  selectedTime?: string;
   recommendations: Recommendation[];
   onsenFacilities: PlaceResponse[] | null;
   onsenCategoryLabel: string;
@@ -174,7 +191,8 @@ type Props = {
 
 export default function ResultsView(props: Props) {
   const {
-    selectedMood, selectedArea,
+    selectedMood, selectedArea, selectedCompanion = '', selectedTransports = [],
+    budget, selectedTime = '',
     recommendations, onsenFacilities, onsenCategoryLabel,
     natureFacilities, natureSubGenreLabel, cafeFacilities, cafeSubCategoryLabel,
     waiWaiFacilities, waiWaiSubCategoryLabel,
@@ -184,6 +202,7 @@ export default function ResultsView(props: Props) {
     travelFacilities, travelSubCategoryLabel,
     isLoading, loadingMessage, apiWarning,
     favorites, onToggleFavorite, blockedPlaces, onBlockPlace,
+    placeRatings, onSetPlaceRatings,
     feedbackRating, feedbackSubmitted, onSubmitFeedback,
     refinementText, onSetRefinementText, isRefining, onRefine,
     onReset, onSetReportingSpot, reportingSpot,
@@ -204,13 +223,13 @@ export default function ResultsView(props: Props) {
   const [visitingSpot, setVisitingSpot] = React.useState<Recommendation | null>(null);
   const [visitingRating, setVisitingRating] = React.useState(0);
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+  const [showConditions, setShowConditions] = React.useState(true);
 
   React.useEffect(() => { setVisibleCount(PAGE_SIZE); }, [resultSort, openNowOnly, unseenOnly]);
 
   const insets = useSafeAreaInsets();
   const isFav = (title: string) => favorites.some((f) => f.title === title);
 
-  // Determine what to show
   const facilityList: PlaceResponse[] | null =
     driveFacilities ?? focusFacilities ?? sportsFacilities ?? travelFacilities ??
     waiWaiFacilities ?? cafeFacilities ?? onsenFacilities ?? natureFacilities ?? null;
@@ -232,14 +251,13 @@ export default function ResultsView(props: Props) {
     cafeFacilities ? '#a96032' :
     onsenFacilities ? '#1565c0' :
     natureFacilities ? '#4caf50' :
-    '#ff8fa5';
+    '#FF6B35';
 
   const pageTitle =
     facilityList
       ? (facilityLabel || t.defaultTitle)
       : t.areaTitle(selectedArea);
 
-  // Items to render (with sort & filter)
   const parseDistanceM = (s?: string) => {
     if (!s) return Infinity;
     const m = s.match(/[\d.]+/);
@@ -248,9 +266,7 @@ export default function ResultsView(props: Props) {
   };
 
   let facilityItems = facilityList
-    ? facilityList
-        .filter((f) => !blockedPlaces.includes(f.name))
-        .map((f) => placeToRec(f, facilityLabel))
+    ? facilityList.filter((f) => !blockedPlaces.includes(f.name)).map((f) => placeToRec(f, facilityLabel))
     : recommendations.filter((r) => !blockedPlaces.includes(r.title));
 
   if (selectedPrefecture) facilityItems = facilityItems.filter((i) => i.address?.includes(selectedPrefecture));
@@ -258,6 +274,16 @@ export default function ResultsView(props: Props) {
   if (unseenOnly) facilityItems = facilityItems.filter((i) => !seenPlaceTitles.includes(i.title));
   if (resultSort === 'rating') facilityItems = [...facilityItems].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
   else if (resultSort === 'near') facilityItems = [...facilityItems].sort((a, b) => parseDistanceM(a.distanceText) - parseDistanceM(b.distanceText));
+
+  // 今回の条件チップ
+  const condChips: { label: string; value: string }[] = [];
+  if (selectedMood)  condChips.push({ label: t.condMood,      value: selectedMood });
+  if (selectedArea)  condChips.push({ label: t.condArea,      value: selectedArea });
+  if (selectedCompanion) condChips.push({ label: t.condWith,  value: selectedCompanion });
+  if (selectedTransports.length > 0) condChips.push({ label: t.condTransport, value: selectedTransports.join('・') });
+  if (budget != null && budget > 0) condChips.push({ label: t.condBudget, value: `〜${budget.toLocaleString()}円` });
+  if (selectedTime)  condChips.push({ label: t.condTime,      value: selectedTime });
+  if (facilityLabel) condChips.push({ label: 'コース',         value: facilityLabel });
 
   return (
     <View style={s.root}>
@@ -267,8 +293,8 @@ export default function ResultsView(props: Props) {
         <View style={s.navBarBorder} />
         <View style={s.navBarInner}>
           <TouchableOpacity onPress={onReset} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={20} color="#FF6B35" strokeWidth={2.5} />
-            <Text style={s.backText}>{t.back}</Text>
+            <ChevronLeft size={20} color={accentColor} strokeWidth={2.5} />
+            <Text style={[s.backText, { color: accentColor }]}>{t.back}</Text>
           </TouchableOpacity>
           <View style={s.navCenter}>
             <Text style={s.navTitle} numberOfLines={1}>{pageTitle}</Text>
@@ -279,7 +305,7 @@ export default function ResultsView(props: Props) {
           <View style={s.navRight}>
             {onShuffle && !isLoading && (
               <TouchableOpacity onPress={onShuffle} style={s.shuffleBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Shuffle size={20} color="#FF6B35" strokeWidth={2} />
+                <Shuffle size={20} color={accentColor} strokeWidth={2} />
               </TouchableOpacity>
             )}
           </View>
@@ -291,51 +317,68 @@ export default function ResultsView(props: Props) {
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
       >
-        {facilityLabel ? (
-          <View style={s.labelBadge}>
-            <Text style={[s.labelBadgeText, { color: accentColor }]}>{facilityLabel}</Text>
-          </View>
-        ) : null}
+        {/* ── 今回の条件 ─────────────────────────────── */}
+        {condChips.length > 0 && !isLoading && (
+          <TouchableOpacity
+            onPress={() => setShowConditions((v) => !v)}
+            activeOpacity={0.85}
+            style={s.condCard}
+          >
+            <View style={s.condHeader}>
+              <Text style={s.condLabel}>📋 {t.conditionLabel}</Text>
+              <Text style={s.condToggle}>{showConditions ? '▲' : '▼'}</Text>
+            </View>
+            {showConditions && (
+              <View style={s.condChips}>
+                {condChips.map((c, i) => (
+                  <View key={i} style={s.condChip}>
+                    <Text style={s.condChipLabel}>{c.label}</Text>
+                    <Text style={s.condChipValue}>{c.value}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
 
-        {/* Sort & Filter controls */}
+        {/* ── Sort & Filter ──────────────────────────── */}
         {!isLoading && (
-          <View style={s.controlsRow}>
-            <View style={s.sortGroup}>
+          <View style={s.controlsWrap}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.controlsRow}>
               {(['default', 'rating', 'near'] as const).map((mode) => (
                 <TouchableOpacity
                   key={mode}
                   onPress={() => setResultSort(mode)}
-                  style={[s.sortBtn, resultSort === mode && s.sortBtnActive]}
+                  style={[s.controlChip, resultSort === mode && { backgroundColor: accentColor, borderColor: accentColor }]}
                   activeOpacity={0.7}
                 >
-                  <Text style={[s.sortBtnText, resultSort === mode && s.sortBtnTextActive]}>
+                  <Text style={[s.controlChipText, resultSort === mode && s.controlChipTextActive]}>
                     {mode === 'default' ? t.sortDefault : mode === 'rating' ? t.sortRating : t.sortNear}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
-            <View style={s.filterGroup}>
+              <View style={s.controlDivider} />
               <TouchableOpacity
                 onPress={() => setOpenNowOnly((v) => !v)}
-                style={[s.filterBtn, openNowOnly && s.filterBtnActive]}
+                style={[s.controlChip, openNowOnly && { backgroundColor: '#34C759', borderColor: '#34C759' }]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.filterBtnText, openNowOnly && s.filterBtnTextActive]}>{t.filterOpenNow}</Text>
+                <Text style={[s.controlChipText, openNowOnly && s.controlChipTextActive]}>🟢 {t.filterOpenNow}</Text>
               </TouchableOpacity>
               {seenPlaceTitles.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setUnseenOnly((v) => !v)}
-                  style={[s.filterBtn, unseenOnly && s.filterBtnActive]}
+                  style={[s.controlChip, unseenOnly && { backgroundColor: '#5856D6', borderColor: '#5856D6' }]}
                   activeOpacity={0.7}
                 >
-                  <Text style={[s.filterBtnText, unseenOnly && s.filterBtnTextActive]}>{t.filterUnseen}</Text>
+                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </ScrollView>
           </View>
         )}
 
-        {/* Prefecture filter */}
+        {/* ── 都道府県フィルター ─────────────────────── */}
         {!isLoading && prefectureButtons.length > 0 && (
           <ScrollView
             horizontal
@@ -344,11 +387,7 @@ export default function ResultsView(props: Props) {
             contentContainerStyle={s.prefRowContent}
           >
             {selectedPrefecture ? (
-              <TouchableOpacity
-                onPress={() => onSelectPrefecture?.('')}
-                style={[s.prefChip, s.prefChipClear]}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity onPress={() => onSelectPrefecture?.('')} style={[s.prefChip, s.prefChipClear]} activeOpacity={0.7}>
                 <Text style={s.prefChipClearText}>✕ 解除</Text>
               </TouchableOpacity>
             ) : null}
@@ -356,10 +395,10 @@ export default function ResultsView(props: Props) {
               <TouchableOpacity
                 key={pref}
                 onPress={() => onSelectPrefecture?.(selectedPrefecture === pref ? '' : pref)}
-                style={[s.prefChip, selectedPrefecture === pref && s.prefChipActive]}
+                style={[s.prefChip, selectedPrefecture === pref && { backgroundColor: accentColor + '18', borderColor: accentColor }]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.prefChipText, selectedPrefecture === pref && s.prefChipTextActive]}>
+                <Text style={[s.prefChipText, selectedPrefecture === pref && { color: accentColor, fontWeight: '700' }]}>
                   {pref}
                 </Text>
               </TouchableOpacity>
@@ -395,6 +434,9 @@ export default function ResultsView(props: Props) {
             isVisited={visitedTitles.includes(item.title)}
             accentColor={accentColor}
             lang={lang}
+            moodRating={placeRatings[item.title] ?? null}
+            onMoodMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' })}
+            onMoodNotMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' })}
           />
         ))}
 
@@ -402,10 +444,10 @@ export default function ResultsView(props: Props) {
         {!isLoading && visibleCount < facilityItems.length && (
           <TouchableOpacity
             onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
-            style={s.loadMoreBtn}
+            style={[s.loadMoreBtn, { borderColor: accentColor }]}
             activeOpacity={0.75}
           >
-            <Text style={s.loadMoreText}>
+            <Text style={[s.loadMoreText, { color: accentColor }]}>
               {t.loadMore(facilityItems.length - visibleCount)}
             </Text>
           </TouchableOpacity>
@@ -422,7 +464,7 @@ export default function ResultsView(props: Props) {
         {/* Refinement */}
         {!isLoading && facilityItems.length > 0 && (
           <View style={s.refinementBox}>
-            <Text style={s.refinementTitle}>{t.refineTitle}</Text>
+            <Text style={s.refinementTitle}>🔍 {t.refineTitle}</Text>
             <TextInput
               value={refinementText}
               onChangeText={onSetRefinementText}
@@ -435,7 +477,7 @@ export default function ResultsView(props: Props) {
               onPress={onRefine}
               disabled={isRefining || !refinementText.trim()}
               activeOpacity={0.75}
-              style={[s.refinementBtn, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
+              style={[s.refinementBtn, { backgroundColor: accentColor }, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
             >
               <Text style={s.refinementBtnText}>
                 {isRefining ? t.searching : t.searchAgain}
@@ -444,16 +486,19 @@ export default function ResultsView(props: Props) {
           </View>
         )}
 
-        {/* Feedback */}
-        {!isLoading && !feedbackSubmitted && recommendations.length > 0 && !facilityList && (
+        {/* ── 今回の結果どうでしたか ─────────────────── */}
+        {!isLoading && !feedbackSubmitted && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
           <View style={s.feedbackBox}>
             <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
             <View style={s.stars}>
               {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn}>
-                  <Text style={[s.starText, feedbackRating !== null && n <= (feedbackRating ?? 0) && s.starActive]}>
-                    {feedbackRating !== null && n <= feedbackRating ? '★' : '☆'}
-                  </Text>
+                <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
+                  <Star
+                    size={32}
+                    color="#FF9F0A"
+                    fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#FF9F0A' : 'none'}
+                    strokeWidth={1.8}
+                  />
                 </TouchableOpacity>
               ))}
             </View>
@@ -467,7 +512,13 @@ export default function ResultsView(props: Props) {
 
         {/* Reset button */}
         <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.7}>
-          <Text style={s.resetBtnText}>{t.reset}</Text>
+          <LinearGradient
+            colors={['#FF6B35', '#FF8F7F']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={s.resetBtnInner}
+          >
+            <Text style={s.resetBtnText}>{t.reset}</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
 
@@ -480,26 +531,20 @@ export default function ResultsView(props: Props) {
             <Text style={s.visitModalSub}>{t.visitModalSub}</Text>
             <View style={s.stars}>
               {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} onPress={() => setVisitingRating(n)} style={s.starBtn}>
-                  <Text style={[s.starText, visitingRating >= n && s.starActive]}>
-                    {visitingRating >= n ? '★' : '☆'}
-                  </Text>
+                <TouchableOpacity key={n} onPress={() => setVisitingRating(n)} style={s.starBtn} activeOpacity={0.7}>
+                  <Star size={28} color="#FF9F0A" fill={visitingRating >= n ? '#FF9F0A' : 'none'} strokeWidth={1.8} />
                 </TouchableOpacity>
               ))}
             </View>
             <View style={s.modalBtns}>
-              <TouchableOpacity
-                onPress={() => { setVisitingSpot(null); setVisitingRating(0); }}
-                style={s.modalCancelBtn}
-              >
+              <TouchableOpacity onPress={() => { setVisitingSpot(null); setVisitingRating(0); }} style={s.modalCancelBtn}>
                 <Text style={s.modalCancelText}>{t.visitModalSkip}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   setVisitedTitles((prev) => [...prev, visitingSpot.title]);
                   if (visitingRating > 0) onSubmitVisitedFeedback?.(visitingSpot.title, visitingRating);
-                  setVisitingSpot(null);
-                  setVisitingRating(0);
+                  setVisitingSpot(null); setVisitingRating(0);
                 }}
                 style={[s.modalSubmitBtn, { backgroundColor: '#34C759' }]}
               >
@@ -553,9 +598,7 @@ export default function ResultsView(props: Props) {
                     disabled={reportSubmitting || !reportReason}
                     style={s.modalSubmitBtn}
                   >
-                    <Text style={s.modalSubmitText}>
-                      {reportSubmitting ? t.submitting : t.submit}
-                    </Text>
+                    <Text style={s.modalSubmitText}>{reportSubmitting ? t.submitting : t.submit}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -568,172 +611,79 @@ export default function ResultsView(props: Props) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
-
-  // iOS nav bar
-  navBar: {
-    zIndex: 10, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 0,
-  },
-  navBarBorder: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  navBarInner: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 10, minHeight: 44,
-  },
-  backBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    paddingHorizontal: 6, paddingVertical: 4, minWidth: 72,
-  },
-  backText: { fontSize: 17, color: '#FF6B35', fontWeight: '400' },
+  root: { flex: 1, backgroundColor: '#FAFAFA' },
+  navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: '#F3F4F6' },
+  navBarInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, minHeight: 50 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 4, minWidth: 72 },
+  backText: { fontSize: 17, fontWeight: '500', color: '#F43F5E' },
   navCenter: { flex: 1, alignItems: 'center' },
-  navTitle: { fontSize: 17, fontWeight: '600', color: '#000', textAlign: 'center' },
-  navCount: { fontSize: 11, color: '#8E8E93', fontWeight: '500', marginTop: 1 },
+  navTitle: { fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center' },
+  navCount: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', marginTop: 1 },
   navRight: { minWidth: 72, alignItems: 'flex-end' },
   shuffleBtn: { padding: 6 },
-
   scroll: { flex: 1 },
-  content: { padding: 16 },
-
-  labelBadge: {
-    alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 8, marginBottom: 12,
-    backgroundColor: '#F2F2F7',
-  },
-  labelBadgeText: { fontSize: 13, fontWeight: '600' },
-
-  // Sort & filter bar
-  controlsRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 12, gap: 8,
-  },
-  sortGroup: { flexDirection: 'row', gap: 6 },
-  sortBtn: {
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: '#F2F2F7', borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  sortBtnActive: { backgroundColor: '#FF6B3515', borderColor: '#FF6B35' },
-  sortBtnText: { fontSize: 12, fontWeight: '500', color: '#6D6D72' },
-  sortBtnTextActive: { color: '#FF6B35', fontWeight: '600' },
-  filterGroup: { flexDirection: 'row', gap: 6 },
-  filterBtn: {
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: '#F2F2F7', borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  filterBtnActive: { backgroundColor: '#34C75915', borderColor: '#34C759' },
-  filterBtnText: { fontSize: 12, fontWeight: '500', color: '#6D6D72' },
-  filterBtnTextActive: { color: '#34C759', fontWeight: '600' },
-  visitModalSub: { fontSize: 13, color: '#8E8E93', marginBottom: 16, textAlign: 'center' },
-
-  prefRow: { marginBottom: 10 },
-  prefRowContent: { paddingHorizontal: 0, gap: 8, flexDirection: 'row' },
-  prefChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
-    backgroundColor: '#F2F2F7', borderWidth: 1, borderColor: '#E5E5EA',
-  },
-  prefChipActive: { backgroundColor: '#FF6B3515', borderColor: '#FF6B35' },
-  prefChipText: { fontSize: 12, fontWeight: '500', color: '#6D6D72' },
-  prefChipTextActive: { color: '#FF6B35', fontWeight: '700' },
-  prefChipClear: { backgroundColor: '#F2F2F7', borderColor: '#C7C7CC' },
-  prefChipClearText: { fontSize: 12, fontWeight: '500', color: '#8E8E93' },
-
+  content: { padding: 16, gap: 0 },
+  condCard: { backgroundColor: '#fff', borderRadius: 18, padding: 14, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  condHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
+  condLabel: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  condToggle: { fontSize: 11, color: '#9CA3AF' },
+  condChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
+  condChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F9FAFB', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#F3F4F6' },
+  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
+  condChipValue: { fontSize: 12, fontWeight: '700', color: '#111827' },
+  controlsWrap: { marginBottom: 10 },
+  controlsRow: { flexDirection: 'row', gap: 7, paddingHorizontal: 0 },
+  controlChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },
+  controlChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  controlChipTextActive: { color: '#fff' },
+  controlDivider: { width: 1, backgroundColor: '#F3F4F6', alignSelf: 'stretch', marginHorizontal: 2 },
+  prefRow: { marginBottom: 12 },
+  prefRowContent: { paddingHorizontal: 0, gap: 7, flexDirection: 'row' },
+  prefChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },
+  prefChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  prefChipClear: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
+  prefChipClearText: { fontSize: 12, fontWeight: '500', color: '#9CA3AF' },
   loadingBox: { alignItems: 'center', paddingVertical: 60, gap: 16 },
-  loadingText: { fontSize: 15, color: '#6D6D72', textAlign: 'center', lineHeight: 22 },
-
-  warningBox: {
-    backgroundColor: '#FFFBEB', borderRadius: 12, padding: 14, marginBottom: 12,
-  },
+  loadingText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  warningBox: { backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },
   warningText: { fontSize: 13, color: '#92600A', lineHeight: 20 },
-
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 14 },
-  emptyText: { fontSize: 15, color: '#8E8E93', textAlign: 'center', lineHeight: 22 },
-
-  // Refinement
-  refinementBox: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    marginTop: 4, marginBottom: 12, gap: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
-  },
-  refinementTitle: { fontSize: 15, fontWeight: '600', color: '#000' },
-  refinementInput: {
-    borderRadius: 10, backgroundColor: '#F2F2F7', padding: 12,
-    fontSize: 14, color: '#000', minHeight: 72, textAlignVertical: 'top',
-  },
-  refinementBtn: {
-    height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#FF6B35',
-  },
-  refinementBtnDisabled: { backgroundColor: '#C7C7CC' },
-  refinementBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
-
-  // Feedback
-  feedbackBox: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 20, marginBottom: 12,
-    alignItems: 'center', gap: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4,
-  },
-  feedbackTitle: { fontSize: 15, fontWeight: '600', color: '#000' },
-  stars: { flexDirection: 'row', gap: 6 },
-  starBtn: { padding: 6 },
-  starText: { fontSize: 30, color: '#E5E5EA' },
-  starActive: { color: '#FF9F0A' },
-  feedbackThanks: { fontSize: 15, fontWeight: '600', color: '#34C759' },
-
-  loadMoreBtn: {
-    alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 12,
-    borderRadius: 999, marginBottom: 12,
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#FF6B35',
-    shadowColor: '#FF6B35', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6,
-  },
-  loadMoreText: { fontSize: 14, fontWeight: '600', color: '#FF6B35' },
-
-  resetBtn: {
-    alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 10,
-    borderRadius: 999, marginBottom: 12,
-  },
-  resetBtnText: { fontSize: 15, color: '#FF6B35', fontWeight: '500' },
-
-  // Report modal
-  modalOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'flex-end', padding: 0,
-  },
-  modal: {
-    backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 24, width: '100%',
-  },
-  modalTitle: { fontSize: 17, fontWeight: '600', color: '#000', marginBottom: 4 },
-  modalSpotName: { fontSize: 13, color: '#8E8E93', marginBottom: 16 },
-  modalThanks: { fontSize: 15, fontWeight: '600', color: '#34C759', textAlign: 'center', marginVertical: 16 },
-  modalLabel: { fontSize: 13, fontWeight: '600', color: '#6D6D72', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  refinementBox: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 4, marginBottom: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  refinementTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  refinementInput: { borderRadius: 14, backgroundColor: '#F9FAFB', padding: 14, fontSize: 14, color: '#111827', minHeight: 72, textAlignVertical: 'top', borderWidth: 1, borderColor: '#F3F4F6' },
+  refinementBtn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  refinementBtnDisabled: { backgroundColor: '#E5E7EB' },
+  refinementBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  feedbackBox: { backgroundColor: '#fff', borderRadius: 18, padding: 20, marginBottom: 12, alignItems: 'center', gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  feedbackTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  stars: { flexDirection: 'row', gap: 8 },
+  starBtn: { padding: 4 },
+  feedbackThanks: { fontSize: 16, fontWeight: '700', color: '#10B981' },
+  loadMoreBtn: { alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginBottom: 12, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#FECDD3', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6 },
+  loadMoreText: { fontSize: 14, fontWeight: '700', color: '#F43F5E' },
+  resetBtn: { marginTop: 8, marginBottom: 4, borderRadius: 16, overflow: 'hidden' },
+  resetBtnInner: { height: 54, alignItems: 'center', justifyContent: 'center' },
+  resetBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  visitModalSub: { fontSize: 13, color: '#6B7280', marginBottom: 16, textAlign: 'center' },
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'flex-end' },
+  modal: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, width: '100%' },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 4 },
+  modalSpotName: { fontSize: 13, color: '#9CA3AF', marginBottom: 16 },
+  modalThanks: { fontSize: 15, fontWeight: '700', color: '#10B981', textAlign: 'center', marginVertical: 16 },
+  modalLabel: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   modalOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  modalOption: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#F2F2F7',
-  },
-  modalOptionActive: { backgroundColor: '#FF6B3520' },
-  modalOptionText: { fontSize: 14, fontWeight: '500', color: '#000' },
-  modalOptionTextActive: { color: '#FF6B35' },
-  modalInput: {
-    borderRadius: 10, backgroundColor: '#F2F2F7', padding: 12,
-    fontSize: 14, color: '#000', marginBottom: 16, minHeight: 60, textAlignVertical: 'top',
-  },
+  modalOption: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6' },
+  modalOptionActive: { backgroundColor: '#FFF5F6', borderWidth: 1.5, borderColor: '#F43F5E' },
+  modalOptionText: { fontSize: 14, fontWeight: '500', color: '#374151' },
+  modalOptionTextActive: { color: '#F43F5E', fontWeight: '700' },
+  modalInput: { borderRadius: 14, backgroundColor: '#F9FAFB', padding: 12, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 60, textAlignVertical: 'top', borderWidth: 1, borderColor: '#F3F4F6' },
   modalBtns: { flexDirection: 'row', gap: 10 },
-  modalCancelBtn: {
-    flex: 1, height: 48, borderRadius: 10, backgroundColor: '#F2F2F7',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  modalCancelText: { fontSize: 15, fontWeight: '500', color: '#6D6D72' },
-  modalSubmitBtn: {
-    flex: 1, height: 48, borderRadius: 10, backgroundColor: '#FF3B30',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  modalSubmitText: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  modalCloseBtn: {
-    alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 10,
-    borderRadius: 10, backgroundColor: '#F2F2F7', marginTop: 8,
-  },
-  modalCloseBtnText: { fontSize: 14, fontWeight: '500', color: '#6D6D72' },
+  modalCancelBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F3F4F6' },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: '#6B7280' },
+  modalSubmitBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
+  modalSubmitText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  modalCloseBtn: { alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999, backgroundColor: '#F9FAFB', marginTop: 8, borderWidth: 1, borderColor: '#F3F4F6' },
+  modalCloseBtnText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
 });

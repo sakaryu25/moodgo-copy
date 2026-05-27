@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
+import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
 
 const ADMIN_PASSWORD = "moodgoadmin123";
 
@@ -183,6 +184,151 @@ interface VitalityStats {
   needsCheck: number;
   checkedThisWeek: number;
   googleApiReady: boolean;
+}
+
+// ─── DB統計パネル ──────────────────────────────────────────────────────────────
+function DbStatsPanel({ secret }: { secret: string }) {
+  const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
+  const [bySource, setBySource] = useState<{ source_type: string; count: number }[]>([]);
+  const [byTag, setByTag] = useState<{ tag: string; cnt: number }[]>([]);
+  const [search, setSearch] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/db-stats?secret=${encodeURIComponent(secret)}`);
+      const data = await res.json();
+      if (data.ok) {
+        setTotal(data.total);
+        setBySource(data.bySource ?? []);
+        setByTag(data.byTag ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const filtered = byTag.filter(r =>
+    !search || r.tag.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "16px",
+    padding: "20px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+    marginBottom: "20px",
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+        <h2 style={{ fontSize: "20px", fontWeight: 800 }}>🗄 DB 統計</h2>
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{ padding: "8px 20px", background: "#FF5C8A", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 700, cursor: "pointer" }}
+        >
+          {loading ? "読込中…" : "🔄 更新"}
+        </button>
+      </div>
+
+      {/* 総件数 */}
+      <div style={{ ...card, textAlign: "center" }}>
+        <div style={{ fontSize: "13px", color: "#718096", marginBottom: "6px" }}>総スポット数（is_active = true）</div>
+        <div style={{ fontSize: "48px", fontWeight: 900, color: "#FF5C8A" }}>
+          {total !== null ? total.toLocaleString() : "—"}
+          <span style={{ fontSize: "18px", marginLeft: "6px" }}>件</span>
+        </div>
+      </div>
+
+      {/* ソース別 */}
+      <div style={card}>
+        <h3 style={{ fontSize: "15px", fontWeight: 800, marginBottom: "14px" }}>📂 ソース別内訳</h3>
+        {bySource.length === 0 ? (
+          <p style={{ color: "#aaa" }}>データなし</p>
+        ) : (
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            {bySource.map(r => (
+              <div key={r.source_type} style={{
+                background: "#FFF5F7", borderRadius: "12px", padding: "14px 20px", minWidth: "130px", textAlign: "center"
+              }}>
+                <div style={{ fontSize: "12px", color: "#718096", marginBottom: "4px" }}>
+                  {r.source_type ?? "未設定"}
+                </div>
+                <div style={{ fontSize: "28px", fontWeight: 900, color: "#2D3748" }}>
+                  {Number(r.count).toLocaleString()}
+                </div>
+                <div style={{ fontSize: "11px", color: "#A0AEC0" }}>件</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* タグ別（全件・検索付き） */}
+      <div style={card}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+          <h3 style={{ fontSize: "15px", fontWeight: 800, margin: 0 }}>
+            🏷 タグ別内訳（全{byTag.length}種）
+          </h3>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="タグ名で絞り込み…"
+            style={{
+              padding: "7px 14px", borderRadius: "10px", border: "1px solid #E2E8F0",
+              fontSize: "13px", outline: "none", width: "200px",
+            }}
+          />
+        </div>
+        {filtered.length === 0 ? (
+          <p style={{ color: "#aaa" }}>該当なし</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ background: "#F7FAFC" }}>
+                  <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#4A5568" }}>順位</th>
+                  <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#4A5568" }}>タグ</th>
+                  <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700, color: "#4A5568" }}>件数</th>
+                  <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, color: "#4A5568" }}>割合</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => {
+                  const pct = total ? Math.round((r.cnt / total) * 1000) / 10 : 0;
+                  return (
+                    <tr key={r.tag} style={{ borderBottom: "1px solid #EDF2F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                      <td style={{ padding: "8px 12px", color: "#A0AEC0", fontWeight: 600 }}>#{i + 1}</td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <span style={{
+                          background: "#FFF5F7", color: "#FF5C8A", borderRadius: "6px",
+                          padding: "2px 8px", fontWeight: 700, fontSize: "12px",
+                        }}>{r.tag}</span>
+                      </td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>
+                        {Number(r.cnt).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: "80px", height: "6px", background: "#EDF2F7", borderRadius: "3px" }}>
+                            <div style={{ width: `${Math.min(pct * 2, 100)}%`, height: "100%", background: "#FF5C8A", borderRadius: "3px" }} />
+                          </div>
+                          <span style={{ color: "#718096", fontSize: "12px" }}>{pct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function VitalityCheckPanel({ secret }: { secret: string }) {
@@ -459,22 +605,26 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
 // HotPepper 同期パネル（独立コンポーネント）
 // ─────────────────────────────────────────────────────────────────────────────
 const GENRE_CONFIGS_META = [
-  { id: "izakaya",     label: "居酒屋",         tags: ["#居酒屋", "#居酒屋個室", "#大衆酒場"] },
-  { id: "washoku",     label: "和食",           tags: ["#和食", "#海鮮", "#天ぷら", "#うどんそば", "#懐石料理"] },
-  { id: "yoshoku",     label: "洋食",           tags: ["#洋食", "#ハンバーグ", "#オムライス", "#ステーキ", "#レトロ洋食"] },
-  { id: "italian",     label: "イタリアン",     tags: ["#イタリアン"] },
-  { id: "chinese",     label: "中華",           tags: ["#中華"] },
-  { id: "yakiniku",    label: "焼肉",           tags: ["#焼肉", "#焼肉食べ放題", "#高級焼肉", "#焼肉単品あり"] },
-  { id: "korean",      label: "韓国料理",       tags: ["#韓国"] },
-  { id: "asian",       label: "アジア系統",     tags: ["#アジア系統", "#インドネパール料理", "#タイ料理", "#ベトナム料理", "#アジアンエスタニック料理"] },
-  { id: "world",       label: "各国料理",       tags: ["#各国料理", "#メキシコ料理", "#ブラジル料理", "#ロシア料理", "#他国料理"] },
-  { id: "ramen",       label: "ラーメン",       tags: ["#ラーメン", "#こってりラーメン", "#あっさりラーメン", "#味噌ラーメン", "#つけ麺まぜそば"] },
-  { id: "okonomiyaki", label: "お好み焼きもんじゃ", tags: ["#お好み焼きもんじゃ"] },
-  { id: "cafe",        label: "カフェスイーツ", tags: ["#カフェスイーツ", "#スイーツカフェ", "#喫茶店", "#流行りカフェ"] },
-  { id: "skyscraper",  label: "高層ビル料理",   tags: ["#高層ビル料理"] },
-  { id: "skyscraper2", label: "高層ビル料理(スカイ)", tags: ["#高層ビル料理"] },
+  { id: "izakaya",      label: "居酒屋",              tags: ["#居酒屋", "#居酒屋個室", "#大衆酒場"] },
+  { id: "washoku",      label: "和食",                tags: ["#和食", "#海鮮", "#天ぷら", "#うどんそば", "#懐石料理"] },
+  { id: "yoshoku",      label: "洋食",                tags: ["#洋食", "#ハンバーグ", "#オムライス", "#ステーキ", "#レトロ洋食"] },
+  { id: "italian",      label: "イタリアン",          tags: ["#イタリアン"] },
+  { id: "chinese",      label: "中華",                tags: ["#中華"] },
+  { id: "yakiniku",     label: "焼肉",                tags: ["#焼肉", "#焼肉食べ放題", "#高級焼肉", "#焼肉単品あり"] },
+  { id: "korean",       label: "韓国料理",            tags: ["#韓国"] },
+  { id: "asian",        label: "アジア系統",          tags: ["#アジア系統", "#インドネパール料理", "#タイ料理", "#ベトナム料理", "#アジアンエスタニック料理"] },
+  { id: "world",        label: "各国料理",            tags: ["#各国料理", "#メキシコ料理", "#ブラジル料理", "#ロシア料理", "#他国料理"] },
+  { id: "ramen",        label: "ラーメン",            tags: ["#ラーメン", "#こってりラーメン", "#あっさりラーメン", "#味噌ラーメン", "#つけ麺まぜそば"] },
+  { id: "okonomiyaki",  label: "お好み焼きもんじゃ",  tags: ["#お好み焼きもんじゃ"] },
+  { id: "cafe",         label: "カフェスイーツ",      tags: ["#カフェスイーツ", "#喫茶店", "#流行りカフェ"] },
+  { id: "dining_bar",   label: "ダイニングバー・バル", tags: ["#居酒屋", "#居酒屋個室", "#洋食"] },
+  { id: "creative",     label: "創作料理",            tags: ["#和食", "#洋食", "#海鮮", "#懐石料理"] },
+  { id: "nabe",         label: "鍋料理",              tags: ["#居酒屋", "#居酒屋個室", "#焼肉単品あり"] },
+  { id: "other_gourmet",label: "その他グルメ",        tags: ["#和食", "#洋食", "#居酒屋", "#アジア系統", "#イタリアン", "#ステーキ", "#うどんそば"] },
+  { id: "skyscraper",   label: "高層ビル料理",        tags: ["#高層ビル料理"] },
+  { id: "skyscraper2",  label: "高層ビル料理(スカイ)", tags: ["#高層ビル料理"] },
 ];
-const TOTAL_BATCHES = 171; // Math.ceil(3417 grid points / 20 per batch)
+const TOTAL_BATCHES = 1500; // 概算（全国0.05°統一: 約25,000〜30,000点 / 20点/バッチ）
 
 type SyncStatus = "idle" | "running" | "done" | "error";
 interface GenreSyncState {
@@ -562,7 +712,7 @@ function HotPepperSyncPanel({ secret }: { secret: string }) {
         ins += data.results?.inserted ?? 0;
         upd += data.results?.updated  ?? 0;
         skp += data.results?.skipped  ?? 0;
-        const logLine = `[${batch + 1}/${totalBatches}] +${data.results?.inserted ?? 0}件 ~${data.results?.updated ?? 0}件`;
+        const logLine = `[${batch + 1}/${totalBatches}] 新規追加 ${data.results?.inserted ?? 0}件 / 更新 ${data.results?.updated ?? 0}件`;
         setGenreStates(prev => ({
           ...prev,
           [genreId]: {
@@ -645,7 +795,7 @@ function HotPepperSyncPanel({ secret }: { secret: string }) {
           <div>
             <h2 style={{ fontSize: "24px", fontWeight: 900, margin: 0 }}>🍽 HotPepper 全国店舗同期</h2>
             <p style={{ margin: "6px 0 0", fontSize: "13px", opacity: 0.85 }}>
-              全国 3,417 地点 × 14ジャンルの飲食店を Supabase に一括登録
+              全国 約25,000地点 × 18ジャンルの飲食店を Supabase に一括登録
             </p>
           </div>
           {/* 登録済み合計 */}
@@ -671,7 +821,7 @@ function HotPepperSyncPanel({ secret }: { secret: string }) {
                 boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
               }}
             >
-              🚀 全14ジャンルを一括同期する
+              🚀 全{GENRE_CONFIGS_META.length}ジャンルを一括同期する
             </button>
           ) : (
             <button onClick={stopSync} style={{ ...btn, background: "rgba(255,255,255,0.25)", color: "#fff", fontSize: "15px", padding: "12px 24px" }}>
@@ -770,7 +920,7 @@ function HotPepperSyncPanel({ secret }: { secret: string }) {
                     )}
                     {state && (state.inserted > 0 || state.updated > 0) && (
                       <span style={{ fontSize: "11px", color: "#718096" }}>
-                        +{state.inserted} ~{state.updated}
+                        新規 {state.inserted}件 / 更新 {state.updated}件
                       </span>
                     )}
                     {!isAnyBusy && (
@@ -813,19 +963,18 @@ function HotPepperSyncPanel({ secret }: { secret: string }) {
                   </div>
                 )}
 
-                {/* ログ */}
+                {/* ログ（最新1行のみ・シンプル表示） */}
                 {state?.log && state.log.length > 0 && (
-                  <div style={{
-                    background: "#111827", borderRadius: "8px",
-                    padding: "8px 12px", marginTop: "10px",
-                    maxHeight: "100px", overflow: "auto",
-                    fontSize: "10px", fontFamily: "monospace", color: "#d1fae5",
-                    lineHeight: 1.6,
+                  <p style={{
+                    margin: "6px 0 0",
+                    fontSize: "11px",
+                    color: "#6B7280",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}>
-                    {state.log.slice(-6).map((line, i) => (
-                      <div key={i}>{line}</div>
-                    ))}
-                  </div>
+                    {state.log[state.log.length - 1]}
+                  </p>
                 )}
               </div>
             );
@@ -842,7 +991,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "hotpepper" | "vitality">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "hotpepper" | "vitality" | "db-stats" | "pref-featured">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2974,6 +3123,8 @@ export default function AdminPage() {
             { key: "retag",   label: "🏷 一括タグ修正" },
             { key: "hotpepper", label: "🍽 HotPepper同期" },
             { key: "vitality",  label: "🔍 生存確認・自浄" },
+            { key: "db-stats",  label: "🗄 DB統計" },
+            { key: "pref-featured", label: "🗾 県別特集" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7494,6 +7645,16 @@ export default function AdminPage() {
         {/* ===== 🔍 生存確認・自浄タブ ===== */}
         {tab === "vitality" && (
           <VitalityCheckPanel secret={ADMIN_PASSWORD} />
+        )}
+
+        {/* ===== 🗄 DB統計タブ ===== */}
+        {tab === "db-stats" && (
+          <DbStatsPanel secret={ADMIN_PASSWORD} />
+        )}
+
+        {/* ===== 🗾 県別特集タブ ===== */}
+        {tab === "pref-featured" && (
+          <PrefFeaturedPanel secret={ADMIN_PASSWORD} />
         )}
 
       </div>

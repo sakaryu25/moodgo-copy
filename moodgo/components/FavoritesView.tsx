@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FavoriteItem } from '@/types/app';
+import { COLORS } from '@/constants/Colors';
 
 type Props = {
   favorites: FavoriteItem[];
@@ -79,7 +80,7 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
 
       {sorted.length === 0 ? (
         <View style={s.emptyBox}>
-          <Heart size={52} color="#C7C7CC" strokeWidth={1.5} />
+          <Heart size={52} color="#FECDD3" strokeWidth={1.5} />
           <Text style={s.emptyText}>{t.empty}</Text>
         </View>
       ) : (
@@ -90,14 +91,14 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
                 <Image source={{ uri: item.photoUrl }} style={s.cardImg} contentFit="cover" />
               ) : (
                 <View style={[s.cardImg, s.cardImgPlaceholder]}>
-                  <Navigation size={24} color="#C7C7CC" strokeWidth={1.5} />
+                  <Navigation size={24} color="#FECDD3" strokeWidth={1.5} />
                 </View>
               )}
               <View style={s.cardBody}>
                 <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
                 {item.area ? (
                   <View style={s.areaRow}>
-                    <MapPin size={11} color="#8E8E93" strokeWidth={2} />
+                    <MapPin size={11} color={COLORS.textMuted} strokeWidth={2} />
                     <Text style={s.cardArea}>{item.area}</Text>
                   </View>
                 ) : null}
@@ -129,51 +130,29 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
+  root: { flex: 1, backgroundColor: '#FAFAFA' },
   content: { padding: 16 },
-  pageTitle: { fontSize: 34, fontWeight: '700', color: '#000', letterSpacing: -0.5 },
-  pageSub: { fontSize: 13, color: '#8E8E93', marginTop: 2, marginBottom: 16 },
-
-  // Segmented control
-  segmented: {
-    flexDirection: 'row', backgroundColor: '#E5E5EA', borderRadius: 8,
-    padding: 2, marginBottom: 16, alignSelf: 'flex-start',
-  },
-  segBtn: {
-    paddingHorizontal: 16, paddingVertical: 6, borderRadius: 7,
-  },
-  segBtnActive: {
-    backgroundColor: '#fff',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2,
-  },
-  segText: { fontSize: 13, fontWeight: '500', color: '#6D6D72' },
-  segTextActive: { color: '#000', fontWeight: '600' },
-
+  pageTitle: { fontSize: 34, fontWeight: '800', color: '#111827', letterSpacing: -0.5 },
+  pageSub: { fontSize: 13, color: '#6B7280', marginTop: 2, marginBottom: 16 },
+  segmented: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 10, padding: 3, marginBottom: 16, alignSelf: 'flex-start' },
+  segBtn: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
+  segBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4 },
+  segText: { fontSize: 13, fontWeight: '500', color: '#6B7280' },
+  segTextActive: { color: '#111827', fontWeight: '700' },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 16 },
-  emptyText: { fontSize: 15, color: '#8E8E93', textAlign: 'center', lineHeight: 24 },
-
-  card: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-  },
+  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 24 },
+  card: { backgroundColor: '#fff', borderRadius: 18, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: '#F3F4F6' },
   cardInner: { flexDirection: 'row', gap: 12 },
-  cardImg: { width: 76, height: 76, borderRadius: 10 },
-  cardImgPlaceholder: { backgroundColor: '#F2F2F7', alignItems: 'center', justifyContent: 'center' },
-  cardBody: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#000', lineHeight: 21 },
+  cardImg: { width: 80, height: 80, borderRadius: 14 },
+  cardImgPlaceholder: { backgroundColor: '#FFF5F6', alignItems: 'center', justifyContent: 'center' },
+  cardBody: { flex: 1, gap: 4 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827', lineHeight: 21 },
   areaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  cardArea: { fontSize: 12, color: '#8E8E93' },
-  cardVibe: { fontSize: 12, color: '#6D6D72', lineHeight: 18 },
-  cardActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
-  mapBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
-    backgroundColor: '#007AFF',
-  },
-  mapBtnText: { fontSize: 12, fontWeight: '600', color: '#fff' },
-  deleteBtn: {
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
-    backgroundColor: '#FF3B3015',
-  },
-  deleteBtnText: { fontSize: 12, fontWeight: '600', color: '#FF3B30' },
+  cardArea: { fontSize: 12, color: '#6B7280' },
+  cardVibe: { fontSize: 12, color: '#9CA3AF', lineHeight: 18 },
+  cardActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  mapBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F43F5E' },
+  mapBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  deleteBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFF5F6', borderWidth: 1, borderColor: '#FECDD3' },
+  deleteBtnText: { fontSize: 12, fontWeight: '600', color: '#F43F5E' },
 });

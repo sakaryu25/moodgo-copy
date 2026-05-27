@@ -11,3 +11,4 @@ moodgo/.expo/
 moodgo/dist/
 moodgo/expo-env.d.ts
 moodgo/.env
+.vercel

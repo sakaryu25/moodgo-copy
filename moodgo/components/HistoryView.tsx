@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
+import { COLORS } from '@/constants/Colors';
 
 type Props = {
   history: HistoryItem[];
@@ -179,7 +180,7 @@ export default function HistoryView({
 
       {history.length === 0 ? (
         <View style={s.emptyBox}>
-          <Clock size={52} color="#C7C7CC" strokeWidth={1.5} />
+          <Clock size={52} color="#FECDD3" strokeWidth={1.5} />
           <Text style={s.emptyText}>{t.empty}</Text>
         </View>
       ) : (
@@ -222,71 +223,41 @@ export default function HistoryView({
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
+  root: { flex: 1, backgroundColor: '#FAFAFA' },
   content: { padding: 16 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  pageTitle: { fontSize: 34, fontWeight: '700', color: '#000', letterSpacing: -0.5 },
-  pageSub: { fontSize: 13, color: '#8E8E93', marginTop: 2 },
+  pageTitle: { fontSize: 34, fontWeight: '800', color: '#111827', letterSpacing: -0.5 },
+  pageSub: { fontSize: 13, color: '#6B7280', marginTop: 2 },
   clearBtn: { paddingHorizontal: 4, paddingVertical: 6 },
-  clearText: { fontSize: 15, color: '#FF3B30', fontWeight: '400' },
+  clearText: { fontSize: 15, color: '#F43F5E', fontWeight: '500' },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 16 },
-  emptyText: { fontSize: 15, color: '#8E8E93', textAlign: 'center', lineHeight: 24 },
-
-  // List card
-  historyCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    marginBottom: 10, gap: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
+  emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 24 },
+  historyCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 10, gap: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: '#F3F4F6' },
   historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  moodBadge: {
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6,
-    backgroundColor: '#FF6B3515',
-  },
-  moodBadgeText: { fontSize: 12, fontWeight: '600', color: '#FF6B35' },
+  moodBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: '#FFF5F6', borderWidth: 1, borderColor: '#FECDD3' },
+  moodBadgeText: { fontSize: 12, fontWeight: '700', color: '#F43F5E' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  recBadge: {
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5,
-    backgroundColor: '#007AFF15',
-  },
-  recBadgeText: { fontSize: 11, fontWeight: '600', color: '#007AFF' },
-  dateText: { fontSize: 12, color: '#8E8E93' },
-  spotName: { fontSize: 17, fontWeight: '600', color: '#000' },
+  recBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0' },
+  recBadgeText: { fontSize: 11, fontWeight: '600', color: '#10B981' },
+  dateText: { fontSize: 12, color: '#9CA3AF' },
+  spotName: { fontSize: 17, fontWeight: '700', color: '#111827' },
   tags: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tag: {
-    paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6,
-    backgroundColor: '#F2F2F7',
-  },
-  tagText: { fontSize: 12, fontWeight: '500', color: '#6D6D72' },
-
-  // Detail view
+  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6' },
+  tagText: { fontSize: 12, fontWeight: '500', color: '#6B7280' },
   backRow: { marginBottom: 16 },
-  backText: { fontSize: 15, fontWeight: '500', color: '#FF6B35' },
-  summaryCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 16, gap: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
-  },
+  backText: { fontSize: 15, fontWeight: '600', color: '#F43F5E' },
+  summaryCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18, marginBottom: 16, gap: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: '#F3F4F6' },
   summaryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  moodBadgeLg: {
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8,
-    backgroundColor: '#FF6B3515',
-  },
-  moodBadgeLgText: { fontSize: 14, fontWeight: '700', color: '#FF6B35' },
-  summaryDate: { fontSize: 13, color: '#8E8E93' },
-  summaryArea: { fontSize: 26, fontWeight: '700', color: '#000', letterSpacing: -0.4, lineHeight: 32 },
+  moodBadgeLg: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: '#FFF5F6', borderWidth: 1, borderColor: '#FECDD3' },
+  moodBadgeLgText: { fontSize: 14, fontWeight: '700', color: '#F43F5E' },
+  summaryDate: { fontSize: 13, color: '#9CA3AF' },
+  summaryArea: { fontSize: 24, fontWeight: '800', color: '#111827', letterSpacing: -0.4, lineHeight: 30 },
   summaryMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
-    backgroundColor: '#F2F2F7',
-  },
-  metaChipLabel: { fontSize: 11, color: '#8E8E93', fontWeight: '500' },
-  metaChipValue: { fontSize: 12, color: '#3C3C43', fontWeight: '600' },
-  recCountText: { fontSize: 13, color: '#007AFF', fontWeight: '600' },
+  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6' },
+  metaChipLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  metaChipValue: { fontSize: 12, color: '#111827', fontWeight: '700' },
+  recCountText: { fontSize: 13, color: '#10B981', fontWeight: '700' },
   summaryFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reSearchBtn: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
-    backgroundColor: '#FF6B3515', borderWidth: 1, borderColor: '#FF6B35',
-  },
-  reSearchText: { fontSize: 14, fontWeight: '600', color: '#FF6B35' },
+  reSearchBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, backgroundColor: '#FFF5F6', borderWidth: 1.5, borderColor: '#FECDD3' },
+  reSearchText: { fontSize: 14, fontWeight: '700', color: '#F43F5E' },
 });

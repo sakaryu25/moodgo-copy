@@ -1,9 +1,12 @@
+// ── TabBar ─────────────────────────────────────────────────────────────────
+// UI UX Pro Max: Glassmorphism + Spring animations + Purple brand
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { EdgeInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
+import { COLORS } from '@/constants/Colors';
 
 type Tab = 'home' | 'history' | 'favorites' | 'featured';
 
@@ -14,8 +17,8 @@ type Props = {
   lang?: 'ja' | 'en';
 };
 
-const ACCENT   = '#FF6B35';
-const INACTIVE = '#8E8E93';
+const ACTIVE   = COLORS.primary;   // #F43F5E (rose)
+const INACTIVE = COLORS.inactive;  // #D1D5DB
 
 const LABELS: Record<'ja' | 'en', Record<Tab, string>> = {
   ja: { home: 'ホーム', history: '履歴', favorites: 'お気に入り', featured: '特集' },
@@ -63,31 +66,70 @@ const TABS: { key: Tab; Icon: React.ComponentType<{ color: string }> }[] = [
   { key: 'featured',  Icon: IconFeatured },
 ];
 
+function TabItem({
+  tabKey, active, Icon, label, onPress,
+}: {
+  tabKey: Tab;
+  active: boolean;
+  Icon: React.ComponentType<{ color: string }>;
+  label: string;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pillOpacity = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const pillScale   = useRef(new Animated.Value(active ? 1 : 0.6)).current;
+
+  useEffect(() => {
+    // スプリングアニメーション（UI UX Pro Max: mass:1 damping:15 stiffness:120）
+    Animated.spring(pillOpacity, { toValue: active ? 1 : 0, useNativeDriver: true, mass: 1, damping: 15, stiffness: 120 }).start();
+    Animated.spring(pillScale,   { toValue: active ? 1 : 0.6, useNativeDriver: true, mass: 1, damping: 15, stiffness: 120 }).start();
+  }, [active]);
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, mass: 1, damping: 12, stiffness: 200 }),
+    ]).start();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress();
+  };
+
+  return (
+    <TouchableOpacity onPress={handlePress} style={s.tab} activeOpacity={1}>
+      <Animated.View style={[s.tabInner, { transform: [{ scale }] }]}>
+        {/* アクティブインジケーター（pill） */}
+        <Animated.View style={[
+          s.activePill,
+          { opacity: pillOpacity, transform: [{ scale: pillScale }] },
+        ]} />
+        <Icon color={active ? ACTIVE : INACTIVE} />
+        <Text style={[s.label, { color: active ? ACTIVE : INACTIVE, fontWeight: active ? '700' : '500' }]}>
+          {label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
 export default function TabBar({ homeView, onChangeView, insets, lang = 'ja' }: Props) {
   const labels = LABELS[lang];
   return (
     <View style={s.container}>
-      <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={s.border} />
-      <View style={[s.inner, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        {TABS.map(({ key, Icon }) => {
-          const active = homeView === key;
-          const color  = active ? ACCENT : INACTIVE;
-          return (
-            <TouchableOpacity
-              key={key}
-              onPress={() => {
-                if (homeView !== key) Haptics.selectionAsync();
-                onChangeView(key);
-              }}
-              style={s.tab}
-              activeOpacity={0.6}
-            >
-              <Icon color={color} />
-              <Text style={[s.label, { color }]}>{labels[key]}</Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* ガラス効果 */}
+      <BlurView intensity={70} tint="light" style={StyleSheet.absoluteFill} />
+      {/* 上のボーダーライン（パープルグラデーション） */}
+      <View style={s.topBorder} />
+      <View style={[s.inner, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+        {TABS.map(({ key, Icon }) => (
+          <TabItem
+            key={key}
+            tabKey={key}
+            active={homeView === key}
+            Icon={Icon}
+            label={labels[key]}
+            onPress={() => onChangeView(key)}
+          />
+        ))}
       </View>
     </View>
   );
@@ -99,27 +141,38 @@ const s = StyleSheet.create({
     bottom: 0, left: 0, right: 0,
     zIndex: 200,
     overflow: 'hidden',
+    backgroundColor: COLORS.tabBg,
   },
-  border: {
+  topBorder: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    height: 1,
+    backgroundColor: COLORS.tabBorder,
   },
   inner: {
     flexDirection: 'row',
-    paddingTop: 8,
+    paddingTop: 10,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
+  },
+  tabInner: {
+    alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingVertical: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    minWidth: 60,
+  },
+  activePill: {
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(244,63,94,0.09)',
+    borderRadius: 14,
   },
   label: {
     fontSize: 10,
-    fontWeight: '500',
     letterSpacing: -0.1,
   },
 });

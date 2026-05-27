@@ -97,7 +97,7 @@ function tagsToTagline(tags: string[], name: string): string {
   if (has("#景色良いカフェ") && has("#展望台")) return "🗼 高台から絶景を眺めながらカフェタイム";
   if (has("#景色良いカフェ"))              return "🌅 絶景を眺めながらくつろげる景色自慢のカフェ";
   if (has("#ブックカフェ"))               return "📚 本に囲まれてのんびり過ごせるブックカフェ";
-  if (has("#スイーツカフェ"))             return "🍰 こだわりスイーツが自慢のカフェ";
+  if (has("#カフェスイーツ"))             return "🍰 こだわりスイーツが自慢のカフェ";
   if (has("#癒しカフェ") || has("#カフェ作業")) return "☕ ゆっくりくつろげるこだわりカフェ";
 
   // 自然系

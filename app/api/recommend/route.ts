@@ -3818,6 +3818,8 @@ export async function POST(request: Request) {
                 languageCode: "ja",
                 regionCode: "JP",
                 maxResultCount: 20,
+                // 飲食店カテゴリのみに絞る（公園・展望台などを除外）
+                includedType: "restaurant",
                 locationBias: {
                   circle: { center: { latitude: searchLat, longitude: searchLng }, radius: searchRadiusM },
                 },
@@ -3831,29 +3833,44 @@ export async function POST(request: Request) {
           } catch { /* ignore */ }
         }
         // 高層ビル料理に不適切な施設を除外するNGワード
-        // 公園・野外施設が Google の「展望」クエリに混入しやすいため
-        // ※ タワー・展望台は高層レストランとして有効なので除外しない
-        // ── ネガティブフィルタ: 公園・非飲食施設を除外 ────────────────────────
+        // ── ネガティブフィルタ: 公園・展望台・非飲食施設を除外 ─────────────────
         const HIGHRISE_NG = [
+          // 公園・屋外スポット
           "公園", "緑地", "広場", "河川敷", "遊歩道", "児童遊園",
           "自然公園", "都立公園", "国立公園", "運動公園",
+          // 展望台（レストランなし）※ "展望レストラン" は通過させるため名前末尾チェック
+          "展望台", "展望所", "展望スポット", "見晴台", "見晴らし台",
+          // 観光施設・文化施設
           "美術館", "博物館", "水族館", "動物園", "神社", "寺院", "神宮",
+          "資料館", "記念館", "科学館",
+          // 公共インフラ
+          "駅", "空港", "港", "埠頭",
         ];
 
-        // ── ポジティブフィルタ: 名前 or 住所に高層ビル系キーワードが必須 ──────────
-        // Google の検索がレビュー文等でマッチして一般飲食店を引いてしまうのを防ぐ
-        // 「名前」にスカイ・展望・タワー・ホテル等 OR「住所」に階・ビル・タワー等 → 通過
+        // ── ポジティブフィルタ: 名前 or 住所に「高層レストラン」系キーワードが必須 ──
+        // 「展望」単体は展望台に引っかかるため、「展望レストラン」「展望ダイニング」等
+        // の複合語か、他の飲食系キーワードとの組み合わせのみ通過させる
         const HIGHRISE_POSITIVE_NAME = [
-          "スカイ", "sky", "Sky", "SKY",
-          "展望", "高層", "ルーフ", "Roof", "roof",
+          "スカイレストラン", "スカイダイニング", "スカイラウンジ", "スカイバー",
+          "展望レストラン", "展望ダイニング", "展望ラウンジ",
+          "ルーフトップレストラン", "ルーフトップバー", "ルーフトップダイニング",
+          "高層レストラン", "高層ダイニング",
+          "sky restaurant", "sky dining", "sky lounge", "Sky Restaurant", "Sky Dining",
+          "ホテルダイニング", "ホテルレストラン", "ホテルラウンジ",
+          // 高層ビル名に使われるキーワード（単独でも飲食店と判断しやすい）
+          "タワーレストラン", "タワーダイニング", "タワーラウンジ",
+        ];
+        // 「スカイ」「タワー」「ホテル」単体は名前に含まれ、かつ料理・食事系ワードが住所にある場合のみ
+        const HIGHRISE_POSITIVE_NAME_PARTIAL = [
+          "スカイ", "Sky", "sky", "SKY",
           "タワー", "Tower", "tower",
           "ホテル", "Hotel", "hotel",
+          "ルーフ", "Roof", "roof",
           "ラウンジ", "Lounge",
-          "フロア", "階",
         ];
         const HIGHRISE_POSITIVE_ADDR = [
-          // 住所に階数・ビル名が入っている ＝ 高層ビル内テナントの可能性が高い
-          "階", "タワー", "ビル", "Tower",
+          // 住所に「○階」「タワー」「ビル」が入っている ＝ 高層ビル内テナントの可能性大
+          "階", "タワー", "ビル", "Tower", "TOWER",
         ];
 
         // dedup & フィルタ & build hotpepperShops format
@@ -3866,10 +3883,14 @@ export async function POST(request: Request) {
             seen.add(id);
             const name    = ((p.displayName as Record<string, unknown>)?.text as string) ?? "";
             const address = String(p.formattedAddress ?? "");
+            // ① NGワードで即除外（公園・展望台など）
             if (HIGHRISE_NG.some(ng => name.includes(ng))) return false;
-            const nameOk = HIGHRISE_POSITIVE_NAME.some(kw => name.includes(kw));
-            const addrOk = HIGHRISE_POSITIVE_ADDR.some(kw => address.includes(kw));
-            return nameOk || addrOk;
+            // ② 複合語（「展望レストラン」等）が名前に含まれる → 確実に通過
+            if (HIGHRISE_POSITIVE_NAME.some(kw => name.includes(kw))) return true;
+            // ③ 部分一致キーワード（「スカイ」「タワー」等）+ 住所に階・ビルあり → 通過
+            const hasPartialName = HIGHRISE_POSITIVE_NAME_PARTIAL.some(kw => name.includes(kw));
+            const hasAddrClue   = HIGHRISE_POSITIVE_ADDR.some(kw => address.includes(kw));
+            return hasPartialName && hasAddrClue;
           })
           .map(async p => {
             const name = ((p.displayName as Record<string, unknown>)?.text as string) ?? "";
@@ -3909,6 +3930,21 @@ export async function POST(request: Request) {
         );
         if (hiShops.length > 0) {
           console.log(`[recommend] 高層ビル料理: Google Places ${hiShops.length}件`);
+          // 高層ビル料理を Supabase に自動保存（fire-and-forget）
+          const { scheduleAutoSave } = await import("@/lib/google-places-auto-save");
+          scheduleAutoSave(
+            hiShops.map(s => ({
+              googlePlaceId: s.id,
+              name: s.name,
+              address: s.address,
+              lat: s.lat,
+              lng: s.lng,
+              photoUrl: s.photoUrl ?? null,
+              rating: s.rating ?? null,
+              openNow: s.openNow ?? null,
+            })),
+            "#高層ビル料理"
+          );
           return json({ recommendations: [], hotpepperShops: hiShops, usedAI: true, warning: "" });
         }
       }
@@ -3958,6 +3994,13 @@ export async function POST(request: Request) {
           const hpData = await hpRes.json();
           if (hpData.ok && hpData.shops && hpData.shops.length > 0) {
             console.log(`[recommend] お腹すいた: HotPepper ${hpData.shops.length}件`);
+            // HotPepper ライブ結果を Supabase に自動保存（fire-and-forget）
+            const { scheduleHotPepperAutoSave, detectFoodGenreTag } = await import("@/lib/google-places-auto-save");
+            const dqText = getDynamicQs(answers).map(q => q.answer).join(" ");
+            const detectedTag = detectFoodGenreTag(dqText);
+            if (detectedTag && !hpData.isFallback) {
+              scheduleHotPepperAutoSave(hpData.shops, detectedTag);
+            }
             const warning = urbanWarning || (hpData.isFallback
               ? "ご指定のジャンルが近くに見つからなかったため、条件を緩めて周辺の飲食店を表示しています。"
               : "");
