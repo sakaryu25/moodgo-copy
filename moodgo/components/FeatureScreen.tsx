@@ -32,10 +32,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Bookmark,
+  Building2,
   ChevronRight,
+  Landmark,
+  Leaf,
   MapPin,
+  Mountain,
   Search,
+  Snowflake,
+  Sun,
+  Waves,
 } from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
@@ -206,20 +214,26 @@ const TAB_DATA: Record<Tab, TabContentData> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // Region Data  👇 地方ボタンはここで追加・変更
 // ─────────────────────────────────────────────────────────────────────────────
-const REGIONS: { id: string; label: string; emoji: string; tab: Tab }[] = [
-  { id: "hokkaido", label: "北海道・東北", emoji: "❄️",  tab: "全国" },
-  { id: "chubu",    label: "中部",         emoji: "⛰️", tab: "全国" },
-  { id: "chugoku",  label: "中国",         emoji: "⛩️", tab: "全国" },
-  { id: "kanto",    label: "関東",         emoji: "🗼",  tab: "関東" },
-  { id: "kinki",    label: "近畿",         emoji: "🏯",  tab: "全国" },
-  { id: "shikoku",  label: "四国",         emoji: "🌊",  tab: "全国" },
-  { id: "kyushu",   label: "九州・沖縄",   emoji: "🌴",  tab: "全国" },
-];
-
-const PREF_EMOJIS: Record<string, string> = {
-  東京: "🗼", 神奈川: "⛵", 千葉: "🌊", 埼玉: "🌸",
-  茨城: "🌹", 栃木: "🍓", 群馬: "⛰️",
+// 地方ID → lucide アイコン
+const REGION_ICON_MAP: Record<string, LucideIcon> = {
+  hokkaido: Snowflake,
+  chubu:    Mountain,
+  chugoku:  Waves,
+  kanto:    Building2,
+  kinki:    Landmark,
+  shikoku:  Leaf,
+  kyushu:   Sun,
 };
+
+const REGIONS: { id: string; label: string; tab: Tab }[] = [
+  { id: "hokkaido", label: "北海道・東北", tab: "全国" },
+  { id: "chubu",    label: "中部",         tab: "全国" },
+  { id: "chugoku",  label: "中国",         tab: "全国" },
+  { id: "kanto",    label: "関東",         tab: "関東" },
+  { id: "kinki",    label: "近畿",         tab: "全国" },
+  { id: "shikoku",  label: "四国",         tab: "全国" },
+  { id: "kyushu",   label: "九州・沖縄",   tab: "全国" },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dimensions & helpers
@@ -252,7 +266,6 @@ const IMG_RATIO = 1524 / 1290; // 高さ / 幅（クロップ済み）
 type RegionOverlayItem = {
   id: string;
   label: string;
-  emoji: string;
   color: string;
   tab: Tab;
   top: number;
@@ -262,14 +275,14 @@ type RegionOverlayItem = {
 
 const REGION_OVERLAY: RegionOverlayItem[] = [
   // 左列
-  { id: "hokkaido", label: "北海道・東北", emoji: "❄️",  color: "#5BA8D0", tab: "全国", top:  5, side: "left",  offset: 2 },
-  { id: "chubu",    label: "中部",         emoji: "⛰️", color: "#6DB86D", tab: "全国", top: 40, side: "left",  offset: 2 },
-  { id: "chugoku",  label: "中国",         emoji: "⛩️", color: "#C9B840", tab: "全国", top: 51, side: "left",  offset: 2 },
-  { id: "shikoku",  label: "四国",         emoji: "🌊",  color: "#3BAAA0", tab: "全国", top: 63, side: "left",  offset: 2 },
-  { id: "kyushu",   label: "九州・沖縄",   emoji: "🌴",  color: "#E07070", tab: "全国", top: 74, side: "left",  offset: 2 },
+  { id: "hokkaido", label: "北海道・東北", color: "#5BA8D0", tab: "全国", top:  5, side: "left",  offset: 2 },
+  { id: "chubu",    label: "中部",         color: "#6DB86D", tab: "全国", top: 40, side: "left",  offset: 2 },
+  { id: "chugoku",  label: "中国",         color: "#C9B840", tab: "全国", top: 51, side: "left",  offset: 2 },
+  { id: "shikoku",  label: "四国",         color: "#3BAAA0", tab: "全国", top: 63, side: "left",  offset: 2 },
+  { id: "kyushu",   label: "九州・沖縄",   color: "#E07070", tab: "全国", top: 74, side: "left",  offset: 2 },
   // 右列
-  { id: "kanto",    label: "関東",         emoji: "🗼",  color: "#E8924A", tab: "関東", top: 44, side: "right", offset: 2 },
-  { id: "kinki",    label: "近畿",         emoji: "🏯",  color: "#9B7CC8", tab: "全国", top: 57, side: "right", offset: 2 },
+  { id: "kanto",    label: "関東",         color: "#E8924A", tab: "関東", top: 44, side: "right", offset: 2 },
+  { id: "kinki",    label: "近畿",         color: "#9B7CC8", tab: "全国", top: 57, side: "right", offset: 2 },
 ];
 
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {
@@ -315,7 +328,7 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
               >
                 {/* カラードット */}
                 <View style={[s.mapRegionDot, { backgroundColor: r.color }]} />
-                <Text style={s.mapRegionEmoji}>{r.emoji}</Text>
+                {(() => { const Icon = REGION_ICON_MAP[r.id]; return Icon ? <Icon size={12} color={r.color} strokeWidth={2} /> : null; })()}
                 <Text style={s.mapRegionLabel}>{r.label}</Text>
                 <ChevronRight size={11} color={r.color} strokeWidth={2.8} />
               </TouchableOpacity>
@@ -331,15 +344,17 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
 // RegionButton
 // ─────────────────────────────────────────────────────────────────────────────
 type RegionButtonProps = {
-  emoji: string;
+  id: string;
   label: string;
+  color: string;
   onPress: () => void;
 };
 
-function RegionButton({ emoji, label, onPress }: RegionButtonProps) {
+function RegionButton({ id, label, color, onPress }: RegionButtonProps) {
+  const Icon = REGION_ICON_MAP[id] ?? MapPin;
   return (
     <TouchableOpacity style={s.regionBtn} onPress={onPress} activeOpacity={0.72}>
-      <Text style={s.regionEmoji}>{emoji}</Text>
+      <Icon size={15} color={color} strokeWidth={2} />
       <Text style={s.regionLabel}>{label}</Text>
       <ChevronRight size={16} color={C.subText} />
     </TouchableOpacity>
@@ -357,7 +372,7 @@ function AreaSelectView({ onSelectRegion }: AreaSelectViewProps) {
       <View style={s.areaIntro}>
         {/* バッジ */}
         <View style={s.areaBadge}>
-          <Text style={s.areaBadgeText}>🗾 {CURRENT_MONTH}の特集</Text>
+          <Text style={s.areaBadgeText}>{CURRENT_MONTH}の特集</Text>
         </View>
         <Text style={s.areaTitle}>どこへ行く？</Text>
         <Text style={s.areaSubtitle}>エリアをタップして特集を見る</Text>
@@ -540,7 +555,7 @@ function PrefectureGrid({ prefectures, onSelectPref }: PrefectureGridProps) {
             onPress={() => onSelectPref(p)}
             activeOpacity={0.72}
           >
-            <Text style={s.prefEmoji}>{PREF_EMOJIS[p] ?? "📍"}</Text>
+            <MapPin size={16} color={C.accent} strokeWidth={2} />
             <Text style={s.prefName}>{p}</Text>
           </TouchableOpacity>
         ))}
