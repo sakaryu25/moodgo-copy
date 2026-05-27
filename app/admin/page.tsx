@@ -6953,9 +6953,9 @@ export default function AdminPage() {
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>タグ</label>
                   {/* アプリタブ振り分けボタン */}
                   <div style={{ background: "#fff8f0", border: "1px solid #ffd0a0", borderRadius: "10px", padding: "10px 12px", marginBottom: "8px" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#c06020", marginBottom: "6px" }}>アプリの表示タブ（必ず1つ選択）</div>
+                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#c06020", marginBottom: "6px" }}>アプリの表示タブ（1つ以上選択）</div>
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                      {["全国", "関東", "神奈川"].map((tab) => {
+                      {["全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄"].map((tab) => {
                         const active = featuredForm.tags.includes(tab);
                         return (
                           <button
