@@ -1,236 +1,305 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  Snowflake, Mountain, TreePine, Radio,
-  Flower2, Waves, Leaf, ChevronRight,
-  Home, Clock, Heart, Star,
-} from "lucide-react";
+import { Home, Clock, Heart, Star, Search, ChevronRight } from "lucide-react";
 
-// ── 地方データ ────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 type Region = {
   id: string;
   label: string;
-  Icon: React.ElementType;
+  emoji: string;
   color: string;
-  btnStyle: React.CSSProperties;
-  mapDot: { x: number; y: number };
-  btnDot: { x: number; y: number };
+  /** ボタン位置（コンテナの %） */
+  btn: { top: number; left?: number; right?: number };
+  /** ボタン推定幅（コンテナ幅の %）— 接続線終点の計算用 */
+  btnW: number;
+  /** 地図上のドット位置（コンテナの %）*/
+  dot: { x: number; y: number };
 };
 
-// ── 座標計算基準：cropped image 632×813, container 390×462
-// image left=16px, top=0px (height=462px fits container exactly)
-// svgX = (16 + x_frac*359) / 390 * 100
-// svgY = y_frac * 100
+// ── Region Data ───────────────────────────────────────────────────────────────
 const REGIONS: Region[] = [
   {
-    id: "hokkaido", label: "北海道・東北", Icon: Snowflake, color: "#5BA8D0",
-    btnStyle: { top: "10%", right: "2%" },
-    mapDot: { x: 73, y: 15 }, btnDot: { x: 63, y: 14 },
+    id: "hokkaido", label: "北海道", emoji: "❄️", color: "#5BA8D0",
+    btn: { top: 12, left: 27 }, btnW: 26,
+    dot: { x: 71, y: 10 },
   },
   {
-    id: "chubu", label: "中部", Icon: TreePine, color: "#5FAF5F",
-    btnStyle: { top: "27%", right: "2%" },
-    mapDot: { x: 53, y: 38 }, btnDot: { x: 63, y: 31 },
+    id: "tohoku", label: "東北", emoji: "🌲", color: "#6DB36D",
+    btn: { top: 44, right: 2 }, btnW: 23,
+    dot: { x: 73, y: 32 },
   },
   {
-    id: "kanto", label: "関東", Icon: Radio, color: "#E8924A",
-    btnStyle: { top: "40%", right: "2%" },
-    mapDot: { x: 73, y: 42 }, btnDot: { x: 63, y: 44 },
+    id: "chubu", label: "中部", emoji: "⛰️", color: "#E8924A",
+    btn: { top: 38, left: 22 }, btnW: 23,
+    dot: { x: 58, y: 42 },
   },
   {
-    id: "kinki", label: "近畿", Icon: Flower2, color: "#9B7CC8",
-    btnStyle: { top: "36%", left: "24%" },
-    mapDot: { x: 44, y: 50 }, btnDot: { x: 59, y: 40 },
+    id: "kanto", label: "関東", emoji: "🗼", color: "#F0A050",
+    btn: { top: 55, right: 2 }, btnW: 23,
+    dot: { x: 67, y: 46 },
   },
   {
-    id: "chugoku", label: "中国", Icon: Mountain, color: "#7BA84A",
-    btnStyle: { top: "28%", left: "2%" },
-    mapDot: { x: 27, y: 47 }, btnDot: { x: 37, y: 32 },
+    id: "kinki", label: "近畿", emoji: "🏯", color: "#9B7CC8",
+    btn: { top: 63, left: 41 }, btnW: 23,
+    dot: { x: 46, y: 53 },
   },
   {
-    id: "shikoku", label: "四国", Icon: Waves, color: "#3BAAA0",
-    btnStyle: { top: "54%", left: "2%" },
-    mapDot: { x: 36, y: 58 }, btnDot: { x: 37, y: 58 },
+    id: "chugoku", label: "中国", emoji: "🌉", color: "#7BA84A",
+    btn: { top: 51, left: 2 }, btnW: 23,
+    dot: { x: 35, y: 51 },
   },
   {
-    id: "kyushu", label: "九州・沖縄", Icon: Leaf, color: "#E07070",
-    btnStyle: { top: "65%", left: "2%" },
-    mapDot: { x: 20, y: 55 }, btnDot: { x: 37, y: 69 },
+    id: "shikoku", label: "四国", emoji: "🌊", color: "#3BAAA0",
+    btn: { top: 71, left: 21 }, btnW: 23,
+    dot: { x: 43, y: 61 },
+  },
+  {
+    id: "kyushu", label: "九州", emoji: "🌴", color: "#E07070",
+    btn: { top: 76, left: 2 }, btnW: 22,
+    dot: { x: 24, y: 57 },
+  },
+  {
+    id: "okinawa", label: "沖縄", emoji: "🌺", color: "#E06080",
+    btn: { top: 82, right: 2 }, btnW: 23,
+    dot: { x: 16, y: 85 },
   },
 ];
 
-// ── 日本地図画像 ──────────────────────────────────────────────────────────────
-function JapanMapSVG() {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/japan-map.png"
-      alt="日本地図"
-      style={{
-        width: "92%",
-        maxHeight: "92%",
-        objectFit: "contain",
-        userSelect: "none",
-        pointerEvents: "none",
-      }}
-    />
-  );
+const BTN_H_PCT = 3.8; // ボタン高さ（コンテナ高さの %）
+
+function lineCoords(r: Region) {
+  const midY = r.btn.top + BTN_H_PCT / 2;
+  if (r.btn.left !== undefined) {
+    return { x1: r.btn.left + r.btnW, y1: midY, x2: r.dot.x, y2: r.dot.y };
+  }
+  const lx = 100 - (r.btn.right ?? 0) - r.btnW;
+  return { x1: lx, y1: midY, x2: r.dot.x, y2: r.dot.y };
 }
 
-// ── RegionButton ───────────────────────────────────────────────────────────────
-function RegionButton({ region, onClick }: { region: Region; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="absolute flex items-center gap-1.5 bg-white rounded-full border border-gray-100 px-3 py-[9px] z-20 whitespace-nowrap transition-all duration-150 hover:shadow-lg active:scale-95"
-      style={{
-        ...region.btnStyle,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.04)",
-      }}
-    >
-      <region.Icon size={15} color={region.color} strokeWidth={2.5} />
-      <span
-        className="text-[13px] font-semibold text-gray-700 tracking-tight"
-        style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif" }}
-      >
-        {region.label}
-      </span>
-      <ChevronRight size={13} color="#BBBBBB" strokeWidth={2.5} />
-    </button>
-  );
-}
-
-// ── SVG 接続線 ─────────────────────────────────────────────────────────────────
-function ConnectionLines() {
-  return (
-    <svg
-      className="absolute inset-0 w-full h-full pointer-events-none z-10"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-    >
-      {REGIONS.map((r) => (
-        <g key={r.id}>
-          <line
-            x1={r.mapDot.x} y1={r.mapDot.y}
-            x2={r.btnDot.x} y2={r.btnDot.y}
-            stroke="#C8CAD0" strokeWidth="0.45" strokeLinecap="round"
-          />
-          <circle cx={r.mapDot.x} cy={r.mapDot.y} r="0.9" fill={r.color} opacity="0.7" />
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ── BottomNav ──────────────────────────────────────────────────────────────────
-const NAV_TABS = [
+// ── Navigation ────────────────────────────────────────────────────────────────
+const NAV = [
   { label: "ホーム",     Icon: Home  },
-  { label: "履歴",      Icon: Clock },
+  { label: "履歴",       Icon: Clock },
   { label: "お気に入り", Icon: Heart },
-  { label: "特集",      Icon: Star  },
+  { label: "特集",       Icon: Star  },
 ] as const;
 
-function BottomNav() {
-  return (
-    <nav
-      className="flex bg-white border-t border-gray-200 pt-2"
-      style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
-    >
-      {NAV_TABS.map(({ label, Icon }) => {
-        const active = label === "特集";
-        return (
-          <button key={label} className="flex-1 flex flex-col items-center gap-[3px] py-1">
-            <Icon
-              size={24}
-              color={active ? "#F26A3D" : "#AAAAAA"}
-              fill={active ? "#F26A3D" : "none"}
-              strokeWidth={active ? 2 : 1.8}
-            />
-            <span className="text-[10px] font-medium" style={{ color: active ? "#F26A3D" : "#AAAAAA" }}>
-              {label}
-            </span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
-// ── StatusBar ──────────────────────────────────────────────────────────────────
+// ── StatusBar ─────────────────────────────────────────────────────────────────
 function StatusBar() {
   return (
     <div className="flex justify-between items-center px-6 pt-4 pb-2">
-      <span className="text-[15px] font-semibold text-gray-900" style={{ letterSpacing: "-0.3px" }}>
-        9:41
-      </span>
+      <span className="text-[15px] font-semibold text-gray-900" style={{ letterSpacing: "-0.3px" }}>9:41</span>
       <div className="flex items-center gap-[6px]">
+        {/* Signal bars */}
         <div className="flex items-end gap-[2px]">
           {[5, 7, 9, 11].map((h, i) => (
-            <div key={i} className="w-[3px] bg-gray-900 rounded-[1px]"
-              style={{ height: `${h}px`, opacity: i < 1 ? 0.35 : 1 }} />
+            <div
+              key={i}
+              className="w-[3px] bg-gray-900 rounded-[1px]"
+              style={{ height: `${h}px`, opacity: i < 1 ? 0.3 : 1 }}
+            />
           ))}
         </div>
+        {/* WiFi */}
         <svg width="16" height="12" viewBox="0 0 24 18" fill="none">
-          <path d="M12 14C13.1 14 14 14.9 14 16s-.9 2-2 2-2-.9-2-2 .9-2 2-2z" fill="#1C1C1E" />
-          <path d="M12 9c2.2 0 4.2.9 5.7 2.4l1.8-2C17.4 7.3 14.9 6 12 6S6.6 7.3 4.5 9.4l1.8 2C7.8 9.9 9.8 9 12 9z" fill="#1C1C1E" />
-          <path d="M12 4c3.4 0 6.5 1.4 8.7 3.7L22.5 6C20.1 3.3 16.3 1.5 12 1.5S3.9 3.3 1.5 6l1.8 1.7C5.5 5.4 8.6 4 12 4z" fill="#1C1C1E" />
+          <path d="M12 14a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" fill="#1C1C1E" />
+          <path d="M6.3 11.4 8.1 13.4C9.8 11.9 10.8 11 12 11s2.2.9 3.9 2.4l1.8-2C15.6 9.3 13.9 8 12 8s-3.6 1.3-5.7 3.4z" fill="#1C1C1E" />
+          <path d="M1.5 6 3.3 7.7C5.5 5.4 8.6 4 12 4s6.5 1.4 8.7 3.7L22.5 6C20.1 3.3 16.3 1.5 12 1.5S3.9 3.3 1.5 6z" fill="#1C1C1E" />
         </svg>
+        {/* Battery */}
         <div className="flex items-center">
-          <div className="relative flex items-center"
-            style={{ width: 25, height: 13, border: "1.5px solid #1C1C1E", borderRadius: 3.5 }}>
-            <div className="absolute bg-gray-900 rounded-[1.5px]"
-              style={{ left: 1.5, top: 1.5, bottom: 1.5, right: 1.5 }} />
+          <div
+            className="relative flex items-center"
+            style={{ width: 25, height: 13, border: "1.5px solid #1C1C1E", borderRadius: 3.5 }}
+          >
+            <div
+              className="absolute bg-gray-900 rounded-[1.5px]"
+              style={{ left: 1.5, top: 1.5, bottom: 1.5, right: 1.5 }}
+            />
           </div>
-          <div className="bg-gray-900"
-            style={{ width: 2, height: 6, borderRadius: "0 1px 1px 0", marginLeft: 1 }} />
+          <div className="bg-gray-900" style={{ width: 2, height: 6, borderRadius: "0 1px 1px 0", marginLeft: 1 }} />
         </div>
       </div>
     </div>
   );
 }
 
-// ── メインページ ───────────────────────────────────────────────────────────────
-export default function AreaSelectPage() {
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function FeaturedPage() {
   const [_selected, setSelected] = useState<string | null>(null);
 
   return (
     <div
-      className="flex flex-col h-screen max-w-[390px] mx-auto overflow-hidden select-none"
-      style={{
-        background: "#FFFFFF",
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic', sans-serif",
-      }}
+      className="flex flex-col h-screen max-w-[390px] mx-auto overflow-hidden select-none bg-white"
+      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Yu Gothic', sans-serif" }}
     >
       <StatusBar />
 
-      <div className="relative flex items-center justify-center py-3 border-b"
-        style={{ borderColor: "#E8E8EC", background: "#FFFFFF" }}>
-        <h1 className="text-[17px] font-semibold text-gray-900">特集</h1>
-      </div>
-
-      <div className="px-6 pt-4 pb-1">
-        <h2 className="font-bold text-gray-900 mb-1 leading-tight"
-          style={{ fontSize: 25, letterSpacing: "-0.5px" }}>
-          エリアを選ぶ
-        </h2>
-        <p className="text-[13px] leading-snug" style={{ color: "#888" }}>
-          行きたいエリアを選ぶと、特集ページが見られます。
-        </p>
-      </div>
-
-      {/* マップエリア */}
-      <div className="flex-1 relative overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <JapanMapSVG />
+      {/* ── Header ── */}
+      <div
+        className="flex items-end justify-between pb-3 border-b"
+        style={{ paddingLeft: 22, paddingRight: 22, borderColor: "#EDEDED" }}
+      >
+        <div>
+          <div
+            className="text-[22px] font-extrabold text-gray-900"
+            style={{ letterSpacing: "-0.5px", lineHeight: 1.2 }}
+          >
+            特集
+          </div>
+          <div className="text-[11px] mt-[2px]" style={{ color: "#9CA3AF", letterSpacing: "0.2px" }}>
+            Pick your destination
+          </div>
         </div>
-        <ConnectionLines />
+        <button
+          className="w-[38px] h-[38px] rounded-full flex items-center justify-center transition-transform active:scale-90"
+          style={{ background: "#FFF0EA", border: "1px solid #FFD9C8" }}
+        >
+          <Search size={18} color="#F26A3D" strokeWidth={2} />
+        </button>
+      </div>
+
+      {/* ── Intro ── */}
+      <div className="px-5 pt-[14px] pb-2">
+        {/* Badge */}
+        <div
+          className="inline-flex items-center gap-[5px] rounded-full text-[11px] font-semibold mb-[10px]"
+          style={{
+            background: "#FFF0EA",
+            border: "1px solid #FFD9C8",
+            color: "#F26A3D",
+            padding: "4px 10px",
+          }}
+        >
+          🗾 6月の特集
+        </div>
+        <div
+          className="text-[26px] font-extrabold text-gray-900 leading-tight mb-[3px]"
+          style={{ letterSpacing: "-0.7px" }}
+        >
+          どこへ行く？
+        </div>
+        <div className="text-[12px]" style={{ color: "#9CA3AF" }}>
+          エリアをタップして特集を見る
+        </div>
+      </div>
+
+      {/* ── Map Area ── */}
+      <div
+        className="flex-1 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(155deg, #EDF5FF 0%, #F5F0FF 35%, #FFF5EE 100%)",
+        }}
+      >
+        {/* Japan Map Image */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/japan-map.png"
+          alt="日本地図"
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          draggable={false}
+        />
+
+        {/* SVG Connection Lines */}
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {REGIONS.map((r) => {
+            const { x1, y1, x2, y2 } = lineCoords(r);
+            return (
+              <g key={r.id}>
+                <line
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke="#C4C8D2"
+                  strokeWidth="0.42"
+                  strokeLinecap="round"
+                />
+                {/* Map dot */}
+                <circle cx={x2} cy={y2} r="0.85" fill={r.color} opacity="0.8" />
+                {/* Outer ring */}
+                <circle cx={x2} cy={y2} r="1.5" fill={r.color} opacity="0.15" />
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Region Buttons */}
         {REGIONS.map((r) => (
-          <RegionButton key={r.id} region={r} onClick={() => setSelected(r.id)} />
+          <button
+            key={r.id}
+            onClick={() => setSelected(r.id)}
+            className="absolute z-20 flex items-center bg-white rounded-full whitespace-nowrap transition-transform duration-100 active:scale-95"
+            style={{
+              top: `${r.btn.top}%`,
+              ...(r.btn.left !== undefined
+                ? { left: `${r.btn.left}%` }
+                : { right: `${r.btn.right}%` }),
+              padding: "6px 10px 6px 8px",
+              gap: 5,
+              boxShadow: "0 2px 12px rgba(0,0,0,0.13), 0 0 0 0.5px rgba(0,0,0,0.055)",
+            }}
+          >
+            {/* Colored dot */}
+            <div
+              className="rounded-full flex-shrink-0"
+              style={{ width: 7, height: 7, backgroundColor: r.color }}
+            />
+            {/* Emoji */}
+            <span className="text-[12px] leading-none">{r.emoji}</span>
+            {/* Label */}
+            <span
+              className="text-[11.5px] font-bold text-gray-900"
+              style={{ letterSpacing: "-0.3px" }}
+            >
+              {r.label}
+            </span>
+            {/* Arrow */}
+            <ChevronRight size={11} color={r.color} strokeWidth={2.8} />
+          </button>
         ))}
       </div>
 
-      <BottomNav />
+      {/* ── Bottom Navigation ── */}
+      <nav
+        className="flex bg-white border-t"
+        style={{
+          borderColor: "#EBEBEB",
+          paddingTop: 8,
+          paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+        }}
+      >
+        {NAV.map(({ label, Icon }) => {
+          const active = label === "特集";
+          return (
+            <button
+              key={label}
+              className="flex-1 flex flex-col items-center gap-[3px] transition-opacity active:opacity-60"
+            >
+              {active ? (
+                <div
+                  className="flex items-center justify-center rounded-full"
+                  style={{ width: 46, height: 28, backgroundColor: "#FFEAE0" }}
+                >
+                  <Icon size={17} color="#F26A3D" fill="#F26A3D" strokeWidth={0} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center" style={{ width: 46, height: 28 }}>
+                  <Icon size={24} color="#BBBBC0" fill="none" strokeWidth={1.8} />
+                </div>
+              )}
+              <span
+                className="text-[10px] font-medium"
+                style={{ color: active ? "#F26A3D" : "#BBBBC0" }}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
