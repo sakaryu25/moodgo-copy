@@ -93,7 +93,7 @@ const IMG = {
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-export type Tab = "全国" | "関東" | "神奈川";
+export type Tab = "全国" | "北海道・東北" | "関東" | "中部" | "近畿" | "中国" | "四国" | "九州・沖縄";
 
 type CardItem = {
   title: string;
@@ -197,31 +197,88 @@ const TAB_DATA: Record<Tab, TabContentData> = {
     prefectures: ["東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬"],
   },
 
-  神奈川: {
-    title: `神奈川 ${CURRENT_MONTH}の特集`,
-    subtitle: "海・山・街並み。魅力あふれる神奈川へ",
+  "北海道・東北": {
+    title: `${CURRENT_MONTH}の北海道・東北特集`,
+    subtitle: "雄大な自然と食が待つ、北の旅へ",
     hero: {
-      image: IMG.yokohama,
+      image: IMG.waterfall,
       label: "今月のおすすめ",
-      title: "紫陽花が彩る\n鎌倉・横浜をめぐる旅",
-      description: "初夏の神奈川で、海と街と自然を楽しもう。",
+      title: "北の大地で感じる\n初夏の絶景",
+      description: "広大な自然に包まれた、忘れられない旅をしよう。",
       buttonLabel: "特集を読む",
     },
-    categories: [
-      "🏔️ 絶景", "☕ カフェ", "🚶 おでかけ", "♨️ 温泉",
-      "🍽️ グルメ", "☔ 雨の日", "💑 デート", "🌃 夜景",
-    ],
-    sections: [
-      {
-        title: "神奈川のおすすめ",
-        cards: [
-          { title: "鎌倉で紫陽花さんぽ",           desc: "明月院・長谷寺など",   image: IMG.kamakura },
-          { title: "みなとみらいの夜景スポット",    desc: "横浜の夜を楽しむ",    image: IMG.minatomirai },
-          { title: "海が見えるカフェ",              desc: "湘南・葉山エリア",    image: IMG.shonan },
-          { title: "雨の日の美術館",               desc: "箱根・横浜エリア",    image: IMG.hakone },
-        ],
-      },
-    ],
+    categories: ["🏔️ 絶景", "🌸 自然", "🍽️ グルメ", "☕ カフェ", "🌊 海"],
+    sections: [],
+  },
+
+  中部: {
+    title: `${CURRENT_MONTH}の中部特集`,
+    subtitle: "富士山・アルプス・温泉。中部の魅力を満喫",
+    hero: {
+      image: IMG.fuji,
+      label: "今月のおすすめ",
+      title: "富士山麓から\n信州の高原へ",
+      description: "日本の真ん中で出会う、絶景と温泉の旅。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🏔️ 絶景", "♨️ 温泉", "🍽️ グルメ", "☕ カフェ", "🚶 おでかけ"],
+    sections: [],
+  },
+
+  近畿: {
+    title: `${CURRENT_MONTH}の近畿特集`,
+    subtitle: "京都・大阪・奈良。歴史と食の宝庫へ",
+    hero: {
+      image: IMG.hydrangea,
+      label: "今月のおすすめ",
+      title: "古都の初夏を歩く\n京都・奈良さんぽ",
+      description: "歴史と緑が溶け合う、和の旅へ。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🏯 歴史", "☕ カフェ", "🍽️ グルメ", "🌸 自然", "🌃 夜景"],
+    sections: [],
+  },
+
+  中国: {
+    title: `${CURRENT_MONTH}の中国特集`,
+    subtitle: "山陰・山陽。穏やかな海と歴史に出会う",
+    hero: {
+      image: IMG.beach,
+      label: "今月のおすすめ",
+      title: "瀬戸内の海風と\n広島・島根をめぐる",
+      description: "穏やかな海と豊かな歴史が織りなす旅。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🌊 海", "🏯 歴史", "🍽️ グルメ", "☕ カフェ", "🌅 絶景"],
+    sections: [],
+  },
+
+  四国: {
+    title: `${CURRENT_MONTH}の四国特集`,
+    subtitle: "お遍路・自然・食。四国の魅力を発見",
+    hero: {
+      image: IMG.hiking,
+      label: "今月のおすすめ",
+      title: "四国の絶景と\nお遍路さんぽ",
+      description: "緑豊かな四国で、心を整える旅へ。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🌿 自然", "🏯 歴史", "🍽️ グルメ", "♨️ 温泉", "🌊 海"],
+    sections: [],
+  },
+
+  "九州・沖縄": {
+    title: `${CURRENT_MONTH}の九州・沖縄特集`,
+    subtitle: "南国の青い海と温泉。パワフルな旅へ",
+    hero: {
+      image: IMG.beach,
+      label: "今月のおすすめ",
+      title: "青い海と空が広がる\n沖縄・九州リゾート",
+      description: "南国の風と、豊かな自然に包まれよう。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🌊 海", "♨️ 温泉", "🍽️ グルメ", "🌺 自然", "🌅 絶景"],
+    sections: [],
   },
 };
 
@@ -287,13 +344,13 @@ type RegionOverlayItem = {
 };
 
 const REGION_OVERLAY: RegionOverlayItem[] = [
-  { id: "hokkaido", label: "北海道・東北", color: "#5BA8D0", tab: "全国", topPct:  3, leftPct: 44 },
-  { id: "kanto",    label: "関東",         color: "#E8924A", tab: "関東", topPct: 42, leftPct: 58 },
-  { id: "chubu",    label: "中部",         color: "#6DB86D", tab: "全国", topPct: 48, leftPct: 38 },
-  { id: "kinki",    label: "近畿",         color: "#9B7CC8", tab: "全国", topPct: 55, leftPct: 16 },
-  { id: "chugoku",  label: "中国",         color: "#C9B840", tab: "全国", topPct: 51, leftPct:  1 },
-  { id: "shikoku",  label: "四国",         color: "#3BAAA0", tab: "全国", topPct: 64, leftPct: 27 },
-  { id: "kyushu",   label: "九州・沖縄",   color: "#E07070", tab: "全国", topPct: 71, leftPct:  1 },
+  { id: "hokkaido", label: "北海道・東北", color: "#5BA8D0", tab: "北海道・東北", topPct:  3, leftPct: 44 },
+  { id: "kanto",    label: "関東",         color: "#E8924A", tab: "関東",         topPct: 42, leftPct: 58 },
+  { id: "chubu",    label: "中部",         color: "#6DB86D", tab: "中部",         topPct: 48, leftPct: 38 },
+  { id: "kinki",    label: "近畿",         color: "#9B7CC8", tab: "近畿",         topPct: 55, leftPct: 16 },
+  { id: "chugoku",  label: "中国",         color: "#C9B840", tab: "中国",         topPct: 51, leftPct:  1 },
+  { id: "shikoku",  label: "四国",         color: "#3BAAA0", tab: "四国",         topPct: 64, leftPct: 27 },
+  { id: "kyushu",   label: "九州・沖縄",   color: "#E07070", tab: "九州・沖縄",   topPct: 71, leftPct:  1 },
 ];
 
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {
@@ -585,59 +642,44 @@ function PrefectureGrid({ prefectures, onSelectPref }: PrefectureGridProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 type FeatureContentViewProps = {
   selectedTab: Tab;
-  onTabChange: (t: Tab) => void;
   apiTabData: Partial<Record<Tab, TabContentData>>;
 };
 
-function FeatureContentView({ selectedTab, onTabChange, apiTabData }: FeatureContentViewProps) {
+function FeatureContentView({ selectedTab, apiTabData }: FeatureContentViewProps) {
   const data = apiTabData[selectedTab] ?? TAB_DATA[selectedTab];
 
-  const handlePrefSelect = (pref: string) => {
-    if (pref === "神奈川") {
-      onTabChange("神奈川");
-    }
-    // 他の都県は将来的に専用タブへ遷移
-  };
-
   return (
-    <View style={{ flex: 1 }}>
-      <SegmentedTabs
-        tabs={["全国", "関東", "神奈川"]}
-        selected={selectedTab}
-        onSelect={onTabChange}
-      />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={s.contentScroll}
-      >
-        {/* 見出し */}
-        <View style={s.contentHeader}>
-          <Text style={s.contentTitle}>{data.title}</Text>
-          <Text style={s.contentSubtitle}>{data.subtitle}</Text>
-        </View>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={s.contentScroll}
+    >
+      {/* 見出し */}
+      <View style={s.contentHeader}>
+        <Text style={s.contentTitle}>{data.title}</Text>
+        <Text style={s.contentSubtitle}>{data.subtitle}</Text>
+      </View>
 
-        {/* ヒーローカード */}
-        <HeroFeatureCard data={data.hero} />
+      {/* ヒーローカード */}
+      <HeroFeatureCard data={data.hero} />
 
-        {/* カテゴリチップ */}
-        <CategoryChips categories={data.categories} />
+      {/* カテゴリチップ */}
+      <CategoryChips categories={data.categories} />
 
-        {/* セクション（横スクロールカード群） */}
-        {data.sections.map((sec, i) => (
-          <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} />
-        ))}
+      {/* セクション（横スクロールカード群） */}
+      {data.sections.map((sec, i) => (
+        <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} />
+      ))}
 
-        {/* 都県グリッド（関東タブのみ） */}
-        {data.prefectures && (
-          <PrefectureGrid
-            prefectures={data.prefectures}
-            onSelectPref={handlePrefSelect}
-          />
-        )}
+      {/* 都県グリッド */}
+      {data.prefectures && (
+        <PrefectureGrid
+          prefectures={data.prefectures}
+          onSelectPref={() => {}}
+        />
+      )}
 
-        <View style={{ height: 28 }} />
-      </ScrollView>
-    </View>
+      <View style={{ height: 28 }} />
+    </ScrollView>
   );
 }
 
@@ -647,7 +689,7 @@ function FeatureContentView({ selectedTab, onTabChange, apiTabData }: FeatureCon
 // 自前のタブバー・SafeAreaView は持たない
 // ─────────────────────────────────────────────────────────────────────────────
 function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabContentData>> {
-  const TABS: Tab[] = ["全国", "関東", "神奈川"];
+  const TABS: Tab[] = ["全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄"];
   const grouped: Record<Tab, FeaturedPageRecord[]> = { 全国: [], 関東: [], 神奈川: [] };
 
   for (const rec of records) {
@@ -718,7 +760,11 @@ export default function FeatureScreen() {
           <Text style={s.headerTitle}>特集</Text>
           <Text style={s.headerSub}>Pick your destination</Text>
         </View>
-        <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.72}>
+        <TouchableOpacity
+          style={s.headerIconBtn}
+          activeOpacity={0.72}
+          onPress={() => hasSelectedArea && setHasSelectedArea(false)}
+        >
           {hasSelectedArea
             ? <MapPin size={19} color={C.accent} />
             : <Search size={19} color={C.accent} />
@@ -733,7 +779,6 @@ export default function FeatureScreen() {
         ) : (
           <FeatureContentView
             selectedTab={selectedTab}
-            onTabChange={setSelectedTab}
             apiTabData={apiTabData}
           />
         )}
