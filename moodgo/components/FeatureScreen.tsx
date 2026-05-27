@@ -477,8 +477,27 @@ const KANTO_GRID: (KantoPrefCell | null)[][] = [
 ];
 
 function KantoPrefSelectView({ onSelectPref }: { onSelectPref: (tab: Tab) => void }) {
+  // 日本地図を関東エリアにズームインして背景表示
+  const mapScale = 3.2;
+  const mapW = W * mapScale;
+  const mapH = mapW * (813 / 632);
+  const bgLeft = W * 0.5 - mapW * 0.60;   // 関東は画像幅の約60%あたり
+  const bgTop  = -(mapH * 0.44 - H * 0.28); // 関東は画像高さの約44%あたり
+
   return (
-    <LinearGradient colors={["#FFF5EE", "#FFF8F2", "#FFFAF5"]} style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: "#FFF5EE", overflow: "hidden" }}>
+      {/* 関東ズームイン背景地図 */}
+      <Image
+        source={require("../assets/images/japan-map.png")}
+        style={{ position: "absolute", width: mapW, height: mapH, left: bgLeft, top: bgTop, opacity: 0.18 }}
+        resizeMode="contain"
+      />
+      {/* グラデーションオーバーレイで馴染ませる */}
+      <LinearGradient
+        colors={["rgba(255,245,238,0.6)", "rgba(255,248,242,0.2)", "rgba(255,245,238,0.8)"]}
+        style={StyleSheet.absoluteFill}
+      />
+
       <View style={s.areaIntro}>
         <View style={s.areaBadge}>
           <Text style={s.areaBadgeText}>関東エリア</Text>
@@ -508,7 +527,7 @@ function KantoPrefSelectView({ onSelectPref }: { onSelectPref: (tab: Tab) => voi
           </View>
         ))}
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
