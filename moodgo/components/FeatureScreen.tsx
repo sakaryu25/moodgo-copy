@@ -208,12 +208,12 @@ const TAB_DATA: Record<Tab, TabContentData> = {
 // ─────────────────────────────────────────────────────────────────────────────
 const REGIONS: { id: string; label: string; emoji: string; tab: Tab }[] = [
   { id: "hokkaido", label: "北海道・東北", emoji: "❄️",  tab: "全国" },
+  { id: "chubu",    label: "中部",         emoji: "⛰️", tab: "全国" },
+  { id: "chugoku",  label: "中国",         emoji: "⛩️", tab: "全国" },
   { id: "kanto",    label: "関東",         emoji: "🗼",  tab: "関東" },
-  { id: "chubu",   label: "中部",         emoji: "⛰️", tab: "全国" },
-  { id: "kinki",   label: "近畿",         emoji: "🏯",  tab: "全国" },
-  { id: "chugoku", label: "中国",         emoji: "🌉",  tab: "全国" },
-  { id: "shikoku", label: "四国",         emoji: "🌊",  tab: "全国" },
-  { id: "kyushu",  label: "九州・沖縄",   emoji: "🌴",  tab: "全国" },
+  { id: "kinki",    label: "近畿",         emoji: "🏯",  tab: "全国" },
+  { id: "shikoku",  label: "四国",         emoji: "🌊",  tab: "全国" },
+  { id: "kyushu",   label: "九州・沖縄",   emoji: "🌴",  tab: "全国" },
 ];
 
 const PREF_EMOJIS: Record<string, string> = {
@@ -261,16 +261,13 @@ type RegionOverlayItem = {
 };
 
 const REGION_OVERLAY: RegionOverlayItem[] = [
-  { id: "hokkaido", label: "北海道", emoji: "❄️",  color: "#5BA8D0", tab: "全国", top: 12, side: "left",  offset: 27 },
-  { id: "tohoku",   label: "東北",   emoji: "🌲",  color: "#6DB36D", tab: "全国", top: 44, side: "right", offset: 2  },
-  { id: "chubu",    label: "中部",   emoji: "⛰️", color: "#E8924A", tab: "全国", top: 38, side: "left",  offset: 22 },
-  { id: "kanto",    label: "関東",   emoji: "🗼",  color: "#F0A050", tab: "関東", top: 55, side: "right", offset: 2  },
-  { id: "kinki",    label: "近畿",   emoji: "🏯",  color: "#9B7CC8", tab: "全国", top: 63, side: "left",  offset: 41 },
-  { id: "chugoku",  label: "中国",   emoji: "🌉",  color: "#7BA84A", tab: "全国", top: 51, side: "left",  offset: 2  },
-  { id: "shikoku",  label: "四国",   emoji: "🌊",  color: "#3BAAA0", tab: "全国", top: 71, side: "left",  offset: 21 },
-  { id: "kyushu",   label: "九州",   emoji: "🌴",  color: "#E07070", tab: "全国", top: 76, side: "left",  offset: 2  },
-  // 沖縄ボタンは左下に配置（インセットは右下）
-  { id: "okinawa",  label: "沖縄",   emoji: "🌺",  color: "#E06080", tab: "全国", top: 84, side: "left",  offset: 2  },
+  { id: "hokkaido", label: "北海道・東北", emoji: "❄️",  color: "#5BA8D0", tab: "全国", top: 14, side: "left",  offset: 26 },
+  { id: "chubu",    label: "中部",         emoji: "⛰️", color: "#6DB86D", tab: "全国", top: 38, side: "left",  offset: 22 },
+  { id: "chugoku",  label: "中国",         emoji: "⛩️", color: "#C9B840", tab: "全国", top: 52, side: "left",  offset: 2  },
+  { id: "kanto",    label: "関東",         emoji: "🗼",  color: "#E8924A", tab: "関東", top: 46, side: "right", offset: 2  },
+  { id: "kinki",    label: "近畿",         emoji: "🏯",  color: "#9B7CC8", tab: "全国", top: 60, side: "left",  offset: 38 },
+  { id: "shikoku",  label: "四国",         emoji: "🌊",  color: "#3BAAA0", tab: "全国", top: 70, side: "left",  offset: 20 },
+  { id: "kyushu",   label: "九州・沖縄",   emoji: "🌴",  color: "#E07070", tab: "全国", top: 77, side: "left",  offset: 2  },
 ];
 
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {

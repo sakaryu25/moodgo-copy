@@ -3,82 +3,111 @@
 import React, { useState } from "react";
 import { Home, Clock, Heart, Star, Search, ChevronRight } from "lucide-react";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── 7地域データ ───────────────────────────────────────────────────────────────
 type Region = {
   id: string;
   label: string;
   emoji: string;
   color: string;
-  /** ボタン位置（コンテナの %） */
+  /** ボタン位置（コンテナ %） */
   btn: { top: number; left?: number; right?: number };
-  /** ボタン推定幅（コンテナ幅の %） */
-  btnW: number;
-  /** 地図上のドット or インセット中心（コンテナの %）*/
+  /** 折れ線の中継点（コンテナ %） — 省略すると直線 */
+  mid?: { x: number; y: number };
+  /** 地図上の到達点（コンテナ %） */
   dot: { x: number; y: number };
 };
 
-// ── Region Data ───────────────────────────────────────────────────────────────
-// 沖縄インセットの想定位置（コンテナ %）
-// インセット: bottom=4%, right=2%, width=22%, height≈16%
-// → 中心 x=100-2-11=87%, y=100-4-8=88%
 const REGIONS: Region[] = [
   {
-    id: "hokkaido", label: "北海道", emoji: "❄️", color: "#5BA8D0",
-    btn: { top: 12, left: 27 }, btnW: 26,
-    dot: { x: 71, y: 10 },
+    id: "hokkaido",
+    label: "北海道・東北",
+    emoji: "❄️",
+    color: "#5BA8D0",
+    btn: { top: 14, left: 26 },
+    mid: { x: 62, y: 17 },
+    dot: { x: 71, y: 11 },
   },
   {
-    id: "tohoku", label: "東北", emoji: "🌲", color: "#6DB36D",
-    btn: { top: 44, right: 2 }, btnW: 23,
-    dot: { x: 73, y: 32 },
+    id: "chubu",
+    label: "中部",
+    emoji: "⛰️",
+    color: "#6DB86D",
+    btn: { top: 38, left: 26 },
+    mid: { x: 55, y: 41 },
+    dot: { x: 59, y: 43 },
   },
   {
-    id: "chubu", label: "中部", emoji: "⛰️", color: "#E8924A",
-    btn: { top: 38, left: 22 }, btnW: 23,
-    dot: { x: 58, y: 42 },
+    id: "chugoku",
+    label: "中国",
+    emoji: "⛩️",
+    color: "#C9B840",
+    btn: { top: 52, left: 2 },
+    mid: { x: 22, y: 55 },
+    dot: { x: 33, y: 52 },
   },
   {
-    id: "kanto", label: "関東", emoji: "🗼", color: "#F0A050",
-    btn: { top: 55, right: 2 }, btnW: 23,
+    id: "kanto",
+    label: "関東",
+    emoji: "🗼",
+    color: "#E8924A",
+    btn: { top: 46, right: 2 },
+    mid: { x: 72, y: 49 },
     dot: { x: 67, y: 46 },
   },
   {
-    id: "kinki", label: "近畿", emoji: "🏯", color: "#9B7CC8",
-    btn: { top: 63, left: 41 }, btnW: 23,
-    dot: { x: 46, y: 53 },
+    id: "kinki",
+    label: "近畿",
+    emoji: "🏯",
+    color: "#9B7CC8",
+    btn: { top: 60, left: 39 },
+    mid: { x: 46, y: 57 },
+    dot: { x: 45, y: 54 },
   },
   {
-    id: "chugoku", label: "中国", emoji: "🌉", color: "#7BA84A",
-    btn: { top: 51, left: 2 }, btnW: 23,
-    dot: { x: 35, y: 51 },
+    id: "shikoku",
+    label: "四国",
+    emoji: "🌊",
+    color: "#3BAAA0",
+    btn: { top: 70, left: 20 },
+    mid: { x: 38, y: 66 },
+    dot: { x: 41, y: 62 },
   },
   {
-    id: "shikoku", label: "四国", emoji: "🌊", color: "#3BAAA0",
-    btn: { top: 71, left: 21 }, btnW: 23,
-    dot: { x: 43, y: 61 },
-  },
-  {
-    id: "kyushu", label: "九州", emoji: "🌴", color: "#E07070",
-    btn: { top: 76, left: 2 }, btnW: 22,
-    dot: { x: 24, y: 57 },
-  },
-  {
-    // 沖縄ボタンは左下・インセット（右下）へ矢印
-    id: "okinawa", label: "沖縄", emoji: "🌺", color: "#E06080",
-    btn: { top: 84, left: 2 }, btnW: 22,
-    dot: { x: 87, y: 88 },   // 右下インセット中心
+    id: "kyushu",
+    label: "九州・沖縄",
+    emoji: "🌴",
+    color: "#E07070",
+    btn: { top: 77, left: 2 },
+    mid: { x: 16, y: 75 },
+    dot: { x: 22, y: 60 },
   },
 ];
 
-const BTN_H_PCT = 3.8;
+const BTN_H = 3.8; // ボタン高さ（コンテナ高さの%）
+const BTN_W: Record<string, number> = {
+  hokkaido: 30, chubu: 21, chugoku: 21, kanto: 21,
+  kinki: 21, shikoku: 21, kyushu: 28,
+};
 
-function lineCoords(r: Region) {
-  const midY = r.btn.top + BTN_H_PCT / 2;
+function getPath(r: Region): string {
+  const bw = BTN_W[r.id] ?? 24;
+  const midY = r.btn.top + BTN_H / 2;
+
+  // ボタン接続側の座標
+  let x1: number, y1: number;
   if (r.btn.left !== undefined) {
-    return { x1: r.btn.left + r.btnW, y1: midY, x2: r.dot.x, y2: r.dot.y };
+    x1 = r.btn.left + bw;
+    y1 = midY;
+  } else {
+    x1 = 100 - (r.btn.right ?? 0) - bw;
+    y1 = midY;
   }
-  const lx = 100 - (r.btn.right ?? 0) - r.btnW;
-  return { x1: lx, y1: midY, x2: r.dot.x, y2: r.dot.y };
+
+  if (r.mid) {
+    // 折れ線 L字形: ボタン → 中継点 → 到達点
+    return `M${x1},${y1} L${r.mid.x},${y1} L${r.mid.x},${r.mid.y} L${r.dot.x},${r.dot.y}`;
+  }
+  return `M${x1},${y1} L${r.dot.x},${r.dot.y}`;
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -158,10 +187,11 @@ export default function FeaturedPage() {
       </div>
 
       {/* ── Map Area ── */}
-      <div className="flex-1 relative overflow-hidden"
-        style={{ background: "linear-gradient(155deg, #EDF5FF 0%, #F5F0FF 35%, #FFF5EE 100%)" }}>
-
-        {/* 日本地図メイン */}
+      <div
+        className="flex-1 relative overflow-hidden"
+        style={{ background: "linear-gradient(155deg, #EDF5FF 0%, #F5F0FF 40%, #FFF5EE 100%)" }}
+      >
+        {/* 日本地図 */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/japan-map.png"
@@ -170,33 +200,7 @@ export default function FeaturedPage() {
           draggable={false}
         />
 
-        {/* 沖縄インセット（右下） */}
-        <div
-          className="absolute z-10 rounded-xl overflow-hidden"
-          style={{
-            bottom: "4%",
-            right: "2%",
-            width: "22%",
-            background: "rgba(255,255,255,0.7)",
-            backdropFilter: "blur(6px)",
-            border: "1px solid rgba(224,96,128,0.3)",
-            boxShadow: "0 2px 10px rgba(224,96,128,0.15)",
-            padding: "4px",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/okinawa-map.png"
-            alt="沖縄"
-            className="w-full object-contain pointer-events-none"
-            draggable={false}
-          />
-          <div className="text-center text-[9px] font-semibold pb-0.5" style={{ color: "#E06080" }}>
-            沖縄
-          </div>
-        </div>
-
-        {/* SVG 接続線 + 矢印 */}
+        {/* SVG 折れ線 + 矢印マーカー */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox="0 0 100 100"
@@ -206,36 +210,34 @@ export default function FeaturedPage() {
             {REGIONS.map((r) => (
               <marker
                 key={r.id}
-                id={`arrowhead-${r.id}`}
-                markerWidth="4"
-                markerHeight="4"
-                refX="2"
-                refY="2"
+                id={`arr-${r.id}`}
+                markerWidth="5" markerHeight="5"
+                refX="2.5" refY="2.5"
                 orient="auto"
                 markerUnits="strokeWidth"
               >
-                <path d="M0,0 L0,4 L4,2 Z" fill={r.color} opacity="0.85" />
+                <circle cx="2.5" cy="2.5" r="2.5" fill={r.color} opacity="0.9" />
               </marker>
             ))}
           </defs>
-          {REGIONS.map((r) => {
-            const { x1, y1, x2, y2 } = lineCoords(r);
-            return (
-              <g key={r.id}>
-                {/* 接続線（矢印付き） */}
-                <line
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke="#C4C8D2"
-                  strokeWidth="0.45"
-                  strokeLinecap="round"
-                  markerEnd={`url(#arrowhead-${r.id})`}
-                />
-                {/* 地域ドット */}
-                <circle cx={x2} cy={y2} r="1.1" fill={r.color} opacity="0.85" />
-                <circle cx={x2} cy={y2} r="2" fill={r.color} opacity="0.12" />
-              </g>
-            );
-          })}
+
+          {REGIONS.map((r) => (
+            <g key={r.id}>
+              {/* 折れ線 */}
+              <path
+                d={getPath(r)}
+                stroke="#C8CAD4"
+                strokeWidth="0.45"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                markerEnd={`url(#arr-${r.id})`}
+              />
+              {/* 地域ドット（外縁リング） */}
+              <circle cx={r.dot.x} cy={r.dot.y} r="1.8" fill={r.color} opacity="0.15" />
+              <circle cx={r.dot.x} cy={r.dot.y} r="1.0" fill={r.color} opacity="0.9" />
+            </g>
+          ))}
         </svg>
 
         {/* 地域ボタン */}
@@ -246,17 +248,19 @@ export default function FeaturedPage() {
             className="absolute z-20 flex items-center bg-white rounded-full whitespace-nowrap transition-transform duration-100 active:scale-95"
             style={{
               top: `${r.btn.top}%`,
-              ...(r.btn.left !== undefined ? { left: `${r.btn.left}%` } : { right: `${r.btn.right}%` }),
+              ...(r.btn.left !== undefined
+                ? { left: `${r.btn.left}%` }
+                : { right: `${r.btn.right}%` }),
               padding: "6px 10px 6px 8px",
               gap: 5,
-              boxShadow: "0 2px 12px rgba(0,0,0,0.13), 0 0 0 0.5px rgba(0,0,0,0.055)",
+              boxShadow: "0 2px 14px rgba(0,0,0,0.12), 0 0 0 0.5px rgba(0,0,0,0.055)",
             }}
           >
-            <div className="rounded-full flex-shrink-0" style={{ width: 7, height: 7, backgroundColor: r.color }} />
+            <div className="rounded-full flex-shrink-0"
+              style={{ width: 7, height: 7, backgroundColor: r.color }} />
             <span className="text-[12px] leading-none">{r.emoji}</span>
-            <span className="text-[11.5px] font-bold text-gray-900" style={{ letterSpacing: "-0.3px" }}>
-              {r.label}
-            </span>
+            <span className="text-[11.5px] font-bold text-gray-900"
+              style={{ letterSpacing: "-0.3px" }}>{r.label}</span>
             <ChevronRight size={11} color={r.color} strokeWidth={2.8} />
           </button>
         ))}
@@ -268,7 +272,8 @@ export default function FeaturedPage() {
         {NAV.map(({ label, Icon }) => {
           const active = label === "特集";
           return (
-            <button key={label} className="flex-1 flex flex-col items-center gap-[3px] transition-opacity active:opacity-60">
+            <button key={label}
+              className="flex-1 flex flex-col items-center gap-[3px] transition-opacity active:opacity-60">
               {active ? (
                 <div className="flex items-center justify-center rounded-full"
                   style={{ width: 46, height: 28, backgroundColor: "#FFEAE0" }}>
@@ -279,9 +284,8 @@ export default function FeaturedPage() {
                   <Icon size={24} color="#BBBBC0" fill="none" strokeWidth={1.8} />
                 </div>
               )}
-              <span className="text-[10px] font-medium" style={{ color: active ? "#F26A3D" : "#BBBBC0" }}>
-                {label}
-              </span>
+              <span className="text-[10px] font-medium"
+                style={{ color: active ? "#F26A3D" : "#BBBBC0" }}>{label}</span>
             </button>
           );
         })}
