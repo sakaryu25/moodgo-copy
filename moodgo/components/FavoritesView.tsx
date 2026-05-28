@@ -56,7 +56,7 @@ export default function FavoritesView({ favorites, favoriteSort, onSetFavoriteSo
   return (
     <ScrollView
       style={s.root}
-      contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 80 }]}
+      contentContainerStyle={[s.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 80 }]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={s.pageTitle}>{t.title}</Text>

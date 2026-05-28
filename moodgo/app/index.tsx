@@ -873,16 +873,6 @@ export default function Home() {
     Animated.timing(tabFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [homeView]);
 
-  // ─── Step skip logic ──────────────────────────────────────────────────
-
-  const FOOD_GENRES_WITH_SUB = ['居酒屋🍺', '和食🍣', '洋食🍳', 'イタリアン🍝', '焼肉🥩', 'アジア系統🍛', '各国料理🌍', 'ラーメン🍜', 'カフェ・スイーツ☕'];
-
-  useEffect(() => {
-    if (step !== 6 || selectedMood !== 'お腹すいた') return;
-    const genreAns = dynamicAnswers['food_genre_new'] ?? '';
-    const hasSubQ = FOOD_GENRES_WITH_SUB.some(k => genreAns.includes(k));
-    if (!hasSubQ) setStep(7);
-  }, [step, selectedMood, dynamicAnswers]);
 
   // ─── Profile setup (first launch) ────────────────────────────────────
 
@@ -938,7 +928,7 @@ export default function Home() {
         onSetDynamicAnswers={setDynamicAnswers}
         onUseCurrentLocation={handleUseCurrentLocation}
         onSetStep={setStep}
-        onBack={() => { if (step === 1) resetQuiz(); else setStep((s) => s - 1); }}
+        onBack={resetQuiz}
         onOpenResults={() => openResults()}
         onsenCategory={onsenCategory}
         onSetOnsenCategory={setOnsenCategory}

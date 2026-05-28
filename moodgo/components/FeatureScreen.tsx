@@ -93,8 +93,23 @@ const IMG = {
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
-export type Tab = "全国" | "北海道・東北" | "関東" | "中部" | "近畿" | "中国" | "四国" | "九州・沖縄"
-  | "東京" | "神奈川" | "千葉" | "埼玉" | "茨城" | "栃木" | "群馬";
+export type Tab =
+  // 地方
+  "全国" | "北海道・東北" | "関東" | "中部" | "近畿" | "中国" | "四国" | "九州・沖縄"
+  // 北海道・東北
+  | "北海道" | "青森" | "岩手" | "宮城" | "秋田" | "山形" | "福島"
+  // 関東
+  | "東京" | "神奈川" | "千葉" | "埼玉" | "茨城" | "栃木" | "群馬"
+  // 中部
+  | "新潟" | "富山" | "石川" | "福井" | "山梨" | "長野" | "岐阜" | "静岡" | "愛知"
+  // 近畿
+  | "三重" | "滋賀" | "京都" | "大阪" | "兵庫" | "奈良" | "和歌山"
+  // 中国
+  | "鳥取" | "島根" | "岡山" | "広島" | "山口"
+  // 四国
+  | "徳島" | "香川" | "愛媛" | "高知"
+  // 九州・沖縄
+  | "福岡" | "佐賀" | "長崎" | "熊本" | "大分" | "宮崎" | "鹿児島" | "沖縄";
 
 type CardItem = {
   title: string;
@@ -453,82 +468,252 @@ const REGION_OVERLAY: RegionOverlayItem[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KantoPrefSelectView — 関東都県グリッド選択
+// Region Silhouette Images
+// assets/images/region-<id>.png を追加したら require() のコメントを外してください
+// ─────────────────────────────────────────────────────────────────────────────
+const REGION_BG_IMAGES: Record<string, any> = {
+  "hokkaido-tohoku": require("../assets/images/region-hokkaido-tohoku.png"),
+  "kanto":    require("../assets/images/region-kanto.png"),
+  "chubu":    require("../assets/images/region-chubu.png"),
+  "kinki":    require("../assets/images/region-kinki.png"),
+  "chugoku":  require("../assets/images/region-chugoku.png"),
+  "shikoku":  require("../assets/images/region-shikoku.png"),
+  "kyushu":   require("../assets/images/region-kyushu.png"),
+};
+
+const TAB_REGION_KEY: Partial<Record<Tab, string>> = {
+  "北海道・東北": "hokkaido-tohoku",
+  "関東":   "kanto", "東京":   "kanto", "神奈川": "kanto",
+  "千葉":   "kanto", "埼玉":   "kanto", "茨城":   "kanto",
+  "栃木":   "kanto", "群馬":   "kanto",
+  "中部":   "chubu",   "近畿":   "kinki",
+  "中国":   "chugoku", "四国":   "shikoku",
+  "九州・沖縄": "kyushu",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Region → Prefecture mapping
 // ─────────────────────────────────────────────────────────────────────────────
 
-type KantoPrefCell = { label: string; tab: Tab; color: string; Icon: LucideIcon };
+const REGION_PREFS: Partial<Record<Tab, Tab[]>> = {
+  "北海道・東北": ["北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島"],
+  "関東":         ["群馬", "栃木", "茨城", "埼玉", "東京", "千葉", "神奈川"],
+  "中部":         ["新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜", "静岡", "愛知"],
+  "近畿":         ["三重", "滋賀", "京都", "大阪", "兵庫", "奈良", "和歌山"],
+  "中国":         ["鳥取", "島根", "岡山", "広島", "山口"],
+  "四国":         ["徳島", "香川", "愛媛", "高知"],
+  "九州・沖縄":   ["福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄"],
+};
 
-const KANTO_GRID: (KantoPrefCell | null)[][] = [
-  [
-    { label: "群馬", tab: "群馬",  color: "#C97A28", Icon: Mountain  },
-    { label: "栃木", tab: "栃木",  color: "#5A9850", Icon: Leaf      },
-    { label: "茨城", tab: "茨城",  color: "#3A80B0", Icon: Waves     },
-  ],
-  [
-    { label: "埼玉", tab: "埼玉",  color: "#D87828", Icon: Building2 },
-    { label: "東京", tab: "東京",  color: "#B03018", Icon: Landmark  },
-    { label: "千葉", tab: "千葉",  color: "#C89830", Icon: Sun       },
-  ],
-  [
-    null,
-    { label: "神奈川", tab: "神奈川", color: "#2A6AA8", Icon: Waves  },
-    null,
-  ],
-];
+// 都道府県ごとのデフォルトコンテンツ（API データがない場合に使用）
+function defaultPrefTabData(pref: string): TabContentData {
+  return {
+    title: `${pref} ${CURRENT_MONTH}の特集`,
+    subtitle: `${pref}のおすすめスポットをご紹介`,
+    hero: {
+      image: IMG.fuji,
+      label: "今月のおすすめ",
+      title: `${pref}で見つける\n素敵なひととき`,
+      description: "地元の人も愛する、とっておきのスポットへ。",
+      buttonLabel: "特集を読む",
+    },
+    categories: ["🏔️ 絶景", "☕ カフェ", "🍽️ グルメ", "🚶 おでかけ", "🌿 自然"],
+    sections: [],
+  };
+}
 
-function KantoPrefSelectView({ onSelectPref }: { onSelectPref: (tab: Tab) => void }) {
-  // 関東エリアだけを切り抜いて背景に表示
-  // 画像のcontainサイズ(W × W*1.286)を3倍に拡大し
-  // 関東の中心(x:67%, y:44%)が画面上部40%あたりに来るよう配置
-  const SCALE = 3.0;
-  const mapW  = W * SCALE;
-  const mapH  = mapW * (813 / 632);
-  const bgLeft = W * 0.5 - mapW * 0.67;
-  const bgTop  = (H - 120) * 0.38 - mapH * 0.44;
+// ── 都道府県の地図上の位置 (画像の W×H に対する %) ──────────────────────────
+type PrefOverlayItem = { label: Tab; topPct: number; leftPct: number };
+
+const REGION_PREF_OVERLAY: Partial<Record<Tab, PrefOverlayItem[]>> = {
+  "北海道・東北": [
+    { label: "北海道", topPct: 20, leftPct: 40 },
+    { label: "青森",   topPct: 49, leftPct: 22 },
+    { label: "秋田",   topPct: 61, leftPct:  9 },
+    { label: "岩手",   topPct: 58, leftPct: 29 },
+    { label: "山形",   topPct: 72, leftPct:  9 },
+    { label: "宮城",   topPct: 69, leftPct: 29 },
+    { label: "福島",   topPct: 82, leftPct: 13 },
+  ],
+  "関東": [
+    { label: "群馬",   topPct: 27, leftPct: 17 },
+    { label: "栃木",   topPct: 17, leftPct: 40 },
+    { label: "茨城",   topPct: 24, leftPct: 61 },
+    { label: "埼玉",   topPct: 43, leftPct: 31 },
+    { label: "東京",   topPct: 50, leftPct: 42 },
+    { label: "千葉",   topPct: 57, leftPct: 62 },
+    { label: "神奈川", topPct: 64, leftPct: 28 },
+  ],
+  "近畿": [
+    { label: "兵庫",   topPct: 27, leftPct: 17 },
+    { label: "京都",   topPct: 16, leftPct: 37 },
+    { label: "滋賀",   topPct: 23, leftPct: 62 },
+    { label: "大阪",   topPct: 46, leftPct: 37 },
+    { label: "三重",   topPct: 48, leftPct: 72 },
+    { label: "奈良",   topPct: 61, leftPct: 47 },
+    { label: "和歌山", topPct: 77, leftPct: 46 },
+  ],
+  "中部": [
+    { label: "新潟",   topPct: 14, leftPct: 63 },
+    { label: "富山",   topPct: 31, leftPct: 50 },
+    { label: "石川",   topPct: 50, leftPct: 33 },
+    { label: "福井",   topPct: 67, leftPct: 33 },
+    { label: "長野",   topPct: 47, leftPct: 57 },
+    { label: "山梨",   topPct: 56, leftPct: 66 },
+    { label: "岐阜",   topPct: 65, leftPct: 46 },
+    { label: "静岡",   topPct: 77, leftPct: 60 },
+    { label: "愛知",   topPct: 82, leftPct: 45 },
+  ],
+  "中国": [
+    { label: "鳥取",   topPct: 22, leftPct: 73 },
+    { label: "島根",   topPct: 30, leftPct: 50 },
+    { label: "岡山",   topPct: 42, leftPct: 68 },
+    { label: "広島",   topPct: 50, leftPct: 49 },
+    { label: "山口",   topPct: 66, leftPct: 16 },
+  ],
+  "四国": [
+    { label: "香川",   topPct: 16, leftPct: 68 },
+    { label: "徳島",   topPct: 32, leftPct: 82 },
+    { label: "愛媛",   topPct: 38, leftPct: 26 },
+    { label: "高知",   topPct: 65, leftPct: 42 },
+  ],
+  "九州・沖縄": [
+    { label: "福岡",   topPct: 13, leftPct: 68 },
+    { label: "大分",   topPct: 16, leftPct: 82 },
+    { label: "佐賀",   topPct: 21, leftPct: 61 },
+    { label: "長崎",   topPct: 26, leftPct: 57 },
+    { label: "熊本",   topPct: 31, leftPct: 68 },
+    { label: "宮崎",   topPct: 36, leftPct: 79 },
+    { label: "鹿児島", topPct: 43, leftPct: 66 },
+    { label: "沖縄",   topPct: 62, leftPct: 46 },
+  ],
+};
+
+// 各地域シルエット画像のネイティブ幅/高比 (width/height)
+const REGION_IMG_RATIO: Record<string, number> = {
+  "hokkaido-tohoku": 1122 / 1402,
+  "kanto":           1254 / 1254,  // square
+  "chubu":           1448 / 1086,  // landscape
+  "kinki":           1254 / 1254,  // square
+  "chugoku":         1448 / 1086,  // landscape
+  "shikoku":         1448 / 1086,  // landscape
+  "kyushu":          1122 / 1402,  // portrait
+};
+
+function RegionPrefSelectView({ region, onSelectPref }: {
+  region: Tab;
+  onSelectPref: (tab: Tab) => void;
+}) {
+  const [cW, setCW] = useState(0);
+  const [cH, setCH] = useState(0);
+
+  const prefs      = REGION_PREFS[region] ?? [];
+  const regionKey  = TAB_REGION_KEY[region];
+  const bgImage    = regionKey ? REGION_BG_IMAGES[regionKey] : undefined;
+  const overlay    = bgImage ? REGION_PREF_OVERLAY[region] : undefined;
+  const nativeRatio = regionKey ? REGION_IMG_RATIO[regionKey] : undefined;
+
+  // 北海道・東北 / 九州・沖縄 (縦長) はそのまま、それ以外は 1.25 倍に拡大
+  const imgScale = (regionKey === "hokkaido-tohoku" || regionKey === "kyushu") ? 1.0 : 1.25;
+
+  // contain 配置: 画像の実描画サイズとオフセットを算出
+  let imgW = 0, imgH = 0, imgLeft = 0, imgTop = 0;
+  if (cW > 0 && cH > 0 && nativeRatio) {
+    if (cW / cH < nativeRatio) {
+      imgW = cW; imgH = cW / nativeRatio;
+    } else {
+      imgH = cH; imgW = cH * nativeRatio;
+    }
+    imgW *= imgScale;
+    imgH *= imgScale;
+    imgLeft = (cW - imgW) / 2;
+    imgTop  = (cH - imgH) / 2;
+  }
+
+  const COLS   = 3;
+  const GAP    = 10;
+  const CELL_W = (W - 40 - GAP * (COLS - 1)) / COLS;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bgSub, overflow: "hidden" }}>
-      {/* 関東エリア切り抜き地図 */}
-      <Image
-        source={require("../assets/images/japan-map.png")}
-        style={{ position: "absolute", width: mapW, height: mapH, left: bgLeft, top: bgTop, opacity: 0.82 }}
-        resizeMode="contain"
-      />
-      {/* ボタンの文字が読みやすいよう薄いオーバーレイ */}
-      <LinearGradient
-        colors={["rgba(250,247,244,0.55)", "rgba(250,247,244,0.25)", "rgba(250,247,244,0.65)"]}
-        style={StyleSheet.absoluteFill}
-      />
+    <View style={{ flex: 1, backgroundColor: C.bgSub }}>
+      {/* グラデーションオーバーレイ (silhouette がある場合のみ) */}
+      {bgImage && (
+        <LinearGradient
+          colors={["rgba(250,247,244,0.28)", "rgba(250,247,244,0.10)", "rgba(250,247,244,0.35)"]}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
+      {/* silhouette なし → japan-map を背景に */}
+      {!bgImage && (
+        <>
+          <Image
+            source={require("../assets/images/japan-map.png")}
+            style={{ position: "absolute", width: W, height: W * (813 / 632), left: 0, top: 10, opacity: 0.85 }}
+            resizeMode="contain"
+          />
+          <LinearGradient
+            colors={["rgba(250,247,244,0.35)", "rgba(250,247,244,0.15)", "rgba(250,247,244,0.45)"]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        </>
+      )}
 
+      {/* ヘッダー */}
       <View style={s.areaIntro}>
         <View style={s.areaBadge}>
-          <Text style={s.areaBadgeText}>関東エリア</Text>
+          <Text style={s.areaBadgeText}>{region}</Text>
         </View>
         <Text style={s.areaTitle}>都道府県を選ぶ</Text>
         <Text style={s.areaSubtitle}>気になるエリアをタップ</Text>
       </View>
 
-      <View style={s.kantoGrid}>
-        {KANTO_GRID.map((row, rIdx) => (
-          <View key={rIdx} style={s.kantoRow}>
-            {row.map((cell, cIdx) =>
-              cell ? (
-                <TouchableOpacity
-                  key={cIdx}
-                  style={[s.kantoPref, { borderColor: cell.color + "66" }]}
-                  onPress={() => onSelectPref(cell.tab)}
-                  activeOpacity={0.75}
-                >
-                  <cell.Icon size={22} color={cell.color} strokeWidth={2} />
-                  <Text style={[s.kantoPrefLabel, { color: cell.color }]}>{cell.label}</Text>
-                </TouchableOpacity>
-              ) : (
-                <View key={cIdx} style={s.kantoPrefEmpty} />
-              )
-            )}
-          </View>
-        ))}
-      </View>
+      {overlay ? (
+        // ── 地図オーバーレイ配置 ──
+        <View
+          style={{ flex: 1, overflow: "visible" }}
+          onLayout={(e) => { setCW(e.nativeEvent.layout.width); setCH(e.nativeEvent.layout.height); }}
+        >
+          {/* シルエット画像 — 中央配置 */}
+          {imgW > 0 && (
+            <Image
+              source={bgImage}
+              style={{ position: "absolute", left: imgLeft, top: imgTop, width: imgW, height: imgH }}
+              resizeMode="contain"
+            />
+          )}
+          {/* 都道府県ボタン — 地理的位置に配置 */}
+          {imgW > 0 && overlay.map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              activeOpacity={0.78}
+              onPress={() => onSelectPref(item.label)}
+              style={[s.prefOverlayBtn, {
+                top:  imgTop  + imgH * (item.topPct  / 100),
+                left: imgLeft + imgW * (item.leftPct / 100),
+              }]}
+            >
+              <Text style={s.prefOverlayBtnText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        // ── フォールバック: グリッド ──
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.regionPrefGrid}>
+          {prefs.map((pref) => (
+            <TouchableOpacity
+              key={pref}
+              style={[s.regionPrefCard, { width: CELL_W }]}
+              onPress={() => onSelectPref(pref)}
+              activeOpacity={0.75}
+            >
+              <MapPin size={20} color={C.accent} strokeWidth={2} />
+              <Text style={s.regionPrefLabel}>{pref}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -822,19 +1007,38 @@ function PrefectureGrid({ prefectures, onSelectPref }: PrefectureGridProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 type FeatureContentViewProps = {
   selectedTab: Tab;
+  selectedRegion: Tab;
   apiTabData: Partial<Record<Tab, TabContentData>>;
 };
 
-function FeatureContentView({ selectedTab, apiTabData }: FeatureContentViewProps) {
-  const data = apiTabData[selectedTab] ?? TAB_DATA[selectedTab];
+function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: FeatureContentViewProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(selectedTab);
+
+  useEffect(() => { setActiveTab(selectedTab); }, [selectedTab]);
+
+  // 全国 / 地方 / 都道府県 の3タブ（重複排除）
+  const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab]));
+
+  const data = apiTabData[activeTab] ?? TAB_DATA[activeTab] ?? defaultPrefTabData(activeTab);
+  const regionImg = REGION_BG_IMAGES[TAB_REGION_KEY[activeTab] ?? ""];
 
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
       contentContainerStyle={s.contentScroll}
     >
+      {/* ── エリア切替タブ ── */}
+      <SegmentedTabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
+
       {/* 見出し */}
       <View style={s.contentHeader}>
+        {regionImg && (
+          <Image
+            source={regionImg}
+            style={s.contentHeaderBgImg}
+            resizeMode="contain"
+          />
+        )}
         <Text style={s.contentTitle}>{data.title}</Text>
         <Text style={s.contentSubtitle}>{data.subtitle}</Text>
       </View>
@@ -869,9 +1073,17 @@ function FeatureContentView({ selectedTab, apiTabData }: FeatureContentViewProps
 // 自前のタブバー・SafeAreaView は持たない
 // ─────────────────────────────────────────────────────────────────────────────
 function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabContentData>> {
-  const TABS: Tab[] = ["全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄",
-    "東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬"];
-  const grouped = Object.fromEntries(TABS.map(t => [t, []])) as Record<Tab, FeaturedPageRecord[]>;
+  const TABS: Tab[] = [
+    "全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄",
+    "北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島",
+    "東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬",
+    "新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜", "静岡", "愛知",
+    "三重", "滋賀", "京都", "大阪", "兵庫", "奈良", "和歌山",
+    "鳥取", "島根", "岡山", "広島", "山口",
+    "徳島", "香川", "愛媛", "高知",
+    "福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄",
+  ];
+  const grouped = Object.fromEntries(TABS.map(t => [t, []])) as unknown as Record<Tab, FeaturedPageRecord[]>;
 
   for (const rec of records) {
     const matched = TABS.filter((t) => rec.tags.includes(t));
@@ -913,13 +1125,12 @@ function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabCon
   return result;
 }
 
-type NavStage = "map" | "kanto-pref" | "content";
-
-const KANTO_PREF_TABS: Tab[] = ["東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬"];
+type NavStage = "map" | "pref-select" | "content";
 
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
   const [stage, setStage] = useState<NavStage>("map");
+  const [selectedRegion, setSelectedRegion] = useState<Tab>("全国");
   const [selectedTab, setSelectedTab] = useState<Tab>("全国");
   const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, TabContentData>>>({});
 
@@ -933,8 +1144,9 @@ export default function FeatureScreen() {
   }, []);
 
   const handleSelectRegion = (tab: Tab) => {
+    setSelectedRegion(tab);
     setSelectedTab(tab);
-    setStage(tab === "関東" ? "kanto-pref" : "content");
+    setStage("pref-select");
   };
 
   const handleSelectPref = (tab: Tab) => {
@@ -943,8 +1155,8 @@ export default function FeatureScreen() {
   };
 
   const handleBack = () => {
-    if (stage === "content" && KANTO_PREF_TABS.includes(selectedTab)) {
-      setStage("kanto-pref");
+    if (stage === "content") {
+      setStage("pref-select");
     } else {
       setStage("map");
     }
@@ -977,12 +1189,13 @@ export default function FeatureScreen() {
         {stage === "map" && (
           <AreaSelectView onSelectRegion={handleSelectRegion} />
         )}
-        {stage === "kanto-pref" && (
-          <KantoPrefSelectView onSelectPref={handleSelectPref} />
+        {stage === "pref-select" && (
+          <RegionPrefSelectView region={selectedRegion} onSelectPref={handleSelectPref} />
         )}
         {stage === "content" && (
           <FeatureContentView
             selectedTab={selectedTab}
+            selectedRegion={selectedRegion}
             apiTabData={apiTabData}
           />
         )}
@@ -1031,20 +1244,37 @@ const s = StyleSheet.create({
     borderColor: "#FFD9C8",
   },
 
-  // ── KantoPrefSelectView ──
-  kantoGrid: {
-    flex: 1,
+  // ── PrefOverlayBtn (地図上の都道府県ボタン) ──
+  prefOverlayBtn: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.93)",
+    borderRadius: 20,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderWidth: 0.5,
+    borderColor: "rgba(0,0,0,0.08)",
+    ...Platform.select({
+      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.13, shadowRadius: 6 },
+      android: { elevation: 3 },
+    }),
+  },
+  prefOverlayBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1C1C1E",
+    letterSpacing: -0.2,
+  },
+
+  // ── RegionPrefSelectView ──
+  regionPrefGrid: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    justifyContent: "center",
-    gap: 10,
-  },
-  kantoRow: {
+    paddingBottom: 32,
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
-  kantoPref: {
-    flex: 1,
+  regionPrefCard: {
     backgroundColor: C.white,
     borderRadius: 18,
     paddingVertical: 22,
@@ -1052,14 +1282,13 @@ const s = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     borderWidth: 1.5,
+    borderColor: C.border,
     ...shadow,
   },
-  kantoPrefEmpty: {
-    flex: 1,
-  },
-  kantoPrefLabel: {
+  regionPrefLabel: {
     fontSize: 14,
     fontWeight: "700",
+    color: C.text,
     letterSpacing: -0.3,
   },
 
@@ -1067,8 +1296,8 @@ const s = StyleSheet.create({
   areaScroll: { paddingBottom: 48 },
   areaIntro: {
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 6,
+    paddingTop: 8,
+    paddingBottom: 2,
   },
   areaBadge: {
     alignSelf: "flex-start",
@@ -1076,7 +1305,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginBottom: 8,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: "#FFD9C8",
   },
@@ -1087,11 +1316,11 @@ const s = StyleSheet.create({
     letterSpacing: 0.2,
   },
   areaTitle: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "800",
     color: C.text,
     letterSpacing: -0.7,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   areaSubtitle: {
     fontSize: 12,
@@ -1295,6 +1524,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 12,
+    overflow: "hidden",
+  },
+  contentHeaderBgImg: {
+    position: "absolute",
+    right: -30,
+    top: -30,
+    width: 220,
+    height: 220,
+    opacity: 0.14,
   },
   contentTitle: {
     fontSize: 22,
