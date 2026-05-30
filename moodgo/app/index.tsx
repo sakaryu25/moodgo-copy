@@ -40,6 +40,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { detectUserPrefecture, getNearbyPrefectures } from '@/lib/prefecture-utils';
 
+import AppBackground from '@/components/AppBackground';
 import HomeView from '@/components/HomeView';
 import TabBar from '@/components/TabBar';
 import HistoryView from '@/components/HistoryView';
@@ -885,15 +886,18 @@ export default function Home() {
 
   if (profileLoaded && !profileSetupDone) {
     return (
-      <ProfileSetup
-        onDone={(age, gender, prefecture) => {
-          setProfileAge(age);
-          setProfileGender(gender);
-          setProfilePrefecture(prefecture);
-          setProfileSetupDone(true);
-          saveJSON(PROFILE_KEY, { age, gender, prefecture });
-        }}
-      />
+      <View style={styles.root}>
+        <AppBackground />
+        <ProfileSetup
+          onDone={(age, gender, prefecture) => {
+            setProfileAge(age);
+            setProfileGender(gender);
+            setProfilePrefecture(prefecture);
+            setProfileSetupDone(true);
+            saveJSON(PROFILE_KEY, { age, gender, prefecture });
+          }}
+        />
+      </View>
     );
   }
 
@@ -901,8 +905,10 @@ export default function Home() {
 
   if (started && step <= 10) {
     return (
-      <SlideUp>
-      <QuizFlow
+      <View style={styles.root}>
+        <AppBackground />
+        <SlideUp>
+        <QuizFlow
         lang={lang}
         step={step}
         selectedMood={selectedMood}
@@ -963,7 +969,8 @@ export default function Home() {
         onSetDeepDiveL1={setDeepDiveL1}
         onSetDeepDiveL2={setDeepDiveL2}
       />
-      </SlideUp>
+        </SlideUp>
+      </View>
     );
   }
 
@@ -971,8 +978,10 @@ export default function Home() {
 
   if (started && step === 11) {
     return (
-      <SlideUp>
-      <ResultsView
+      <View style={styles.root}>
+        <AppBackground />
+        <SlideUp>
+        <ResultsView
         lang={lang}
         selectedMood={selectedMood}
         selectedArea={selectedArea}
@@ -1098,7 +1107,8 @@ export default function Home() {
           } catch {}
         }}
       />
-      </SlideUp>
+        </SlideUp>
+      </View>
     );
   }
 
@@ -1149,6 +1159,7 @@ export default function Home() {
 
   return (
     <View style={styles.root}>
+      <AppBackground />
       <Animated.View style={{ flex: 1, opacity: tabFade }}>
         {renderContent()}
       </Animated.View>
@@ -1185,5 +1196,5 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F5F0FF' },
+  root: { flex: 1, backgroundColor: '#F3F1EF' },
 });

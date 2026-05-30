@@ -1091,7 +1091,7 @@ export default function QuizFlow(props: Props) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F5F0FF' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
   topBar: {
     flexDirection: 'row', alignItems: 'center',

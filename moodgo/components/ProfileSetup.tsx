@@ -195,7 +195,7 @@ export default function ProfileSetup({ onDone }: Props) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: BG },
+  root:    { flex: 1, backgroundColor: 'transparent' },
   flex:    { flex: 1 },
   content: { paddingHorizontal: 24, paddingTop: 16, alignItems: 'center' },
 

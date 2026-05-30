@@ -198,7 +198,6 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
-      <BackgroundPattern />
 
       {/* ── Header ── */}
       <View style={s.header}>
@@ -341,7 +340,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
 const PAD = 20;
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  root: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
 
   // Header

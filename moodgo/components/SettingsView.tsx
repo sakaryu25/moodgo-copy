@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
 } from 'react-native-svg';
+import AppBackground from './AppBackground';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
 
 // ─── tokens ──────────────────────────────────────────────────────────────────
@@ -144,6 +145,7 @@ export default function SettingsView({
       onRequestClose={onClose}
     >
       <View style={[s.root, { paddingTop: insets.top || 20 }]}>
+        <AppBackground />
 
         {/* ── Header ── */}
         <View style={s.header}>
@@ -291,7 +293,7 @@ export default function SettingsView({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  root: { flex: 1, backgroundColor: '#F3F1EF' },
   flex: { flex: 1 },
 
   header: {
