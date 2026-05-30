@@ -879,11 +879,12 @@ export default function Home() {
   if (profileLoaded && !profileSetupDone) {
     return (
       <ProfileSetup
-        onDone={(age, gender) => {
+        onDone={(age, gender, prefecture) => {
           setProfileAge(age);
           setProfileGender(gender);
+          setProfilePrefecture(prefecture);
           setProfileSetupDone(true);
-          saveJSON(PROFILE_KEY, { age, gender });
+          saveJSON(PROFILE_KEY, { age, gender, prefecture });
         }}
       />
     );
@@ -1173,5 +1174,5 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
+  root: { flex: 1, backgroundColor: '#F5F0FF' },
 });

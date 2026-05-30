@@ -1,16 +1,26 @@
-import { Check, ChevronRight } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+/**
+ * SettingsView.tsx — 設定画面 (MoodGo UI統一)
+ */
+import { LinearGradient } from 'expo-linear-gradient';
+import { Check, ChevronRight, Globe, MapPin, Trash2, UserRound } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+  Alert, Animated, Dimensions, Modal, ScrollView,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, {
+  Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
+} from 'react-native-svg';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
+
+// ─── tokens ──────────────────────────────────────────────────────────────────
+const PINK   = '#F56CB3';
+const PURPLE = '#9B6BFF';
+const BLUE   = '#4FA3FF';
+const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
+const BG     = '#F5F0FF';
+const { width: W } = Dimensions.get('window');
 
 const AGE_OPTIONS    = ['10代', '20代', '30代', '40代', '50代', '60代以上'];
 const GENDER_OPTIONS = ['男性', '女性', 'その他', '答えたくない'];
@@ -27,74 +37,98 @@ type Props = {
   onClearHistory: () => void;
 };
 
-const T = {
-  ja: {
-    title: '設定',
-    done: '完了',
-    sectionDisplay: '表示',
-    language: '言語',
-    sectionProfile: 'プロフィール',
-    ageLabel: '年代',
-    genderLabel: '性別',
-    prefectureLabel: '都道府県',
-    saveProfile: '保存する',
-    sectionData: 'データ',
-    clearHistory: '履歴をすべてクリア',
-    clearConfirmTitle: '履歴を削除',
-    clearConfirmMsg: 'これまでの検索履歴がすべて消えます。よろしいですか？',
-    clearConfirmOk: '削除する',
-    clearConfirmCancel: 'キャンセル',
-    sectionAbout: 'このアプリについて',
-    version: 'バージョン',
-    versionVal: '1.0.0',
-  },
-  en: {
-    title: 'Settings',
-    done: 'Done',
-    sectionDisplay: 'Display',
-    language: 'Language',
-    sectionProfile: 'Profile',
-    ageLabel: 'Age group',
-    genderLabel: 'Gender',
-    prefectureLabel: 'Prefecture',
-    saveProfile: 'Save',
-    sectionData: 'Data',
-    clearHistory: 'Clear all history',
-    clearConfirmTitle: 'Clear history',
-    clearConfirmMsg: 'All past search history will be deleted. Continue?',
-    clearConfirmOk: 'Delete',
-    clearConfirmCancel: 'Cancel',
-    sectionAbout: 'About',
-    version: 'Version',
-    versionVal: '1.0.0',
-  },
-} as const;
+// ─── Logo ─────────────────────────────────────────────────────────────────────
+function GradientLogo() {
+  const fs = Math.round(W * 0.09);
+  return (
+    <Svg width={W * 0.5} height={fs * 1.5}>
+      <Defs>
+        <SvgGrad id="sg" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%"   stopColor={PINK}   />
+          <Stop offset="48%"  stopColor={PURPLE}  />
+          <Stop offset="100%" stopColor={BLUE}   />
+        </SvgGrad>
+      </Defs>
+      <SvgText x="50%" y={fs} textAnchor="middle"
+        fill="url(#sg)" fontSize={fs} fontWeight="800" letterSpacing={-0.5}>
+        MoodGo
+      </SvgText>
+    </Svg>
+  );
+}
 
+// ─── Chip ─────────────────────────────────────────────────────────────────────
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const pIn  = () => Animated.spring(scale, { toValue: 0.94, tension: 300, friction: 10, useNativeDriver: true }).start();
+  const pOut = () => Animated.spring(scale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        onPress={onPress} onPressIn={pIn} onPressOut={pOut}
+        activeOpacity={1}
+        style={[s.chip, active && s.chipActive]}
+      >
+        {active && (
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill} />
+        )}
+        <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ─── Section Header ────────────────────────────────────────────────────────────
+function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <View style={s.sectionHeader}>
+      {icon}
+      <Text style={s.sectionLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SettingsView({
   visible, onClose, lang, onChangeLang,
   profileAge, profileGender, profilePrefecture, onSaveProfile, onClearHistory,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const t = T[lang];
 
-  const [ageInput, setAgeInput]             = useState(profileAge);
-  const [genderInput, setGenderInput]       = useState(profileGender);
+  const [ageInput, setAgeInput]               = useState(profileAge);
+  const [genderInput, setGenderInput]         = useState(profileGender);
   const [prefectureInput, setPrefectureInput] = useState(profilePrefecture);
-  const [prefPickerVisible, setPrefPickerVisible] = useState(false);
+  const [showPrefPicker, setShowPrefPicker]   = useState(false);
+  const [saved, setSaved]                     = useState(false);
 
   useEffect(() => {
     if (visible) {
       setAgeInput(profileAge);
       setGenderInput(profileGender);
       setPrefectureInput(profilePrefecture);
+      setSaved(false);
+      setShowPrefPicker(false);
     }
   }, [visible, profileAge, profileGender, profilePrefecture]);
 
+  const handleSave = () => {
+    onSaveProfile(ageInput, genderInput, prefectureInput);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  };
+
   const handleClearHistory = () => {
-    Alert.alert(t.clearConfirmTitle, t.clearConfirmMsg, [
-      { text: t.clearConfirmCancel, style: 'cancel' },
-      { text: t.clearConfirmOk, style: 'destructive', onPress: onClearHistory },
-    ]);
+    Alert.alert(
+      lang === 'ja' ? '履歴を削除' : 'Clear history',
+      lang === 'ja'
+        ? 'これまでの検索履歴がすべて消えます。よろしいですか？'
+        : 'All past search history will be deleted. Continue?',
+      [
+        { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        { text: lang === 'ja' ? '削除する' : 'Delete', style: 'destructive', onPress: onClearHistory },
+      ]
+    );
   };
 
   return (
@@ -105,218 +139,261 @@ export default function SettingsView({
       onRequestClose={onClose}
     >
       <View style={[s.root, { paddingTop: insets.top || 20 }]}>
-        {/* Header */}
+
+        {/* ── Header ── */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>{t.title}</Text>
-          <TouchableOpacity
-            onPress={() => { onSaveProfile(ageInput, genderInput, prefectureInput); onClose(); }}
-            style={s.doneBtn}
-          >
-            <Text style={s.doneBtnText}>{t.done}</Text>
+          <GradientLogo />
+          <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7}>
+            <Text style={s.closeBtnText}>{lang === 'ja' ? '完了' : 'Done'}</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          style={s.scroll}
-          contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 32 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── Display ── */}
-          <Text style={s.sectionLabel}>{t.sectionDisplay}</Text>
-          <View style={s.card}>
-            <View style={s.row}>
-              <Text style={s.rowLabel}>{t.language}</Text>
-              <View style={s.segmented}>
+        {showPrefPicker ? (
+          /* ── Prefecture Picker ── */
+          <View style={s.flex}>
+            <View style={s.pickerHeader}>
+              <TouchableOpacity onPress={() => setShowPrefPicker(false)} style={s.backCircle}>
+                <Text style={s.backCircleText}>←</Text>
+              </TouchableOpacity>
+              <Text style={s.pickerTitle}>{lang === 'ja' ? '都道府県' : 'Prefecture'}</Text>
+              <View style={{ width: 40 }} />
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 32, paddingTop: 8 }}
+            >
+              {PREFECTURE_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => { setPrefectureInput(opt); setShowPrefPicker(false); }}
+                  style={[s.prefRow, prefectureInput === opt && s.prefRowActive]}
+                  activeOpacity={0.72}
+                >
+                  {prefectureInput === opt && (
+                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                      style={StyleSheet.absoluteFill} />
+                  )}
+                  <Text style={[s.prefText, prefectureInput === opt && s.prefTextActive]}>{opt}</Text>
+                  {prefectureInput === opt && (
+                    <Check size={16} color="#fff" strokeWidth={2.5} style={{ marginLeft: 'auto' }} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        ) : (
+          /* ── Main Settings ── */
+          <ScrollView
+            style={s.flex}
+            contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* タイトル */}
+            <Text style={s.pageTitle}>{lang === 'ja' ? '設定' : 'Settings'}</Text>
+
+            {/* ── プロフィール ── */}
+            <SectionHeader
+              icon={<UserRound size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? 'プロフィール' : 'Profile'}
+            />
+            <View style={s.card}>
+              {/* 年代 */}
+              <Text style={s.fieldLabel}>{lang === 'ja' ? '年代' : 'Age group'}</Text>
+              <View style={s.chipRow}>
+                {AGE_OPTIONS.map((opt) => (
+                  <Chip key={opt} label={opt} active={ageInput === opt} onPress={() => setAgeInput(opt)} />
+                ))}
+              </View>
+
+              {/* 性別 */}
+              <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '性別' : 'Gender'}</Text>
+              <View style={s.chipRow}>
+                {GENDER_OPTIONS.map((opt) => (
+                  <Chip key={opt} label={opt} active={genderInput === opt} onPress={() => setGenderInput(opt)} />
+                ))}
+              </View>
+
+              {/* 都道府県 */}
+              <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '都道府県' : 'Prefecture'}</Text>
+              <TouchableOpacity onPress={() => setShowPrefPicker(true)} activeOpacity={0.8} style={s.prefBtn}>
+                <MapPin size={16} color={prefectureInput ? PURPLE : '#A78BFA'} strokeWidth={2} />
+                <Text style={[s.prefBtnText, prefectureInput && s.prefBtnTextFilled]}>
+                  {prefectureInput || (lang === 'ja' ? '選択してください' : 'Select')}
+                </Text>
+                <ChevronRight size={15} color="#A78BFA" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            {/* 保存ボタン */}
+            <TouchableOpacity onPress={handleSave} activeOpacity={0.88} style={s.saveWrap}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
+                {saved
+                  ? <Check size={22} color="#fff" strokeWidth={2.5} />
+                  : <Text style={s.saveBtnText}>{lang === 'ja' ? '保存する' : 'Save'}</Text>
+                }
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {/* ── 言語 ── */}
+            <SectionHeader
+              icon={<Globe size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? '言語' : 'Language'}
+            />
+            <View style={s.card}>
+              <View style={s.langRow}>
                 {(['ja', 'en'] as const).map((l) => (
                   <TouchableOpacity
                     key={l}
                     onPress={() => onChangeLang(l)}
-                    style={[s.segment, lang === l && s.segmentActive]}
-                    activeOpacity={0.7}
+                    activeOpacity={0.8}
+                    style={[s.langSegment, lang === l && s.langSegmentActive]}
                   >
-                    <Text style={[s.segmentText, lang === l && s.segmentTextActive]}>
+                    {lang === l && (
+                      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={StyleSheet.absoluteFill} />
+                    )}
+                    <Text style={[s.langSegmentText, lang === l && s.langSegmentTextActive]}>
                       {l === 'ja' ? '日本語' : 'English'}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-          </View>
 
-          {/* ── Profile ── */}
-          <Text style={s.sectionLabel}>{t.sectionProfile}</Text>
-          <View style={s.card}>
-            <View style={[s.row, s.rowBorder]}>
-              <Text style={s.rowLabel}>{t.ageLabel}</Text>
-            </View>
-            <View style={s.optionGrid}>
-              {AGE_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt}
-                  onPress={() => setAgeInput(opt)}
-                  style={[s.optionChip, ageInput === opt && s.optionChipActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.optionChipText, ageInput === opt && s.optionChipTextActive]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={[s.row, s.rowBorder, { marginTop: 4 }]}>
-              <Text style={s.rowLabel}>{t.genderLabel}</Text>
-            </View>
-            <View style={s.optionGrid}>
-              {GENDER_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt}
-                  onPress={() => setGenderInput(opt)}
-                  style={[s.optionChip, genderInput === opt && s.optionChipActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.optionChipText, genderInput === opt && s.optionChipTextActive]}>{opt}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setPrefPickerVisible(true)}
-              style={[s.row, { marginTop: 4 }]}
-              activeOpacity={0.7}
-            >
-              <Text style={s.rowLabel}>{t.prefectureLabel}</Text>
-              <View style={s.prefRow}>
-                <Text style={prefectureInput ? s.rowValue : s.rowValueEmpty}>
-                  {prefectureInput || (lang === 'ja' ? '未設定' : 'Not set')}
+            {/* ── データ ── */}
+            <SectionHeader
+              icon={<Trash2 size={15} color="#FF6B8A" strokeWidth={2} />}
+              label={lang === 'ja' ? 'データ' : 'Data'}
+            />
+            <View style={s.card}>
+              <TouchableOpacity onPress={handleClearHistory} style={s.dangerRow} activeOpacity={0.7}>
+                <Text style={s.dangerText}>
+                  {lang === 'ja' ? '履歴をすべてクリア' : 'Clear all history'}
                 </Text>
-                <ChevronRight size={16} color="#C7C7CC" strokeWidth={2} />
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => onSaveProfile(ageInput, genderInput, prefectureInput)}
-            style={s.saveBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={s.saveBtnText}>{t.saveProfile}</Text>
-          </TouchableOpacity>
-
-          {/* ── Data ── */}
-          <Text style={s.sectionLabel}>{t.sectionData}</Text>
-          <View style={s.card}>
-            <TouchableOpacity onPress={handleClearHistory} style={s.row} activeOpacity={0.7}>
-              <Text style={s.destructiveText}>{t.clearHistory}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── About ── */}
-          <Text style={s.sectionLabel}>{t.sectionAbout}</Text>
-          <View style={s.card}>
-            <View style={s.row}>
-              <Text style={s.rowLabel}>{t.version}</Text>
-              <Text style={s.rowValue}>{t.versionVal}</Text>
-            </View>
-          </View>
-        </ScrollView>
-
-        {/* 都道府県ピッカー：同じ Modal 内のオーバーレイ */}
-        {prefPickerVisible && (
-          <View style={[StyleSheet.absoluteFill, s.prefOverlay]}>
-            <View style={s.prefOverlayHeader}>
-              <Text style={s.prefOverlayTitle}>{t.prefectureLabel}</Text>
-              <TouchableOpacity onPress={() => setPrefPickerVisible(false)} style={s.doneBtn}>
-                <Text style={s.doneBtnText}>{t.done}</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView
-              style={s.prefOverlayScroll}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 16, padding: 16 }}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={s.card}>
-                {PREFECTURE_OPTIONS.map((opt, i) => (
-                  <TouchableOpacity
-                    key={opt}
-                    onPress={() => { setPrefectureInput(opt); setPrefPickerVisible(false); }}
-                    style={[s.row, i < PREFECTURE_OPTIONS.length - 1 && s.rowBorder]}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[s.rowLabel, prefectureInput === opt && s.rowValue]}>{opt}</Text>
-                    {prefectureInput === opt && <Check size={18} color="#FF6B35" strokeWidth={2.5} />}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          </View>
+
+            {/* ── バージョン ── */}
+            <View style={s.versionRow}>
+              <Text style={s.versionText}>MoodGo  v1.0.0</Text>
+            </View>
+          </ScrollView>
         )}
       </View>
     </Modal>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
+  root: { flex: 1, backgroundColor: BG },
+  flex: { flex: 1 },
+
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    backgroundColor: '#F2F2F7',
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.12)',
+    paddingHorizontal: 24, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(167,139,250,0.2)',
   },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#000' },
-  doneBtn: { paddingVertical: 4, paddingHorizontal: 2 },
-  doneBtnText: { fontSize: 17, fontWeight: '600', color: '#FF6B35' },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 24, gap: 0 },
+  closeBtn: {
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 999, borderWidth: 1.5, borderColor: '#DDD6FE',
+    backgroundColor: '#fff',
+  },
+  closeBtnText: { fontSize: 14, fontWeight: '700', color: PURPLE },
+
+  content: { paddingHorizontal: 20, paddingTop: 8 },
+  pageTitle: {
+    fontSize: 26, fontWeight: '900', color: '#1E0753',
+    marginBottom: 20, marginTop: 8, letterSpacing: -0.5,
+  },
+
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginBottom: 10, marginTop: 24,
+  },
   sectionLabel: {
-    fontSize: 13, fontWeight: '500', color: '#8E8E93',
-    textTransform: 'uppercase', letterSpacing: 0.4,
-    paddingHorizontal: 4, marginBottom: 6, marginTop: 24,
+    fontSize: 13, fontWeight: '800', color: PURPLE, letterSpacing: 0.3,
   },
+
   card: {
-    backgroundColor: '#fff', borderRadius: 12,
+    backgroundColor: '#fff', borderRadius: 18, padding: 18,
+    borderWidth: 1.5, borderColor: '#EDE9FE',
+    shadowColor: PURPLE, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
+  },
+
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#7C3AED', marginBottom: 10, letterSpacing: 0.2 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+
+  chip: {
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999,
+    backgroundColor: '#FAFAFF', borderWidth: 1.5, borderColor: '#DDD6FE',
     overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4,
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
   },
-  row: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 13, minHeight: 48,
-  },
-  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA' },
-  rowLabel: { fontSize: 16, color: '#000', fontWeight: '400' },
-  rowValue: { fontSize: 15, color: '#FF6B35', fontWeight: '600' },
-  rowValueEmpty: { fontSize: 15, color: '#C7C7CC', fontWeight: '400' },
-  prefRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  chipActive:     { borderColor: 'transparent', shadowColor: PURPLE, shadowOpacity: 0.28, shadowRadius: 8, elevation: 4 },
+  chipText:       { fontSize: 13, fontWeight: '600', color: '#374151' },
+  chipTextActive: { color: '#fff', fontWeight: '800' },
 
-  optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 12 },
-  optionChip: {
-    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10,
-    backgroundColor: '#F2F2F7', borderWidth: 1, borderColor: '#E5E5EA',
+  prefBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FAFAFF', borderRadius: 12, borderWidth: 1.5, borderColor: '#DDD6FE',
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginTop: 4,
   },
-  optionChipActive: { backgroundColor: '#FF6B3515', borderColor: '#FF6B35' },
-  optionChipText: { fontSize: 14, fontWeight: '500', color: '#3C3C43' },
-  optionChipTextActive: { color: '#FF6B35', fontWeight: '600' },
+  prefBtnText:       { flex: 1, fontSize: 14, color: '#C4B5FD', fontWeight: '500' },
+  prefBtnTextFilled: { color: '#1E0753', fontWeight: '700' },
 
-  segmented: {
-    flexDirection: 'row', backgroundColor: '#E5E5EA', borderRadius: 8, padding: 2, gap: 2,
+  saveWrap: {
+    marginTop: 16, borderRadius: 16, overflow: 'hidden',
+    shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.32, shadowRadius: 16, elevation: 8,
   },
-  segment: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 },
-  segmentActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  segmentText: { fontSize: 14, fontWeight: '500', color: '#8E8E93' },
-  segmentTextActive: { color: '#000', fontWeight: '600' },
-
   saveBtn: {
-    marginTop: 10, backgroundColor: '#FF6B35', borderRadius: 10, paddingVertical: 13,
-    alignItems: 'center',
+    height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
   },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  destructiveText: { fontSize: 16, color: '#FF3B30', fontWeight: '400' },
+  saveBtnText: { fontSize: 16, fontWeight: '900', color: '#fff', letterSpacing: 0.4 },
 
-  prefOverlay: { backgroundColor: '#F2F2F7', zIndex: 10 },
-  prefOverlayHeader: {
+  langRow: {
+    flexDirection: 'row', gap: 8,
+  },
+  langSegment: {
+    flex: 1, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#F3EEFF', borderWidth: 1.5, borderColor: '#DDD6FE',
+  },
+  langSegmentActive: { borderColor: 'transparent', shadowColor: PURPLE, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  langSegmentText:       { fontSize: 14, fontWeight: '700', color: '#9CA3AF' },
+  langSegmentTextActive: { color: '#fff', fontWeight: '800' },
+
+  dangerRow: {
+    paddingVertical: 4, alignItems: 'center',
+  },
+  dangerText: { fontSize: 15, fontWeight: '700', color: '#FF6B8A' },
+
+  versionRow: { alignItems: 'center', marginTop: 32 },
+  versionText: { fontSize: 12, color: '#C4B5FD', fontWeight: '500' },
+
+  // 都道府県ピッカー
+  pickerHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.12)',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(167,139,250,0.2)',
   },
-  prefOverlayTitle: { fontSize: 17, fontWeight: '700', color: '#000' },
-  prefOverlayScroll: { flex: 1 },
+  backCircle: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#EDE9FE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  backCircleText: { fontSize: 18, color: '#7C3AED', fontWeight: '700' },
+  pickerTitle:    { fontSize: 16, fontWeight: '800', color: '#1E0753' },
+  prefRow: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 14, overflow: 'hidden', paddingVertical: 14, paddingHorizontal: 18,
+    backgroundColor: '#fff', marginBottom: 8,
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+  },
+  prefRowActive:  { borderColor: 'transparent' },
+  prefText:       { fontSize: 15, fontWeight: '600', color: '#374151' },
+  prefTextActive: { color: '#fff', fontWeight: '800' },
 });
