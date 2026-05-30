@@ -757,9 +757,20 @@ export default function QuizFlow(props: Props) {
   const stepSlX = useRef(new Animated.Value(0)).current;
   const prevSt  = useRef(step);
 
+  // スクロールロック: コンテンツがコンテナに収まっているときは無効化
+  const [scrollEnabled, setScrollEnabled] = useState(false);
+  const scrollContainerH = useRef(0);
+  const scrollContentH   = useRef(0);
+  const checkScrollable  = () => {
+    setScrollEnabled(scrollContentH.current > scrollContainerH.current + 2); // 2px余裕
+  };
+
   useEffect(() => {
     const dir = step >= prevSt.current ? 1 : -1;
     prevSt.current = step;
+    // ステップ変化時にスクロール状態をリセット
+    setScrollEnabled(false);
+    scrollContentH.current = 0;
     stepSlX.setValue(dir * 40); stepOp.setValue(0);
     Animated.parallel([
       Animated.timing(stepOp,  { toValue: 1, duration: 250, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
@@ -1046,8 +1057,21 @@ export default function QuizFlow(props: Props) {
           <Text style={s.title}>{meta.title}</Text>
           <Text style={s.sub}>{meta.sub}</Text>
         </View>
-        <ScrollView style={s.flex} contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={s.flex}
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={scrollEnabled}
+          onLayout={(e) => {
+            scrollContainerH.current = e.nativeEvent.layout.height;
+            checkScrollable();
+          }}
+          onContentSizeChange={(_, h) => {
+            scrollContentH.current = h;
+            checkScrollable();
+          }}
+        >
           {renderContent()}
         </ScrollView>
       </Animated.View>
