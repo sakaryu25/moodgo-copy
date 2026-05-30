@@ -157,11 +157,12 @@ type Props = {
   lang: 'ja' | 'en';
   onStart: () => void;
   onShowSettings: () => void;
+  onShowFeatured: () => void;
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowSettings }: Props) {
+export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured }: Props) {
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
@@ -263,7 +264,7 @@ export default function HomeView({ lang, onStart, onShowSettings }: Props) {
                   <TouchableOpacity
                     style={s.featuredBtn}
                     activeOpacity={0.82}
-                    onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
+                    onPress={onShowFeatured}
                   >
                     <Text style={s.featuredBtnText}>
                       {lang === 'en' ? "See what's inside →" : '何があるか見てみる　→'}

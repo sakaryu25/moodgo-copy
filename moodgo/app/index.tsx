@@ -1129,6 +1129,7 @@ export default function Home() {
             lang={lang}
             onStart={() => setStarted(true)}
             onShowSettings={() => setShowSettings(true)}
+            onShowFeatured={() => { setHomeView('featured'); loadFeaturedList(); }}
           />
         );
     }
