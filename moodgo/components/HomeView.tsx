@@ -180,6 +180,17 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
     ]).start();
   }, []);
 
+  // 穴場ぷかぷかアニメ
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -6, duration: 1200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue:  0, duration: 1200, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onStart();
@@ -191,13 +202,15 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
 
       {/* ── Header ── */}
       <View style={s.header}>
-        <TouchableOpacity
-          style={s.suggestPill}
-          activeOpacity={0.78}
-          onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
-        >
-          <Text style={s.suggestText}>📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
+          <TouchableOpacity
+            style={s.suggestPill}
+            activeOpacity={0.78}
+            onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
+          >
+            <Text style={s.suggestText}>📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
+          </TouchableOpacity>
+        </Animated.View>
         <TouchableOpacity style={s.settingsBtn} onPress={onShowSettings} activeOpacity={0.72}>
           <Settings size={20} color="#888" strokeWidth={2} />
         </TouchableOpacity>
