@@ -1,120 +1,155 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+/**
+ * HomeView.tsx
+ * スクリーンショット準拠のホーム画面
+ * - M文字背景パターン (SplashScreen準拠)
+ * - MoodGoグラデーションロゴ
+ * - START ボタン
+ * - 今月の特集カード (moodgo-home-hero.png)
+ * - 今日のおすすめ気分 横スクロール
+ */
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Settings } from 'lucide-react-native';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Activity, Bike, BookOpen, Car, Coffee,
+  Leaf, Moon, Plane, Settings, Shuffle,
+  Sparkles, UtensilsCrossed, CloudRain,
+} from 'lucide-react-native';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
+  Dimensions,
+  Image,
+  ImageBackground,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
-import { COLORS } from '@/constants/colors';
+import Svg, {
+  Defs,
+  G,
+  LinearGradient as SvgGradient,
+  Path,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 
-const MOODS = [
-  { label: '最高！', labelEn: 'Amazing!', color: '#FFD040', ring: '#FFAA00', bg: '#FFF7D6', faceColor: '#FFE566' },
-  { label: 'いい感じ', labelEn: 'Good',   color: '#5DD87A', ring: '#38C058', bg: '#E6F9EC', faceColor: '#7DE898' },
-  { label: 'まあまあ', labelEn: 'OK',     color: '#60B0F0', ring: '#3890D8', bg: '#E0EEFB', faceColor: '#80C4F4' },
-  { label: 'ぱっとしない', labelEn: 'Meh', color: '#A890D0', ring: '#8870B8', bg: '#EEE8F8', faceColor: '#C0A8E0' },
+// ─── Design tokens ───────────────────────────────────────────────────────────
+
+const { width: W } = Dimensions.get('window');
+
+const BG     = '#F3F1EF';
+const PINK   = '#F56CB3';
+const PURPLE = '#9B6BFF';
+const BLUE   = '#4FA3FF';
+const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
+
+// ─── BackgroundPattern (M-letters) ───────────────────────────────────────────
+
+const { height: H } = Dimensions.get('window');
+
+function mSkeleton(cx: number, cy: number, w: number, h: number): string {
+  const x1 = cx - w / 2;
+  const x2 = cx + w / 2;
+  const yTop = cy - h / 2;
+  const yBot = cy + h / 2;
+  const yNotch = yTop + h * 0.46;
+  return `M ${x1},${yBot} L ${x1},${yTop} L ${cx},${yNotch} L ${x2},${yTop} L ${x2},${yBot}`;
+}
+
+type MDef = { cx: number; cy: number; w: number; h: number; rot: number; sw: number };
+
+const SHAPES: MDef[] = [
+  { cx: 52,        cy: 126,      w: 130, h: 104, rot: -11, sw: 27 },
+  { cx: W - 48,    cy: 96,       w: 110, h: 88,  rot: 10,  sw: 23 },
+  { cx: 48,        cy: H - 155,  w: 124, h: 98,  rot: 9,   sw: 26 },
+  { cx: W - 54,    cy: H - 124,  w: 116, h: 92,  rot: -9,  sw: 24 },
 ];
 
-const DAY_LABELS_JA = ['月', '火', '水', '木', '金', '土', '日'];
-const DAY_LABELS_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const M_COLOR  = 'rgba(255,255,255,0.58)';
+const M_SHADOW = 'rgba(148,136,124,0.13)';
 
-function todayKey() {
-  return new Date().toISOString().split('T')[0];
-}
-
-function getWeekDates(): string[] {
-  const today = new Date();
-  const day = today.getDay();
-  const mon = new Date(today);
-  mon.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(mon);
-    d.setDate(mon.getDate() + i);
-    return d.toISOString().split('T')[0];
-  });
-}
-
-// ── Face SVGs ──────────────────────────────────────────────────────────────
-
-function FaceSuper({ sz }: { sz: number }) {
+function BgM({ s }: { s: MDef }) {
+  const d = mSkeleton(s.cx, s.cy, s.w, s.h);
+  const shared = { fill: 'none' as const, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   return (
-    <Svg width={sz} height={sz} viewBox="0 0 40 40">
-      {/* squint happy eyes */}
-      <Path d="M10 17 Q13 12.5 16 17" fill="none" stroke="#1a0a10" strokeWidth="2.4" strokeLinecap="round" />
-      <Path d="M24 17 Q27 12.5 30 17" fill="none" stroke="#1a0a10" strokeWidth="2.4" strokeLinecap="round" />
-      {/* big grin */}
-      <Path d="M9 24 Q20 35 31 24" fill="none" stroke="#1a0a10" strokeWidth="2.4" strokeLinecap="round" />
-      {/* cheeks */}
-      <Ellipse cx="8"  cy="24" rx="4.5" ry="3" fill="#FF7A9A" opacity={0.5} />
-      <Ellipse cx="32" cy="24" rx="4.5" ry="3" fill="#FF7A9A" opacity={0.5} />
-      {/* sparkles */}
-      <Path d="M34 10 L34 15 M31.5 12.5 L36.5 12.5" stroke="#FFD040" strokeWidth="1.6" strokeLinecap="round" />
-      <Path d="M5  9  L5  13 M3  11  L7  11"          stroke="#FFD040" strokeWidth="1.4" strokeLinecap="round" />
+    <G transform={`rotate(${s.rot}, ${s.cx}, ${s.cy})`}>
+      <Path d={mSkeleton(s.cx + 2, s.cy + 2, s.w, s.h)} stroke={M_SHADOW} strokeWidth={s.sw + 2} {...shared} />
+      <Path d={d} stroke={M_COLOR} strokeWidth={s.sw} {...shared} />
+    </G>
+  );
+}
+
+function BackgroundPattern() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width={W} height={H}>
+        {SHAPES.map((s, i) => <BgM key={i} s={s} />)}
+      </Svg>
+    </View>
+  );
+}
+
+// ─── GradientLogo ─────────────────────────────────────────────────────────────
+
+const LOGO_SIZE_RATIO = 0.145;
+
+function GradientLogo() {
+  const fontSize = Math.round(W * LOGO_SIZE_RATIO);
+  const svgW = W * 0.80;
+  const svgH = fontSize * 1.5;
+  return (
+    <Svg width={svgW} height={svgH}>
+      <Defs>
+        <SvgGradient id="hgrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%"   stopColor={PINK}   />
+          <Stop offset="48%"  stopColor={PURPLE}  />
+          <Stop offset="100%" stopColor={BLUE}   />
+        </SvgGradient>
+      </Defs>
+      <SvgText
+        x="50%"
+        y={fontSize}
+        textAnchor="middle"
+        fill="url(#hgrad)"
+        fontSize={fontSize}
+        fontWeight="800"
+        letterSpacing={-0.5}
+      >
+        MoodGo
+      </SvgText>
     </Svg>
   );
 }
 
-function FaceGood({ sz }: { sz: number }) {
-  return (
-    <Svg width={sz} height={sz} viewBox="0 0 40 40">
-      {/* round eyes */}
-      <Circle cx="13" cy="16" r="3"   fill="#1a0a10" />
-      <Circle cx="27" cy="16" r="3"   fill="#1a0a10" />
-      <Circle cx="14.4" cy="14.6" r="1.2" fill="white" />
-      <Circle cx="28.4" cy="14.6" r="1.2" fill="white" />
-      {/* smile */}
-      <Path d="M13 25 Q20 31 27 25" fill="none" stroke="#1a0a10" strokeWidth="2.3" strokeLinecap="round" />
-      {/* cheeks */}
-      <Ellipse cx="9"  cy="23" rx="4" ry="2.8" fill="#FF9EAA" opacity={0.4} />
-      <Ellipse cx="31" cy="23" rx="4" ry="2.8" fill="#FF9EAA" opacity={0.4} />
-    </Svg>
-  );
-}
+// ─── Mood data ────────────────────────────────────────────────────────────────
 
-function FaceMeh({ sz, lidColor }: { sz: number; lidColor: string }) {
-  return (
-    <Svg width={sz} height={sz} viewBox="0 0 40 40">
-      {/* eyes */}
-      <Circle cx="13" cy="17" r="3" fill="#1a0a10" />
-      <Circle cx="27" cy="17" r="3" fill="#1a0a10" />
-      <Circle cx="14.2" cy="15.6" r="1.1" fill="white" />
-      <Circle cx="28.2" cy="15.6" r="1.1" fill="white" />
-      {/* heavy lids (same color as face bg) */}
-      <Path d="M10 17 Q13 13.5 16 17 Z" fill={lidColor} />
-      <Path d="M24 17 Q27 13.5 30 17 Z" fill={lidColor} />
-      {/* flat mouth */}
-      <Path d="M14 26 Q20 27.5 26 26" fill="none" stroke="#1a0a10" strokeWidth="2.1" strokeLinecap="round" />
-    </Svg>
-  );
-}
+type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
-function FaceBored({ sz, lidColor }: { sz: number; lidColor: string }) {
-  return (
-    <Svg width={sz} height={sz} viewBox="0 0 40 40">
-      {/* droopy eyes */}
-      <Ellipse cx="13" cy="18" rx="3" ry="2.6" fill="#1a0a10" />
-      <Ellipse cx="27" cy="18" rx="3" ry="2.6" fill="#1a0a10" />
-      <Circle cx="13.8" cy="16.8" r="1" fill="white" />
-      <Circle cx="27.8" cy="16.8" r="1" fill="white" />
-      {/* heavy droopy lids */}
-      <Path d="M10 18 Q13 14 16 18 Z" fill={lidColor} />
-      <Path d="M24 18 Q27 14 30 18 Z" fill={lidColor} />
-      {/* frown */}
-      <Path d="M13 27 Q20 23.5 27 27" fill="none" stroke="#1a0a10" strokeWidth="2.1" strokeLinecap="round" />
-      {/* sweat drop */}
-      <Path d="M31 9 Q32.8 11.5 31 14 Q29.2 11.5 31 9 Z" fill="#A8C8F0" />
-    </Svg>
-  );
-}
+const MOOD_CARDS: {
+  key: string;
+  label: string;
+  Icon: LucideIcon;
+  iconColor: string;
+  bgStart: string;
+  bgEnd: string;
+}[] = [
+  { key: 'まったりしたい',     label: 'まったり',     Icon: CloudRain,       iconColor: '#6BA3BE', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
+  { key: '遠くに行きたい',     label: '小旅行',       Icon: Moon,            iconColor: '#7B68EE', bgStart: '#E8E0FF', bgEnd: '#F0EDFF' },
+  { key: '自然感じたい',       label: '自然',         Icon: Leaf,            iconColor: '#27AE60', bgStart: '#D5F5E3', bgEnd: '#EAFAF1' },
+  { key: 'お腹すいた',         label: 'グルメ',       Icon: UtensilsCrossed, iconColor: '#E67E22', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
+  { key: 'わいわい楽しみたい', label: 'わいわい',     Icon: Sparkles,        iconColor: '#E91E8C', bgStart: '#FDCEDF', bgEnd: '#FEF0F5' },
+  { key: '体を動かしたい',     label: 'スポーツ',     Icon: Activity,        iconColor: '#16A085', bgStart: '#D1F2EB', bgEnd: '#E8FAF5' },
+  { key: 'ドライブしたい',     label: 'ドライブ',     Icon: Car,             iconColor: '#2980B9', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
+  { key: '集中したい',         label: '集中',         Icon: BookOpen,        iconColor: '#8E44AD', bgStart: '#E8DAEF', bgEnd: '#F5EEF8' },
+  { key: '時間潰したい',       label: 'ランダム',     Icon: Shuffle,         iconColor: '#F39C12', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
+];
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
   profileAge: string;
@@ -124,315 +159,259 @@ type Props = {
   onShowSettings: () => void;
 };
 
-// ── Main ───────────────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ profileAge, lang, onStart, onShowSettings }: Props) {
+export default function HomeView({ lang, onStart, onShowSettings }: Props) {
   const insets = useSafeAreaInsets();
-  const [todayMood, setTodayMood]   = useState<number | null>(null);
-  const [weekMoods, setWeekMoods]   = useState<Record<string, number>>({});
-  const [streak, setStreak]         = useState(0);
-  const scaleAnims = useRef(MOODS.map(() => new Animated.Value(1))).current;
 
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  // START ボタンのプレスアニメ
+  const startScale = useRef(new Animated.Value(1)).current;
+  const pressIn  = () => Animated.spring(startScale, { toValue: 0.96, tension: 300, friction: 10, useNativeDriver: true }).start();
+  const pressOut = () => Animated.spring(startScale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
+
+  // フェードイン
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(24)).current;
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.03, duration: 1400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,    duration: 1400, useNativeDriver: true }),
-      ])
-    ).start();
-  }, [pulseAnim]);
-
-  // load stored moods + calculate streak
-  useEffect(() => {
-    (async () => {
-      const week = getWeekDates();
-      const entries = await Promise.all(
-        week.map(async (date) => {
-          const val = await AsyncStorage.getItem(`mood_${date}`);
-          return [date, val != null ? parseInt(val, 10) : null] as const;
-        })
-      );
-      const map: Record<string, number> = {};
-      for (const [date, val] of entries) {
-        if (val != null) map[date] = val;
-      }
-      setWeekMoods(map);
-      const today = map[todayKey()];
-      if (today != null) setTodayMood(today);
-
-      // streak: count consecutive days backwards from today
-      let s = 0;
-      const now = new Date();
-      for (let i = 0; i < 90; i++) {
-        const d = new Date(now);
-        d.setDate(now.getDate() - i);
-        const key = `mood_${d.toISOString().split('T')[0]}`;
-        const val = await AsyncStorage.getItem(key);
-        if (val != null) s++;
-        else break;
-      }
-      setStreak(s);
-    })();
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 420, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 160, friction: 22, useNativeDriver: true }),
+    ]).start();
   }, []);
 
-  const selectMood = useCallback(async (index: number) => {
+  const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // bounce animation
-    Animated.sequence([
-      Animated.timing(scaleAnims[index], { toValue: 1.18, duration: 120, useNativeDriver: true }),
-      Animated.spring(scaleAnims[index], { toValue: 1, friction: 4, useNativeDriver: true }),
-    ]).start();
-
-    const key = todayKey();
-    const wasNew = weekMoods[key] == null;
-    await AsyncStorage.setItem(`mood_${key}`, String(index));
-    setTodayMood(index);
-    setWeekMoods((prev) => ({ ...prev, [key]: index }));
-    if (wasNew) setStreak((prev) => prev + 1);
-  }, [scaleAnims, weekMoods]);
-
-  const weekDates  = getWeekDates();
-  const todayStr   = todayKey();
-  const dayLabels  = lang === 'en' ? DAY_LABELS_EN : DAY_LABELS_JA;
+    onStart();
+  };
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
+      <BackgroundPattern />
 
       {/* ── Header ── */}
       <View style={s.header}>
-        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <TouchableOpacity style={s.suggestBtn} activeOpacity={0.8} onPress={() => router.push({ pathname: '/suggest', params: { lang } })}>
-            <Text style={s.suggestBtnText}>
-              📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-        <View style={s.headerRight}>
-          <TouchableOpacity style={s.headerIconBtn} onPress={onShowSettings} activeOpacity={0.7}>
-            <Settings size={20} color={COLORS.textSub} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* ── Mood check-in ── */}
-      <View style={s.checkin}>
-        <Text style={s.checkinTitle}>
-          {lang === 'en' ? "Today's mood?" : '今日の気分は？'}
-        </Text>
-        {streak >= 2 && (
-          <Text style={s.streak}>
-            {lang === 'en' ? `🔥 ${streak} day streak!` : `🔥 ${streak}日連続チェックイン！`}
-          </Text>
-        )}
-        <Text style={s.checkinSub}>
-          {todayMood != null
-            ? (lang === 'en'
-                ? `You picked: ${MOODS[todayMood].labelEn}`
-                : `今日は「${MOODS[todayMood].label}」`)
-            : (lang === 'en' ? 'Tap a face to record!' : 'タップして記録しよう！')}
-        </Text>
-
-        {/* 4 faces */}
-        <View style={s.faceRow}>
-          {MOODS.map((mood, i) => {
-            const selected = todayMood === i;
-            return (
-              <Animated.View key={i} style={{ transform: [{ scale: scaleAnims[i] }] }}>
-                <TouchableOpacity
-                  onPress={() => selectMood(i)}
-                  activeOpacity={0.85}
-                  style={[
-                    s.faceBtnOuter,
-                    selected && { borderColor: mood.ring, borderWidth: 3 },
-                  ]}
-                >
-                  <View style={[s.faceBtnInner, { backgroundColor: mood.bg }]}>
-                    {i === 0 && <FaceSuper sz={44} />}
-                    {i === 1 && <FaceGood  sz={44} />}
-                    {i === 2 && <FaceMeh   sz={44} lidColor={mood.bg} />}
-                    {i === 3 && <FaceBored sz={44} lidColor={mood.bg} />}
-                  </View>
-                  {selected && <View style={[s.selectedRing, { borderColor: mood.ring }]} />}
-                </TouchableOpacity>
-                <Text style={[s.faceLabel, selected && { color: mood.ring, fontWeight: '800' }]}>
-                  {lang === 'en' ? mood.labelEn : mood.label}
-                </Text>
-              </Animated.View>
-            );
-          })}
-        </View>
-
-        {/* Week dots */}
-        <View style={s.weekRow}>
-          {weekDates.map((date, i) => {
-            const moodIdx = weekMoods[date];
-            const isToday = date === todayStr;
-            return (
-              <View key={date} style={s.dayCol}>
-                <View style={[
-                  s.dot,
-                  moodIdx != null
-                    ? { backgroundColor: MOODS[moodIdx].color }
-                    : { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#e0d0d8' },
-                  isToday && moodIdx == null && s.dotToday,
-                ]} />
-                <Text style={[s.dayLabel, isToday && s.dayLabelToday]}>
-                  {dayLabels[i]}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* ── Bottom content ── */}
-      <View style={[s.bottom, { paddingBottom: insets.bottom + 64 + 16 }]}>
-        <Text style={s.brand}>MoodGo ✨</Text>
-        <Text style={s.tagline}>
-          {lang === 'en'
-            ? 'Find your next outing\nby mood.'
-            : '今の気分で、\nおでかけ先を見つけよう。'}
-        </Text>
-        <View style={s.spacer} />
-        <TouchableOpacity onPress={onStart} activeOpacity={0.85} style={s.startTouchable}>
-          <LinearGradient
-            colors={['#F43F5E', '#FB923C']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={s.startBtn}
-          >
-            <Text style={s.startText}>
-              {lang === 'en' ? 'Get started ✨' : 'はじめる ✨'}
-            </Text>
-          </LinearGradient>
+        <TouchableOpacity
+          style={s.suggestPill}
+          activeOpacity={0.78}
+          onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
+        >
+          <Text style={s.suggestText}>📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.settingsBtn} onPress={onShowSettings} activeOpacity={0.72}>
+          <Settings size={20} color="#888" strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
+      {/* ── Scrollable body ── */}
+      <Animated.View style={[s.flex, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <ScrollView
+          style={s.flex}
+          contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 80 }]}
+          showsVerticalScrollIndicator={false}
+        >
+
+          {/* ── Hero: logo + tagline ── */}
+          <View style={s.hero}>
+            <GradientLogo />
+            <Text style={s.tagline}>
+              {lang === 'en' ? 'Find where to go\nby mood.' : '今の気分から、\n行きたい場所を見つけよう'}
+            </Text>
+            <Text style={s.heroSub}>
+              {lang === 'en'
+                ? 'AI suggests the perfect spot for your vibe.'
+                : 'AIがあなたの気分にぴったりの場所を提案します'}
+            </Text>
+          </View>
+
+          {/* ── START button ── */}
+          <Animated.View style={[s.startWrap, { transform: [{ scale: startScale }] }]}>
+            <TouchableOpacity
+              onPress={handleStart}
+              onPressIn={pressIn}
+              onPressOut={pressOut}
+              activeOpacity={1}
+              style={s.startTouchable}
+            >
+              <LinearGradient
+                colors={GRAD}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={s.startBtn}
+              >
+                <Text style={s.startText}>✦  START  →</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* ── Featured card ── */}
+          <View style={s.featuredCard}>
+            <ImageBackground
+              source={require('../assets/images/moodgo-home-hero.png')}
+              style={s.featuredBg}
+              imageStyle={{ borderRadius: 20 }}
+              resizeMode="cover"
+            >
+              <LinearGradient
+                colors={['rgba(10,8,30,0.18)', 'rgba(10,8,30,0.72)']}
+                style={s.featuredOverlay}
+              >
+                <View style={s.featuredContent}>
+                  <Text style={s.featuredLabel}>今月のMoodGo特集 ──</Text>
+                  <Text style={s.featuredTitle}>
+                    {lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
+                  </Text>
+                  <TouchableOpacity
+                    style={s.featuredBtn}
+                    activeOpacity={0.82}
+                    onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
+                  >
+                    <Text style={s.featuredBtnText}>
+                      {lang === 'en' ? "See what's inside →" : '何があるか見てみる　→'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
+            </ImageBackground>
+          </View>
+
+          {/* ── Today's mood suggestions ── */}
+          <View style={s.moodSection}>
+            <View style={s.moodSectionHeader}>
+              <Text style={s.moodSectionTitle}>
+                {lang === 'en' ? 'Recommended moods ✦' : '今日のおすすめ気分 ✦'}
+              </Text>
+              <TouchableOpacity onPress={handleStart} activeOpacity={0.7}>
+                <Text style={s.moodSectionMore}>
+                  {lang === 'en' ? 'See all →' : 'すべてを見る　→'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.moodScroll}
+            >
+              {MOOD_CARDS.map((m) => (
+                <TouchableOpacity
+                  key={m.key}
+                  style={s.moodCardWrap}
+                  activeOpacity={0.80}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    onStart();
+                  }}
+                >
+                  <LinearGradient
+                    colors={[m.bgStart, m.bgEnd]}
+                    style={s.moodCircle}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <m.Icon size={28} color={m.iconColor} strokeWidth={1.8} />
+                  </LinearGradient>
+                  <Text style={s.moodCardLabel}>{m.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+        </ScrollView>
+      </Animated.View>
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const PAD = 20;
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: BG },
+  flex: { flex: 1 },
 
+  // Header
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 12, zIndex: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: PAD, paddingVertical: 10, zIndex: 10,
   },
-  // インスタ風ロゴ風ヘッダーボタン
-  suggestBtn: {
-    paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999,
-    backgroundColor: '#FFF0F3',
-    borderWidth: 1.5, borderColor: '#FECDD3',
+  suggestPill: {
+    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1.5, borderColor: 'rgba(245,108,179,0.35)',
+    shadowColor: PINK, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12, shadowRadius: 6, elevation: 3,
   },
-  suggestBtnText: { color: '#F43F5E', fontSize: 12, fontWeight: '700' },
-  headerRight: { flexDirection: 'row', gap: 8 },
-  headerChip: {
-    paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999,
-    backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6',
-  },
-  headerChipText: { color: '#374151', fontSize: 12, fontWeight: '700' },
-  headerIconBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1, borderColor: '#F3F4F6',
+  suggestText: { color: PINK, fontSize: 13, fontWeight: '700' },
+  settingsBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)',
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07, shadowRadius: 4, elevation: 2,
   },
 
-  // Check-in section
-  checkin: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    gap: 20,
+  // Scroll
+  scrollContent: { paddingHorizontal: PAD, paddingTop: 8 },
+
+  // Hero
+  hero: { alignItems: 'center', paddingVertical: 20, gap: 12 },
+  tagline: {
+    fontSize: 28, fontWeight: '900', color: '#1A0A2E',
+    textAlign: 'center', lineHeight: 38, letterSpacing: -0.6,
   },
-  checkinTitle: {
-    fontSize: 24, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5,
-  },
-  checkinSub: {
-    fontSize: 13, color: COLORS.textSub, marginTop: -10,
-  },
-  streak: {
-    fontSize: 13, fontWeight: '700', color: '#F43F5E', marginTop: -12,
+  heroSub: {
+    fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 20,
   },
 
-  faceRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  faceBtnOuter: {
-    borderRadius: 999,
-    borderWidth: 3,
-    borderColor: 'transparent',
-    padding: 2,
-  },
-  faceBtnInner: {
-    width: 70, height: 70,
-    borderRadius: 35,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  selectedRing: {
-    position: 'absolute', top: -2, left: -2, right: -2, bottom: -2,
-    borderRadius: 999, borderWidth: 3,
-    backgroundColor: 'transparent',
-  },
-  faceLabel: {
-    fontSize: 11, fontWeight: '700', color: COLORS.textSub,
-    textAlign: 'center', marginTop: 6,
-  },
-
-  // Week dots（白カード・明るい）
-  weekRow: {
-    flexDirection: 'row',
-    gap: 10,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  dayCol: { alignItems: 'center', gap: 6 },
-  dot: { width: 24, height: 24, borderRadius: 12 },
-  dotToday: {
-    borderColor: '#FECDD3',
-    borderStyle: 'dashed',
-  },
-  dayLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
-  dayLabelToday: { color: '#F43F5E', fontWeight: '800' },
-
-  // Bottom
-  bottom: { paddingHorizontal: 24, paddingTop: 8 },
-  brand: {
-    fontSize: 30, fontWeight: '800', color: COLORS.text,
-    letterSpacing: -0.8, marginBottom: 6,
-  },
-  tagline: { fontSize: 15, color: COLORS.textSub, lineHeight: 22 },
-  spacer: { height: 20 },
+  // START
+  startWrap: { marginBottom: 24 },
   startTouchable: {
-    shadowColor: '#F43F5E',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 8,
+    borderRadius: 99, overflow: 'hidden',
+    shadowColor: PURPLE, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38, shadowRadius: 20, elevation: 10,
   },
-  startBtn: {
-    height: 56, borderRadius: 18,
+  startBtn: { height: 60, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  startText: { fontSize: 19, fontWeight: '900', color: '#fff', letterSpacing: 2 },
+
+  // Featured
+  featuredCard: {
+    borderRadius: 20, overflow: 'hidden', marginBottom: 28,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16, shadowRadius: 16, elevation: 8,
+  },
+  featuredBg: { width: '100%', height: 200 },
+  featuredOverlay: {
+    flex: 1, borderRadius: 20, justifyContent: 'flex-end', padding: 20,
+  },
+  featuredContent: { gap: 8 },
+  featuredLabel: { fontSize: 12, color: 'rgba(255,255,255,0.75)', fontWeight: '600', letterSpacing: 0.4 },
+  featuredTitle: {
+    fontSize: 22, fontWeight: '900', color: '#fff', lineHeight: 30, letterSpacing: -0.3,
+  },
+  featuredBtn: {
+    alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 99, paddingHorizontal: 16, paddingVertical: 8, marginTop: 4,
+  },
+  featuredBtnText: { fontSize: 13, fontWeight: '700', color: '#1A0A2E' },
+
+  // Mood section
+  moodSection: { marginBottom: 12 },
+  moodSectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 14,
+  },
+  moodSectionTitle: { fontSize: 17, fontWeight: '800', color: '#1A0A2E' },
+  moodSectionMore: { fontSize: 13, fontWeight: '600', color: PURPLE },
+
+  moodScroll: { paddingRight: PAD, gap: 12 },
+  moodCardWrap: { alignItems: 'center', gap: 8, width: 72 },
+  moodCircle: {
+    width: 68, height: 68, borderRadius: 34,
     alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
   },
-  startText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: -0.2 },
+  moodCardLabel: { fontSize: 11, fontWeight: '700', color: '#444', textAlign: 'center' },
 });
