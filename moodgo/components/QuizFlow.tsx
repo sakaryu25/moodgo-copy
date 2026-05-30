@@ -13,7 +13,7 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, Bike, BookOpen, Car, ChevronLeft,
+  Activity, Bike, BookOpen, Car, Check, ChevronLeft,
   Clock, Coffee, Footprints, Heart, Home,
   Hourglass, Leaf, Moon, Plane, Shuffle, Sparkles,
   Sunset, Timer, TrainFront, UtensilsCrossed,
@@ -45,22 +45,22 @@ const SLIDER_W = SCREEN_W - PAD * 2;
 const THUMB_D = 28;
 const MAX_BUDGET = 15000;
 const BSTEP = 500;
-const STEP_SEQ = [1, 2, 3, 4, 5, 10];
+const STEP_SEQ = [1, 2, 3, 4, 5, 10, 11];
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
-  { key: 'お腹すいた',         label: 'お腹すいた',     sub: '絶品グルメ',            Icon: UtensilsCrossed },
-  { key: 'まったりしたい',     label: 'まったりしたい', sub: '癒やし・リラックス',    Icon: Coffee },
-  { key: 'わいわい楽しみたい', label: 'わいわい',       sub: 'エンタメ・遊び',        Icon: Sparkles },
-  { key: '自然感じたい',       label: '自然感じたい',   sub: '自然・絶景',            Icon: Leaf },
-  { key: 'ドライブしたい',     label: 'ドライブ',       sub: 'ドライブ・ツーリング',  Icon: Car },
-  { key: '集中したい',         label: '集中したい',     sub: '作業・勉強',            Icon: BookOpen },
-  { key: '体を動かしたい',     label: '体を動かす',     sub: 'スポーツ・アウトドア',  Icon: Activity },
-  { key: '遠くに行きたい',     label: '遠くへ行く',     sub: '小旅行・お出かけ',      Icon: Plane },
-  { key: '時間潰したい',       label: '時間潰し',       sub: '近くをランダムに',      Icon: Shuffle },
+  { key: 'お腹すいた', label: 'お腹すいた', sub: '絶品グルメ',  Icon: UtensilsCrossed },
+  { key: 'まったり',   label: 'まったり',   sub: '癒やし',      Icon: Coffee },
+  { key: 'わいわい',   label: 'わいわい',   sub: 'エンタメ',    Icon: Sparkles },
+  { key: '自然',       label: '自然',       sub: '絶景',        Icon: Leaf },
+  { key: 'ドライブ',   label: 'ドライブ',   sub: 'ツーリング',  Icon: Car },
+  { key: '集中',       label: '集中',       sub: '作業・勉強',  Icon: BookOpen },
+  { key: '運動',       label: '運動',       sub: 'スポーツ',    Icon: Activity },
+  { key: '旅行',       label: '旅行',       sub: '小旅行',      Icon: Plane },
+  { key: '時間潰し',   label: '時間潰し',   sub: 'のんびり',    Icon: Shuffle },
 ];
 
 const COMPANIONS: { key: string; label: string; Icon: LucideIcon }[] = [
@@ -99,7 +99,7 @@ const BUDGET_CHIPS: { label: string; max: number | undefined; min: number }[] = 
 ];
 
 const STEP_META: Record<number, { title: string; sub: string }> = {
-  1:  { title: '今の気分は？',           sub: 'タップして選択してください。' },
+  1:  { title: '今の気分は？',           sub: 'タップして選択' },
   2:  { title: '誰と？',                 sub: '誰と行くかでおすすめが変わります。' },
   3:  { title: '交通手段は？',           sub: 'なんでも以外は複数選べます。' },
   4:  { title: '予算はどのくらい？',     sub: 'スライダーで範囲を設定できます。' },
@@ -272,6 +272,103 @@ const rsl = StyleSheet.create({
   scaleText: { fontSize: 11, color: '#A78BFA', fontWeight: '500' },
 });
 
+// ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
+
+function MoodCard({ label, sub, Icon, active, onPress, index }: {
+  label: string; sub: string; Icon: LucideIcon;
+  active: boolean; onPress: () => void; index: number;
+}) {
+  // 出現アニメ (spring, staggered)
+  const entryAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(entryAnim, {
+      toValue: 1,
+      delay: index * 80,
+      damping: 12,
+      stiffness: 100,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  const entryY     = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+  const entryOp    = entryAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 1] });
+  const entryScale = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
+
+  // タップアニメ
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const pIn  = () => Animated.spring(pressScale, { toValue: 0.95, tension: 300, friction: 10, useNativeDriver: true }).start();
+  const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
+
+  return (
+    <Animated.View style={{
+      width: CW3, opacity: entryOp,
+      transform: [{ translateY: entryY }, { scale: entryScale }],
+    }}>
+      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+        <TouchableOpacity
+          onPress={onPress}
+          onPressIn={pIn}
+          onPressOut={pOut}
+          activeOpacity={1}
+          style={[mc.card, active && mc.cardActive]}
+        >
+          {active && (
+            <LinearGradient
+              colors={['#EC4899', '#A855F7', '#3B82F6']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          {/* チェックバッジ */}
+          {active && (
+            <View style={mc.checkWrap}>
+              <View style={mc.checkCircle}>
+                <Check size={10} color="#7C3AED" strokeWidth={3} />
+              </View>
+            </View>
+          )}
+          {/* アイコンサークル */}
+          <View style={[mc.iconCircle, active && mc.iconCircleA]}>
+            <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
+          </View>
+          {/* ラベル */}
+          <Text style={[mc.label, active && mc.labelA]} numberOfLines={1}>{label}</Text>
+          <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+const mc = StyleSheet.create({
+  card: {
+    borderRadius: 16, backgroundColor: '#fff',
+    borderWidth: 2, borderColor: '#E5E7EB',
+    padding: 12, alignItems: 'center', gap: 6, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    minHeight: CW3 + 8,
+  },
+  cardActive: {
+    borderColor: 'transparent',
+    shadowColor: '#A855F7', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.30, shadowRadius: 14, elevation: 8,
+  },
+  checkWrap: { position: 'absolute', top: 6, right: 6 },
+  checkCircle: {
+    width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#F9FAFB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconCircleA: { backgroundColor: 'rgba(255,255,255,0.20)' },
+  label: { fontSize: 12, fontWeight: '700', color: '#111827', textAlign: 'center', lineHeight: 16 },
+  labelA: { color: '#fff', fontWeight: '800' },
+  sublabel: { fontSize: 10, color: '#6B7280', textAlign: 'center', lineHeight: 14 },
+  sublabelA: { color: 'rgba(255,255,255,0.82)' },
+});
+
 // ─── Option Card ──────────────────────────────────────────────────────────────
 
 function OptionCard({ label, sub, Icon, active, onPress, width, height }: {
@@ -376,10 +473,16 @@ export default function QuizFlow(props: Props) {
   const renderContent = () => {
     if (step === 1) return (
       <View style={s.grid}>
-        {MOODS.map((m) => (
-          <OptionCard key={m.key} label={m.label} sub={m.sub} Icon={m.Icon}
-            active={selectedMood === m.key} width={CW3} height={CW3 + 12}
-            onPress={() => { onSelectMood(m.key); onSetStep(2); }} />
+        {MOODS.map((m, i) => (
+          <MoodCard
+            key={m.key}
+            label={m.label}
+            sub={m.sub}
+            Icon={m.Icon}
+            active={selectedMood === m.key}
+            index={i}
+            onPress={() => onSelectMood(m.key)}
+          />
         ))}
       </View>
     );
