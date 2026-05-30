@@ -31,12 +31,12 @@ const T = {
   ja: {
     headerTitle: '穴場スポットを教えて！',
     back: '戻る',
-    lead: 'あなたが知っている素敵な場所をMoodGoに投稿しよう。掲載された場合は特典をプレゼント予定です🎁',
+    lead: 'あなたが知っている素敵な場所をMoodGoに投稿しよう。掲載された場合は特典をプレゼント予定です。',
     labelName: 'スポット名',
     labelDesc: 'どんな場所？おすすめポイント',
     labelLocation: '場所・住所',
     labelPhotos: '写真を添付（最大3枚）',
-    labelTags: '🏷 気分タグを選ぼう',
+    labelTags: '気分タグを選ぼう',
     labelContact: '連絡先',
     placeholderName: '例：緑ヶ丘公園の秘密の展望台',
     placeholderDesc: '例：駐車場が平日2時間無料で穴場だから空いてる。夕日が最高！',
@@ -46,31 +46,31 @@ const T = {
     hintContact: '掲載された場合に特典をお送りするため、LINEのIDやメールアドレスを教えていただけると助かります。',
     optional: '（任意）',
     locating: '取得中...',
-    locateDone: '✅ 位置情報取得済み',
-    locateBtn: '📍 現在地を自動取得（推奨）',
-    photoBtn: '📷 写真を選ぶ',
+    locateDone: '位置情報取得済み',
+    locateBtn: '現在地を自動取得（推奨）',
+    photoBtn: '写真を選ぶ',
     tagOpen: '▼ タグを選ぶ',
     tagClose: '▲ タグ選択を閉じる',
-    submit: '投稿する 🚀',
+    submit: '投稿する',
     submitting: '送信中...',
     errName: 'スポット名を入力してください',
     errLocation: '位置情報の許可が必要です。',
     errLocationFail: '位置情報の取得に失敗しました。住所を手入力してください。',
     errPhoto: '写真へのアクセスを許可してください。',
     errPhotoFail: '画像の選択に失敗しました。',
-    successTitle: 'ありがとうございます！',
+    successTitle: 'ありがとうございます',
     successBody: '投稿を受け付けました。\nスタッフが確認後、MoodGoに掲載されます。\n掲載された場合はご連絡いたします！',
     successBtn: 'ホームへ戻る',
   },
   en: {
     headerTitle: 'Share a hidden gem!',
     back: 'Back',
-    lead: "Tell MoodGo about a great spot you know. If we feature it, you'll get a special reward 🎁",
+    lead: "Tell MoodGo about a great spot you know. If we feature it, you'll get a special reward.",
     labelName: 'Spot name',
     labelDesc: "What's it like? Why do you love it?",
     labelLocation: 'Location / Address',
     labelPhotos: 'Add photos (up to 3)',
-    labelTags: '🏷 Pick mood tags',
+    labelTags: 'Pick mood tags',
     labelContact: 'Contact',
     placeholderName: 'e.g. Secret viewpoint at Midorigaoka Park',
     placeholderDesc: "e.g. Free parking on weekdays and it's never crowded. Amazing sunset!",
@@ -80,19 +80,19 @@ const T = {
     hintContact: "We'd love a LINE ID or email to send your reward if we feature the spot.",
     optional: '(optional)',
     locating: 'Getting location...',
-    locateDone: '✅ Location captured',
-    locateBtn: '📍 Use current location (recommended)',
-    photoBtn: '📷 Choose photos',
+    locateDone: 'Location captured',
+    locateBtn: 'Use current location (recommended)',
+    photoBtn: 'Choose photos',
     tagOpen: '▼ Choose tags',
     tagClose: '▲ Close tag picker',
-    submit: 'Submit 🚀',
+    submit: 'Submit',
     submitting: 'Sending...',
     errName: 'Please enter a spot name',
     errLocation: 'Location permission is required.',
     errLocationFail: 'Failed to get location. Please enter the address manually.',
     errPhoto: 'Please allow photo access.',
     errPhotoFail: 'Failed to select images.',
-    successTitle: 'Thank you!',
+    successTitle: 'Thank you',
     successBody: 'We received your submission.\nOur team will review it and add it to MoodGo.\nWe\'ll reach out if it gets featured!',
     successBtn: 'Back to home',
   },
@@ -175,7 +175,6 @@ export default function SuggestScreen() {
     return (
       <View style={[s.root, { paddingTop: insets.top + 20 }]}>
         <View style={s.successWrap}>
-          <Text style={s.successEmoji}>🎉</Text>
           <Text style={s.successTitle}>{t.successTitle}</Text>
           <Text style={s.successBody}>{t.successBody}</Text>
           <TouchableOpacity onPress={() => router.back()} activeOpacity={0.85} style={s.successBtnWrap}>
@@ -288,7 +287,7 @@ export default function SuggestScreen() {
               <View style={s.tagPicker}>
                 {TAG_CATEGORIES.filter(c => SHOWN_CATEGORIES.includes(c.key)).map(cat => (
                   <View key={cat.key} style={{ marginBottom: 14 }}>
-                    <Text style={s.tagCatLabel}>{cat.key === 'mood' ? '🎭 ' : ''}{cat.label}</Text>
+                    <Text style={s.tagCatLabel}>{cat.label}</Text>
                     <View style={s.tagGrid}>
                       {cat.tags.map(tag => {
                         const active = selectedTags.includes(tag);
@@ -455,7 +454,6 @@ const s = StyleSheet.create({
 
   // Success
   successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  successEmoji: { fontSize: 72, marginBottom: 16 },
   successTitle: { fontSize: 26, fontWeight: '900', color: '#1E0753', marginBottom: 12, textAlign: 'center' },
   successBody: { fontSize: 15, lineHeight: 26, color: '#7C3AED', marginBottom: 28, textAlign: 'center' },
   successBtnWrap: { borderRadius: 18, overflow: 'hidden', shadowColor: '#C084FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
