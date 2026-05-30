@@ -22,7 +22,7 @@ const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
 
-const AGE_OPTIONS    = ['10代', '20代', '30代', '40代', '50代', '60代以上'];
+const AGE_OPTIONS    = ['10代', '20代', '30代', '40代以上'];
 const GENDER_OPTIONS = ['男性', '女性', 'その他', '答えたくない'];
 
 type Props = {

@@ -22,8 +22,10 @@ const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
 
-const AGE_OPTIONS    = ['10代', '20代', '30代', '40代', '50代', '60代以上'];
-const GENDER_OPTIONS = ['男性', '女性', 'その他', '答えたくない'];
+const AGE_OPTIONS_JA    = ['10代', '20代', '30代', '40代以上'];
+const AGE_OPTIONS_EN    = ['Teens', '20s', '30s', '40+'];
+const GENDER_OPTIONS_JA = ['男性', '女性', 'その他', '答えたくない'];
+const GENDER_OPTIONS_EN = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
 type Props = {
   visible: boolean;
@@ -95,6 +97,9 @@ export default function SettingsView({
   profileAge, profileGender, profilePrefecture, onSaveProfile, onClearHistory,
 }: Props) {
   const insets = useSafeAreaInsets();
+
+  const ageOptions    = lang === 'ja' ? AGE_OPTIONS_JA    : AGE_OPTIONS_EN;
+  const genderOptions = lang === 'ja' ? GENDER_OPTIONS_JA : GENDER_OPTIONS_EN;
 
   const [ageInput, setAgeInput]               = useState(profileAge);
   const [genderInput, setGenderInput]         = useState(profileGender);
@@ -200,7 +205,7 @@ export default function SettingsView({
               {/* 年代 */}
               <Text style={s.fieldLabel}>{lang === 'ja' ? '年代' : 'Age group'}</Text>
               <View style={s.chipRow}>
-                {AGE_OPTIONS.map((opt) => (
+                {ageOptions.map((opt) => (
                   <Chip key={opt} label={opt} active={ageInput === opt} onPress={() => setAgeInput(opt)} />
                 ))}
               </View>
@@ -208,7 +213,7 @@ export default function SettingsView({
               {/* 性別 */}
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '性別' : 'Gender'}</Text>
               <View style={s.chipRow}>
-                {GENDER_OPTIONS.map((opt) => (
+                {genderOptions.map((opt) => (
                   <Chip key={opt} label={opt} active={genderInput === opt} onPress={() => setGenderInput(opt)} />
                 ))}
               </View>
