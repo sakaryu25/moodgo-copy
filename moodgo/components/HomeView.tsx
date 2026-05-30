@@ -246,7 +246,7 @@ export default function HomeView({ lang, onStart, onShowSettings }: Props) {
           {/* ── Featured card ── */}
           <View style={s.featuredCard}>
             <ImageBackground
-              source={require('../assets/images/moodgo-home-hero.png')}
+              source={require('../assets/images/home-featured.png')}
               style={s.featuredBg}
               imageStyle={{ borderRadius: 20 }}
               resizeMode="cover"
