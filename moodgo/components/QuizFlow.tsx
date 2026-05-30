@@ -922,7 +922,7 @@ const s = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '900', color: '#1E0753', marginBottom: 4, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: '#A78BFA', lineHeight: 20 },
   scrollContent: { paddingHorizontal: PAD, paddingTop: 4, paddingBottom: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP, justifyContent: 'center' },
   hint: {
     alignSelf: 'center', backgroundColor: '#EDE9FE',
     borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginBottom: 14,
