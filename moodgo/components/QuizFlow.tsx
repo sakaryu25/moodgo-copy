@@ -402,91 +402,112 @@ type Props = {
 
 // ─── Budget Range Slider ──────────────────────────────────────────────────────
 
+const TRACK_H = 6;
+const TRACK_TOP = (72 - TRACK_H) / 2;
+
 function BudgetRangeSlider({
   minVal, maxVal, onChangeMin, onChangeMax,
 }: {
   minVal: number; maxVal: number | undefined;
   onChangeMin: (v: number) => void; onChangeMax: (v: number | undefined) => void;
 }) {
-  const toX   = (v: number) => Math.max(0, Math.min((v / MAX_BUDGET) * (SLIDER_W - THUMB_D), SLIDER_W - THUMB_D));
+  const toX    = (v: number) => Math.max(0, Math.min((v / MAX_BUDGET) * (SLIDER_W - THUMB_D), SLIDER_W - THUMB_D));
   const toMaxX = (v: number | undefined) =>
     v === undefined || v >= MAX_BUDGET ? SLIDER_W - THUMB_D : toX(Math.min(v, MAX_BUDGET));
 
-  const [minX, setMinX] = useState(() => toX(minVal));
-  const [maxX, setMaxX] = useState(() => toMaxX(maxVal));
-  const minXR = useRef(minX);
-  const maxXR = useRef(maxX);
+  // Animated values drive thumb positions directly → zero re-render jank
+  const minXAnim = useRef(new Animated.Value(toX(minVal))).current;
+  const maxXAnim = useRef(new Animated.Value(toMaxX(maxVal))).current;
+  const minXRef  = useRef(toX(minVal));
+  const maxXRef  = useRef(toMaxX(maxVal));
+
+  // Display labels (updated live for text only)
+  const [dispMin, setDispMin] = useState(minVal);
+  const [dispMax, setDispMax] = useState(maxVal);
 
   useEffect(() => {
     const a = toX(minVal); const b = toMaxX(maxVal);
-    setMinX(a); setMaxX(b); minXR.current = a; maxXR.current = b;
+    minXAnim.setValue(a); maxXAnim.setValue(b);
+    minXRef.current = a; maxXRef.current = b;
+    setDispMin(minVal); setDispMax(maxVal);
   }, [minVal, maxVal]);
 
   const sMin = useRef(0); const sMax = useRef(0);
 
   const panMin = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { sMin.current = minXR.current; },
+    onMoveShouldSetPanResponder:  () => true,
+    onPanResponderGrant: () => { sMin.current = minXRef.current; },
     onPanResponderMove: (_, g) => {
-      const nx = Math.max(0, Math.min(sMin.current + g.dx, maxXR.current - THUMB_D * 1.5));
-      setMinX(nx); minXR.current = nx;
-      onChangeMin(Math.round(((nx / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP);
+      const nx = Math.max(0, Math.min(sMin.current + g.dx, maxXRef.current - THUMB_D * 1.5));
+      minXAnim.setValue(nx);          // native update — no React re-render
+      minXRef.current = nx;
+      const v = Math.round(((nx / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP;
+      setDispMin(v);                  // only label re-renders
+    },
+    onPanResponderRelease: () => {
+      const v = Math.round(((minXRef.current / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP;
+      onChangeMin(v);                 // notify parent once on release
     },
   })).current;
 
   const panMax = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => { sMax.current = maxXR.current; },
+    onMoveShouldSetPanResponder:  () => true,
+    onPanResponderGrant: () => { sMax.current = maxXRef.current; },
     onPanResponderMove: (_, g) => {
-      const nx = Math.min(SLIDER_W - THUMB_D, Math.max(sMax.current + g.dx, minXR.current + THUMB_D * 1.5));
-      setMaxX(nx); maxXR.current = nx;
+      const nx = Math.min(SLIDER_W - THUMB_D, Math.max(sMax.current + g.dx, minXRef.current + THUMB_D * 1.5));
+      maxXAnim.setValue(nx);
+      maxXRef.current = nx;
+      const v = nx >= SLIDER_W - THUMB_D - 5
+        ? undefined
+        : Math.round(((nx / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP;
+      setDispMax(v);
+    },
+    onPanResponderRelease: () => {
+      const nx = maxXRef.current;
       if (nx >= SLIDER_W - THUMB_D - 5) onChangeMax(undefined);
       else onChangeMax(Math.round(((nx / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP);
     },
   })).current;
 
-  const aL = minX + THUMB_D / 2;
-  const aW = Math.max(0, maxX + THUMB_D / 2 - aL);
-  const minLbl = minVal === 0 ? '¥0' : `¥${minVal.toLocaleString()}`;
-  const maxLbl = maxVal === undefined || maxVal >= MAX_BUDGET ? '上限なし' : `¥${maxVal.toLocaleString()}`;
+  // Active track driven fully by Animated values
+  const trackLeft  = Animated.add(minXAnim, THUMB_D / 2);
+  const trackWidth = Animated.subtract(maxXAnim, minXAnim);
+
+  const minLbl = dispMin === 0 ? '¥0' : `¥${dispMin.toLocaleString()}`;
+  const maxLbl = dispMax === undefined || dispMax >= MAX_BUDGET ? '上限なし' : `¥${dispMax.toLocaleString()}`;
 
   return (
     <View style={rsl.wrap}>
-      {/* 範囲表示 */}
-      <View style={rsl.rangeRow}>
-        <View style={rsl.rangeBox}>
-          <Text style={rsl.rangeCaption}>最低</Text>
-          <LinearGradient colors={['#F472B6', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeGradBorder}>
-            <View style={rsl.rangeInner}>
-              <Text style={rsl.rangeVal}>{minLbl}</Text>
-            </View>
-          </LinearGradient>
+      {/* 選択中の範囲 — シンプルな大テキスト */}
+      <View style={rsl.valueRow}>
+        <Text style={rsl.valueMin}>{minLbl}</Text>
+        <View style={rsl.valueDashWrap}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.valueDash} />
         </View>
-        <View style={rsl.rangeSep}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeSepLine} />
-        </View>
-        <View style={[rsl.rangeBox, { alignItems: 'flex-end' }]}>
-          <Text style={rsl.rangeCaption}>最高</Text>
-          <LinearGradient colors={['#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeGradBorder}>
-            <View style={rsl.rangeInner}>
-              <Text style={rsl.rangeVal}>{maxLbl}</Text>
-            </View>
-          </LinearGradient>
-        </View>
+        <Text style={rsl.valueMax}>{maxLbl}</Text>
       </View>
 
       {/* スライダー */}
-      <View style={{ width: SLIDER_W, height: 68, alignSelf: 'center' }}>
+      <View style={{ width: SLIDER_W, height: 72, alignSelf: 'center' }}>
+        {/* track背景 */}
         <View style={rsl.trackBg} />
-        <View style={[rsl.trackActive, { left: aL, width: aW }]}>
+        {/* アクティブ部分 — Animated.View で smooth */}
+        <Animated.View style={[rsl.trackActive, { left: trackLeft, width: trackWidth }]}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-        </View>
-        <View {...panMin.panHandlers} style={[rsl.thumb, { left: minX }]}>
-          <LinearGradient colors={['#F472B6', '#C084FC']} style={rsl.thumbInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        </View>
-        <View {...panMax.panHandlers} style={[rsl.thumb, { left: maxX }]}>
-          <LinearGradient colors={['#C084FC', '#60A5FA']} style={rsl.thumbInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-        </View>
+        </Animated.View>
+        {/* Minサム */}
+        <Animated.View {...panMin.panHandlers} style={[rsl.thumb, { left: minXAnim }]}>
+          <LinearGradient colors={['#F472B6', '#C084FC']} style={rsl.thumbGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={rsl.thumbLine} />
+        </Animated.View>
+        {/* Maxサム */}
+        <Animated.View {...panMax.panHandlers} style={[rsl.thumb, { left: maxXAnim }]}>
+          <LinearGradient colors={['#C084FC', '#60A5FA']} style={rsl.thumbGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+          <View style={rsl.thumbLine} />
+        </Animated.View>
+        {/* スケールラベル */}
         <View style={rsl.scaleRow}>
           <Text style={rsl.scaleText}>¥0</Text>
           <Text style={rsl.scaleText}>¥15,000+</Text>
@@ -498,29 +519,37 @@ function BudgetRangeSlider({
 
 const rsl = StyleSheet.create({
   wrap: { marginBottom: 4 },
-  rangeRow: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: 20,
+
+  // 範囲テキスト
+  valueRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20, gap: 12,
   },
-  rangeBox: { flex: 1 },
-  rangeCaption: { fontSize: 10, fontWeight: '700', color: '#A78BFA', letterSpacing: 0.8, marginBottom: 6, textTransform: 'uppercase' },
-  rangeGradBorder: { borderRadius: 12, padding: 1.5 },
-  rangeInner: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-  rangeVal: { fontSize: 18, fontWeight: '900', color: '#1E0753', letterSpacing: -0.5 },
-  rangeSep: { paddingHorizontal: 10, alignItems: 'center' },
-  rangeSepLine: { width: 20, height: 2.5, borderRadius: 99 },
+  valueMin: { fontSize: 26, fontWeight: '900', color: '#F472B6', letterSpacing: -0.5, minWidth: 80, textAlign: 'right' },
+  valueMax: { fontSize: 26, fontWeight: '900', color: '#60A5FA', letterSpacing: -0.5, minWidth: 80 },
+  valueDashWrap: { paddingHorizontal: 2 },
+  valueDash: { width: 28, height: 3, borderRadius: 99 },
+
+  // スライダー
   trackBg: {
     position: 'absolute', left: THUMB_D / 2, right: THUMB_D / 2,
-    height: 8, borderRadius: 99, backgroundColor: '#EDE9FE', top: (68 - 8) / 2,
+    height: TRACK_H, borderRadius: 99, backgroundColor: '#EDE9FE', top: TRACK_TOP,
   },
   trackActive: {
-    position: 'absolute', height: 8, borderRadius: 99, overflow: 'hidden', top: (68 - 8) / 2,
+    position: 'absolute', height: TRACK_H, borderRadius: 99, overflow: 'hidden', top: TRACK_TOP,
   },
   thumb: {
     position: 'absolute', width: THUMB_D, height: THUMB_D, borderRadius: THUMB_D / 2,
-    top: (68 - THUMB_D) / 2, backgroundColor: '#fff', overflow: 'hidden',
-    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
+    top: (72 - THUMB_D) / 2, overflow: 'hidden',
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45, shadowRadius: 12, elevation: 10,
   },
-  thumbInner: { flex: 1 },
+  thumbGrad: { ...StyleSheet.absoluteFillObject },
+  thumbLine: {
+    position: 'absolute', left: '50%', top: '20%', bottom: '20%',
+    width: 2, borderRadius: 99, backgroundColor: 'rgba(255,255,255,0.55)',
+    transform: [{ translateX: -1 }],
+  },
   scaleRow: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: THUMB_D / 2,
