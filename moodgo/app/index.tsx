@@ -207,6 +207,10 @@ export default function Home() {
   const [travelSubCategoryLabel, setTravelSubCategoryLabel] = useState('');
   const [isLoadingTravel, setIsLoadingTravel] = useState(false);
 
+  // 深掘り
+  const [deepDiveL1, setDeepDiveL1] = useState('');
+  const [deepDiveL2, setDeepDiveL2] = useState('');
+
   // Prefecture filter
   const [selectedPrefecture, setSelectedPrefecture] = useState('');
   const [prefectureButtons, setPrefectureButtons] = useState<string[]>([]);
@@ -616,6 +620,8 @@ export default function Home() {
               answer,
             })),
             ...(scenerySubCategory ? [{ question: '絶景タイプ', answer: scenerySubCategory }] : []),
+            ...(deepDiveL1 ? [{ question: '深掘りカテゴリ', answer: deepDiveL1 }] : []),
+            ...(deepDiveL2 ? [{ question: '深掘り詳細', answer: deepDiveL2 }] : []),
           ],
         };
         const res = await apiFetch('/api/recommend', {
@@ -699,6 +705,7 @@ export default function Home() {
     setSportsFacilities(null); setSportsSubCategoryLabel('');
     setTravelFacilities(null); setTravelSubCategoryLabel('');
     setSelectedPrefecture(''); setPrefectureButtons([]);
+    setDeepDiveL1(''); setDeepDiveL2('');
     setHomeView('home');
   };
 
@@ -951,6 +958,10 @@ export default function Home() {
         onSetOnsenDistancePref={setOnsenDistancePref}
         scenerySubCategory={scenerySubCategory}
         onSetScenerySubCategory={setScenerySubCategory}
+        deepDiveL1={deepDiveL1}
+        deepDiveL2={deepDiveL2}
+        onSetDeepDiveL1={setDeepDiveL1}
+        onSetDeepDiveL2={setDeepDiveL2}
       />
       </SlideUp>
     );

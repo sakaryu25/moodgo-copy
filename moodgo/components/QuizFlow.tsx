@@ -13,11 +13,17 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, Bike, BookOpen, Car, Check, ChevronLeft,
-  Clock, Coffee, Footprints, Heart, Home,
-  Hourglass, Leaf, Moon, Plane, Shuffle, Sparkles,
-  Sunset, Timer, TrainFront, UtensilsCrossed,
+  Activity, Bike, BookOpen, Building2, Camera, Car,
+  ChefHat, Check, ChevronLeft,
+  Clock, Coffee, Compass, Dumbbell,
+  Fish, Flame, Footprints, Gamepad2, Globe,
+  Heart, Home, Hourglass,
+  Laptop, Leaf, Moon, Mountain, Plane,
+  ShoppingBag, Shuffle, Sparkles,
+  Star, Sunset, Timer, TrainFront, TreePine,
+  Trophy, UtensilsCrossed,
   User, UserCheck, Users, UsersRound,
+  Waves, Wine, Zap,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -45,7 +51,7 @@ const SLIDER_W = SCREEN_W - PAD * 2;
 const THUMB_D = 28;
 const MAX_BUDGET = 15000;
 const BSTEP = 500;
-const STEP_SEQ = [1, 2, 3, 4, 5, 10, 11];
+const STEP_SEQ = [1, 2, 3, 4, 5, 6, 10, 11];
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
@@ -97,6 +103,180 @@ const BUDGET_CHIPS: { label: string; max: number | undefined; min: number }[] = 
   { label: '〜¥10,000',  max: 10000,     min: 0 },
   { label: '¥10,000〜',  max: 99999,     min: 10000 },
 ];
+
+// ─── Deep Dive Data ───────────────────────────────────────────────────────────
+
+type SubOpt  = { key: string; label: string; Icon: LucideIcon };
+type DiveOpt = { key: string; label: string; sub: string; Icon: LucideIcon; subs?: SubOpt[] };
+type DiveConfig = { title: string; options: DiveOpt[] };
+
+const DEEP_DIVE: Record<string, DiveConfig> = {
+  'お腹すいた': {
+    title: 'どんなジャンルを食べたい？',
+    options: [
+      { key: '居酒屋',           label: '居酒屋',           sub: '個室・大衆スタイル',      Icon: Wine,
+        subs: [
+          { key: '個室居酒屋',  label: '個室居酒屋',  Icon: Users },
+          { key: '大衆酒場',    label: '大衆酒場',    Icon: Heart },
+        ],
+      },
+      { key: '和食',             label: '和食',             sub: '海鮮・天ぷらなど',        Icon: Fish,
+        subs: [
+          { key: '海鮮・お寿司',  label: '海鮮・お寿司',   Icon: Fish },
+          { key: '天ぷら',        label: '天ぷら',          Icon: Flame },
+          { key: 'うどん・そば',  label: 'うどん・そば',   Icon: Coffee },
+          { key: '懐石料理',      label: '懐石料理',        Icon: ChefHat },
+        ],
+      },
+      { key: '洋食',             label: '洋食',             sub: 'ハンバーグ・ステーキ',    Icon: ChefHat,
+        subs: [
+          { key: 'ハンバーグ',   label: 'ハンバーグ',   Icon: ChefHat },
+          { key: 'オムライス',   label: 'オムライス',   Icon: Star },
+          { key: 'ステーキ',     label: 'ステーキ',     Icon: Flame },
+          { key: 'レトロ洋食',   label: 'レトロ洋食',   Icon: Clock },
+        ],
+      },
+      { key: 'イタリアン',       label: 'イタリアン',       sub: 'パスタ・ピザ',            Icon: UtensilsCrossed },
+      { key: '中華料理',         label: '中華料理',         sub: '点心・担々麺など',        Icon: Globe },
+      { key: '焼肉',             label: '焼肉',             sub: '食べ放題・高級など',      Icon: Flame,
+        subs: [
+          { key: '焼肉食べ放題', label: '食べ放題',    Icon: Users },
+          { key: '高級焼肉',     label: '高級焼肉',    Icon: Trophy },
+          { key: '焼肉単品',     label: '単品メニュー', Icon: Sparkles },
+        ],
+      },
+      { key: '韓国料理',         label: '韓国料理',         sub: 'チーズタッカルビなど',   Icon: Zap },
+      { key: 'アジア料理',       label: 'アジア料理',       sub: 'インド・タイなど',        Icon: Globe,
+        subs: [
+          { key: 'インド・ネパール',     label: 'インド・ネパール', Icon: Sparkles },
+          { key: 'タイ料理',            label: 'タイ料理',         Icon: Leaf },
+          { key: 'ベトナム料理',        label: 'ベトナム料理',     Icon: Leaf },
+          { key: 'アジアンエスニック',  label: 'アジアンエスニック', Icon: Globe },
+        ],
+      },
+      { key: '各国料理',         label: '各国料理',         sub: 'メキシコ・ブラジルなど',  Icon: Compass,
+        subs: [
+          { key: 'メキシコ料理', label: 'メキシコ料理', Icon: Sparkles },
+          { key: 'ブラジル料理', label: 'ブラジル料理', Icon: Flame },
+          { key: 'ロシア料理',   label: 'ロシア料理',   Icon: Star },
+          { key: 'その他各国',   label: 'その他の国',   Icon: Globe },
+        ],
+      },
+      { key: 'ラーメン',         label: 'ラーメン',         sub: 'こってり・あっさりなど',  Icon: Coffee,
+        subs: [
+          { key: 'こってりラーメン',   label: 'こってり系',       Icon: Flame },
+          { key: 'あっさりラーメン',   label: 'あっさり系',       Icon: Leaf },
+          { key: '味噌ラーメン',       label: '味噌',             Icon: Mountain },
+          { key: 'つけ麺・まぜそば',   label: 'つけ麺・まぜそば', Icon: Shuffle },
+        ],
+      },
+      { key: 'お好み焼き',       label: 'お好み焼き・もんじゃ', sub: '鉄板焼き系',         Icon: Flame },
+      { key: 'カフェスイーツ',   label: 'カフェ・スイーツ', sub: 'パンケーキ・スイーツ',   Icon: Heart,
+        subs: [
+          { key: 'スイーツカフェ', label: 'スイーツカフェ',  Icon: Heart },
+          { key: '喫茶店',         label: '喫茶店・レトロ',  Icon: Coffee },
+          { key: '流行りカフェ',   label: '流行りカフェ',    Icon: Camera },
+        ],
+      },
+      { key: '高層ビルレストラン', label: '高層ビルレストラン', sub: '絶景を楽しみながら',  Icon: Building2 },
+    ],
+  },
+
+  'まったり': {
+    title: 'どこで癒やされたい？',
+    options: [
+      { key: '自然の中',   label: '自然の中',   sub: '海辺・公園など',        Icon: Leaf,
+        subs: [
+          { key: '海辺',        label: '海辺',        Icon: Waves },
+          { key: '自然公園',    label: '自然公園',    Icon: TreePine },
+          { key: '大型公園',    label: '大型公園',    Icon: Leaf },
+          { key: '絶景スポット', label: '絶景スポット', Icon: Mountain },
+        ],
+      },
+      { key: 'カフェ',     label: '癒しカフェ', sub: 'のんびりくつろぐ',      Icon: Coffee,
+        subs: [
+          { key: 'ブックカフェ',    label: 'ブックカフェ',    Icon: BookOpen },
+          { key: '動物カフェ',      label: '動物カフェ',      Icon: Heart },
+          { key: '景色良いカフェ',  label: '景色良いカフェ',  Icon: Camera },
+          { key: 'スイーツカフェ',  label: 'スイーツカフェ',  Icon: Star },
+        ],
+      },
+      { key: '温泉サウナ', label: '温泉・サウナ', sub: '体の芯からリラックス',  Icon: Waves,
+        subs: [
+          { key: '温泉旅館',  label: '温泉旅館',    Icon: Waves },
+          { key: 'サウナ',    label: 'サウナ専門店', Icon: Flame },
+          { key: '岩盤浴',    label: '岩盤浴',      Icon: Sparkles },
+        ],
+      },
+      { key: '絶景スポット', label: '絶景スポット', sub: '美しい景色に癒される', Icon: Mountain,
+        subs: [
+          { key: '都会の夜景',  label: '都会の夜景', Icon: Building2 },
+          { key: '海辺・夕日',  label: '海辺・夕日', Icon: Waves },
+          { key: '展望台',      label: '展望台',     Icon: Compass },
+        ],
+      },
+    ],
+  },
+
+  'わいわい': {
+    title: '何をして楽しみたい？',
+    options: [
+      { key: '体を動かす',    label: '体を動かす',    sub: 'アクティブに遊ぶ',     Icon: Activity },
+      { key: 'アミューズメント', label: 'アミューズメント', sub: 'テーマパーク・施設', Icon: Zap },
+      { key: '体験型ゲーム',  label: '体験型ゲーム',  sub: '謎解き・VRなど',      Icon: Gamepad2 },
+    ],
+  },
+
+  '自然': {
+    title: 'どんな自然を感じたい？',
+    options: [
+      { key: '海辺',     label: '海辺',     sub: '波の音・砂浜',   Icon: Waves },
+      { key: '自然公園', label: '自然公園', sub: '森・山・渓谷',   Icon: TreePine },
+      { key: '大型公園', label: '大型公園', sub: '広々した芝生',   Icon: Leaf },
+      { key: '展望台',   label: '展望台',   sub: 'パノラマ絶景',   Icon: Mountain },
+    ],
+  },
+
+  'ドライブ': {
+    title: 'ドライブの目的地は？',
+    options: [
+      { key: '海辺ドライブ',  label: '海辺',         sub: 'シーサイドロード',     Icon: Waves },
+      { key: '絶景スポット',  label: '絶景スポット', sub: '山・峠・展望台',       Icon: Mountain },
+      { key: 'ショッピング',  label: 'ショッピング', sub: 'アウトレット・モール', Icon: ShoppingBag },
+      { key: 'ご当地グルメ',  label: 'ご当地グルメ', sub: '地元の名物料理',       Icon: UtensilsCrossed },
+    ],
+  },
+
+  '集中': {
+    title: 'どこで集中したい？',
+    options: [
+      { key: 'カフェ作業',  label: 'カフェで作業', sub: 'コーヒー片手に',   Icon: Laptop },
+      { key: '図書館',      label: '図書館・自習室', sub: 'しっかり集中',   Icon: BookOpen },
+      { key: 'ファミレス',  label: 'ファミレス',   sub: '食事しながら作業', Icon: UtensilsCrossed },
+      { key: 'ブックカフェ', label: 'ブックカフェ', sub: '本に囲まれて',    Icon: Coffee },
+    ],
+  },
+
+  '運動': {
+    title: 'どんな風に体を動かしたい？',
+    options: [
+      { key: 'ガッツリ運動',  label: 'ガッツリ運動', sub: 'ジム・フィットネス',      Icon: Dumbbell },
+      { key: 'スポーツ',      label: 'スポーツ',     sub: '球技・ランニング',        Icon: Trophy },
+      { key: '体験型ゲーム',  label: '体験型ゲーム', sub: 'ボウリング・ビリヤード',  Icon: Gamepad2 },
+      { key: '屋外スポーツ',  label: '屋外スポーツ', sub: '山・川・海',              Icon: Activity },
+    ],
+  },
+
+  '旅行': {
+    title: '旅のテーマを選んで',
+    options: [
+      { key: 'パワースポット', label: 'パワースポット', sub: '神社・絶景',         Icon: Compass },
+      { key: 'テーマパーク',   label: 'テーマパーク',   sub: '大型施設で楽しむ',   Icon: Star },
+      { key: '街歩き',         label: '街歩き・散策',   sub: '路地裏・観光地',     Icon: Footprints },
+      { key: '絶景スポット',   label: '絶景スポット',   sub: '自然の絶景',         Icon: Camera },
+    ],
+  },
+};
 
 const STEP_META: Record<number, { title: string; sub: string }> = {
   1:  { title: '今の気分は？',           sub: 'タップして選択' },
@@ -165,6 +345,11 @@ type Props = {
   onSetOnsenDistancePref: (v: NatureDistancePref) => void;
   scenerySubCategory: string | null;
   onSetScenerySubCategory: (v: string) => void;
+  // 深掘り
+  deepDiveL1: string;
+  deepDiveL2: string;
+  onSetDeepDiveL1: (v: string) => void;
+  onSetDeepDiveL2: (v: string) => void;
 };
 
 // ─── Budget Range Slider ──────────────────────────────────────────────────────
@@ -275,7 +460,7 @@ const rsl = StyleSheet.create({
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
 function MoodCard({ label, sub, Icon, active, onPress, index }: {
-  label: string; sub: string; Icon: LucideIcon;
+  label: string; sub?: string; Icon: LucideIcon;
   active: boolean; onPress: () => void; index: number;
 }) {
   // 出現アニメ (spring, staggered)
@@ -332,7 +517,7 @@ function MoodCard({ label, sub, Icon, active, onPress, index }: {
           </View>
           {/* ラベル */}
           <Text style={[mc.label, active && mc.labelA]} numberOfLines={1}>{label}</Text>
-          <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text>
+          {sub ? <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text> : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -464,6 +649,7 @@ export default function QuizFlow(props: Props) {
     selectedArea, onSelectArea,
     locationDisplayArea, isLocating, locationError,
     onUseCurrentLocation, onSetStep, onBack, onOpenResults,
+    deepDiveL1, deepDiveL2, onSetDeepDiveL1, onSetDeepDiveL2,
   } = props;
 
   const stepOp  = useRef(new Animated.Value(1)).current;
@@ -480,8 +666,20 @@ export default function QuizFlow(props: Props) {
     ]).start();
   }, [step]);
 
-  const meta   = STEP_META[step] ?? { title: '', sub: '' };
-  const dotIdx = STEP_SEQ.indexOf(step);
+  // ステップ6/7はDEEP_DIVEがある気分のときのみ表示
+  const hasDive = !!DEEP_DIVE[selectedMood];
+  const diveConfig = DEEP_DIVE[selectedMood];
+  const selectedDiveOpt = diveConfig?.options.find(o => o.key === deepDiveL1);
+  const hasDiveL2 = !!(deepDiveL1 && selectedDiveOpt?.subs?.length);
+
+  const meta = step === 6
+    ? { title: diveConfig?.title ?? 'こだわりを教えて', sub: 'スキップもできます' }
+    : step === 7
+      ? { title: `${deepDiveL1}のスタイルは？`, sub: 'さらに絞り込めます' }
+      : (STEP_META[step] ?? { title: '', sub: '' });
+
+  // step 7 は STEP_SEQ に含まれないので step 6 のドットを共有
+  const dotIdx = step === 7 ? STEP_SEQ.indexOf(6) : STEP_SEQ.indexOf(step);
 
   const handleBack = () => {
     if (step === 1)  { onBack(); return; }
@@ -489,7 +687,9 @@ export default function QuizFlow(props: Props) {
     if (step === 3)  { onSetStep(2);  return; }
     if (step === 4)  { onSetStep(3);  return; }
     if (step === 5)  { onSetStep(4);  return; }
-    if (step === 10) { onSetStep(5);  return; }
+    if (step === 6)  { onSetStep(5);  return; }
+    if (step === 7)  { onSetStep(6);  return; }
+    if (step === 10) { onSetStep(hasDive ? 6 : 5); return; }
     onBack();
   };
 
@@ -498,13 +698,15 @@ export default function QuizFlow(props: Props) {
     if (step === 2)  { onSetStep(3);  return; }
     if (step === 3)  { onSetStep(4);  return; }
     if (step === 4)  { onSetStep(5);  return; }
-    if (step === 5)  { onSetStep(10); return; }
+    if (step === 5)  { onSetStep(hasDive ? 6 : 10); return; }
+    if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 10); return; }
+    if (step === 7)  { onSetStep(10); return; }
     if (step === 10) { onOpenResults(); return; }
   };
 
   const nextLabel = step === 10
     ? (lang === 'ja' ? 'おすすめを見る' : 'Show me spots')
-    : step === 1 && !selectedMood
+    : (step === 1 && !selectedMood) || (step === 6 && !deepDiveL1) || (step === 7 && !deepDiveL2)
       ? (lang === 'ja' ? 'スキップ' : 'Skip')
       : (lang === 'ja' ? '次へ  →' : 'Next  →');
 
@@ -615,6 +817,42 @@ export default function QuizFlow(props: Props) {
         </StepEntrance>
         {locationError ? <Text style={s.errTxt}>{locationError}</Text> : null}
       </>
+    );
+
+    // ── Step 6: 深掘り Level 1 ──────────────────────────────────────────────
+    if (step === 6 && diveConfig) return (
+      <View style={s.grid}>
+        {diveConfig.options.map((opt, i) => (
+          <MoodCard
+            key={opt.key}
+            label={opt.label}
+            sub={opt.subs?.length ? (lang === 'ja' ? 'さらに絞り込む ›' : 'More options ›') : opt.sub}
+            Icon={opt.Icon}
+            active={deepDiveL1 === opt.key}
+            index={i}
+            onPress={() => {
+              onSetDeepDiveL1(opt.key);
+              onSetDeepDiveL2(''); // L1 変更時 L2 リセット
+            }}
+          />
+        ))}
+      </View>
+    );
+
+    // ── Step 7: 深掘り Level 2 ──────────────────────────────────────────────
+    if (step === 7 && selectedDiveOpt?.subs) return (
+      <View style={s.grid}>
+        {selectedDiveOpt.subs.map((sub, i) => (
+          <MoodCard
+            key={sub.key}
+            label={sub.label}
+            Icon={sub.Icon}
+            active={deepDiveL2 === sub.key}
+            index={i}
+            onPress={() => onSetDeepDiveL2(sub.key)}
+          />
+        ))}
+      </View>
     );
 
     return null;
