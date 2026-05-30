@@ -23,7 +23,7 @@ const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
 
 const AGE_OPTIONS_JA    = ['10代', '20代', '30代', '40代以上'];
-const AGE_OPTIONS_EN    = ['Teens', '20s', '30s', '40+'];
+const AGE_OPTIONS_EN    = ['10s', '20s', '30s', '40+'];
 const GENDER_OPTIONS_JA = ['男性', '女性', 'その他', '答えたくない'];
 const GENDER_OPTIONS_EN = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
