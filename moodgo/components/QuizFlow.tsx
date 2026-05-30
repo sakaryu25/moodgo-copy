@@ -147,12 +147,12 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
         ],
       },
       { key: '韓国料理',         label: '韓国料理',         sub: 'チーズタッカルビなど',   Icon: Zap },
-      { key: 'アジア料理',       label: 'アジア料理',       sub: 'インド・タイなど',        Icon: Globe,
+      { key: 'アジア系統',       label: 'アジア系統',       sub: 'インド・タイ・ベトナムなど', Icon: Globe,
         subs: [
-          { key: 'インド・ネパール',     label: 'インド・ネパール', Icon: Sparkles },
-          { key: 'タイ料理',            label: 'タイ料理',         Icon: Leaf },
-          { key: 'ベトナム料理',        label: 'ベトナム料理',     Icon: Leaf },
-          { key: 'アジアンエスニック',  label: 'アジアンエスニック', Icon: Globe },
+          { key: 'インド・ネパール',       label: 'インドネパール料理',   Icon: Sparkles },
+          { key: 'タイ料理',               label: 'タイ料理',             Icon: Leaf },
+          { key: 'ベトナム料理',           label: 'ベトナム料理',         Icon: Leaf },
+          { key: 'アジアンエスニック料理', label: 'アジアンエスニック',   Icon: Globe },
         ],
       },
       { key: '各国料理',         label: '各国料理',         sub: 'メキシコ・ブラジルなど',  Icon: Compass,
@@ -160,7 +160,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
           { key: 'メキシコ料理', label: 'メキシコ料理', Icon: Sparkles },
           { key: 'ブラジル料理', label: 'ブラジル料理', Icon: Flame },
           { key: 'ロシア料理',   label: 'ロシア料理',   Icon: Star },
-          { key: 'その他各国',   label: 'その他の国',   Icon: Globe },
+          { key: 'その他各国',   label: '他国料理',     Icon: Globe },
         ],
       },
       { key: 'ラーメン',         label: 'ラーメン',         sub: 'こってり・あっさりなど',  Icon: Coffee,
@@ -172,14 +172,14 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
         ],
       },
       { key: 'お好み焼き',       label: 'お好み焼き・もんじゃ', sub: '鉄板焼き系',         Icon: Flame },
-      { key: 'カフェスイーツ',   label: 'カフェ・スイーツ', sub: 'パンケーキ・スイーツ',   Icon: Heart,
+      { key: 'カフェスイーツ',   label: 'カフェスイーツ',   sub: 'パンケーキ・スイーツ',   Icon: Heart,
         subs: [
-          { key: 'スイーツカフェ', label: 'スイーツカフェ',  Icon: Heart },
-          { key: '喫茶店',         label: '喫茶店・レトロ',  Icon: Coffee },
-          { key: '流行りカフェ',   label: '流行りカフェ',    Icon: Camera },
+          { key: 'カフェスイーツ系', label: 'カフェスイーツ',  Icon: Heart },
+          { key: '喫茶店',           label: '喫茶店・レトロ',  Icon: Coffee },
+          { key: '流行りカフェ',     label: '流行りカフェ',    Icon: Camera },
         ],
       },
-      { key: '高層ビルレストラン', label: '高層ビルレストラン', sub: '絶景を楽しみながら',  Icon: Building2 },
+      { key: '高層ビル料理',     label: '高層ビル料理',     sub: '絶景を楽しみながら',     Icon: Building2 },
     ],
   },
 
@@ -199,21 +199,21 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
           { key: 'ブックカフェ',    label: 'ブックカフェ',    Icon: BookOpen },
           { key: '動物カフェ',      label: '動物カフェ',      Icon: Heart },
           { key: '景色良いカフェ',  label: '景色良いカフェ',  Icon: Camera },
-          { key: 'スイーツカフェ',  label: 'スイーツカフェ',  Icon: Star },
+          { key: 'カフェスイーツ',  label: 'カフェスイーツ',  Icon: Star },
         ],
       },
       { key: '温泉サウナ', label: '温泉・サウナ', sub: '体の芯からリラックス',  Icon: Waves,
         subs: [
-          { key: '温泉旅館',  label: '温泉旅館',    Icon: Waves },
-          { key: 'サウナ',    label: 'サウナ専門店', Icon: Flame },
-          { key: '岩盤浴',    label: '岩盤浴',      Icon: Sparkles },
+          { key: '温泉',    label: '温泉',    Icon: Waves },
+          { key: 'サウナ',  label: 'サウナ',  Icon: Flame },
+          { key: '岩盤浴',  label: '岩盤浴',  Icon: Sparkles },
         ],
       },
       { key: '絶景スポット', label: '絶景スポット', sub: '美しい景色に癒される', Icon: Mountain,
         subs: [
-          { key: '都会の夜景',  label: '都会の夜景', Icon: Building2 },
-          { key: '海辺・夕日',  label: '海辺・夕日', Icon: Waves },
-          { key: '展望台',      label: '展望台',     Icon: Compass },
+          { key: '都会',  label: '都会',  Icon: Building2 },
+          { key: '海辺',  label: '海辺',  Icon: Waves },
+          { key: '展望台', label: '展望台', Icon: Compass },
         ],
       },
     ],
@@ -223,7 +223,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
     title: '何をして楽しみたい？',
     options: [
       { key: '体を動かす',    label: '体を動かす',    sub: 'アクティブに遊ぶ',     Icon: Activity },
-      { key: 'アミューズメント', label: 'アミューズメント', sub: 'テーマパーク・施設', Icon: Zap },
+      { key: 'アミューズメント', label: 'アミューズメントパーク', sub: 'テーマパーク・大型施設', Icon: Zap },
       { key: '体験型ゲーム',  label: '体験型ゲーム',  sub: '謎解き・VRなど',      Icon: Gamepad2 },
     ],
   },
@@ -273,7 +273,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
     options: [
       { key: 'パワースポット', label: 'パワースポット', sub: '神社・絶景',         Icon: Compass },
       { key: 'テーマパーク',   label: 'テーマパーク',   sub: '大型施設で楽しむ',   Icon: Star },
-      { key: '街歩き',         label: '街歩き・散策',   sub: '路地裏・観光地',     Icon: Footprints },
+      { key: '街歩き',         label: 'お散歩・街歩き', sub: '路地裏・ゆっくり散策', Icon: Footprints },
       { key: '絶景スポット',   label: '絶景スポット',   sub: '自然の絶景',         Icon: Camera },
     ],
   },
@@ -282,18 +282,48 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
 // ─── 気分別ヒントタグ ─────────────────────────────────────────────────────────
 
 const FREE_WORD_HINTS: Record<string, string[]> = {
-  'お腹すいた': ['個室あり', 'テラス席', '予約不要', '深夜営業', '駅チカ', '子連れOK'],
-  'まったり':   ['長居OK', '静かな雰囲気', '景色が良い', '隠れ家的', 'ペット可', '屋外席あり'],
-  'わいわい':   ['大人数OK', '貸し切り可', '夜も営業', '屋外で遊べる', 'アクセス良い', '雨でもOK'],
-  '自然':       ['海が見える', '山・森の中', '川・湖沿い', '歩いて回れる', '駐車場あり', '夕日が見える'],
-  'ドライブ':   ['海沿いの道', '山道・峠', '夜景スポット', '途中で食事できる', '駐車場あり', '日帰りできる'],
-  '集中':       ['Wi-Fi完備', '電源あり', '個室・半個室', '静かな席', '長時間OK', '予約できる'],
-  '運動':       ['初心者でもOK', 'レンタル用品あり', '屋内施設', '屋外フィールド', '手ぶらでOK', 'シャワーあり'],
-  '旅行':       ['日帰り圏内', '温泉あり', '体験・アクティビティ', '歴史・文化スポット', '絶景あり', '宿泊も可'],
-  '時間潰し':   ['無料で楽しめる', '屋内', '一人でも入りやすい', '何時間でもOK', '雨でもOK', '駅チカ'],
+  'お腹すいた': [
+    '個室あり', 'テラス席', '予約不要', '深夜営業', '駅チカ', '子連れOK',
+    '食べ放題', '景色が良い', 'コスパ重視', 'ランチ営業', '駐車場あり', '一人でも入りやすい',
+  ],
+  'まったり': [
+    '長居OK', '静かな雰囲気', '景色が良い', '隠れ家的', 'ペット可', '屋外席あり',
+    '読書できる', '混みにくい', '個室あり', '駅チカ', '駐車場あり', '一人でもOK',
+  ],
+  'わいわい': [
+    '大人数OK', '貸し切り可', '夜も楽しめる', '予約できる', '駐車場あり', '雨でもOK',
+    '屋内施設', '子連れOK', '駅チカ', '体を動かせる', '飲食できる', '初回でもOK',
+  ],
+  '自然': [
+    '海が見える', '山・森の中', '川・湖沿い', '展望台あり', '夕日が綺麗', '無料で入れる',
+    '犬と行ける', '駐車場あり', '歩いて回れる', '桜・紅葉スポット', 'アクセスしやすい', '夜もOK',
+  ],
+  'ドライブ': [
+    '海沿いの道', '山道・峠', '夜景が綺麗', '途中で食事できる', '駐車場が広い', '日帰りできる',
+    '渋滞しにくい', '2時間以内', '温泉あり', '絶景展望台', 'アウトレット近く', 'ご当地グルメあり',
+  ],
+  '集中': [
+    'Wi-Fi完備', '電源あり', '個室・半個室', '静かな席', '長時間OK', '混みにくい',
+    '深夜も営業', '飲食しながらOK', '予約できる', '荷物が置ける', '学生割引', '駅チカ',
+  ],
+  '運動': [
+    '初心者でもOK', 'レンタル用品あり', '手ぶらでOK', 'シャワーあり', '屋内施設', '屋外フィールド',
+    '一人でもOK', '仲間と行ける', '予約できる', '駅チカ', '駐車場あり', '体験プランあり',
+  ],
+  '旅行': [
+    '日帰りできる', '温泉あり', '体験・アクティビティ', '歴史・文化スポット', '絶景あり', '宿泊も可',
+    '食事も楽しめる', '子連れOK', 'ペット可', 'インスタ映え', '公共交通アクセス可', '駐車場あり',
+  ],
+  '時間潰し': [
+    '無料で楽しめる', '屋内', '一人でも入りやすい', '何時間でもOK', '雨でもOK', '駅チカ',
+    '飲食できる', '24時間営業', '混みにくい', '座れる', '静かな環境', 'アクセス良い',
+  ],
 };
 
-const FREE_WORD_HINTS_DEFAULT = ['駅チカ', '駐車場あり', '屋内', '景色が良い', '静かな雰囲気', '穴場スポット'];
+const FREE_WORD_HINTS_DEFAULT = [
+  '駅チカ', '駐車場あり', '屋内', '景色が良い', '静かな雰囲気', '穴場スポット',
+  '予約不要', '一人でもOK', '子連れOK', '長居OK', '混みにくい', '雨でもOK',
+];
 
 const STEP_META: Record<number, { title: string; sub: string }> = {
   1:  { title: '今の気分は？',           sub: 'タップして選択' },
