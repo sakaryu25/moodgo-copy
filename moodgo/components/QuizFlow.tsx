@@ -371,23 +371,42 @@ const mc = StyleSheet.create({
 
 // ─── Option Card ──────────────────────────────────────────────────────────────
 
-function OptionCard({ label, sub, Icon, active, onPress, width, height }: {
+function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 0 }: {
   label: string; sub?: string; Icon: LucideIcon;
-  active: boolean; onPress: () => void; width: number; height: number;
+  active: boolean; onPress: () => void; width: number; height: number; index?: number;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const pIn  = () => Animated.spring(scale, { toValue: 0.90, tension: 350, friction: 14, useNativeDriver: true }).start();
-  const pOut = () => Animated.spring(scale, { toValue: 1,    tension: 350, friction: 14, useNativeDriver: true }).start();
+  // 出現アニメ (MoodCard と同じ staggered spring)
+  const entryAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(entryAnim, {
+      toValue: 1,
+      delay: index * 80,
+      damping: 12,
+      stiffness: 100,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  const entryY     = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+  const entryOp    = entryAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 1] });
+  const entryScale = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
+
+  // タップアニメ
+  const pressScale = useRef(new Animated.Value(1)).current;
+  const pIn  = () => Animated.spring(pressScale, { toValue: 0.90, tension: 350, friction: 14, useNativeDriver: true }).start();
+  const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 350, friction: 14, useNativeDriver: true }).start();
+
   return (
-    <Animated.View style={{ transform: [{ scale }], width, height }}>
-      <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
-        style={[oc.card, { width, height }, active && oc.cardActive]}>
-        {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
-        {active && <View style={oc.badge}><Text style={oc.badgeTxt}>✓</Text></View>}
-        <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
-        <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
-        {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={2}>{sub}</Text> : null}
-      </TouchableOpacity>
+    <Animated.View style={{ width, height, opacity: entryOp, transform: [{ translateY: entryY }, { scale: entryScale }] }}>
+      <Animated.View style={{ flex: 1, transform: [{ scale: pressScale }] }}>
+        <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
+          style={[oc.card, { width, height }, active && oc.cardActive]}>
+          {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
+          {active && <View style={oc.badge}><Text style={oc.badgeTxt}>✓</Text></View>}
+          <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
+          <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
+          {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={2}>{sub}</Text> : null}
+        </TouchableOpacity>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -411,6 +430,25 @@ const oc = StyleSheet.create({
   sub: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
   subA: { color: 'rgba(255,255,255,0.85)' },
 });
+
+// ─── Step Entrance Wrapper (fade + slide up, for non-grid content) ────────────
+
+function StepEntrance({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1, delay, damping: 12, stiffness: 100, useNativeDriver: true,
+    }).start();
+  }, []);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [60, 0] });
+  const opacity    = anim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 1] });
+  const scale      = anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] });
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }, { scale }] }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -489,9 +527,10 @@ export default function QuizFlow(props: Props) {
 
     if (step === 2) return (
       <View style={s.grid}>
-        {COMPANIONS.map((m) => (
+        {COMPANIONS.map((m, i) => (
           <OptionCard key={m.key} label={m.label} Icon={m.Icon}
             active={selectedCompanion === m.key} width={CW3} height={CW3}
+            index={i}
             onPress={() => onSelectCompanion(m.key)} />
         ))}
       </View>
@@ -503,11 +542,12 @@ export default function QuizFlow(props: Props) {
           <Text style={s.hintTxt}>{lang === 'ja' ? '複数選択できます（なんでも は単独）' : 'Multi-select · "Any" is exclusive'}</Text>
         </View>
         <View style={s.grid}>
-          {TRANSPORTS.map((m) => {
+          {TRANSPORTS.map((m, i) => {
             const active = selectedTransports.includes(m.key);
             return (
               <OptionCard key={m.key} label={m.label} Icon={m.Icon}
                 active={active} width={CW3} height={CW3}
+                index={i}
                 onPress={() => {
                   if (m.key === 'なんでも') { onSelectTransports(active ? [] : ['なんでも']); }
                   else {
@@ -523,28 +563,35 @@ export default function QuizFlow(props: Props) {
 
     if (step === 4) return (
       <>
-        <BudgetRangeSlider minVal={budgetMin} maxVal={budget} onChangeMin={onSetBudgetMin} onChangeMax={onSetBudget} />
-        <Text style={s.chipsLbl}>{lang === 'ja' ? 'よく使う範囲' : 'Common ranges'}</Text>
-        <View style={s.chipsGrid}>
-          {BUDGET_CHIPS.map((chip) => {
-            const active = budget === chip.max && budgetMin === chip.min;
-            return (
-              <TouchableOpacity key={chip.label} onPress={() => { onSetBudget(chip.max); onSetBudgetMin(chip.min); }}
-                style={[s.chip, active && s.chipA]}>
-                {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
-                <Text style={[s.chipTxt, active && s.chipTxtA]}>{chip.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <StepEntrance delay={0}>
+          <BudgetRangeSlider minVal={budgetMin} maxVal={budget} onChangeMin={onSetBudgetMin} onChangeMax={onSetBudget} />
+        </StepEntrance>
+        <StepEntrance delay={80}>
+          <Text style={s.chipsLbl}>{lang === 'ja' ? 'よく使う範囲' : 'Common ranges'}</Text>
+          <View style={s.chipsGrid}>
+            {BUDGET_CHIPS.map((chip, i) => {
+              const active = budget === chip.max && budgetMin === chip.min;
+              return (
+                <StepEntrance key={chip.label} delay={80 + i * 50}>
+                  <TouchableOpacity onPress={() => { onSetBudget(chip.max); onSetBudgetMin(chip.min); }}
+                    style={[s.chip, active && s.chipA]}>
+                    {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
+                    <Text style={[s.chipTxt, active && s.chipTxtA]}>{chip.label}</Text>
+                  </TouchableOpacity>
+                </StepEntrance>
+              );
+            })}
+          </View>
+        </StepEntrance>
       </>
     );
 
     if (step === 5) return (
       <View style={s.grid}>
-        {TIMES.map((m) => (
+        {TIMES.map((m, i) => (
           <OptionCard key={m.key} label={m.label} sub={m.sub} Icon={m.Icon}
             active={selectedTime === m.key} width={CW3} height={CW3 + 20}
+            index={i}
             onPress={() => onSelectTime(m.key)} />
         ))}
       </View>
@@ -552,16 +599,20 @@ export default function QuizFlow(props: Props) {
 
     if (step === 10) return (
       <>
-        <TouchableOpacity onPress={onUseCurrentLocation} disabled={isLocating} activeOpacity={0.85} style={s.locWrap}>
-          <LinearGradient colors={isLocating ? ['#ccc', '#ccc'] : GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.locBtn}>
-            <Text style={s.locBtnTxt}>{isLocating ? (lang === 'ja' ? '現在地を取得中...' : 'Getting location...') : (lang === 'ja' ? '📍 現在地を使う' : '📍 Use my location')}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <StepEntrance delay={0}>
+          <TouchableOpacity onPress={onUseCurrentLocation} disabled={isLocating} activeOpacity={0.85} style={s.locWrap}>
+            <LinearGradient colors={isLocating ? ['#ccc', '#ccc'] : GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.locBtn}>
+              <Text style={s.locBtnTxt}>{isLocating ? (lang === 'ja' ? '現在地を取得中...' : 'Getting location...') : (lang === 'ja' ? '📍 現在地を使う' : '📍 Use my location')}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </StepEntrance>
         {locationDisplayArea ? <View style={s.locTag}><Text style={s.locTagTxt}>📍 {locationDisplayArea}</Text></View> : null}
-        <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
-        <TextInput value={selectedArea} onChangeText={onSelectArea}
-          placeholder={lang === 'ja' ? '例：渋谷 / 横浜 / 新宿' : 'e.g. Shibuya / Yokohama'}
-          placeholderTextColor="#C4B5FD" style={s.areaInput} />
+        <StepEntrance delay={80}>
+          <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
+          <TextInput value={selectedArea} onChangeText={onSelectArea}
+            placeholder={lang === 'ja' ? '例：渋谷 / 横浜 / 新宿' : 'e.g. Shibuya / Yokohama'}
+            placeholderTextColor="#C4B5FD" style={s.areaInput} />
+        </StepEntrance>
         {locationError ? <Text style={s.errTxt}>{locationError}</Text> : null}
       </>
     );
