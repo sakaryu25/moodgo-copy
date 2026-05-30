@@ -51,7 +51,7 @@ const SLIDER_W = SCREEN_W - PAD * 2;
 const THUMB_D = 28;
 const MAX_BUDGET = 15000;
 const BSTEP = 500;
-const STEP_SEQ = [1, 2, 3, 4, 5, 6, 10, 11];
+const STEP_SEQ = [1, 2, 3, 4, 5, 6, 9, 10, 11];
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
@@ -284,6 +284,7 @@ const STEP_META: Record<number, { title: string; sub: string }> = {
   3:  { title: '交通手段は？',           sub: 'なんでも以外は複数選べます。' },
   4:  { title: '予算はどのくらい？',     sub: 'スライダーで範囲を設定できます。' },
   5:  { title: 'どのくらい時間がある？', sub: '空き時間に合う過ごし方を提案します。' },
+  9:  { title: '自由ワード',              sub: '行きたいイメージを自由に書いてください（任意）' },
   10: { title: 'エリアはどこ？',         sub: '現在地を使うか、エリア名を入力してください。' },
 };
 
@@ -671,6 +672,7 @@ export default function QuizFlow(props: Props) {
     selectedTime, onSelectTime,
     selectedArea, onSelectArea,
     locationDisplayArea, isLocating, locationError,
+    freeWord, onSetFreeWord,
     onUseCurrentLocation, onSetStep, onBack, onOpenResults,
     deepDiveL1, deepDiveL2, onSetDeepDiveL1, onSetDeepDiveL2,
   } = props;
@@ -712,7 +714,8 @@ export default function QuizFlow(props: Props) {
     if (step === 5)  { onSetStep(4);  return; }
     if (step === 6)  { onSetStep(5);  return; }
     if (step === 7)  { onSetStep(6);  return; }
-    if (step === 10) { onSetStep(hasDive ? 6 : 5); return; }
+    if (step === 9)  { onSetStep(hasDiveL2 ? 7 : hasDive ? 6 : 5); return; }
+    if (step === 10) { onSetStep(9);  return; }
     onBack();
   };
 
@@ -721,15 +724,16 @@ export default function QuizFlow(props: Props) {
     if (step === 2)  { onSetStep(3);  return; }
     if (step === 3)  { onSetStep(4);  return; }
     if (step === 4)  { onSetStep(5);  return; }
-    if (step === 5)  { onSetStep(hasDive ? 6 : 10); return; }
-    if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 10); return; }
-    if (step === 7)  { onSetStep(10); return; }
+    if (step === 5)  { onSetStep(hasDive ? 6 : 9); return; }
+    if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 9); return; }
+    if (step === 7)  { onSetStep(9);  return; }
+    if (step === 9)  { onSetStep(10); return; }
     if (step === 10) { onOpenResults(); return; }
   };
 
   const nextLabel = step === 10
     ? (lang === 'ja' ? 'おすすめを見る' : 'Show me spots')
-    : (step === 1 && !selectedMood) || (step === 6 && !deepDiveL1) || (step === 7 && !deepDiveL2)
+    : (step === 1 && !selectedMood) || (step === 6 && !deepDiveL1) || (step === 7 && !deepDiveL2) || (step === 9 && !freeWord)
       ? (lang === 'ja' ? 'スキップ' : 'Skip')
       : (lang === 'ja' ? '次へ  →' : 'Next  →');
 
@@ -846,6 +850,52 @@ export default function QuizFlow(props: Props) {
         {locationError ? <Text style={s.errTxt}>{locationError}</Text> : null}
       </>
     );
+
+    // ── Step 9: 自由ワード ──────────────────────────────────────────────────
+    if (step === 9) {
+      const HINT_TAGS = ['夜景', '海が見たい', '甘いもの', '静かな場所', '公園', '穴場スポット'];
+      return (
+        <StepEntrance delay={0}>
+          {/* 入力カード */}
+          <View style={s.freeWordCard}>
+            <TextInput
+              value={freeWord}
+              onChangeText={onSetFreeWord}
+              placeholder={lang === 'ja'
+                ? '例：夜景、甘いもの、公園、静かな場所、海が見たい など'
+                : 'e.g. night view, sweets, park, quiet place...'}
+              placeholderTextColor="#C4B5FD"
+              multiline
+              textAlignVertical="top"
+              style={s.freeWordInput}
+            />
+            {freeWord.length > 0 && (
+              <View style={s.freeWordCount}>
+                <Text style={s.freeWordCountTxt}>{freeWord.length}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* ヒントタグ */}
+          <Text style={s.freeWordHintLabel}>{lang === 'ja' ? 'ヒント' : 'Suggestions'}</Text>
+          <View style={s.freeWordHints}>
+            {HINT_TAGS.map((hint) => (
+              <TouchableOpacity
+                key={hint}
+                onPress={() => onSetFreeWord(freeWord ? `${freeWord}、${hint}` : hint)}
+                style={[s.freeWordTag, freeWord.includes(hint) && s.freeWordTagA]}
+                activeOpacity={0.75}
+              >
+                {freeWord.includes(hint) && (
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                )}
+                <Text style={[s.freeWordTagTxt, freeWord.includes(hint) && s.freeWordTagTxtA]}>{hint}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </StepEntrance>
+      );
+    }
 
     // ── Step 6: 深掘り Level 1 ──────────────────────────────────────────────
     if (step === 6 && diveConfig) return (
@@ -1012,6 +1062,41 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#DDD6FE',
   },
   errTxt: { fontSize: 13, color: '#EF4444', marginTop: 8 },
+  // 自由ワードページ専用
+  freeWordCard: {
+    backgroundColor: '#fff', borderRadius: 22,
+    padding: 20, marginBottom: 20,
+    borderWidth: 1.5, borderColor: '#EDE9FE',
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12, shadowRadius: 20, elevation: 5,
+    minHeight: 160,
+  },
+  freeWordInput: {
+    fontSize: 16, color: '#1E0753',
+    lineHeight: 26, minHeight: 120,
+    paddingTop: 0,
+  },
+  freeWordCount: {
+    alignSelf: 'flex-end', marginTop: 8,
+    backgroundColor: '#EDE9FE', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 3,
+  },
+  freeWordCountTxt: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  freeWordHintLabel: {
+    fontSize: 12, fontWeight: '800', color: '#7C3AED',
+    letterSpacing: 0.5, marginBottom: 12, textTransform: 'uppercase',
+  },
+  freeWordHints: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  freeWordTag: {
+    paddingHorizontal: 16, paddingVertical: 9,
+    backgroundColor: '#fff', borderRadius: 999,
+    borderWidth: 1.5, borderColor: '#DDD6FE', overflow: 'hidden',
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
+  },
+  freeWordTagA: { borderColor: 'transparent', shadowColor: '#C084FC', shadowOpacity: 0.28, shadowRadius: 8, elevation: 4 },
+  freeWordTagTxt: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  freeWordTagTxtA: { color: '#fff', fontWeight: '800' },
   bottomBar: {
     paddingHorizontal: PAD, paddingTop: 12,
     backgroundColor: 'rgba(245,240,255,0.97)',
