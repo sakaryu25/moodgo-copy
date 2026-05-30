@@ -47,6 +47,7 @@ const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const PAD = 24;
 const GAP = 10;
 const CW3 = Math.floor((SCREEN_W - PAD * 2 - GAP * 2) / 3);
+const CW2 = Math.floor((SCREEN_W - PAD * 2 - GAP) / 2);
 const SLIDER_W = SCREEN_W - PAD * 2;
 const THUMB_D = 28;
 const MAX_BUDGET = 15000;
@@ -483,9 +484,9 @@ const rsl = StyleSheet.create({
 
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
-function MoodCard({ label, sub, Icon, active, onPress, index }: {
+function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }: {
   label: string; sub?: string; Icon: LucideIcon;
-  active: boolean; onPress: () => void; index: number;
+  active: boolean; onPress: () => void; index: number; cardWidth?: number;
 }) {
   // 出現アニメ (spring, staggered)
   const entryAnim = useRef(new Animated.Value(0)).current;
@@ -509,7 +510,7 @@ function MoodCard({ label, sub, Icon, active, onPress, index }: {
 
   return (
     <Animated.View style={{
-      width: CW3, opacity: entryOp,
+      width: cardWidth, opacity: entryOp,
       transform: [{ translateY: entryY }, { scale: entryScale }],
     }}>
       <Animated.View style={{ transform: [{ scale: pressScale }] }}>
@@ -898,40 +899,48 @@ export default function QuizFlow(props: Props) {
     }
 
     // ── Step 6: 深掘り Level 1 ──────────────────────────────────────────────
-    if (step === 6 && diveConfig) return (
-      <View style={s.grid}>
-        {diveConfig.options.map((opt, i) => (
-          <MoodCard
-            key={opt.key}
-            label={opt.label}
-            sub={opt.subs?.length ? (lang === 'ja' ? 'さらに絞り込む ›' : 'More options ›') : opt.sub}
-            Icon={opt.Icon}
-            active={deepDiveL1 === opt.key}
-            index={i}
-            onPress={() => {
-              onSetDeepDiveL1(opt.key);
-              onSetDeepDiveL2(''); // L1 変更時 L2 リセット
-            }}
-          />
-        ))}
-      </View>
-    );
+    if (step === 6 && diveConfig) {
+      const cw6 = diveConfig.options.length === 4 ? CW2 : CW3;
+      return (
+        <View style={s.grid}>
+          {diveConfig.options.map((opt, i) => (
+            <MoodCard
+              key={opt.key}
+              label={opt.label}
+              sub={opt.subs?.length ? (lang === 'ja' ? 'さらに絞り込む ›' : 'More options ›') : opt.sub}
+              Icon={opt.Icon}
+              active={deepDiveL1 === opt.key}
+              index={i}
+              cardWidth={cw6}
+              onPress={() => {
+                onSetDeepDiveL1(opt.key);
+                onSetDeepDiveL2(''); // L1 変更時 L2 リセット
+              }}
+            />
+          ))}
+        </View>
+      );
+    }
 
     // ── Step 7: 深掘り Level 2 ──────────────────────────────────────────────
-    if (step === 7 && selectedDiveOpt?.subs) return (
-      <View style={s.grid}>
-        {selectedDiveOpt.subs.map((sub, i) => (
-          <MoodCard
-            key={sub.key}
-            label={sub.label}
-            Icon={sub.Icon}
-            active={deepDiveL2 === sub.key}
-            index={i}
-            onPress={() => onSetDeepDiveL2(sub.key)}
-          />
-        ))}
-      </View>
-    );
+    if (step === 7 && selectedDiveOpt?.subs) {
+      const cw7 = selectedDiveOpt.subs.length === 4 ? CW2 : CW3;
+      return (
+        <View style={s.grid}>
+          {selectedDiveOpt.subs.map((sub, i) => (
+            <MoodCard
+              key={sub.key}
+              label={sub.label}
+              Icon={sub.Icon}
+              active={deepDiveL2 === sub.key}
+              index={i}
+              cardWidth={cw7}
+              onPress={() => onSetDeepDiveL2(sub.key)}
+            />
+          ))}
+        </View>
+      );
+    }
 
     return null;
   };
