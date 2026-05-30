@@ -404,12 +404,31 @@ function BudgetRangeSlider({
 
   return (
     <View style={rsl.wrap}>
-      <View style={rsl.displayWrap}>
-        <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.displayGrad}>
-          <Text style={rsl.displayText}>{minLbl}  〜  {maxLbl}</Text>
-        </LinearGradient>
+      {/* 範囲表示 */}
+      <View style={rsl.rangeRow}>
+        <View style={rsl.rangeBox}>
+          <Text style={rsl.rangeCaption}>最低</Text>
+          <LinearGradient colors={['#F472B6', '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeGradBorder}>
+            <View style={rsl.rangeInner}>
+              <Text style={rsl.rangeVal}>{minLbl}</Text>
+            </View>
+          </LinearGradient>
+        </View>
+        <View style={rsl.rangeSep}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeSepLine} />
+        </View>
+        <View style={[rsl.rangeBox, { alignItems: 'flex-end' }]}>
+          <Text style={rsl.rangeCaption}>最高</Text>
+          <LinearGradient colors={['#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={rsl.rangeGradBorder}>
+            <View style={rsl.rangeInner}>
+              <Text style={rsl.rangeVal}>{maxLbl}</Text>
+            </View>
+          </LinearGradient>
+        </View>
       </View>
-      <View style={{ width: SLIDER_W, height: 60, alignSelf: 'center' }}>
+
+      {/* スライダー */}
+      <View style={{ width: SLIDER_W, height: 68, alignSelf: 'center' }}>
         <View style={rsl.trackBg} />
         <View style={[rsl.trackActive, { left: aL, width: aW }]}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
@@ -430,31 +449,35 @@ function BudgetRangeSlider({
 }
 
 const rsl = StyleSheet.create({
-  wrap: { marginBottom: 20 },
-  displayWrap: {
-    alignSelf: 'center', borderRadius: 18, overflow: 'hidden', marginBottom: 20,
-    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 12, elevation: 6,
+  wrap: { marginBottom: 4 },
+  rangeRow: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: 20,
   },
-  displayGrad: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 18 },
-  displayText: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
+  rangeBox: { flex: 1 },
+  rangeCaption: { fontSize: 10, fontWeight: '700', color: '#A78BFA', letterSpacing: 0.8, marginBottom: 6, textTransform: 'uppercase' },
+  rangeGradBorder: { borderRadius: 12, padding: 1.5 },
+  rangeInner: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  rangeVal: { fontSize: 18, fontWeight: '900', color: '#1E0753', letterSpacing: -0.5 },
+  rangeSep: { paddingHorizontal: 10, alignItems: 'center' },
+  rangeSepLine: { width: 20, height: 2.5, borderRadius: 99 },
   trackBg: {
     position: 'absolute', left: THUMB_D / 2, right: THUMB_D / 2,
-    height: 5, borderRadius: 99, backgroundColor: '#DDD6FE', top: (60 - 5) / 2,
+    height: 8, borderRadius: 99, backgroundColor: '#EDE9FE', top: (68 - 8) / 2,
   },
   trackActive: {
-    position: 'absolute', height: 5, borderRadius: 99, overflow: 'hidden', top: (60 - 5) / 2,
+    position: 'absolute', height: 8, borderRadius: 99, overflow: 'hidden', top: (68 - 8) / 2,
   },
   thumb: {
     position: 'absolute', width: THUMB_D, height: THUMB_D, borderRadius: THUMB_D / 2,
-    top: (60 - THUMB_D) / 2, backgroundColor: '#fff', overflow: 'hidden',
-    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    top: (68 - THUMB_D) / 2, backgroundColor: '#fff', overflow: 'hidden',
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
   },
   thumbInner: { flex: 1 },
   scaleRow: {
-    position: 'absolute', left: 0, right: 0, bottom: 2,
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: THUMB_D / 2,
   },
-  scaleText: { fontSize: 11, color: '#A78BFA', fontWeight: '500' },
+  scaleText: { fontSize: 10, color: '#C4B5FD', fontWeight: '600' },
 });
 
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
@@ -764,28 +787,33 @@ export default function QuizFlow(props: Props) {
     );
 
     if (step === 4) return (
-      <>
-        <StepEntrance delay={0}>
+      <StepEntrance delay={0}>
+        {/* スライダーカード */}
+        <View style={s.budgetCard}>
           <BudgetRangeSlider minVal={budgetMin} maxVal={budget} onChangeMin={onSetBudgetMin} onChangeMax={onSetBudget} />
-        </StepEntrance>
-        <StepEntrance delay={80}>
-          <Text style={s.chipsLbl}>{lang === 'ja' ? 'よく使う範囲' : 'Common ranges'}</Text>
-          <View style={s.chipsGrid}>
-            {BUDGET_CHIPS.map((chip, i) => {
-              const active = budget === chip.max && budgetMin === chip.min;
-              return (
-                <StepEntrance key={chip.label} delay={80 + i * 50}>
-                  <TouchableOpacity onPress={() => { onSetBudget(chip.max); onSetBudgetMin(chip.min); }}
-                    style={[s.chip, active && s.chipA]}>
-                    {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
-                    <Text style={[s.chipTxt, active && s.chipTxtA]}>{chip.label}</Text>
-                  </TouchableOpacity>
-                </StepEntrance>
-              );
-            })}
-          </View>
-        </StepEntrance>
-      </>
+        </View>
+
+        {/* クイック選択 */}
+        <Text style={s.quickPickLabel}>{lang === 'ja' ? 'クイック選択' : 'Quick pick'}</Text>
+        <View style={s.grid}>
+          {BUDGET_CHIPS.map((chip) => {
+            const active = budget === chip.max && budgetMin === chip.min;
+            return (
+              <TouchableOpacity
+                key={chip.label}
+                onPress={() => { onSetBudget(chip.max); onSetBudgetMin(chip.min); }}
+                activeOpacity={0.82}
+                style={[s.budgetChip, active && s.budgetChipA]}
+              >
+                {active && (
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+                )}
+                <Text style={[s.budgetChipTxt, active && s.budgetChipTxtA]}>{chip.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </StepEntrance>
     );
 
     if (step === 5) return (
@@ -941,6 +969,31 @@ const s = StyleSheet.create({
   },
   chipTxt: { fontSize: 14, fontWeight: '600', color: '#1E0753' },
   chipTxtA: { color: '#fff', fontWeight: '800' },
+  // 予算ページ専用
+  budgetCard: {
+    backgroundColor: '#fff', borderRadius: 22,
+    padding: 20, marginBottom: 24,
+    borderWidth: 1.5, borderColor: '#EDE9FE',
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12, shadowRadius: 20, elevation: 5,
+  },
+  quickPickLabel: {
+    fontSize: 12, fontWeight: '800', color: '#7C3AED',
+    letterSpacing: 0.5, marginBottom: 12, textTransform: 'uppercase',
+  },
+  budgetChip: {
+    width: CW3, height: 52, borderRadius: 14,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#DDD6FE',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  budgetChipA: {
+    borderColor: 'transparent',
+    shadowColor: '#C084FC', shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+  },
+  budgetChipTxt: { fontSize: 13, fontWeight: '700', color: '#1E0753' },
+  budgetChipTxtA: { color: '#fff', fontWeight: '800' },
   locWrap: {
     borderRadius: 16, overflow: 'hidden', marginBottom: 14,
     shadowColor: '#C084FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
