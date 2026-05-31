@@ -193,11 +193,6 @@ export default function PlaceCard({
           <Text style={s.description} numberOfLines={2}>{description}</Text>
         ) : null}
 
-        {/* 住所 */}
-        {item.address ? (
-          <Text style={s.address} numberOfLines={2}>{item.address}</Text>
-        ) : null}
-
         {/* 評価 + 営業状態 (ピル) */}
         <View style={s.pillRow}>
           {item.rating != null && (
@@ -217,41 +212,33 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        {/* 最寄り駅 / 距離 (全幅ピル) */}
+        {/* 住所 */}
+        {item.address ? (
+          <Text style={s.address} numberOfLines={2}>{item.address}</Text>
+        ) : null}
+
+        {/* 最寄り駅 / 距離 */}
         {item.stationText ? (
-          <View style={s.distPill}>
-            <Train size={13} color="#6B7280" strokeWidth={2} />
-            <Text style={s.distText} numberOfLines={1}>{item.stationText}</Text>
+          <View style={s.hoursRow}>
+            <Train size={13} color="#9CA3AF" strokeWidth={2} />
+            <Text style={s.hoursText}>{item.stationText}</Text>
           </View>
         ) : item.distanceText ? (
-          <View style={s.distPill}>
-            <Navigation size={13} color="#6B7280" strokeWidth={2} />
-            <Text style={s.distText} numberOfLines={1}>
+          <View style={s.hoursRow}>
+            <Navigation size={13} color="#9CA3AF" strokeWidth={2} />
+            <Text style={s.hoursText}>
               {item.distanceText}{item.durationText ? `  /  ${item.durationText}` : ''}
             </Text>
           </View>
         ) : null}
 
-        {/* 営業時間 */}
+        {/* 営業時間（週全体） */}
         {item.openingHoursText ? (
           <View style={s.hoursRow}>
             <Clock size={14} color="#9CA3AF" strokeWidth={2} />
-            <Text style={s.hoursText} numberOfLines={1}>{item.openingHoursText}</Text>
+            <Text style={s.hoursText}>{item.openingHoursText}</Text>
           </View>
         ) : null}
-
-        {/* タグ（短い特徴ワード） */}
-        {tags.length > 0 && (
-          <View style={s.tagRow}>
-            {tags.map((f, i) => (
-              <View key={i} style={s.tag}>
-                <Text style={s.tagText}>{f}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={s.divider} />
 
         {/* ── アクションボタン: Googleマップ + 行った！ ── */}
         <View style={s.actions}>
@@ -290,6 +277,8 @@ export default function PlaceCard({
             </TouchableOpacity>
           ) : null}
         </View>
+
+        <View style={s.divider} />
 
         {/* ── 気分ボタン ── */}
         {(onMoodMatch || onMoodNotMatch) && (
