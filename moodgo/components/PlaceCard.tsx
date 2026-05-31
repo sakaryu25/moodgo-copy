@@ -8,7 +8,9 @@ import React, { useRef, useState } from 'react';
 import {
   Animated,
   Linking,
-  PanResponder,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -148,35 +150,25 @@ export default function PlaceCard({
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
   const [photoIdx, setPhotoIdx] = useState(0);
-  const photosLen = photos.length;
+  const photoScrollRef = useRef<ScrollView>(null);
+  const [photoWidth, setPhotoWidth] = useState(0);
 
-  // スワイプジェスチャー（写真切り替え）
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => photosLen > 1,
-      onMoveShouldSetPanResponder: (_, gs) =>
-        photosLen > 1 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 6,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderRelease: (_, gs) => {
-        // 距離 or 速度どちらかで判定（フリックにも反応）
-        const swipeRight = gs.dx > 25 || gs.vx > 0.3;
-        const swipeLeft  = gs.dx < -25 || gs.vx < -0.3;
-        if (swipeLeft) {
-          setPhotoIdx(i => {
-            const next = Math.min(i + 1, photosLen - 1);
-            if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            return next;
-          });
-        } else if (swipeRight) {
-          setPhotoIdx(i => {
-            const next = Math.max(i - 1, 0);
-            if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            return next;
-          });
-        }
-      },
-    })
-  ).current;
+  // ページングScrollView: スクロール終了時にインデックス更新
+  const onPhotoScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (photoWidth <= 0) return;
+    const newIdx = Math.round(e.nativeEvent.contentOffset.x / photoWidth);
+    if (newIdx !== photoIdx) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setPhotoIdx(newIdx);
+    }
+  };
+
+  // 矢印ボタン用: 指定ページへスムーズスクロール
+  const scrollToPhoto = (idx: number) => {
+    if (photoWidth <= 0) return;
+    photoScrollRef.current?.scrollTo({ x: idx * photoWidth, animated: true });
+    setPhotoIdx(idx);
+  };
 
   // スプリングプレスアニメーション
   const scale = useRef(new Animated.Value(1)).current;
@@ -212,9 +204,37 @@ export default function PlaceCard({
     <Animated.View style={[s.card, { transform: [{ scale }] }]}>
 
       {/* ── 写真エリア ────────────────────────────── */}
-      <View style={s.photoWrap} {...panResponder.panHandlers}>
-        {photos.length > 0 ? (
-          <Image source={{ uri: photos[photoIdx] }} style={s.photo} contentFit="cover" transition={300} />
+      <View
+        style={s.photoWrap}
+        onLayout={e => setPhotoWidth(e.nativeEvent.layout.width)}
+      >
+        {/* 写真カルーセル（水平ページングScrollView） */}
+        {photos.length > 0 && photoWidth > 0 ? (
+          <ScrollView
+            ref={photoScrollRef}
+            horizontal
+            pagingEnabled
+            scrollEnabled={photos.length > 1}
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            scrollEventThrottle={16}
+            bounces={false}
+            onMomentumScrollEnd={onPhotoScrollEnd}
+            style={{ width: photoWidth, height: 220 }}
+          >
+            {photos.map((uri, i) => (
+              <Image
+                key={i}
+                source={{ uri }}
+                style={{ width: photoWidth, height: 220 }}
+                contentFit="cover"
+                transition={200}
+              />
+            ))}
+          </ScrollView>
+        ) : photos.length > 0 ? (
+          // photoWidth 計測前の一瞬だけ先頭写真を表示
+          <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} />
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color={BRAND} strokeWidth={1.5} />
@@ -227,16 +247,16 @@ export default function PlaceCard({
           pointerEvents="none"
         />
 
-        {/* ページングボタン */}
+        {/* ページングドット + 矢印ボタン */}
         {photos.length > 1 && (
           <>
             {photoIdx > 0 && (
-              <TouchableOpacity onPress={() => setPhotoIdx((i) => i - 1)} style={[s.arrowBtn, { left: 10 }]}>
+              <TouchableOpacity onPress={() => scrollToPhoto(photoIdx - 1)} style={[s.arrowBtn, { left: 10 }]}>
                 <Text style={s.arrowText}>‹</Text>
               </TouchableOpacity>
             )}
             {photoIdx < photos.length - 1 && (
-              <TouchableOpacity onPress={() => setPhotoIdx((i) => i + 1)} style={[s.arrowBtn, { right: 10 }]}>
+              <TouchableOpacity onPress={() => scrollToPhoto(photoIdx + 1)} style={[s.arrowBtn, { right: 10 }]}>
                 <Text style={s.arrowText}>›</Text>
               </TouchableOpacity>
             )}
