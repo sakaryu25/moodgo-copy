@@ -12,7 +12,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, MapPin, Navigation, Search, Shuffle, Star, SlidersHorizontal } from 'lucide-react-native';
+import {
+  Banknote, Car, ChevronDown, ChevronLeft, ChevronUp,
+  Clock, Eye, List, MapPin, MessageSquare, Navigation,
+  Search, Shuffle, Sparkles, Star, Tag, Users,
+} from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
@@ -327,22 +331,23 @@ export default function ResultsView(props: Props) {
   const notSkipped = (v: string) => v && v !== 'スキップ' && v !== 'Skip' && v !== 'skip';
 
   // 今回の条件チップ（スキップは除外・全質問を表示）
-  const condChips: { label: string; value: string; icon: string }[] = [];
-  if (notSkipped(selectedMood))       condChips.push({ label: t.condMood,      value: selectedMood,            icon: '🎭' });
-  if (notSkipped(selectedCompanion))  condChips.push({ label: t.condWith,      value: selectedCompanion,       icon: '👥' });
+  type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  const condChips: { label: string; value: string; Icon: LIcon }[] = [];
+  if (notSkipped(selectedMood))       condChips.push({ label: t.condMood,      value: selectedMood,                         Icon: Sparkles });
+  if (notSkipped(selectedCompanion))  condChips.push({ label: t.condWith,      value: selectedCompanion,                    Icon: Users });
   const filteredTransports = selectedTransports.filter(notSkipped);
-  if (filteredTransports.length > 0)  condChips.push({ label: t.condTransport, value: filteredTransports.join('・'), icon: '🚗' });
-  if (budget === 0)                   condChips.push({ label: t.condBudget,    value: '無料',                  icon: '💰' });
+  if (filteredTransports.length > 0)  condChips.push({ label: t.condTransport, value: filteredTransports.join('・'),        Icon: Car });
+  if (budget === 0)                   condChips.push({ label: t.condBudget,    value: '無料',                               Icon: Banknote });
   else if (budget != null && budget > 0) {
     const bStr = budgetMin > 0 ? `¥${budgetMin.toLocaleString()}〜¥${budget.toLocaleString()}` : `〜¥${budget.toLocaleString()}`;
-    condChips.push({ label: t.condBudget, value: bStr, icon: '💰' });
+    condChips.push({ label: t.condBudget, value: bStr, Icon: Banknote });
   }
-  if (notSkipped(selectedTime))       condChips.push({ label: t.condTime,      value: selectedTime,            icon: '⏰' });
-  if (notSkipped(deepDiveL1))         condChips.push({ label: '詳細',           value: deepDiveL1,              icon: '🔍' });
-  if (notSkipped(deepDiveL2))         condChips.push({ label: 'スタイル',        value: deepDiveL2,              icon: '✨' });
-  if (freeWord && freeWord.trim())    condChips.push({ label: '希望',           value: freeWord,                icon: '💬' });
-  if (notSkipped(selectedArea))       condChips.push({ label: t.condArea,      value: selectedArea,            icon: '📍' });
-  if (facilityLabel)                  condChips.push({ label: 'コース',         value: facilityLabel,           icon: '🗺️' });
+  if (notSkipped(selectedTime))       condChips.push({ label: t.condTime,      value: selectedTime,                         Icon: Clock });
+  if (notSkipped(deepDiveL1))         condChips.push({ label: '詳細',           value: deepDiveL1,                           Icon: Tag });
+  if (notSkipped(deepDiveL2))         condChips.push({ label: 'スタイル',        value: deepDiveL2,                           Icon: Sparkles });
+  if (freeWord && freeWord.trim())    condChips.push({ label: '希望',           value: freeWord,                             Icon: MessageSquare });
+  if (notSkipped(selectedArea))       condChips.push({ label: t.condArea,      value: selectedArea,                         Icon: MapPin });
+  if (facilityLabel)                  condChips.push({ label: 'コース',         value: facilityLabel,                        Icon: Tag });
 
   return (
     <View style={s.root}>
@@ -384,14 +389,19 @@ export default function ResultsView(props: Props) {
             style={s.condCard}
           >
             <View style={s.condHeader}>
-              <Text style={s.condLabel}>📋 {t.conditionLabel}</Text>
-              <Text style={s.condToggle}>{showConditions ? '▲' : '▼'}</Text>
+              <View style={s.condLabelRow}>
+                <List size={14} color="#A78BFA" strokeWidth={2} />
+                <Text style={s.condLabel}>{t.conditionLabel}</Text>
+              </View>
+              {showConditions
+                ? <ChevronUp size={14} color="#9CA3AF" strokeWidth={2} />
+                : <ChevronDown size={14} color="#9CA3AF" strokeWidth={2} />}
             </View>
             {showConditions && (
               <View style={s.condChips}>
                 {condChips.map((c, i) => (
                   <View key={i} style={s.condChip}>
-                    <Text style={s.condChipIcon}>{c.icon}</Text>
+                    <c.Icon size={11} color="#A78BFA" strokeWidth={2} />
                     <Text style={s.condChipLabel}>{c.label}</Text>
                     <Text style={s.condChipValue}>{c.value}</Text>
                   </View>
@@ -408,10 +418,10 @@ export default function ResultsView(props: Props) {
 
               {/* ソートボタン */}
               {([
-                { mode: 'default', icon: '✨', label: t.sortDefault },
-                { mode: 'rating',  icon: '⭐', label: t.sortRating },
-                { mode: 'near',    icon: '📍', label: t.sortNear },
-              ] as const).map(({ mode, icon, label }) => {
+                { mode: 'default', Icon: Sparkles,  label: t.sortDefault },
+                { mode: 'rating',  Icon: Star,       label: t.sortRating },
+                { mode: 'near',    Icon: Navigation, label: t.sortNear },
+              ] as const).map(({ mode, Icon, label }) => {
                 const active = resultSort === mode;
                 return (
                   <TouchableOpacity
@@ -423,8 +433,9 @@ export default function ResultsView(props: Props) {
                     {active && (
                       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                     )}
+                    <Icon size={13} color={active ? '#fff' : '#9CA3AF'} strokeWidth={2} />
                     <Text style={[s.controlChipText, active && s.controlChipTextActive]}>
-                      {icon} {label}
+                      {label}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -456,7 +467,8 @@ export default function ResultsView(props: Props) {
                   {unseenOnly && (
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                   )}
-                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>🆕 {t.filterUnseen}</Text>
+                  <Eye size={13} color={unseenOnly ? '#fff' : '#9CA3AF'} strokeWidth={2} />
+                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -718,16 +730,15 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
   },
   condHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
+  condLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   condLabel: { fontSize: 13, fontWeight: '700', color: '#374151' },
-  condToggle: { fontSize: 11, color: '#9CA3AF' },
   condChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   condChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FAF8FF', borderRadius: 10,
     paddingHorizontal: 9, paddingVertical: 6,
     borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
   },
-  condChipIcon: { fontSize: 11 },
   condChipLabel: { fontSize: 10, fontWeight: '600', color: '#A78BFA' },
   condChipValue: { fontSize: 12, fontWeight: '700', color: '#1E0753' },
 
