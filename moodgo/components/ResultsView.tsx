@@ -1,8 +1,9 @@
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,6 +16,10 @@ import { ChevronLeft, Search, Shuffle, Star } from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
+
+// MoodGo brand gradient
+const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+const BRAND = '#C084FC'; // purple-400
 
 function placeToRec(fac: PlaceResponse, featLabel?: string): Recommendation {
   const photos = (fac.photoUrls ?? []).length > 0 ? fac.photoUrls : fac.imageUrl ? [fac.imageUrl] : [];
@@ -189,6 +194,58 @@ type Props = {
   lang?: 'ja' | 'en';
 };
 
+// ── Animated loading card ──────────────────────────────────────────────────────
+function LoadingCard({ message, onReset, resetLabel }: { message: string; onReset: () => void; resetLabel: string }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0.85)).current;
+  useEffect(() => {
+    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1400, easing: Easing.linear, useNativeDriver: true })).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0.85, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, []);
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <View style={ls.loadingWrap}>
+      <View style={ls.card}>
+        {/* Gradient ring spinner */}
+        <Animated.View style={[ls.spinnerWrap, { transform: [{ rotate }, { scale: pulse }] }]}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ls.spinnerRing} />
+          <View style={ls.spinnerInner} />
+        </Animated.View>
+        {/* Dot row */}
+        <View style={ls.dots}>
+          {GRAD.map((c, i) => <View key={i} style={[ls.dot, { backgroundColor: c }]} />)}
+        </View>
+        <Text style={ls.loadingMsg}>{message}</Text>
+        <TouchableOpacity onPress={onReset} style={ls.resetBtn} activeOpacity={0.75}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ls.resetGrad} />
+          <Text style={ls.resetText}>{resetLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const ls = StyleSheet.create({
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  card: {
+    backgroundColor: '#fff', borderRadius: 28, padding: 36, alignItems: 'center', gap: 16,
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10,
+    width: '88%', borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
+  },
+  spinnerWrap: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
+  spinnerRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36 },
+  spinnerInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff' },
+  dots: { flexDirection: 'row', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  loadingMsg: { fontSize: 15, fontWeight: '600', color: '#374151', textAlign: 'center', lineHeight: 22 },
+  resetBtn: { marginTop: 4, borderRadius: 14, overflow: 'hidden', width: '100%' },
+  resetGrad: { ...StyleSheet.absoluteFillObject },
+  resetText: { fontSize: 15, fontWeight: '700', color: '#fff', textAlign: 'center', paddingVertical: 14 },
+});
+
 export default function ResultsView(props: Props) {
   const {
     selectedMood, selectedArea, selectedCompanion = '', selectedTransports = [],
@@ -293,8 +350,8 @@ export default function ResultsView(props: Props) {
         <View style={s.navBarBorder} />
         <View style={s.navBarInner}>
           <TouchableOpacity onPress={onReset} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={20} color={accentColor} strokeWidth={2.5} />
-            <Text style={[s.backText, { color: accentColor }]}>{t.back}</Text>
+            <ChevronLeft size={20} color={BRAND} strokeWidth={2.5} />
+            <Text style={s.backText}>{t.back}</Text>
           </TouchableOpacity>
           <View style={s.navCenter}>
             <Text style={s.navTitle} numberOfLines={1}>{pageTitle}</Text>
@@ -305,7 +362,7 @@ export default function ResultsView(props: Props) {
           <View style={s.navRight}>
             {onShuffle && !isLoading && (
               <TouchableOpacity onPress={onShuffle} style={s.shuffleBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Shuffle size={20} color={accentColor} strokeWidth={2} />
+                <Shuffle size={20} color={BRAND} strokeWidth={2} />
               </TouchableOpacity>
             )}
           </View>
@@ -407,12 +464,7 @@ export default function ResultsView(props: Props) {
         )}
 
         {/* Loading */}
-        {isLoading && (
-          <View style={s.loadingBox}>
-            <ActivityIndicator size="large" color={accentColor} />
-            <Text style={s.loadingText}>{loadingMessage}</Text>
-          </View>
-        )}
+        {isLoading && <LoadingCard message={loadingMessage} onReset={onReset} resetLabel={t.reset} />}
 
         {/* Warning */}
         {apiWarning && !isLoading ? (
@@ -477,8 +529,11 @@ export default function ResultsView(props: Props) {
               onPress={onRefine}
               disabled={isRefining || !refinementText.trim()}
               activeOpacity={0.75}
-              style={[s.refinementBtn, { backgroundColor: accentColor }, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
+              style={[s.refinementBtn, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
             >
+              {!(isRefining || !refinementText.trim()) ? (
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              ) : null}
               <Text style={s.refinementBtnText}>
                 {isRefining ? t.searching : t.searchAgain}
               </Text>
@@ -511,9 +566,9 @@ export default function ResultsView(props: Props) {
         )}
 
         {/* Reset button */}
-        <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.85}>
           <LinearGradient
-            colors={['#FF6B35', '#FF8F7F']}
+            colors={GRAD}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
             style={s.resetBtnInner}
           >
@@ -611,12 +666,12 @@ export default function ResultsView(props: Props) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFA' },
-  navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: '#F3F4F6' },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: 'rgba(243,241,239,0.85)', borderBottomWidth: 1, borderBottomColor: 'rgba(192,132,252,0.18)' },
+  navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(192,132,252,0.18)' },
   navBarInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, minHeight: 50 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 4, minWidth: 72 },
-  backText: { fontSize: 17, fontWeight: '500', color: '#F43F5E' },
+  backText: { fontSize: 17, fontWeight: '600', color: BRAND },
   navCenter: { flex: 1, alignItems: 'center' },
   navTitle: { fontSize: 17, fontWeight: '700', color: '#111827', textAlign: 'center' },
   navCount: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', marginTop: 1 },
@@ -645,7 +700,7 @@ const s = StyleSheet.create({
   prefChipClear: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   prefChipClearText: { fontSize: 12, fontWeight: '500', color: '#9CA3AF' },
   loadingBox: { alignItems: 'center', paddingVertical: 60, gap: 16 },
-  loadingText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  loadingText: { fontSize: 15, color: '#7C3AED', textAlign: 'center', lineHeight: 22, fontWeight: '600' },
   warningBox: { backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },
   warningText: { fontSize: 13, color: '#92600A', lineHeight: 20 },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 14 },
@@ -653,7 +708,7 @@ const s = StyleSheet.create({
   refinementBox: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 4, marginBottom: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
   refinementTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
   refinementInput: { borderRadius: 14, backgroundColor: '#F9FAFB', padding: 14, fontSize: 14, color: '#111827', minHeight: 72, textAlignVertical: 'top', borderWidth: 1, borderColor: '#F3F4F6' },
-  refinementBtn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  refinementBtn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: '#E5E7EB' },
   refinementBtnDisabled: { backgroundColor: '#E5E7EB' },
   refinementBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   feedbackBox: { backgroundColor: '#fff', borderRadius: 18, padding: 20, marginBottom: 12, alignItems: 'center', gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
@@ -661,8 +716,8 @@ const s = StyleSheet.create({
   stars: { flexDirection: 'row', gap: 8 },
   starBtn: { padding: 4 },
   feedbackThanks: { fontSize: 16, fontWeight: '700', color: '#10B981' },
-  loadMoreBtn: { alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginBottom: 12, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#FECDD3', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6 },
-  loadMoreText: { fontSize: 14, fontWeight: '700', color: '#F43F5E' },
+  loadMoreBtn: { alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginBottom: 12, backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.4)', shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6 },
+  loadMoreText: { fontSize: 14, fontWeight: '700', color: BRAND },
   resetBtn: { marginTop: 8, marginBottom: 4, borderRadius: 16, overflow: 'hidden' },
   resetBtnInner: { height: 54, alignItems: 'center', justifyContent: 'center' },
   resetBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
