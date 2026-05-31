@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Search, Shuffle, Star } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Navigation, Search, Shuffle, Star, SlidersHorizontal } from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
@@ -135,7 +135,11 @@ type Props = {
   selectedCompanion?: string;
   selectedTransports?: string[];
   budget?: number;
+  budgetMin?: number;
   selectedTime?: string;
+  deepDiveL1?: string;
+  deepDiveL2?: string;
+  freeWord?: string;
   recommendations: Recommendation[];
   onsenFacilities: PlaceResponse[] | null;
   onsenCategoryLabel: string;
@@ -235,7 +239,8 @@ const ls = StyleSheet.create({
 export default function ResultsView(props: Props) {
   const {
     selectedMood, selectedArea, selectedCompanion = '', selectedTransports = [],
-    budget, selectedTime = '',
+    budget, budgetMin = 0, selectedTime = '',
+    deepDiveL1 = '', deepDiveL2 = '', freeWord = '',
     recommendations, onsenFacilities, onsenCategoryLabel,
     natureFacilities, natureSubGenreLabel, cafeFacilities, cafeSubCategoryLabel,
     waiWaiFacilities, waiWaiSubCategoryLabel,
@@ -321,16 +326,23 @@ export default function ResultsView(props: Props) {
   // スキップ値を除外するヘルパー
   const notSkipped = (v: string) => v && v !== 'スキップ' && v !== 'Skip' && v !== 'skip';
 
-  // 今回の条件チップ（スキップは除外）
-  const condChips: { label: string; value: string }[] = [];
-  if (notSkipped(selectedMood))  condChips.push({ label: t.condMood,      value: selectedMood });
-  if (notSkipped(selectedArea))  condChips.push({ label: t.condArea,      value: selectedArea });
-  if (notSkipped(selectedCompanion)) condChips.push({ label: t.condWith,  value: selectedCompanion });
+  // 今回の条件チップ（スキップは除外・全質問を表示）
+  const condChips: { label: string; value: string; icon: string }[] = [];
+  if (notSkipped(selectedMood))       condChips.push({ label: t.condMood,      value: selectedMood,            icon: '🎭' });
+  if (notSkipped(selectedCompanion))  condChips.push({ label: t.condWith,      value: selectedCompanion,       icon: '👥' });
   const filteredTransports = selectedTransports.filter(notSkipped);
-  if (filteredTransports.length > 0) condChips.push({ label: t.condTransport, value: filteredTransports.join('・') });
-  if (budget != null && budget > 0) condChips.push({ label: t.condBudget, value: `〜${budget.toLocaleString()}円` });
-  if (notSkipped(selectedTime))  condChips.push({ label: t.condTime,      value: selectedTime });
-  if (facilityLabel) condChips.push({ label: 'コース',         value: facilityLabel });
+  if (filteredTransports.length > 0)  condChips.push({ label: t.condTransport, value: filteredTransports.join('・'), icon: '🚗' });
+  if (budget === 0)                   condChips.push({ label: t.condBudget,    value: '無料',                  icon: '💰' });
+  else if (budget != null && budget > 0) {
+    const bStr = budgetMin > 0 ? `¥${budgetMin.toLocaleString()}〜¥${budget.toLocaleString()}` : `〜¥${budget.toLocaleString()}`;
+    condChips.push({ label: t.condBudget, value: bStr, icon: '💰' });
+  }
+  if (notSkipped(selectedTime))       condChips.push({ label: t.condTime,      value: selectedTime,            icon: '⏰' });
+  if (notSkipped(deepDiveL1))         condChips.push({ label: '詳細',           value: deepDiveL1,              icon: '🔍' });
+  if (notSkipped(deepDiveL2))         condChips.push({ label: 'スタイル',        value: deepDiveL2,              icon: '✨' });
+  if (freeWord && freeWord.trim())    condChips.push({ label: '希望',           value: freeWord,                icon: '💬' });
+  if (notSkipped(selectedArea))       condChips.push({ label: t.condArea,      value: selectedArea,            icon: '📍' });
+  if (facilityLabel)                  condChips.push({ label: 'コース',         value: facilityLabel,           icon: '🗺️' });
 
   return (
     <View style={s.root}>
@@ -379,6 +391,7 @@ export default function ResultsView(props: Props) {
               <View style={s.condChips}>
                 {condChips.map((c, i) => (
                   <View key={i} style={s.condChip}>
+                    <Text style={s.condChipIcon}>{c.icon}</Text>
                     <Text style={s.condChipLabel}>{c.label}</Text>
                     <Text style={s.condChipValue}>{c.value}</Text>
                   </View>
@@ -392,33 +405,58 @@ export default function ResultsView(props: Props) {
         {!isLoading && (
           <View style={s.controlsWrap}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.controlsRow}>
-              {(['default', 'rating', 'near'] as const).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  onPress={() => setResultSort(mode)}
-                  style={[s.controlChip, resultSort === mode && { backgroundColor: BRAND, borderColor: BRAND }]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.controlChipText, resultSort === mode && s.controlChipTextActive]}>
-                    {mode === 'default' ? t.sortDefault : mode === 'rating' ? t.sortRating : t.sortNear}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+
+              {/* ソートボタン */}
+              {([
+                { mode: 'default', icon: '✨', label: t.sortDefault },
+                { mode: 'rating',  icon: '⭐', label: t.sortRating },
+                { mode: 'near',    icon: '📍', label: t.sortNear },
+              ] as const).map(({ mode, icon, label }) => {
+                const active = resultSort === mode;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    onPress={() => setResultSort(mode)}
+                    style={[s.controlChip, active && s.controlChipActive]}
+                    activeOpacity={0.75}
+                  >
+                    {active && (
+                      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                    )}
+                    <Text style={[s.controlChipText, active && s.controlChipTextActive]}>
+                      {icon} {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* 区切り */}
               <View style={s.controlDivider} />
+
+              {/* 営業中フィルター */}
               <TouchableOpacity
                 onPress={() => setOpenNowOnly((v) => !v)}
-                style={[s.controlChip, openNowOnly && { backgroundColor: '#34C759', borderColor: '#34C759' }]}
-                activeOpacity={0.7}
+                style={[s.controlChip, openNowOnly && s.controlChipOpenActive]}
+                activeOpacity={0.75}
               >
-                <Text style={[s.controlChipText, openNowOnly && s.controlChipTextActive]}>🟢 {t.filterOpenNow}</Text>
+                {openNowOnly && (
+                  <LinearGradient colors={['#34C759', '#30D158']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                )}
+                <View style={[s.openDot, openNowOnly && s.openDotActive]} />
+                <Text style={[s.controlChipText, openNowOnly && s.controlChipTextActive]}>{t.filterOpenNow}</Text>
               </TouchableOpacity>
+
+              {/* 未見フィルター */}
               {seenPlaceTitles.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setUnseenOnly((v) => !v)}
-                  style={[s.controlChip, unseenOnly && { backgroundColor: BRAND, borderColor: BRAND }]}
-                  activeOpacity={0.7}
+                  style={[s.controlChip, unseenOnly && s.controlChipActive]}
+                  activeOpacity={0.75}
                 >
-                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
+                  {unseenOnly && (
+                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                  )}
+                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>🆕 {t.filterUnseen}</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -674,20 +712,48 @@ const s = StyleSheet.create({
   shuffleBtn: { padding: 6 },
   scroll: { flex: 1 },
   content: { padding: 16, gap: 0 },
-  condCard: { backgroundColor: '#fff', borderRadius: 18, padding: 14, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  condCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 14, marginBottom: 12,
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
+  },
   condHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
   condLabel: { fontSize: 13, fontWeight: '700', color: '#374151' },
   condToggle: { fontSize: 11, color: '#9CA3AF' },
-  condChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
-  condChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F9FAFB', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#F3F4F6' },
-  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
-  condChipValue: { fontSize: 12, fontWeight: '700', color: '#111827' },
+  condChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  condChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#FAF8FF', borderRadius: 10,
+    paddingHorizontal: 9, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
+  },
+  condChipIcon: { fontSize: 11 },
+  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#A78BFA' },
+  condChipValue: { fontSize: 12, fontWeight: '700', color: '#1E0753' },
+
+  // ── Sort / Filter chips ──────────────────────────────────────────────────
   controlsWrap: { marginBottom: 10 },
-  controlsRow: { flexDirection: 'row', gap: 7, paddingHorizontal: 0 },
-  controlChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },
-  controlChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  controlChipTextActive: { color: '#fff' },
-  controlDivider: { width: 1, backgroundColor: '#F3F4F6', alignSelf: 'stretch', marginHorizontal: 2 },
+  controlsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 0, alignItems: 'center' },
+  controlChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.25)',
+    overflow: 'hidden',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 2,
+  },
+  controlChipActive: {
+    borderColor: 'transparent',
+    shadowColor: '#C084FC', shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
+  },
+  controlChipOpenActive: {
+    borderColor: 'transparent',
+    shadowColor: '#34C759', shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
+  },
+  controlChipText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
+  controlChipTextActive: { color: '#fff', fontWeight: '700' },
+  openDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#34C759' },
+  openDotActive: { backgroundColor: '#fff' },
+  controlDivider: { width: 1, height: 20, backgroundColor: 'rgba(192,132,252,0.2)', marginHorizontal: 2 },
   prefRow: { marginBottom: 12 },
   prefRowContent: { paddingHorizontal: 0, gap: 7, flexDirection: 'row' },
   prefChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },

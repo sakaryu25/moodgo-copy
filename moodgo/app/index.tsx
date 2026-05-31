@@ -985,6 +985,14 @@ export default function Home() {
         lang={lang}
         selectedMood={selectedMood}
         selectedArea={selectedArea}
+        selectedCompanion={selectedCompanion}
+        selectedTransports={selectedTransports}
+        budget={budget}
+        budgetMin={budgetMin}
+        selectedTime={selectedTime}
+        deepDiveL1={deepDiveL1}
+        deepDiveL2={deepDiveL2}
+        freeWord={freeWord}
         recommendations={apiRecommendations}
         onsenFacilities={onsenFacilities}
         onsenCategoryLabel={onsenCategoryLabel}
