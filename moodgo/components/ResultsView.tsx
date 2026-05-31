@@ -318,14 +318,18 @@ export default function ResultsView(props: Props) {
   if (resultSort === 'rating') facilityItems = [...facilityItems].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
   else if (resultSort === 'near') facilityItems = [...facilityItems].sort((a, b) => parseDistanceM(a.distanceText) - parseDistanceM(b.distanceText));
 
-  // 今回の条件チップ
+  // スキップ値を除外するヘルパー
+  const notSkipped = (v: string) => v && v !== 'スキップ' && v !== 'Skip' && v !== 'skip';
+
+  // 今回の条件チップ（スキップは除外）
   const condChips: { label: string; value: string }[] = [];
-  if (selectedMood)  condChips.push({ label: t.condMood,      value: selectedMood });
-  if (selectedArea)  condChips.push({ label: t.condArea,      value: selectedArea });
-  if (selectedCompanion) condChips.push({ label: t.condWith,  value: selectedCompanion });
-  if (selectedTransports.length > 0) condChips.push({ label: t.condTransport, value: selectedTransports.join('・') });
+  if (notSkipped(selectedMood))  condChips.push({ label: t.condMood,      value: selectedMood });
+  if (notSkipped(selectedArea))  condChips.push({ label: t.condArea,      value: selectedArea });
+  if (notSkipped(selectedCompanion)) condChips.push({ label: t.condWith,  value: selectedCompanion });
+  const filteredTransports = selectedTransports.filter(notSkipped);
+  if (filteredTransports.length > 0) condChips.push({ label: t.condTransport, value: filteredTransports.join('・') });
   if (budget != null && budget > 0) condChips.push({ label: t.condBudget, value: `〜${budget.toLocaleString()}円` });
-  if (selectedTime)  condChips.push({ label: t.condTime,      value: selectedTime });
+  if (notSkipped(selectedTime))  condChips.push({ label: t.condTime,      value: selectedTime });
   if (facilityLabel) condChips.push({ label: 'コース',         value: facilityLabel });
 
   return (
@@ -392,7 +396,7 @@ export default function ResultsView(props: Props) {
                 <TouchableOpacity
                   key={mode}
                   onPress={() => setResultSort(mode)}
-                  style={[s.controlChip, resultSort === mode && { backgroundColor: accentColor, borderColor: accentColor }]}
+                  style={[s.controlChip, resultSort === mode && { backgroundColor: BRAND, borderColor: BRAND }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.controlChipText, resultSort === mode && s.controlChipTextActive]}>
@@ -411,7 +415,7 @@ export default function ResultsView(props: Props) {
               {seenPlaceTitles.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setUnseenOnly((v) => !v)}
-                  style={[s.controlChip, unseenOnly && { backgroundColor: '#5856D6', borderColor: '#5856D6' }]}
+                  style={[s.controlChip, unseenOnly && { backgroundColor: BRAND, borderColor: BRAND }]}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
@@ -475,6 +479,7 @@ export default function ResultsView(props: Props) {
             moodRating={placeRatings[item.title] ?? null}
             onMoodMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' })}
             onMoodNotMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' })}
+            moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
           />
         ))}
 
@@ -527,40 +532,44 @@ export default function ResultsView(props: Props) {
           </View>
         )}
 
-        {/* ── 今回の結果どうでしたか ─────────────────── */}
-        {!isLoading && !feedbackSubmitted && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
+        {/* ── この結果はどうでしたか ─────────────────── */}
+        {!isLoading && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
           <View style={s.feedbackBox}>
-            <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
-            <View style={s.stars}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
-                  <Star
-                    size={32}
-                    color="#FF9F0A"
-                    fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#FF9F0A' : 'none'}
-                    strokeWidth={1.8}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-        {feedbackSubmitted && (
-          <View style={s.feedbackBox}>
-            <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+            {feedbackSubmitted ? (
+              <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+            ) : (
+              <>
+                <Text style={s.feedbackTitle}>💬 {t.feedbackTitle}</Text>
+                <View style={s.stars}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
+                      <Star
+                        size={32}
+                        color="#FF9F0A"
+                        fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#FF9F0A' : 'none'}
+                        strokeWidth={1.8}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         )}
 
-        {/* Reset button */}
-        <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.85}>
-          <LinearGradient
-            colors={GRAD}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={s.resetBtnInner}
-          >
-            <Text style={s.resetBtnText}>{t.reset}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {/* ── 条件を見直す / ホームに戻る ──────────── */}
+        {!isLoading && (
+          <View style={s.bottomBtns}>
+            <TouchableOpacity onPress={onReset} style={s.reviewBtn} activeOpacity={0.8}>
+              <Text style={s.reviewBtnText}>条件を見直す</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onReset} style={s.homeBtn} activeOpacity={0.85}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.homeBtnInner}>
+                <Text style={s.homeBtnText}>ホームに戻る</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Visit feedback modal */}
@@ -707,6 +716,13 @@ const s = StyleSheet.create({
   resetBtn: { marginTop: 8, marginBottom: 4, borderRadius: 16, overflow: 'hidden' },
   resetBtnInner: { height: 54, alignItems: 'center', justifyContent: 'center' },
   resetBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  // ボトム2ボタン
+  bottomBtns:    { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 8 },
+  reviewBtn:     { flex: 1, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderWidth: 2, borderColor: 'rgba(192,132,252,0.4)' },
+  reviewBtnText: { fontSize: 15, fontWeight: '700', color: BRAND },
+  homeBtn:       { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  homeBtnInner:  { height: 54, alignItems: 'center', justifyContent: 'center' },
+  homeBtnText:   { fontSize: 15, fontWeight: '800', color: '#fff' },
   visitModalSub: { fontSize: 13, color: '#6B7280', marginBottom: 16, textAlign: 'center' },
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'flex-end' },
   modal: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, width: '100%' },
