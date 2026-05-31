@@ -48,7 +48,7 @@ const T = {
   ja: {
     back: '戻る',
     defaultTitle: '検索結果',
-    areaTitle: (area: string) => `${area}でのおすすめ`,
+    areaTitle: (area: string) => area ? `${area}の検索結果` : '検索結果',
     empty: '条件に合う候補が見つかりませんでした。\n条件を変えて再検索してみてください。',
     refineTitle: '絞り込む',
     refinePlaceholder: '例：もっと近い場所、夜遅くまで営業、駐車場あり…',
@@ -89,7 +89,7 @@ const T = {
   en: {
     back: 'Back',
     defaultTitle: 'Results',
-    areaTitle: (area: string) => `Picks near ${area}`,
+    areaTitle: (area: string) => area ? `Results near ${area}` : 'Results',
     empty: 'No results found.\nTry changing your search conditions.',
     refineTitle: 'Refine',
     refinePlaceholder: 'e.g. closer, open late, has parking…',
@@ -376,6 +376,7 @@ export default function ResultsView(props: Props) {
                 {condChips.map((c, i) => (
                   <View key={i} style={s.condChip}>
                     <Text style={s.condChipLabel}>{c.label}</Text>
+                    <Text style={s.condChipSep}>：</Text>
                     <Text style={s.condChipValue}>{c.value}</Text>
                   </View>
                 ))}
@@ -384,15 +385,24 @@ export default function ResultsView(props: Props) {
           </TouchableOpacity>
         )}
 
-        {/* ── Sort & Filter ──────────────────────────── */}
+        {/* ── 件数バッジ + Sort & Filter ─────────────── */}
         {!isLoading && (
           <View style={s.controlsWrap}>
+            {/* 件数 */}
+            {facilityItems.length > 0 && (
+              <View style={s.countBadge}>
+                <Text style={s.countBadgeText}>
+                  {pageTitle}  <Text style={s.countNum}>{facilityItems.length}{lang === 'ja' ? '件' : ' spots'}</Text>
+                </Text>
+              </View>
+            )}
+            {/* フィルターチップ */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.controlsRow}>
               {(['default', 'rating', 'near'] as const).map((mode) => (
                 <TouchableOpacity
                   key={mode}
                   onPress={() => setResultSort(mode)}
-                  style={[s.controlChip, resultSort === mode && { backgroundColor: accentColor, borderColor: accentColor }]}
+                  style={[s.controlChip, resultSort === mode && s.controlChipActive]}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.controlChipText, resultSort === mode && s.controlChipTextActive]}>
@@ -403,7 +413,7 @@ export default function ResultsView(props: Props) {
               <View style={s.controlDivider} />
               <TouchableOpacity
                 onPress={() => setOpenNowOnly((v) => !v)}
-                style={[s.controlChip, openNowOnly && { backgroundColor: '#34C759', borderColor: '#34C759' }]}
+                style={[s.controlChip, openNowOnly && s.controlChipOpen]}
                 activeOpacity={0.7}
               >
                 <Text style={[s.controlChipText, openNowOnly && s.controlChipTextActive]}>🟢 {t.filterOpenNow}</Text>
@@ -411,7 +421,7 @@ export default function ResultsView(props: Props) {
               {seenPlaceTitles.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setUnseenOnly((v) => !v)}
-                  style={[s.controlChip, unseenOnly && { backgroundColor: '#5856D6', borderColor: '#5856D6' }]}
+                  style={[s.controlChip, unseenOnly && s.controlChipActive]}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
@@ -438,10 +448,10 @@ export default function ResultsView(props: Props) {
               <TouchableOpacity
                 key={pref}
                 onPress={() => onSelectPrefecture?.(selectedPrefecture === pref ? '' : pref)}
-                style={[s.prefChip, selectedPrefecture === pref && { backgroundColor: accentColor + '18', borderColor: accentColor }]}
+                style={[s.prefChip, selectedPrefecture === pref && s.prefChipActive]}
                 activeOpacity={0.7}
               >
-                <Text style={[s.prefChipText, selectedPrefecture === pref && { color: accentColor, fontWeight: '700' }]}>
+                <Text style={[s.prefChipText, selectedPrefecture === pref && s.prefChipActiveText]}>
                   {pref}
                 </Text>
               </TouchableOpacity>
@@ -527,40 +537,44 @@ export default function ResultsView(props: Props) {
           </View>
         )}
 
-        {/* ── 今回の結果どうでしたか ─────────────────── */}
-        {!isLoading && !feedbackSubmitted && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
+        {/* ── この結果はどうでしたか ─────────────────── */}
+        {!isLoading && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
           <View style={s.feedbackBox}>
-            <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
-            <View style={s.stars}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
-                  <Star
-                    size={32}
-                    color="#FF9F0A"
-                    fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#FF9F0A' : 'none'}
-                    strokeWidth={1.8}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-        {feedbackSubmitted && (
-          <View style={s.feedbackBox}>
-            <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+            {feedbackSubmitted ? (
+              <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+            ) : (
+              <>
+                <Text style={s.feedbackTitle}>💬 {t.feedbackTitle}</Text>
+                <View style={s.stars}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
+                      <Star
+                        size={34}
+                        color="#F59E0B"
+                        fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#F59E0B' : 'none'}
+                        strokeWidth={1.8}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         )}
 
-        {/* Reset button */}
-        <TouchableOpacity onPress={onReset} style={s.resetBtn} activeOpacity={0.85}>
-          <LinearGradient
-            colors={GRAD}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={s.resetBtnInner}
-          >
-            <Text style={s.resetBtnText}>{t.reset}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {/* ── 条件を見直す / ホームに戻る ──────────── */}
+        {!isLoading && (
+          <View style={s.bottomBtns}>
+            <TouchableOpacity onPress={onReset} style={s.reviewBtn} activeOpacity={0.8}>
+              <Text style={s.reviewBtnText}>条件を見直す</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onReset} style={s.homeBtn} activeOpacity={0.85}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.homeBtnInner}>
+                <Text style={s.homeBtnText}>ホームに戻る</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {/* Visit feedback modal */}
@@ -665,23 +679,55 @@ const s = StyleSheet.create({
   shuffleBtn: { padding: 6 },
   scroll: { flex: 1 },
   content: { padding: 16, gap: 0 },
-  condCard: { backgroundColor: '#fff', borderRadius: 18, padding: 14, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
-  condHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
-  condLabel: { fontSize: 13, fontWeight: '700', color: '#374151' },
-  condToggle: { fontSize: 11, color: '#9CA3AF' },
+  condCard: {
+    backgroundColor: 'rgba(245,240,255,0.85)', borderRadius: 18, padding: 14, marginBottom: 12,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
+  },
+  condHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  condLabel: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  condToggle: { fontSize: 11, color: '#A78BFA' },
   condChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
-  condChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F9FAFB', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#F3F4F6' },
-  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
-  condChipValue: { fontSize: 12, fontWeight: '700', color: '#111827' },
-  controlsWrap: { marginBottom: 10 },
-  controlsRow: { flexDirection: 'row', gap: 7, paddingHorizontal: 0 },
-  controlChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },
-  controlChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  controlChipTextActive: { color: '#fff' },
-  controlDivider: { width: 1, backgroundColor: '#F3F4F6', alignSelf: 'stretch', marginHorizontal: 2 },
+  condChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.3)',
+  },
+  condChipLabel: { fontSize: 11, fontWeight: '600', color: '#A78BFA' },
+  condChipSep:   { fontSize: 11, color: '#C4B5FD', marginHorizontal: 1 },
+  condChipValue: { fontSize: 12, fontWeight: '700', color: '#1E0753' },
+
+  // 件数バッジ + フィルターラッパー
+  controlsWrap: { marginBottom: 12, gap: 8 },
+  countBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(244,114,182,0.08)', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: 'rgba(244,114,182,0.2)',
+  },
+  countBadgeText: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  countNum:       { fontSize: 15, fontWeight: '800', color: '#C084FC' },
+
+  controlsRow: { flexDirection: 'row', gap: 7 },
+  controlChip: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.2)',
+  },
+  controlChipActive: { backgroundColor: BRAND, borderColor: BRAND },
+  controlChipOpen:   { backgroundColor: '#34C759', borderColor: '#34C759' },
+  controlChipText:       { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  controlChipTextActive: { color: '#fff', fontWeight: '700' },
+  controlDivider: { width: 1, backgroundColor: 'rgba(192,132,252,0.15)', alignSelf: 'stretch', marginHorizontal: 2 },
+
   prefRow: { marginBottom: 12 },
   prefRowContent: { paddingHorizontal: 0, gap: 7, flexDirection: 'row' },
-  prefChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#F3F4F6' },
+  prefChip: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.2)',
+  },
+  prefChipActive:     { backgroundColor: 'rgba(192,132,252,0.12)', borderColor: BRAND },
+  prefChipActiveText: { color: BRAND, fontWeight: '700' },
   prefChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
   prefChipClear: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB' },
   prefChipClearText: { fontSize: 12, fontWeight: '500', color: '#9CA3AF' },
@@ -697,13 +743,34 @@ const s = StyleSheet.create({
   refinementBtn: { height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: '#E5E7EB' },
   refinementBtnDisabled: { backgroundColor: '#E5E7EB' },
   refinementBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  feedbackBox: { backgroundColor: '#fff', borderRadius: 18, padding: 20, marginBottom: 12, alignItems: 'center', gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
-  feedbackTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  stars: { flexDirection: 'row', gap: 8 },
+  feedbackBox: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 22, marginBottom: 12, alignItems: 'center', gap: 14,
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 16,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
+  },
+  feedbackTitle: { fontSize: 15, fontWeight: '800', color: '#1E0753', textAlign: 'center' },
+  stars:   { flexDirection: 'row', gap: 10 },
   starBtn: { padding: 4 },
-  feedbackThanks: { fontSize: 16, fontWeight: '700', color: '#10B981' },
-  loadMoreBtn: { alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginBottom: 12, backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.4)', shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6 },
+  feedbackThanks: { fontSize: 16, fontWeight: '800', color: '#10B981' },
+  loadMoreBtn: {
+    alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 14, borderRadius: 999, marginBottom: 12,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.4)',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6,
+  },
   loadMoreText: { fontSize: 14, fontWeight: '700', color: BRAND },
+
+  // ボトムボタン2つ
+  bottomBtns: { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 8 },
+  reviewBtn: {
+    flex: 1, height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#fff', borderWidth: 2, borderColor: 'rgba(192,132,252,0.4)',
+  },
+  reviewBtnText: { fontSize: 15, fontWeight: '700', color: BRAND },
+  homeBtn: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  homeBtnInner: { height: 54, alignItems: 'center', justifyContent: 'center' },
+  homeBtnText: { fontSize: 15, fontWeight: '800', color: '#fff' },
+
+  // 旧 resetBtn は残しておく（参照が残っている可能性）
   resetBtn: { marginTop: 8, marginBottom: 4, borderRadius: 16, overflow: 'hidden' },
   resetBtnInner: { height: 54, alignItems: 'center', justifyContent: 'center' },
   resetBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
