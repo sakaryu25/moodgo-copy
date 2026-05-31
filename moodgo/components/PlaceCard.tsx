@@ -8,6 +8,7 @@ import React, { useRef, useState } from 'react';
 import {
   Animated,
   Linking,
+  PanResponder,
   Share,
   StyleSheet,
   Text,
@@ -20,6 +21,71 @@ import { COLORS } from '@/constants/colors';
 // MoodGo brand
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const BRAND = '#C084FC';
+
+// ── 営業時間フォーマッター ────────────────────────────────────────────────
+const DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
+
+function formatOpeningHours(text: string): string {
+  if (!text) return text;
+
+  // 改行 or 読点で分割
+  const lines = text
+    .split(/\n|、(?=[月火水木金土日]曜)/)
+    .map(l => l.trim().replace(/。$/, ''))
+    .filter(Boolean);
+
+  if (lines.length < 2) return text;
+
+  // 各行を「曜日 → 時間」にパース
+  // 対応フォーマット例: "月曜日: 9:00 – 21:00" / "月曜日：24時間営業"
+  type DayEntry = { day: string; hours: string };
+  const parsed: DayEntry[] = [];
+
+  for (const line of lines) {
+    const m = line.match(/^([月火水木金土日])曜日?[：:]\s*(.+)$/);
+    if (!m) return text; // 解析できなければそのまま返す
+    parsed.push({ day: m[1], hours: m[2].trim() });
+  }
+
+  if (parsed.length === 0) return text;
+
+  // 曜日順にソート
+  parsed.sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
+
+  // 全日同じ → 「毎日」
+  if (parsed.length === 7 && parsed.every(d => d.hours === parsed[0].hours)) {
+    return `毎日：${parsed[0].hours}`;
+  }
+
+  // 同じ時間のグループをまとめる
+  const groups: { days: string[]; hours: string }[] = [];
+  for (const { day, hours } of parsed) {
+    const last = groups[groups.length - 1];
+    if (last && last.hours === hours) {
+      last.days.push(day);
+    } else {
+      groups.push({ days: [day], hours });
+    }
+  }
+
+  // 各グループを「月〜金」「土・日」などに整形
+  return groups.map(({ days, hours }) => {
+    let dayStr: string;
+    if (days.length === 1) {
+      dayStr = `${days[0]}曜`;
+    } else {
+      // 連続しているか確認
+      const startIdx = DAY_ORDER.indexOf(days[0]);
+      const isConsecutive = days.every((d, i) => DAY_ORDER.indexOf(d) === startIdx + i);
+      if (isConsecutive && days.length >= 3) {
+        dayStr = `${days[0]}〜${days[days.length - 1]}曜`;
+      } else {
+        dayStr = days.map(d => `${d}曜`).join('・');
+      }
+    }
+    return `${dayStr}：${hours}`;
+  }).join('\n');
+}
 
 const T = {
   ja: {
@@ -82,6 +148,30 @@ export default function PlaceCard({
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
   const [photoIdx, setPhotoIdx] = useState(0);
+  const photosLen = photos.length;
+
+  // スワイプジェスチャー（写真切り替え）
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 12,
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx < -45) {
+          setPhotoIdx(i => {
+            const next = Math.min(i + 1, photosLen - 1);
+            if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            return next;
+          });
+        } else if (gs.dx > 45) {
+          setPhotoIdx(i => {
+            const next = Math.max(i - 1, 0);
+            if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            return next;
+          });
+        }
+      },
+    })
+  ).current;
 
   // スプリングプレスアニメーション
   const scale = useRef(new Animated.Value(1)).current;
@@ -117,7 +207,7 @@ export default function PlaceCard({
     <Animated.View style={[s.card, { transform: [{ scale }] }]}>
 
       {/* ── 写真エリア ────────────────────────────── */}
-      <View style={s.photoWrap}>
+      <View style={s.photoWrap} {...panResponder.panHandlers}>
         {photos.length > 0 ? (
           <Image source={{ uri: photos[photoIdx] }} style={s.photo} contentFit="cover" transition={300} />
         ) : (
@@ -232,11 +322,11 @@ export default function PlaceCard({
           </View>
         ) : null}
 
-        {/* 営業時間（週全体） */}
+        {/* 営業時間（週全体・まとめ表示） */}
         {item.openingHoursText ? (
           <View style={s.hoursRow}>
-            <Clock size={14} color="#9CA3AF" strokeWidth={2} />
-            <Text style={s.hoursText}>{item.openingHoursText}</Text>
+            <Clock size={14} color="#9CA3AF" strokeWidth={2} style={{ marginTop: 2 }} />
+            <Text style={s.hoursText}>{formatOpeningHours(item.openingHoursText)}</Text>
           </View>
         ) : null}
 
@@ -420,8 +510,8 @@ const s = StyleSheet.create({
   distText: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '500' },
 
   // 営業時間
-  hoursRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  hoursText:{ flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 18 },
+  hoursRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
+  hoursText:{ flex: 1, fontSize: 13, color: '#6B7280', lineHeight: 20 },
 
   // タグ
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
