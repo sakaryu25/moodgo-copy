@@ -56,11 +56,11 @@ export type HistoryItem = {
   mood: string;
   area: string;
   companion: string;
-  transport: string | string[];
+  transport?: string | string[];
   budget: number;
-  time: string;
-  atmosphere: string;
-  priority: string;
+  time?: string;
+  atmosphere?: string;
+  priority?: string;
   freeWord: string;
   topRecommendation: string;
   createdAt?: string;
@@ -74,14 +74,17 @@ export type Answers = {
   age?: string;
   gender?: string;
   companion: string;
-  transport: string | string[];
+  transport?: string | string[];
   budget: number;
   budgetMin?: number;
-  time: string;
-  atmosphere: string;
-  priority: string;
+  time?: string;
+  atmosphere?: string;
+  priority?: string;
   freeWord: string;
   dynamicQs?: { question: string; answer: string }[];
+  radiusKm?: number;
+  areaMode?: 'current_location' | 'manual';
+  distanceFeeling?: string;
 };
 
 export type DynamicQuestion = {

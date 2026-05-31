@@ -96,16 +96,15 @@ export default function Home() {
   const [selectedArea, setSelectedArea] = useState('');
   const [locationDisplayArea, setLocationDisplayArea] = useState('');
   const [selectedCompanion, setSelectedCompanion] = useState('');
-  const [selectedTransports, setSelectedTransports] = useState<string[]>([]);
   const [budget, setBudget] = useState<number | undefined>(10000);
   const [budgetMin, setBudgetMin] = useState<number>(0);
   const [showUnseenOnly, setShowUnseenOnly] = useState(false);
-  const [selectedTime, setSelectedTime] = useState('');
-  const [selectedAtmosphere, setSelectedAtmosphere] = useState('');
-  const [selectedPriority, setSelectedPriority] = useState('');
   const [freeWord, setFreeWord] = useState('');
   const [dynamicQuestions, setDynamicQuestions] = useState<DynamicQuestion[]>([]);
   const [dynamicAnswers, setDynamicAnswers] = useState<Record<string, string>>({});
+  const [areaMode, setAreaMode] = useState<'current_location' | 'manual'>('manual');
+  const [distanceFeeling, setDistanceFeeling] = useState('今日は出かけたい');
+  const [radiusKm, setRadiusKm] = useState(20);
 
   // Profile
   const [profileSetupDone, setProfileSetupDone] = useState(false);
@@ -295,6 +294,7 @@ export default function Home() {
       setSelectedArea('現在地');
       setLocationDisplayArea('現在地');
     }
+    setAreaMode('current_location');
     setIsLocating(false);
   };
 
@@ -309,18 +309,18 @@ export default function Home() {
 
     const relaxPlace = dynamicAnswers['relax_place'] ?? '';
     const isNatureMode =
-      selectedMood === '自然感じたい' ||
-      (selectedMood === 'まったりしたい' && relaxPlace.includes('自然の中'));
+      selectedMood === '自然' ||
+      (selectedMood === 'まったり' && relaxPlace.includes('自然の中'));
     const isOnsenMode =
-      selectedMood === 'まったりしたい' && relaxPlace.includes('温泉');
+      selectedMood === 'まったり' && relaxPlace.includes('温泉');
     const isCafeMode =
-      selectedMood === 'まったりしたい' && relaxPlace.includes('カフェ');
+      selectedMood === 'まったり' && relaxPlace.includes('カフェ');
     const isWaiWaiMode =
-      selectedMood === 'わいわい楽しみたい' && !!waiWaiSubCategory;
+      selectedMood === 'わいわい' && !!waiWaiSubCategory;
 
     if (!isRefinement) setStep(11);
 
-    if (selectedMood === '時間潰したい') {
+    if (selectedMood === '時間潰し') {
       setIsLoadingRecommendations(true);
       try {
         const res = await apiFetch('/api/random-spots', {
@@ -328,7 +328,8 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             lat: originLat, lng: originLng,
-            radiusKm: 5, limit: 10,
+            radiusKm: areaMode === 'current_location' ? radiusKm : 5,
+            limit: 10,
             companion: selectedCompanion, budget, freeWord,
           }),
         });
@@ -345,9 +346,9 @@ export default function Home() {
           setApiRecommendations(recs);
           const newItem: HistoryItem = {
             id: Date.now().toString(), mood: selectedMood, area: selectedArea,
-            companion: selectedCompanion, transport: selectedTransports,
-            budget: budget ?? 0, time: selectedTime,
-            atmosphere: selectedAtmosphere, priority: selectedPriority, freeWord,
+            companion: selectedCompanion, transport: [],
+            budget: budget ?? 0, time: '',
+            freeWord,
             topRecommendation: recs[0]?.title ?? '',
             createdAt: new Date().toISOString(), recommendations: recs, savedAnswers: {},
           };
@@ -361,9 +362,9 @@ export default function Home() {
 
     const baseHistoryItem = () => ({
       id: Date.now().toString(), mood: selectedMood, area: selectedArea,
-      companion: selectedCompanion, transport: selectedTransports,
-      budget: budget ?? 10000, time: selectedTime,
-      atmosphere: selectedAtmosphere, priority: selectedPriority, freeWord,
+      companion: selectedCompanion, transport: [] as string[],
+      budget: budget ?? 10000, time: '',
+      freeWord,
       createdAt: new Date().toISOString(),
     });
 
@@ -375,7 +376,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             subGenre: natureSubGenre, lat: originLat, lng: originLng,
-            areaLabel: selectedArea, transport: selectedTransports, distancePref: natureDistancePref,
+            areaLabel: selectedArea, radiusKm, distancePref: natureDistancePref,
           }),
         });
         const d = await res.json();
@@ -387,7 +388,7 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [
                 { question: 'nature_subgenre', answer: natureSubGenre },
                 ...(natureDistancePref ? [{ question: 'nature_distance', answer: natureDistancePref }] : []),
@@ -405,8 +406,8 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             category: onsenCategory, lat: originLat, lng: originLng,
-            areaLabel: selectedArea, transport: selectedTransports,
-            time: selectedTime, companion: selectedCompanion, budget, freeWord,
+            areaLabel: selectedArea, radiusKm,
+            companion: selectedCompanion, budget, freeWord,
             distancePref: onsenDistancePref,
           }),
         });
@@ -419,7 +420,7 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [
                 { question: 'onsen_category', answer: onsenCategory },
                 ...(onsenDistancePref ? [{ question: 'onsen_distance', answer: onsenDistancePref }] : []),
@@ -438,7 +439,7 @@ export default function Home() {
           body: JSON.stringify({
             subCategory: cafeSubCategory, detail: cafeDetail,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
-            transport: selectedTransports, distancePref: cafeDistancePref,
+            radiusKm, distancePref: cafeDistancePref,
           }),
         });
         const d = await res.json();
@@ -450,7 +451,7 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [
                 { question: 'cafe_subcategory', answer: cafeSubCategory },
                 ...(cafeDetail ? [{ question: 'cafe_detail', answer: cafeDetail }] : []),
@@ -469,7 +470,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             subCategory: waiWaiSubCategory, lat: originLat, lng: originLng,
-            areaLabel: selectedArea, transport: selectedTransports, age: profileAge,
+            areaLabel: selectedArea, radiusKm, age: profileAge,
           }),
         });
         const d = await res.json();
@@ -481,14 +482,14 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [{ question: 'waiwai_subcategory', answer: waiWaiSubCategory ?? '' }],
             },
           }, ...prev].slice(0, 30));
         }
       } catch {}
       setIsLoadingWaiWai(false);
-    } else if (selectedMood === 'ドライブしたい' && dynamicAnswers['drive_subcategory']) {
+    } else if (selectedMood === 'ドライブ' && dynamicAnswers['drive_subcategory']) {
       setIsLoadingDrive(true);
       try {
         const res = await apiFetch('/api/drive', {
@@ -497,7 +498,7 @@ export default function Home() {
           body: JSON.stringify({
             subCategory: dynamicAnswers['drive_subcategory'],
             lat: originLat, lng: originLng, areaLabel: selectedArea,
-            transport: ['車'], time: selectedTime, companion: selectedCompanion,
+            radiusKm, companion: selectedCompanion,
             budget, freeWord,
           }),
         });
@@ -510,14 +511,14 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: ['車'], budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [{ question: 'drive_subcategory', answer: dynamicAnswers['drive_subcategory'] }],
             },
           }, ...prev].slice(0, 30));
         }
       } catch {}
       setIsLoadingDrive(false);
-    } else if (selectedMood === '集中したい' && dynamicAnswers['focus_subcategory']) {
+    } else if (selectedMood === '集中' && dynamicAnswers['focus_subcategory']) {
       setIsLoadingFocus(true);
       try {
         const res = await apiFetch('/api/focus', {
@@ -526,8 +527,7 @@ export default function Home() {
           body: JSON.stringify({
             subCategory: dynamicAnswers['focus_subcategory'],
             lat: originLat, lng: originLng, areaLabel: selectedArea,
-            transport: selectedTransports, time: selectedTime,
-            companion: selectedCompanion, budget, freeWord,
+            radiusKm, companion: selectedCompanion, budget, freeWord,
           }),
         });
         const d = await res.json();
@@ -539,14 +539,14 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [{ question: 'focus_subcategory', answer: dynamicAnswers['focus_subcategory'] }],
             },
           }, ...prev].slice(0, 30));
         }
       } catch {}
       setIsLoadingFocus(false);
-    } else if (selectedMood === '体を動かしたい' && dynamicAnswers['sports_subcategory']) {
+    } else if (selectedMood === '運動' && dynamicAnswers['sports_subcategory']) {
       setIsLoadingSports(true);
       try {
         const res = await apiFetch('/api/sports', {
@@ -555,8 +555,7 @@ export default function Home() {
           body: JSON.stringify({
             subCategory: dynamicAnswers['sports_subcategory'],
             lat: originLat, lng: originLng, areaLabel: selectedArea,
-            transport: selectedTransports, time: selectedTime,
-            companion: selectedCompanion, budget, freeWord,
+            radiusKm, companion: selectedCompanion, budget, freeWord,
           }),
         });
         const d = await res.json();
@@ -568,14 +567,14 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [{ question: 'sports_subcategory', answer: dynamicAnswers['sports_subcategory'] }],
             },
           }, ...prev].slice(0, 30));
         }
       } catch {}
       setIsLoadingSports(false);
-    } else if (selectedMood === '遠くに行きたい' && dynamicAnswers['travel_subcategory']) {
+    } else if (selectedMood === '旅行' && dynamicAnswers['travel_subcategory']) {
       setIsLoadingTravel(true);
       try {
         const res = await apiFetch('/api/travel', {
@@ -584,7 +583,7 @@ export default function Home() {
           body: JSON.stringify({
             subCategory: dynamicAnswers['travel_subcategory'],
             lat: originLat, lng: originLng, areaLabel: selectedArea,
-            transport: selectedTransports,
+            radiusKm,
           }),
         });
         const d = await res.json();
@@ -596,7 +595,7 @@ export default function Home() {
             recommendations: recs,
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
-              transport: selectedTransports, budget: budget ?? 10000, time: selectedTime,
+              budget: budget ?? 10000,
               dynamicQs: [{ question: 'travel_subcategory', answer: dynamicAnswers['travel_subcategory'] }],
             },
           }, ...prev].slice(0, 30));
@@ -612,9 +611,9 @@ export default function Home() {
         const answers: Partial<Answers> = {
           mood: selectedMood, area: selectedArea,
           age: profileAge, gender: profileGender,
-          companion: selectedCompanion, transport: selectedTransports,
-          budget, budgetMin, time: selectedTime,
-          atmosphere: selectedAtmosphere, priority: selectedPriority, freeWord,
+          companion: selectedCompanion,
+          budget, budgetMin, freeWord,
+          radiusKm, areaMode, distanceFeeling,
           dynamicQs: [
             ...Object.entries(dynamicAnswers).map(([key, answer]) => ({
               question: dynamicQuestions.find((q) => q.key === key)?.question ?? key,
@@ -641,9 +640,9 @@ export default function Home() {
           const newItem: HistoryItem = {
             id: Date.now().toString(),
             mood: selectedMood, area: selectedArea,
-            companion: selectedCompanion, transport: selectedTransports,
-            budget: budget ?? 10000, time: selectedTime,
-            atmosphere: selectedAtmosphere, priority: selectedPriority, freeWord,
+            companion: selectedCompanion, transport: [],
+            budget: budget ?? 10000, time: '',
+            freeWord,
             topRecommendation: recs[0]?.title ?? '',
             createdAt: new Date().toISOString(),
             recommendations: recs, savedAnswers: answers,
@@ -663,7 +662,7 @@ export default function Home() {
     setFeedbackRating(rating);
     const item: FeedbackItem = {
       id: Date.now().toString(),
-      answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion, atmosphere: selectedAtmosphere },
+      answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
       topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
       rating, visitedPlace: feedbackVisitedPlace,
       createdAt: new Date().toISOString(),
@@ -675,7 +674,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mood: selectedMood, area: selectedArea, age: profileAge, gender: profileGender,
-          companion: selectedCompanion, atmosphere: selectedAtmosphere, priority: selectedPriority,
+          companion: selectedCompanion,
           topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
           rating, visitedPlace: feedbackVisitedPlace,
           likedPlaces: likedInSession, mapClickedPlaces: mapClickedInSession,
@@ -689,9 +688,10 @@ export default function Home() {
 
   const resetQuiz = () => {
     setStarted(false); setStep(1); setSelectedMood(''); setSelectedArea('');
-    setLocationDisplayArea(''); setSelectedCompanion(''); setSelectedTransports([]);
-    setBudget(10000); setBudgetMin(0); setSelectedTime(''); setSelectedAtmosphere('');
-    setSelectedPriority(''); setFreeWord(''); setDynamicQuestions([]); setDynamicAnswers({});
+    setLocationDisplayArea(''); setSelectedCompanion('');
+    setBudget(10000); setBudgetMin(0); setFreeWord('');
+    setDynamicQuestions([]); setDynamicAnswers({});
+    setAreaMode('manual'); setDistanceFeeling('今日は出かけたい'); setRadiusKm(20);
     setApiRecommendations([]); setApiWarning(''); setRefinementText('');
     setFeedbackRating(null); setFeedbackVisitedPlace(''); setFeedbackSubmitted(false);
     setLikedInSession([]); setMapClickedInSession([]); setPlaceRatings({});
@@ -718,13 +718,12 @@ export default function Home() {
     setSelectedMood(sa.mood ?? '');
     setSelectedArea(sa.area ?? '');
     setSelectedCompanion(sa.companion ?? '');
-    setSelectedTransports(Array.isArray(sa.transport) ? sa.transport : []);
     setBudget(sa.budget ?? 10000);
     setBudgetMin(sa.budgetMin ?? 0);
-    setSelectedTime(sa.time ?? '');
-    setSelectedAtmosphere(sa.atmosphere ?? '');
-    setSelectedPriority(sa.priority ?? '');
     setFreeWord(sa.freeWord ?? '');
+    if (sa.radiusKm) setRadiusKm(sa.radiusKm);
+    if (sa.areaMode) setAreaMode(sa.areaMode);
+    if (sa.distanceFeeling) setDistanceFeeling(sa.distanceFeeling);
     setApiRecommendations([]);
     setApiWarning('');
     setDriveFacilities(null); setFocusFacilities(null);
@@ -903,7 +902,7 @@ export default function Home() {
 
   // ─── Quiz flow ────────────────────────────────────────────────────────
 
-  if (started && step <= 10) {
+  if (started && step <= 8) {
     return (
       <View style={styles.root}>
         <AppBackground />
@@ -915,28 +914,23 @@ export default function Home() {
         selectedArea={selectedArea}
         locationDisplayArea={locationDisplayArea}
         selectedCompanion={selectedCompanion}
-        selectedTransports={selectedTransports}
         budget={budget}
         budgetMin={budgetMin}
         showUnseenOnly={showUnseenOnly}
-        selectedTime={selectedTime}
-        selectedAtmosphere={selectedAtmosphere}
-        selectedPriority={selectedPriority}
         freeWord={freeWord}
         dynamicQuestions={dynamicQuestions}
         dynamicAnswers={dynamicAnswers}
         isLocating={isLocating}
         locationError={locationError}
+        areaMode={areaMode}
+        distanceFeeling={distanceFeeling}
+        radiusKm={radiusKm}
         onSelectMood={setSelectedMood}
         onSelectArea={setSelectedArea}
         onSelectCompanion={setSelectedCompanion}
-        onSelectTransports={setSelectedTransports}
         onSetBudget={setBudget}
         onSetBudgetMin={setBudgetMin}
         onSetShowUnseenOnly={setShowUnseenOnly}
-        onSelectTime={setSelectedTime}
-        onSelectAtmosphere={setSelectedAtmosphere}
-        onSelectPriority={setSelectedPriority}
         onSetFreeWord={setFreeWord}
         onSetDynamicQuestions={setDynamicQuestions}
         onSetDynamicAnswers={setDynamicAnswers}
@@ -944,6 +938,8 @@ export default function Home() {
         onSetStep={setStep}
         onBack={resetQuiz}
         onOpenResults={() => openResults()}
+        onSetAreaMode={setAreaMode}
+        onSetDistanceFeeling={(label, km) => { setDistanceFeeling(label); setRadiusKm(km); }}
         onsenCategory={onsenCategory}
         onSetOnsenCategory={setOnsenCategory}
         natureSubGenre={natureSubGenre}
@@ -986,13 +982,15 @@ export default function Home() {
         selectedMood={selectedMood}
         selectedArea={selectedArea}
         selectedCompanion={selectedCompanion}
-        selectedTransports={selectedTransports}
         budget={budget}
         budgetMin={budgetMin}
-        selectedTime={selectedTime}
         deepDiveL1={deepDiveL1}
         deepDiveL2={deepDiveL2}
         freeWord={freeWord}
+        areaMode={areaMode}
+        distanceFeeling={distanceFeeling}
+        radiusKm={radiusKm}
+        onChangeRadius={(km) => { setRadiusKm(km); openResults('', true); }}
         recommendations={apiRecommendations}
         onsenFacilities={onsenFacilities}
         onsenCategoryLabel={onsenCategoryLabel}
@@ -1094,7 +1092,7 @@ export default function Home() {
         onSubmitVisitedFeedback={async (title, rating) => {
           const item: FeedbackItem = {
             id: Date.now().toString(),
-            answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion, atmosphere: selectedAtmosphere },
+            answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
             topRecommendations: [title],
             rating, visitedPlace: title,
             createdAt: new Date().toISOString(),
@@ -1107,7 +1105,7 @@ export default function Home() {
               body: JSON.stringify({
                 mood: selectedMood, area: selectedArea,
                 age: profileAge, gender: profileGender,
-                companion: selectedCompanion, atmosphere: selectedAtmosphere,
+                companion: selectedCompanion,
                 topRecommendations: [title],
                 rating, visitedPlace: title,
               }),

@@ -1,29 +1,32 @@
 /**
- * QuizFlow.tsx — 共通質問 (Step 1〜5 + エリア)
+ * QuizFlow.tsx — 共通質問 (Step 1〜8)
  *
  * Step 1  今の気分は？     (mood 3×3 grid)
  * Step 2  誰と？           (companion 3×2 grid)
- * Step 3  交通手段は？     (transport multi-select, なんでも exclusive)
- * Step 4  予算は？         (range slider + preset chips)
- * Step 5  どのくらい時間？  (time 3×2 grid with sub-labels)
- * Step 10 エリアは？        (location input)
+ * Step 3  エリアはどこ？    (location input — moved from old step 10)
+ * Step 4  距離感は？        (NEW — 3×3 grid, only if areaMode === 'current_location')
+ * Step 5  予算は？          (range slider + preset chips)
+ * Step 6  深掘り L1        (conditional on mood)
+ * Step 7  深掘り L2        (conditional on L1 having subs)
+ * Step 8  自由ワード        (free text)
  *
  * Layout: back circle · gradient progress dots · title · scroll · fixed gradient Next
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, Bike, BookOpen, Building2, Camera, Car,
+  Activity, BookOpen,
   ChefHat, Check, ChevronLeft,
-  Clock, Coffee, Compass, Dumbbell,
+  Coffee, Compass, Dumbbell,
   Fish, Flame, Footprints, Gamepad2, Globe,
-  Heart, Home, Hourglass,
-  Laptop, Leaf, Moon, Mountain, Plane,
+  Heart, Home,
+  Laptop, Leaf, MapPin, Moon, Mountain, Plane,
   ShoppingBag, Shuffle, Sparkles,
-  Star, Sunset, Timer, TrainFront, TreePine,
+  Star, Sunset, Timer, TreePine,
   Trophy, UtensilsCrossed,
   User, UserCheck, Users, UsersRound,
   Waves, Wine, Zap,
+  Navigation, Camera, Building2, Car,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -52,7 +55,9 @@ const SLIDER_W = SCREEN_W - PAD * 2;
 const THUMB_D = 28;
 const MAX_BUDGET = 15000;
 const BSTEP = 500;
-const STEP_SEQ = [1, 2, 3, 4, 5, 6, 9, 10, 11];
+
+// Step 4 is conditional (not in STEP_SEQ dots — shares step 3's dot)
+const STEP_SEQ = [1, 2, 3, 5, 6, 7, 8];
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
@@ -79,21 +84,16 @@ const COMPANIONS: { key: string; label: string; Icon: LucideIcon }[] = [
   { key: '先輩',           label: '先輩',   Icon: UserCheck },
 ];
 
-const TRANSPORTS: { key: string; label: string; Icon: LucideIcon }[] = [
-  { key: '徒歩',       label: '徒歩',       Icon: Footprints },
-  { key: '自転車',     label: '自転車',     Icon: Bike },
-  { key: '電車・バス', label: '電車・バス', Icon: TrainFront },
-  { key: '車・バイク', label: '車・バイク', Icon: Car },
-  { key: 'なんでも',   label: 'なんでも',   Icon: Shuffle },
-];
-
-const TIMES: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
-  { key: '15〜30分',   label: '15〜30分',   sub: '近所のスポット',    Icon: Timer },
-  { key: '30〜60分',   label: '30〜60分',   sub: '徒歩・自転車圏内',  Icon: Clock },
-  { key: '1〜2時間',   label: '1〜2時間',   sub: '電車で数駅',        Icon: Hourglass },
-  { key: '2〜4時間',   label: '2〜4時間',   sub: '隣の市・区',        Icon: Hourglass },
-  { key: '4〜6時間',   label: '4〜6時間',   sub: '同じ県内',          Icon: Sunset },
-  { key: '6時間以上',  label: '6時間以上',  sub: '県外まで行くよ！',  Icon: Moon },
+const DISTANCE_FEELINGS: { key: string; sub: string; radiusKm: number; Icon: LucideIcon }[] = [
+  { key: 'すぐそこ',           sub: '1km以内',   radiusKm: 1,   Icon: Footprints },
+  { key: '近場でいい',          sub: '3km以内',   radiusKm: 3,   Icon: Navigation },
+  { key: '少し歩ける',          sub: '5km以内',   radiusKm: 5,   Icon: Timer },
+  { key: '近めにお出かけ',      sub: '10km以内',  radiusKm: 10,  Icon: Compass },
+  { key: '今日は出かけたい',    sub: '20km以内',  radiusKm: 20,  Icon: Car },
+  { key: 'ちょっと遠くてもOK',  sub: '40km以内',  radiusKm: 40,  Icon: Activity },
+  { key: '県またぎもあり',      sub: '70km以内',  radiusKm: 70,  Icon: Mountain },
+  { key: '小旅行気分',          sub: '120km以内', radiusKm: 120, Icon: Plane },
+  { key: 'どこでも行きたい',    sub: '200km以内', radiusKm: 200, Icon: Globe },
 ];
 
 const BUDGET_CHIPS: { label: string; max: number | undefined; min: number }[] = [
@@ -134,7 +134,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
           { key: 'ハンバーグ',   label: 'ハンバーグ',   Icon: ChefHat },
           { key: 'オムライス',   label: 'オムライス',   Icon: Star },
           { key: 'ステーキ',     label: 'ステーキ',     Icon: Flame },
-          { key: 'レトロ洋食',   label: 'レトロ洋食',   Icon: Clock },
+          { key: 'レトロ洋食',   label: 'レトロ洋食',   Icon: Timer },
         ],
       },
       { key: 'イタリアン',       label: 'イタリアン',       sub: 'パスタ・ピザ',            Icon: UtensilsCrossed },
@@ -180,6 +180,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
         ],
       },
       { key: '高層ビル料理',     label: '高層ビル料理',     sub: '絶景を楽しみながら',     Icon: Building2 },
+      { key: 'こだわらない',     label: 'こだわらない',     sub: 'なんでもOK',             Icon: Shuffle },
     ],
   },
 
@@ -216,6 +217,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
           { key: '展望台', label: '展望台', Icon: Compass },
         ],
       },
+      { key: 'こだわらない', label: 'こだわらない', sub: 'なんでもOK', Icon: Shuffle },
     ],
   },
 
@@ -225,6 +227,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: '体を動かす',    label: '体を動かす',    sub: 'アクティブに遊ぶ',     Icon: Activity },
       { key: 'アミューズメント', label: 'アミューズメントパーク', sub: 'テーマパーク・大型施設', Icon: Zap },
       { key: '体験型ゲーム',  label: '体験型ゲーム',  sub: '謎解き・VRなど',      Icon: Gamepad2 },
+      { key: 'こだわらない',  label: 'こだわらない',  sub: 'なんでもOK',           Icon: Shuffle },
     ],
   },
 
@@ -235,6 +238,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: '自然公園', label: '自然公園', sub: '森・山・渓谷',   Icon: TreePine },
       { key: '大型公園', label: '大型公園', sub: '広々した芝生',   Icon: Leaf },
       { key: '展望台',   label: '展望台',   sub: 'パノラマ絶景',   Icon: Mountain },
+      { key: 'こだわらない', label: 'こだわらない', sub: 'なんでもOK', Icon: Shuffle },
     ],
   },
 
@@ -245,6 +249,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: '絶景スポット',  label: '絶景スポット', sub: '山・峠・展望台',       Icon: Mountain },
       { key: 'ショッピング',  label: 'ショッピング', sub: 'アウトレット・モール', Icon: ShoppingBag },
       { key: 'ご当地グルメ',  label: 'ご当地グルメ', sub: '地元の名物料理',       Icon: UtensilsCrossed },
+      { key: 'こだわらない',  label: 'こだわらない', sub: 'なんでもOK',           Icon: Shuffle },
     ],
   },
 
@@ -255,6 +260,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: '図書館',      label: '図書館・自習室', sub: 'しっかり集中',   Icon: BookOpen },
       { key: 'ファミレス',  label: 'ファミレス',   sub: '食事しながら作業', Icon: UtensilsCrossed },
       { key: 'ブックカフェ', label: 'ブックカフェ', sub: '本に囲まれて',    Icon: Coffee },
+      { key: 'こだわらない', label: 'こだわらない', sub: 'なんでもOK',      Icon: Shuffle },
     ],
   },
 
@@ -265,6 +271,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: 'スポーツ',      label: 'スポーツ',     sub: '球技・ランニング',        Icon: Trophy },
       { key: '体験型ゲーム',  label: '体験型ゲーム', sub: 'ボウリング・ビリヤード',  Icon: Gamepad2 },
       { key: '屋外スポーツ',  label: '屋外スポーツ', sub: '山・川・海',              Icon: Activity },
+      { key: 'こだわらない',  label: 'こだわらない', sub: 'なんでもOK',              Icon: Shuffle },
     ],
   },
 
@@ -275,6 +282,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: 'テーマパーク',   label: 'テーマパーク',   sub: '大型施設で楽しむ',   Icon: Star },
       { key: '街歩き',         label: 'お散歩・街歩き', sub: '路地裏・ゆっくり散策', Icon: Footprints },
       { key: '絶景スポット',   label: '絶景スポット',   sub: '自然の絶景',         Icon: Camera },
+      { key: 'こだわらない',   label: 'こだわらない',   sub: 'なんでもOK',         Icon: Shuffle },
     ],
   },
 };
@@ -326,16 +334,15 @@ const FREE_WORD_HINTS_DEFAULT = [
 ];
 
 const STEP_META: Record<number, { title: string; sub: string }> = {
-  1:  { title: '今の気分は？',           sub: 'タップして選択' },
-  2:  { title: '誰と？',                 sub: '誰と行くかでおすすめが変わります。' },
-  3:  { title: '交通手段は？',           sub: 'なんでも以外は複数選べます。' },
-  4:  { title: '予算はどのくらい？',     sub: 'スライダーで範囲を設定できます。' },
-  5:  { title: 'どのくらい時間がある？', sub: '空き時間に合う過ごし方を提案します。' },
-  9:  { title: '自由ワード',              sub: '行きたいイメージを自由に書いてください（任意）' },
-  10: { title: 'エリアはどこ？',         sub: '現在地を使うか、エリア名を入力してください。' },
+  1: { title: '今の気分は？',         sub: 'タップして選択' },
+  2: { title: '誰と？',               sub: '誰と行くかでおすすめが変わります。' },
+  3: { title: 'エリアはどこ？',       sub: '現在地を使うかエリア名を入力してください。' },
+  4: { title: '距離感は？',           sub: 'どのくらいの範囲で探しますか？' },
+  5: { title: '予算はどのくらい？',   sub: 'スライダーで範囲を設定できます。' },
+  8: { title: '自由ワード',           sub: '行きたいイメージを自由に書いてください（任意）' },
 };
 
-// ─── Props (kept fully compatible with index.tsx) ─────────────────────────────
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
   lang: 'ja' | 'en';
@@ -344,28 +351,23 @@ type Props = {
   selectedArea: string;
   locationDisplayArea: string;
   selectedCompanion: string;
-  selectedTransports: string[];
   budget: number | undefined;
   budgetMin: number;
   showUnseenOnly: boolean;
-  selectedTime: string;
-  selectedAtmosphere: string;
-  selectedPriority: string;
   freeWord: string;
   dynamicQuestions: DynamicQuestion[];
   dynamicAnswers: Record<string, string>;
   isLocating: boolean;
   locationError: string;
+  areaMode: 'current_location' | 'manual';
+  distanceFeeling: string;
+  radiusKm: number;
   onSelectMood: (v: string) => void;
   onSelectArea: (v: string) => void;
   onSelectCompanion: (v: string) => void;
-  onSelectTransports: (v: string[]) => void;
   onSetBudget: (v: number | undefined) => void;
   onSetBudgetMin: (v: number) => void;
   onSetShowUnseenOnly: (v: boolean) => void;
-  onSelectTime: (v: string) => void;
-  onSelectAtmosphere: (v: string) => void;
-  onSelectPriority: (v: string) => void;
   onSetFreeWord: (v: string) => void;
   onSetDynamicQuestions: (v: DynamicQuestion[]) => void;
   onSetDynamicAnswers: (v: Record<string, string>) => void;
@@ -373,6 +375,8 @@ type Props = {
   onSetStep: (v: number) => void;
   onBack: () => void;
   onOpenResults: () => void;
+  onSetAreaMode: (v: 'current_location' | 'manual') => void;
+  onSetDistanceFeeling: (label: string, km: number) => void;
   onsenCategory: OnsenCategory | null;
   onSetOnsenCategory: (v: OnsenCategory) => void;
   natureSubGenre: NatureSubGenre | null;
@@ -415,13 +419,11 @@ function BudgetRangeSlider({
   const toMaxX = (v: number | undefined) =>
     v === undefined || v >= MAX_BUDGET ? SLIDER_W - THUMB_D : toX(Math.min(v, MAX_BUDGET));
 
-  // Animated values drive thumb positions directly → zero re-render jank
   const minXAnim = useRef(new Animated.Value(toX(minVal))).current;
   const maxXAnim = useRef(new Animated.Value(toMaxX(maxVal))).current;
   const minXRef  = useRef(toX(minVal));
   const maxXRef  = useRef(toMaxX(maxVal));
 
-  // Display labels (updated live for text only)
   const [dispMin, setDispMin] = useState(minVal);
   const [dispMax, setDispMax] = useState(maxVal);
 
@@ -440,14 +442,14 @@ function BudgetRangeSlider({
     onPanResponderGrant: () => { sMin.current = minXRef.current; },
     onPanResponderMove: (_, g) => {
       const nx = Math.max(0, Math.min(sMin.current + g.dx, maxXRef.current - THUMB_D * 1.5));
-      minXAnim.setValue(nx);          // native update — no React re-render
+      minXAnim.setValue(nx);
       minXRef.current = nx;
       const v = Math.round(((nx / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP;
-      setDispMin(v);                  // only label re-renders
+      setDispMin(v);
     },
     onPanResponderRelease: () => {
       const v = Math.round(((minXRef.current / (SLIDER_W - THUMB_D)) * MAX_BUDGET) / BSTEP) * BSTEP;
-      onChangeMin(v);                 // notify parent once on release
+      onChangeMin(v);
     },
   })).current;
 
@@ -471,7 +473,6 @@ function BudgetRangeSlider({
     },
   })).current;
 
-  // Active track driven fully by Animated values
   const trackLeft  = Animated.add(minXAnim, THUMB_D / 2);
   const trackWidth = Animated.subtract(maxXAnim, minXAnim);
 
@@ -480,7 +481,6 @@ function BudgetRangeSlider({
 
   return (
     <View style={rsl.wrap}>
-      {/* 選択中の範囲 — シンプルな大テキスト */}
       <View style={rsl.valueRow}>
         <Text style={rsl.valueMin}>{minLbl}</Text>
         <View style={rsl.valueDashWrap}>
@@ -489,25 +489,19 @@ function BudgetRangeSlider({
         <Text style={rsl.valueMax}>{maxLbl}</Text>
       </View>
 
-      {/* スライダー */}
       <View style={{ width: SLIDER_W, height: 72, alignSelf: 'center' }}>
-        {/* track背景 */}
         <View style={rsl.trackBg} />
-        {/* アクティブ部分 — Animated.View で smooth */}
         <Animated.View style={[rsl.trackActive, { left: trackLeft, width: trackWidth }]}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
         </Animated.View>
-        {/* Minサム */}
         <Animated.View {...panMin.panHandlers} style={[rsl.thumb, { left: minXAnim }]}>
           <LinearGradient colors={['#F472B6', '#C084FC']} style={rsl.thumbGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
           <View style={rsl.thumbLine} />
         </Animated.View>
-        {/* Maxサム */}
         <Animated.View {...panMax.panHandlers} style={[rsl.thumb, { left: maxXAnim }]}>
           <LinearGradient colors={['#C084FC', '#60A5FA']} style={rsl.thumbGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
           <View style={rsl.thumbLine} />
         </Animated.View>
-        {/* スケールラベル */}
         <View style={rsl.scaleRow}>
           <Text style={rsl.scaleText}>¥0</Text>
           <Text style={rsl.scaleText}>¥15,000+</Text>
@@ -519,8 +513,6 @@ function BudgetRangeSlider({
 
 const rsl = StyleSheet.create({
   wrap: { marginBottom: 4 },
-
-  // 範囲テキスト
   valueRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginBottom: 20, gap: 12,
@@ -529,8 +521,6 @@ const rsl = StyleSheet.create({
   valueMax: { fontSize: 26, fontWeight: '900', color: '#60A5FA', letterSpacing: -0.5, minWidth: 80 },
   valueDashWrap: { paddingHorizontal: 2 },
   valueDash: { width: 28, height: 3, borderRadius: 99 },
-
-  // スライダー
   trackBg: {
     position: 'absolute', left: THUMB_D / 2, right: THUMB_D / 2,
     height: TRACK_H, borderRadius: 99, backgroundColor: '#EDE9FE', top: TRACK_TOP,
@@ -563,7 +553,6 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
   label: string; sub?: string; Icon: LucideIcon;
   active: boolean; onPress: () => void; index: number; cardWidth?: number;
 }) {
-  // 出現アニメ (spring, staggered)
   const entryAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(entryAnim, {
@@ -578,7 +567,6 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
   const entryOp    = entryAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 1] });
   const entryScale = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
 
-  // タップアニメ
   const pressScale = useRef(new Animated.Value(1)).current;
   const pIn  = () => Animated.spring(pressScale, { toValue: 0.95, tension: 300, friction: 10, useNativeDriver: true }).start();
   const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
@@ -603,7 +591,6 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
               style={StyleSheet.absoluteFill}
             />
           )}
-          {/* チェックバッジ */}
           {active && (
             <View style={mc.checkWrap}>
               <View style={mc.checkCircle}>
@@ -611,11 +598,9 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
               </View>
             </View>
           )}
-          {/* アイコンサークル */}
           <View style={[mc.iconCircle, active && mc.iconCircleA]}>
             <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
           </View>
-          {/* ラベル */}
           <Text style={[mc.label, active && mc.labelA]} numberOfLines={1}>{label}</Text>
           {sub ? <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text> : null}
         </TouchableOpacity>
@@ -660,7 +645,6 @@ function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 
   label: string; sub?: string; Icon: LucideIcon;
   active: boolean; onPress: () => void; width: number; height: number; index?: number;
 }) {
-  // 出現アニメ (MoodCard と同じ staggered spring)
   const entryAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(entryAnim, {
@@ -675,7 +659,6 @@ function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 
   const entryOp    = entryAnim.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 1] });
   const entryScale = entryAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
 
-  // タップアニメ
   const pressScale = useRef(new Animated.Value(1)).current;
   const pIn  = () => Animated.spring(pressScale, { toValue: 0.90, tension: 350, friction: 14, useNativeDriver: true }).start();
   const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 350, friction: 14, useNativeDriver: true }).start();
@@ -716,7 +699,7 @@ const oc = StyleSheet.create({
   subA: { color: 'rgba(255,255,255,0.85)' },
 });
 
-// ─── Step Entrance Wrapper (fade + slide up, for non-grid content) ────────────
+// ─── Step Entrance Wrapper ────────────────────────────────────────────────────
 
 function StepEntrance({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -743,32 +726,30 @@ export default function QuizFlow(props: Props) {
     lang, step,
     selectedMood, onSelectMood,
     selectedCompanion, onSelectCompanion,
-    selectedTransports, onSelectTransports,
     budget, budgetMin, onSetBudget, onSetBudgetMin,
-    selectedTime, onSelectTime,
     selectedArea, onSelectArea,
     locationDisplayArea, isLocating, locationError,
     freeWord, onSetFreeWord,
     onUseCurrentLocation, onSetStep, onBack, onOpenResults,
     deepDiveL1, deepDiveL2, onSetDeepDiveL1, onSetDeepDiveL2,
+    areaMode, distanceFeeling, radiusKm,
+    onSetAreaMode, onSetDistanceFeeling,
   } = props;
 
   const stepOp  = useRef(new Animated.Value(1)).current;
   const stepSlX = useRef(new Animated.Value(0)).current;
   const prevSt  = useRef(step);
 
-  // スクロールロック: コンテンツがコンテナに収まっているときは無効化
   const [scrollEnabled, setScrollEnabled] = useState(false);
   const scrollContainerH = useRef(0);
   const scrollContentH   = useRef(0);
   const checkScrollable  = () => {
-    setScrollEnabled(scrollContentH.current > scrollContainerH.current + 2); // 2px余裕
+    setScrollEnabled(scrollContentH.current > scrollContainerH.current + 2);
   };
 
   useEffect(() => {
     const dir = step >= prevSt.current ? 1 : -1;
     prevSt.current = step;
-    // ステップ変化時にスクロール状態をリセット
     setScrollEnabled(false);
     scrollContentH.current = 0;
     stepSlX.setValue(dir * 40); stepOp.setValue(0);
@@ -778,11 +759,13 @@ export default function QuizFlow(props: Props) {
     ]).start();
   }, [step]);
 
-  // ステップ6/7はDEEP_DIVEがある気分のときのみ表示
   const hasDive = !!DEEP_DIVE[selectedMood];
   const diveConfig = DEEP_DIVE[selectedMood];
   const selectedDiveOpt = diveConfig?.options.find(o => o.key === deepDiveL1);
-  const hasDiveL2 = !!(deepDiveL1 && selectedDiveOpt?.subs?.length);
+  // こだわらない を選んだ場合は L2 をスキップ
+  const hasDiveL2 = !!(deepDiveL1 && deepDiveL1 !== 'こだわらない' && selectedDiveOpt?.subs?.length);
+
+  const useCurrentLoc = areaMode === 'current_location';
 
   const meta = step === 6
     ? { title: diveConfig?.title ?? 'こだわりを教えて', sub: 'スキップもできます' }
@@ -790,37 +773,46 @@ export default function QuizFlow(props: Props) {
       ? { title: `${deepDiveL1}のスタイルは？`, sub: 'さらに絞り込めます' }
       : (STEP_META[step] ?? { title: '', sub: '' });
 
-  // step 7 は STEP_SEQ に含まれないので step 6 のドットを共有
-  const dotIdx = step === 7 ? STEP_SEQ.indexOf(6) : STEP_SEQ.indexOf(step);
+  // step 4 shares step 3's dot; step 7 shares step 6's dot
+  const dotIdx = step === 4
+    ? STEP_SEQ.indexOf(3)
+    : step === 7
+      ? STEP_SEQ.indexOf(6)
+      : STEP_SEQ.indexOf(step);
 
   const handleBack = () => {
     if (step === 1)  { onBack(); return; }
     if (step === 2)  { onSetStep(1);  return; }
     if (step === 3)  { onSetStep(2);  return; }
     if (step === 4)  { onSetStep(3);  return; }
-    if (step === 5)  { onSetStep(4);  return; }
+    if (step === 5)  { onSetStep(useCurrentLoc ? 4 : 3); return; }
     if (step === 6)  { onSetStep(5);  return; }
     if (step === 7)  { onSetStep(6);  return; }
-    if (step === 9)  { onSetStep(hasDiveL2 ? 7 : hasDive ? 6 : 5); return; }
-    if (step === 10) { onSetStep(9);  return; }
+    if (step === 8)  {
+      onSetStep(hasDiveL2 ? 7 : (hasDive && selectedMood !== '時間潰し') ? 6 : 5);
+      return;
+    }
     onBack();
   };
 
   const handleNext = () => {
     if (step === 1)  { onSetStep(2);  return; }
     if (step === 2)  { onSetStep(3);  return; }
-    if (step === 3)  { onSetStep(4);  return; }
+    if (step === 3)  { onSetStep(useCurrentLoc ? 4 : 5); return; }
     if (step === 4)  { onSetStep(5);  return; }
-    if (step === 5)  { onSetStep(hasDive ? 6 : 9); return; }
-    if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 9); return; }
-    if (step === 7)  { onSetStep(9);  return; }
-    if (step === 9)  { onSetStep(10); return; }
-    if (step === 10) { onOpenResults(); return; }
+    if (step === 5)  { onSetStep((hasDive && selectedMood !== '時間潰し') ? 6 : 8); return; }
+    if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 8); return; }
+    if (step === 7)  { onSetStep(8);  return; }
+    if (step === 8)  { onOpenResults(); return; }
   };
 
-  const nextLabel = step === 10
+  const nextLabel = step === 8
     ? (lang === 'ja' ? 'おすすめを見る' : 'Show me spots')
-    : (step === 1 && !selectedMood) || (step === 6 && !deepDiveL1) || (step === 7 && !deepDiveL2) || (step === 9 && !freeWord)
+    : (step === 1 && !selectedMood) ||
+      (step === 3 && !selectedArea && !locationDisplayArea) ||
+      (step === 6 && !deepDiveL1) ||
+      (step === 7 && !deepDiveL2) ||
+      (step === 8 && !freeWord)
       ? (lang === 'ja' ? 'スキップ' : 'Skip')
       : (lang === 'ja' ? '次へ  →' : 'Next  →');
 
@@ -852,39 +844,80 @@ export default function QuizFlow(props: Props) {
       </View>
     );
 
+    // ── Step 3: エリア ──────────────────────────────────────────────────────
     if (step === 3) return (
       <>
-        <View style={s.hint}>
-          <Text style={s.hintTxt}>{lang === 'ja' ? '複数選択できます（なんでも は単独）' : 'Multi-select · "Any" is exclusive'}</Text>
-        </View>
-        <View style={s.grid}>
-          {TRANSPORTS.map((m, i) => {
-            const active = selectedTransports.includes(m.key);
-            return (
-              <OptionCard key={m.key} label={m.label} Icon={m.Icon}
-                active={active} width={CW3} height={CW3}
-                index={i}
-                onPress={() => {
-                  if (m.key === 'なんでも') { onSelectTransports(active ? [] : ['なんでも']); }
-                  else {
-                    const w = selectedTransports.filter((x) => x !== 'なんでも' && x !== m.key);
-                    onSelectTransports(active ? w : [...w, m.key]);
-                  }
-                }} />
-            );
-          })}
-        </View>
+        <StepEntrance delay={0}>
+          <TouchableOpacity
+            onPress={() => {
+              onSetAreaMode('current_location');
+              onUseCurrentLocation();
+            }}
+            disabled={isLocating}
+            activeOpacity={0.85}
+            style={s.locWrap}
+          >
+            <LinearGradient
+              colors={isLocating ? ['#ccc', '#ccc'] : GRAD}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={s.locBtn}
+            >
+              <MapPin size={18} color="#fff" strokeWidth={2} style={{ marginRight: 6 }} />
+              <Text style={s.locBtnTxt}>
+                {isLocating
+                  ? (lang === 'ja' ? '現在地を取得中...' : 'Getting location...')
+                  : (lang === 'ja' ? '現在地を使う' : 'Use my location')}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </StepEntrance>
+        {locationDisplayArea ? (
+          <View style={s.locTag}>
+            <Text style={s.locTagTxt}>📍 {locationDisplayArea}</Text>
+          </View>
+        ) : null}
+        <StepEntrance delay={80}>
+          <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
+          <TextInput
+            value={selectedArea}
+            onChangeText={(v) => {
+              onSelectArea(v);
+              if (v.length > 0) onSetAreaMode('manual');
+            }}
+            placeholder={lang === 'ja' ? '例：渋谷 / 横浜 / 新宿' : 'e.g. Shibuya / Yokohama'}
+            placeholderTextColor="#C4B5FD"
+            style={s.areaInput}
+          />
+        </StepEntrance>
+        {locationError ? <Text style={s.errTxt}>{locationError}</Text> : null}
       </>
     );
 
+    // ── Step 4: 距離感 (current_location のみ) ──────────────────────────────
     if (step === 4) return (
+      <View style={s.grid}>
+        {DISTANCE_FEELINGS.map((d, i) => (
+          <OptionCard
+            key={d.key}
+            label={d.key}
+            sub={d.sub}
+            Icon={d.Icon}
+            active={distanceFeeling === d.key}
+            width={CW3}
+            height={CW3 + 24}
+            index={i}
+            onPress={() => onSetDistanceFeeling(d.key, d.radiusKm)}
+          />
+        ))}
+      </View>
+    );
+
+    // ── Step 5: 予算 ────────────────────────────────────────────────────────
+    if (step === 5) return (
       <StepEntrance delay={0}>
-        {/* スライダーカード */}
         <View style={s.budgetCard}>
           <BudgetRangeSlider minVal={budgetMin} maxVal={budget} onChangeMin={onSetBudgetMin} onChangeMax={onSetBudget} />
         </View>
-
-        {/* クイック選択 */}
         <Text style={s.quickPickLabel}>{lang === 'ja' ? 'クイック選択' : 'Quick pick'}</Text>
         <View style={s.grid}>
           {BUDGET_CHIPS.map((chip) => {
@@ -907,43 +940,11 @@ export default function QuizFlow(props: Props) {
       </StepEntrance>
     );
 
-    if (step === 5) return (
-      <View style={s.grid}>
-        {TIMES.map((m, i) => (
-          <OptionCard key={m.key} label={m.label} sub={m.sub} Icon={m.Icon}
-            active={selectedTime === m.key} width={CW3} height={CW3 + 20}
-            index={i}
-            onPress={() => onSelectTime(m.key)} />
-        ))}
-      </View>
-    );
-
-    if (step === 10) return (
-      <>
-        <StepEntrance delay={0}>
-          <TouchableOpacity onPress={onUseCurrentLocation} disabled={isLocating} activeOpacity={0.85} style={s.locWrap}>
-            <LinearGradient colors={isLocating ? ['#ccc', '#ccc'] : GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.locBtn}>
-              <Text style={s.locBtnTxt}>{isLocating ? (lang === 'ja' ? '現在地を取得中...' : 'Getting location...') : (lang === 'ja' ? '📍 現在地を使う' : '📍 Use my location')}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </StepEntrance>
-        {locationDisplayArea ? <View style={s.locTag}><Text style={s.locTagTxt}>📍 {locationDisplayArea}</Text></View> : null}
-        <StepEntrance delay={80}>
-          <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
-          <TextInput value={selectedArea} onChangeText={onSelectArea}
-            placeholder={lang === 'ja' ? '例：渋谷 / 横浜 / 新宿' : 'e.g. Shibuya / Yokohama'}
-            placeholderTextColor="#C4B5FD" style={s.areaInput} />
-        </StepEntrance>
-        {locationError ? <Text style={s.errTxt}>{locationError}</Text> : null}
-      </>
-    );
-
-    // ── Step 9: 自由ワード ──────────────────────────────────────────────────
-    if (step === 9) {
+    // ── Step 8: 自由ワード ──────────────────────────────────────────────────
+    if (step === 8) {
       const HINT_TAGS = FREE_WORD_HINTS[selectedMood] ?? FREE_WORD_HINTS_DEFAULT;
       return (
         <StepEntrance delay={0}>
-          {/* 入力カード */}
           <View style={s.freeWordCard}>
             <TextInput
               value={freeWord}
@@ -962,8 +963,6 @@ export default function QuizFlow(props: Props) {
               </View>
             )}
           </View>
-
-          {/* ヒントタグ */}
           <Text style={s.freeWordHintLabel}>{lang === 'ja' ? 'ヒント' : 'Suggestions'}</Text>
           <View style={s.freeWordHints}>
             {HINT_TAGS.map((hint) => (
@@ -986,21 +985,21 @@ export default function QuizFlow(props: Props) {
 
     // ── Step 6: 深掘り Level 1 ──────────────────────────────────────────────
     if (step === 6 && diveConfig) {
-      const cw6 = diveConfig.options.length === 4 ? CW2 : CW3;
+      const cw6 = diveConfig.options.length <= 4 ? CW2 : CW3;
       return (
         <View style={s.grid}>
           {diveConfig.options.map((opt, i) => (
             <MoodCard
               key={opt.key}
               label={opt.label}
-              sub={opt.subs?.length ? (lang === 'ja' ? 'さらに絞り込む ›' : 'More options ›') : opt.sub}
+              sub={opt.key === 'こだわらない' ? opt.sub : (opt.subs?.length ? (lang === 'ja' ? 'さらに絞り込む ›' : 'More options ›') : opt.sub)}
               Icon={opt.Icon}
               active={deepDiveL1 === opt.key}
               index={i}
               cardWidth={cw6}
               onPress={() => {
                 onSetDeepDiveL1(opt.key);
-                onSetDeepDiveL2(''); // L1 変更時 L2 リセット
+                onSetDeepDiveL2('');
               }}
             />
           ))}
@@ -1024,6 +1023,17 @@ export default function QuizFlow(props: Props) {
               onPress={() => onSetDeepDiveL2(sub.key)}
             />
           ))}
+          {/* こだわらない for L2 */}
+          <MoodCard
+            key="こだわらない"
+            label="こだわらない"
+            sub="なんでもOK"
+            Icon={Shuffle}
+            active={deepDiveL2 === 'こだわらない'}
+            index={selectedDiveOpt.subs.length}
+            cardWidth={cw7}
+            onPress={() => onSetDeepDiveL2('こだわらない')}
+          />
         </View>
       );
     }
@@ -1127,7 +1137,6 @@ const s = StyleSheet.create({
   },
   chipTxt: { fontSize: 14, fontWeight: '600', color: '#1E0753' },
   chipTxtA: { color: '#fff', fontWeight: '800' },
-  // 予算ページ専用
   budgetCard: {
     backgroundColor: '#fff', borderRadius: 22,
     padding: 20, marginBottom: 24,
@@ -1156,7 +1165,10 @@ const s = StyleSheet.create({
     borderRadius: 16, overflow: 'hidden', marginBottom: 14,
     shadowColor: '#C084FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
   },
-  locBtn: { height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  locBtn: {
+    height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row',
+  },
   locBtnTxt: { fontSize: 16, fontWeight: '700', color: '#fff' },
   locTag: {
     alignSelf: 'center', backgroundColor: '#EDE9FE', borderRadius: 10,
@@ -1170,7 +1182,6 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#DDD6FE',
   },
   errTxt: { fontSize: 13, color: '#EF4444', marginTop: 8 },
-  // 自由ワードページ専用
   freeWordCard: {
     backgroundColor: '#fff', borderRadius: 22,
     padding: 20, marginBottom: 20,

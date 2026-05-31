@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Banknote, Car, ChevronDown, ChevronLeft, ChevronUp,
-  Clock, Eye, List, MapPin, MessageSquare, Navigation,
+  Banknote, ChevronDown, ChevronLeft, ChevronUp,
+  Eye, List, MapPin, MessageSquare, Navigation,
   Search, Shuffle, Sparkles, Star, Tag, Users,
 } from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
@@ -137,13 +137,15 @@ type Props = {
   selectedMood: string;
   selectedArea: string;
   selectedCompanion?: string;
-  selectedTransports?: string[];
   budget?: number;
   budgetMin?: number;
-  selectedTime?: string;
   deepDiveL1?: string;
   deepDiveL2?: string;
   freeWord?: string;
+  areaMode?: 'current_location' | 'manual';
+  distanceFeeling?: string;
+  radiusKm?: number;
+  onChangeRadius?: (km: number) => void;
   recommendations: Recommendation[];
   onsenFacilities: PlaceResponse[] | null;
   onsenCategoryLabel: string;
@@ -242,9 +244,10 @@ const ls = StyleSheet.create({
 
 export default function ResultsView(props: Props) {
   const {
-    selectedMood, selectedArea, selectedCompanion = '', selectedTransports = [],
-    budget, budgetMin = 0, selectedTime = '',
+    selectedMood, selectedArea, selectedCompanion = '',
+    budget, budgetMin = 0,
     deepDiveL1 = '', deepDiveL2 = '', freeWord = '',
+    areaMode, distanceFeeling, radiusKm, onChangeRadius,
     recommendations, onsenFacilities, onsenCategoryLabel,
     natureFacilities, natureSubGenreLabel, cafeFacilities, cafeSubCategoryLabel,
     waiWaiFacilities, waiWaiSubCategoryLabel,
@@ -335,14 +338,12 @@ export default function ResultsView(props: Props) {
   const condChips: { label: string; value: string; Icon: LIcon }[] = [];
   if (notSkipped(selectedMood))       condChips.push({ label: t.condMood,      value: selectedMood,                         Icon: Sparkles });
   if (notSkipped(selectedCompanion))  condChips.push({ label: t.condWith,      value: selectedCompanion,                    Icon: Users });
-  const filteredTransports = selectedTransports.filter(notSkipped);
-  if (filteredTransports.length > 0)  condChips.push({ label: t.condTransport, value: filteredTransports.join('・'),        Icon: Car });
   if (budget === 0)                   condChips.push({ label: t.condBudget,    value: '無料',                               Icon: Banknote });
   else if (budget != null && budget > 0) {
     const bStr = budgetMin > 0 ? `¥${budgetMin.toLocaleString()}〜¥${budget.toLocaleString()}` : `〜¥${budget.toLocaleString()}`;
     condChips.push({ label: t.condBudget, value: bStr, Icon: Banknote });
   }
-  if (notSkipped(selectedTime))       condChips.push({ label: t.condTime,      value: selectedTime,                         Icon: Clock });
+  if (distanceFeeling || radiusKm)    condChips.push({ label: '距離',           value: distanceFeeling || `${radiusKm}km以内`, Icon: Navigation });
   if (notSkipped(deepDiveL1))         condChips.push({ label: '詳細',           value: deepDiveL1,                           Icon: Tag });
   if (notSkipped(deepDiveL2))         condChips.push({ label: 'スタイル',        value: deepDiveL2,                           Icon: Sparkles });
   if (freeWord && freeWord.trim())    condChips.push({ label: '希望',           value: freeWord,                             Icon: MessageSquare });
