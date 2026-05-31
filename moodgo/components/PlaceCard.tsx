@@ -153,16 +153,21 @@ export default function PlaceCard({
   // スワイプジェスチャー（写真切り替え）
   const panResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponder: () => photosLen > 1,
       onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 12,
+        photosLen > 1 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2 && Math.abs(gs.dx) > 6,
+      onPanResponderTerminationRequest: () => false,
       onPanResponderRelease: (_, gs) => {
-        if (gs.dx < -45) {
+        // 距離 or 速度どちらかで判定（フリックにも反応）
+        const swipeRight = gs.dx > 25 || gs.vx > 0.3;
+        const swipeLeft  = gs.dx < -25 || gs.vx < -0.3;
+        if (swipeLeft) {
           setPhotoIdx(i => {
             const next = Math.min(i + 1, photosLen - 1);
             if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             return next;
           });
-        } else if (gs.dx > 45) {
+        } else if (swipeRight) {
           setPhotoIdx(i => {
             const next = Math.max(i - 1, 0);
             if (next !== i) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
