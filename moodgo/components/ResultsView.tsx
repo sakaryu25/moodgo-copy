@@ -318,14 +318,18 @@ export default function ResultsView(props: Props) {
   if (resultSort === 'rating') facilityItems = [...facilityItems].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
   else if (resultSort === 'near') facilityItems = [...facilityItems].sort((a, b) => parseDistanceM(a.distanceText) - parseDistanceM(b.distanceText));
 
-  // 今回の条件チップ
+  // スキップ判定
+  const isSkipped = (v: string) => !v || v === 'スキップ' || v === 'Skip' || v === 'skip';
+
+  // 今回の条件チップ（スキップは除外）
   const condChips: { label: string; value: string }[] = [];
-  if (selectedMood)  condChips.push({ label: t.condMood,      value: selectedMood });
-  if (selectedArea)  condChips.push({ label: t.condArea,      value: selectedArea });
-  if (selectedCompanion) condChips.push({ label: t.condWith,  value: selectedCompanion });
-  if (selectedTransports.length > 0) condChips.push({ label: t.condTransport, value: selectedTransports.join('・') });
+  if (!isSkipped(selectedMood))  condChips.push({ label: t.condMood,      value: selectedMood });
+  if (!isSkipped(selectedArea))  condChips.push({ label: t.condArea,      value: selectedArea });
+  if (!isSkipped(selectedCompanion)) condChips.push({ label: t.condWith,  value: selectedCompanion });
+  if (selectedTransports.filter(x => !isSkipped(x)).length > 0)
+    condChips.push({ label: t.condTransport, value: selectedTransports.filter(x => !isSkipped(x)).join('・') });
   if (budget != null && budget > 0) condChips.push({ label: t.condBudget, value: `〜${budget.toLocaleString()}円` });
-  if (selectedTime)  condChips.push({ label: t.condTime,      value: selectedTime });
+  if (!isSkipped(selectedTime))  condChips.push({ label: t.condTime,      value: selectedTime });
   if (facilityLabel) condChips.push({ label: 'コース',         value: facilityLabel });
 
   return (
