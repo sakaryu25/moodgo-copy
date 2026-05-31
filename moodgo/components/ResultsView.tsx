@@ -195,55 +195,41 @@ type Props = {
 };
 
 // ── Animated loading card ──────────────────────────────────────────────────────
-function LoadingCard({ message, onReset, resetLabel }: { message: string; onReset: () => void; resetLabel: string }) {
+function LoadingCard({ message }: { message: string }) {
   const spin = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0.85)).current;
   useEffect(() => {
-    Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1400, easing: Easing.linear, useNativeDriver: true })).start();
-    Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 0.85, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-    ])).start();
+    Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true })
+    ).start();
   }, []);
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   return (
     <View style={ls.loadingWrap}>
       <View style={ls.card}>
-        {/* Gradient ring spinner */}
-        <Animated.View style={[ls.spinnerWrap, { transform: [{ rotate }, { scale: pulse }] }]}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={ls.spinnerRing} />
-          <View style={ls.spinnerInner} />
-        </Animated.View>
-        {/* Dot row */}
-        <View style={ls.dots}>
-          {GRAD.map((c, i) => <View key={i} style={[ls.dot, { backgroundColor: c }]} />)}
-        </View>
+        {/* Arc spinner */}
+        <Animated.View style={[ls.arc, { transform: [{ rotate }] }]} />
         <Text style={ls.loadingMsg}>{message}</Text>
-        <TouchableOpacity onPress={onReset} style={ls.resetBtn} activeOpacity={0.75}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ls.resetGrad} />
-          <Text style={ls.resetText}>{resetLabel}</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
 const ls = StyleSheet.create({
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  loadingWrap: { alignItems: 'center', paddingVertical: 60 },
   card: {
-    backgroundColor: '#fff', borderRadius: 28, padding: 36, alignItems: 'center', gap: 16,
-    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 10,
+    backgroundColor: '#fff', borderRadius: 28, padding: 40, alignItems: 'center', gap: 20,
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.13, shadowRadius: 24, elevation: 10,
     width: '88%', borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
   },
-  spinnerWrap: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
-  spinnerRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36 },
-  spinnerInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff' },
-  dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
+  arc: {
+    width: 64, height: 64, borderRadius: 32,
+    borderWidth: 4,
+    borderTopColor: '#F472B6',
+    borderRightColor: '#C084FC',
+    borderBottomColor: '#60A5FA',
+    borderLeftColor: 'transparent',
+  },
   loadingMsg: { fontSize: 15, fontWeight: '600', color: '#374151', textAlign: 'center', lineHeight: 22 },
-  resetBtn: { marginTop: 4, borderRadius: 14, overflow: 'hidden', width: '100%' },
-  resetGrad: { ...StyleSheet.absoluteFillObject },
-  resetText: { fontSize: 15, fontWeight: '700', color: '#fff', textAlign: 'center', paddingVertical: 14 },
 });
 
 export default function ResultsView(props: Props) {
@@ -464,7 +450,7 @@ export default function ResultsView(props: Props) {
         )}
 
         {/* Loading */}
-        {isLoading && <LoadingCard message={loadingMessage} onReset={onReset} resetLabel={t.reset} />}
+        {isLoading && <LoadingCard message={loadingMessage} />}
 
         {/* Warning */}
         {apiWarning && !isLoading ? (
