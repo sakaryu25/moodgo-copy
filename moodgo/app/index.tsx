@@ -59,34 +59,6 @@ import type {
 } from '@/types/app';
 export type { Recommendation, FavoriteItem, FeedbackItem, HistoryItem, Answers, DynamicQuestion, FeaturedPageSummary };
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const LOADING_MESSAGES = [
-  'あなたにぴったりの場所を探しています…',
-  'AIが気分をもとに分析中…',
-  '近くのスポットを調べています…',
-  'もう少しお待ちください…',
-  'おすすめを厳選中…',
-];
-
-// ─── Local helper ────────────────────────────────────────────────────────────
-
-function placeToRecLocal(f: PlaceResponse): Recommendation {
-  return {
-    title: f.name, address: f.address, mapUrl: f.googleMapsUrl,
-    rating: f.rating, userRatingCount: f.reviewCount,
-    photoUrl: f.imageUrl || undefined, photoUrls: f.photoUrls ?? [],
-    openNow: f.openNow ?? undefined,
-    distanceText: f.distanceInfo || undefined, stationText: f.stationInfo || undefined,
-    features: [f.description].filter(Boolean) as string[],
-    source: f.source, hotpepperUrl: f.hotpepperUrl,
-    // Google Place ID（温泉・自然・カフェ等のスポットは f.id が Place ID）
-    placeId: f.id && !f.id.startsWith('sb-') && !f.id.startsWith('hp-') ? f.id : undefined,
-    openingHoursText: f.openingHours ?? undefined,
-    priceLevel: f.priceLevel ?? undefined,
-  };
-}
-
 // ─── Main App ────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -96,7 +68,6 @@ export default function Home() {
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(1);
   const [homeView, setHomeView] = useState<'home' | 'history' | 'favorites' | 'featured'>('home');
-  // 各タブのリセットカウンター（同じタブを再タップしたときにインクリメント）
   const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0 });
 
   // Quiz state
@@ -114,6 +85,20 @@ export default function Home() {
   const [distanceFeeling, setDistanceFeeling] = useState('今日は出かけたい');
   const [radiusKm, setRadiusKm] = useState(20);
 
+  // QuizFlow mood-specific UI state（クイズ画面の選択状態 — 検索には使わない）
+  const [onsenCategory, setOnsenCategory] = useState<OnsenCategory | null>(null);
+  const [natureSubGenre, setNatureSubGenre] = useState<NatureSubGenre | null>(null);
+  const [natureDistancePref, setNatureDistancePref] = useState<NatureDistancePref | null>(null);
+  const [cafeSubCategory, setCafeSubCategory] = useState<CafeSubCategory | null>(null);
+  const [cafeDetail, setCafeDetail] = useState<CafeDetail | null>(null);
+  const [cafeDetailMode, setCafeDetailMode] = useState(false);
+  const [cafeDistancePref, setCafeDistancePref] = useState<CafeDistancePref | null>(null);
+  const [waiWaiSubCategory, setWaiWaiSubCategory] = useState<WaiWaiSubCategory | null>(null);
+  const [onsenDistancePref, setOnsenDistancePref] = useState<NatureDistancePref | null>(null);
+  const [scenerySubCategory, setScenerySubCategory] = useState<string | null>(null);
+  const [deepDiveL1, setDeepDiveL1] = useState('');
+  const [deepDiveL2, setDeepDiveL2] = useState('');
+
   // Profile
   const [profileSetupDone, setProfileSetupDone] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -122,36 +107,18 @@ export default function Home() {
   const [profilePrefecture, setProfilePrefecture] = useState('');
   const [showSettings, setShowSettings] = useState(false);
 
-  // Results
-  const [apiRecommendations, setApiRecommendations] = useState<Recommendation[]>([]);
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
-  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
-  const [apiWarning, setApiWarning] = useState('');
+  // Results（常に空 — 検索ロジックは未実装）
+  const [apiRecommendations] = useState<Recommendation[]>([]);
+  const [isLoadingRecommendations] = useState(false);
+  const [placeRatings, setPlaceRatings] = useState<Record<string, 'good' | 'bad'>>({});
+  const [photoIndices, setPhotoIndices] = useState<Record<string, number>>({});
   const [blockedPlaces, setBlockedPlaces] = useState<string[]>([]);
-  const [refinementText, setRefinementText] = useState('');
-  const [isRefining, setIsRefining] = useState(false);
-
-  // Feedback
-  const [pastFeedback, setPastFeedback] = useState<FeedbackItem[]>([]);
-  const [pendingVisited, setPendingVisited] = useState<FeedbackItem | null>(null);
-  const [pendingVisitedInput, setPendingVisitedInput] = useState('');
-  const [feedbackRating, setFeedbackRating] = useState<number | null>(null);
-  const [feedbackVisitedPlace, setFeedbackVisitedPlace] = useState('');
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [likedInSession, setLikedInSession] = useState<string[]>([]);
   const [mapClickedInSession, setMapClickedInSession] = useState<string[]>([]);
-  const [placeRatings, setPlaceRatings] = useState<Record<string, 'good' | 'bad'>>({});
-
-  // Photos & UI
-  const [photoIndices, setPhotoIndices] = useState<Record<string, number>>({});
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [lang, setLang] = useState<'ja' | 'en'>('ja');
-
-  // Location
-  const [originLat, setOriginLat] = useState<number | undefined>();
-  const [originLng, setOriginLng] = useState<number | undefined>();
-  const [isLocating, setIsLocating] = useState(false);
-  const [locationError, setLocationError] = useState('');
+  const [refinementText, setRefinementText] = useState('');
+  const [isRefining] = useState(false);
+  const [prefectureButtons] = useState<string[]>([]);
+  const [selectedPrefecture, setSelectedPrefecture] = useState('');
 
   // Favorites & History
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
@@ -159,121 +126,44 @@ export default function Home() {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [favoriteSort, setFavoriteSort] = useState<'newest' | 'title'>('newest');
 
-  // Featured
-  const [featuredList, setFeaturedList] = useState<FeaturedPageSummary[]>([]);
-  const [featuredListLoading, setFeaturedListLoading] = useState(false);
-
-  // Mood-specific: Onsen
-  const [onsenCategory, setOnsenCategory] = useState<OnsenCategory | null>(null);
-  const [onsenFacilities, setOnsenFacilities] = useState<PlaceResponse[] | null>(null);
-  const [onsenCategoryLabel, setOnsenCategoryLabel] = useState('');
-  const [isLoadingOnsen, setIsLoadingOnsen] = useState(false);
-
-  // Mood-specific: Nature
-  const [natureSubGenre, setNatureSubGenre] = useState<NatureSubGenre | null>(null);
-  const [natureDistancePref, setNatureDistancePref] = useState<NatureDistancePref | null>(null);
-  const [natureFacilities, setNatureFacilities] = useState<PlaceResponse[] | null>(null);
-  const [natureSubGenreLabel, setNatureSubGenreLabel] = useState('');
-  const [isLoadingNature, setIsLoadingNature] = useState(false);
-
-  // Mood-specific: Cafe
-  const [cafeSubCategory, setCafeSubCategory] = useState<CafeSubCategory | null>(null);
-  const [cafeDetail, setCafeDetail] = useState<CafeDetail | null>(null);
-  const [cafeDetailMode, setCafeDetailMode] = useState(false);
-  const [cafeDistancePref, setCafeDistancePref] = useState<CafeDistancePref | null>(null);
-  const [cafeFacilities, setCafeFacilities] = useState<PlaceResponse[] | null>(null);
-  const [cafeSubCategoryLabel, setCafeSubCategoryLabel] = useState('');
-  const [isLoadingCafe, setIsLoadingCafe] = useState(false);
-
-  // Mood-specific: WaiWai
-  const [waiWaiSubCategory, setWaiWaiSubCategory] = useState<WaiWaiSubCategory | null>(null);
-  const [waiWaiFacilities, setWaiWaiFacilities] = useState<PlaceResponse[] | null>(null);
-  const [waiWaiSubCategoryLabel, setWaiWaiSubCategoryLabel] = useState('');
-  const [isLoadingWaiWai, setIsLoadingWaiWai] = useState(false);
-
-  // Mood-specific: Onsen distance & Scenery
-  const [onsenDistancePref, setOnsenDistancePref] = useState<NatureDistancePref | null>(null);
-  const [scenerySubCategory, setScenerySubCategory] = useState<string | null>(null);
-
-  // Mood-specific: Drive
-  const [driveFacilities, setDriveFacilities] = useState<PlaceResponse[] | null>(null);
-  const [driveSubCategoryLabel, setDriveSubCategoryLabel] = useState('');
-  const [isLoadingDrive, setIsLoadingDrive] = useState(false);
-
-  // Mood-specific: Focus
-  const [focusFacilities, setFocusFacilities] = useState<PlaceResponse[] | null>(null);
-  const [focusSubCategoryLabel, setFocusSubCategoryLabel] = useState('');
-  const [isLoadingFocus, setIsLoadingFocus] = useState(false);
-
-  // Mood-specific: Sports
-  const [sportsFacilities, setSportsFacilities] = useState<PlaceResponse[] | null>(null);
-  const [sportsSubCategoryLabel, setSportsSubCategoryLabel] = useState('');
-  const [isLoadingSports, setIsLoadingSports] = useState(false);
-
-  // Mood-specific: Travel
-  const [travelFacilities, setTravelFacilities] = useState<PlaceResponse[] | null>(null);
-  const [travelSubCategoryLabel, setTravelSubCategoryLabel] = useState('');
-  const [isLoadingTravel, setIsLoadingTravel] = useState(false);
-
-  // 深掘り
-  const [deepDiveL1, setDeepDiveL1] = useState('');
-  const [deepDiveL2, setDeepDiveL2] = useState('');
-
-  // Prefecture filter
-  const [selectedPrefecture, setSelectedPrefecture] = useState('');
-  const [prefectureButtons, setPrefectureButtons] = useState<string[]>([]);
-
-  // Report
+  // Report modal
   const [reportingSpot, setReportingSpot] = useState<{ title: string; address: string; supabaseId?: string } | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [reportNote, setReportNote] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportDone, setReportDone] = useState(false);
 
-  const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Location
+  const [originLat, setOriginLat] = useState<number | undefined>();
+  const [originLng, setOriginLng] = useState<number | undefined>();
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
+
+  // UI
+  const [lang, setLang] = useState<'ja' | 'en'>('ja');
 
   // ─── Load from AsyncStorage ──────────────────────────────────────────────
 
   useEffect(() => {
     (async () => {
       const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-      const hist = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
-      const feed = await loadJSON<FeedbackItem[]>(FEEDBACK_KEY, []);
-      const pending = await loadJSON<FeedbackItem | null>(PENDING_VISITED_KEY, null);
+      const hist  = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
       const blocked = await loadJSON<string[]>(BLOCKED_PLACES_KEY, []);
       const profile = await loadJSON<{ age?: string; gender?: string; prefecture?: string }>(PROFILE_KEY, {});
       setFavorites(faves);
       setHistory(hist);
-      setPastFeedback(feed);
-      if (pending) setPendingVisited(pending);
       setBlockedPlaces(blocked);
-      if (profile.age) setProfileAge(profile.age);
-      if (profile.gender) setProfileGender(profile.gender);
+      if (profile.age)        setProfileAge(profile.age);
+      if (profile.gender)     setProfileGender(profile.gender);
       if (profile.prefecture) setProfilePrefecture(profile.prefecture);
       setProfileSetupDone(!!(profile.age || profile.gender));
       setProfileLoaded(true);
     })();
   }, []);
 
-  // profileLoaded が true になってから（初回ロード完了後）のみ保存する
-  // → 起動直後の空配列で保存データが上書きされるバグを防ぐ
-  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY, favorites); }, [favorites, profileLoaded]);
-  useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY, history); }, [history, profileLoaded]);
-  useEffect(() => { if (profileLoaded) saveJSON(FEEDBACK_KEY, pastFeedback); }, [pastFeedback, profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,    favorites);    }, [favorites,    profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY,      history);      }, [history,      profileLoaded]);
   useEffect(() => { if (profileLoaded) saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces, profileLoaded]);
-
-  // ─── Featured ───────────────────────────────────────────────────────────
-
-  const loadFeaturedList = async (force = false) => {
-    if (!force && featuredList.length > 0) return;
-    setFeaturedListLoading(true);
-    try {
-      const res = await apiFetch('/api/featured');
-      const d = await res.json();
-      if (d.ok) setFeaturedList(d.data);
-    } catch {}
-    setFeaturedListLoading(false);
-  };
 
   // ─── Location ──────────────────────────────────────────────────────────
 
@@ -308,334 +198,30 @@ export default function Home() {
     setIsLocating(false);
   };
 
-  // ─── Open results ──────────────────────────────────────────────────────
+  // ─── Open results（検索ロジック未実装 — 結果画面を表示するだけ）──────────
 
-  const openResults = async (refineText = '', isRefinement = false) => {
-    if (loadingTimer.current) clearInterval(loadingTimer.current);
-    setLoadingMsgIdx(0);
-    loadingTimer.current = setInterval(() => {
-      setLoadingMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length);
-    }, 1800);
-
-    if (!isRefinement) setStep(11);
-
-    if (selectedMood === '時間潰し') {
-      setIsLoadingRecommendations(true);
-      try {
-        const res = await apiFetch('/api/random-spots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lat: originLat, lng: originLng,
-            radiusKm: areaMode === 'current_location' ? radiusKm : 5,
-            limit: 10,
-            companion: selectedCompanion, budget, freeWord,
-          }),
-        });
-        const d = await res.json();
-        const spots = d.data ?? d.spots ?? [];
-        const recs: Recommendation[] = spots.map((p: PlaceResponse) => ({
-          title: p.name, address: p.address, mapUrl: p.googleMapsUrl,
-          rating: p.rating, userRatingCount: p.reviewCount,
-          photoUrl: p.imageUrl || undefined, photoUrls: p.photoUrls ?? [],
-          openNow: p.openNow ?? undefined, features: [p.description].filter(Boolean) as string[],
-          source: p.source, hotpepperUrl: p.hotpepperUrl,
-        }));
-        if (recs.length > 0) {
-          setApiRecommendations(recs);
-          const newItem: HistoryItem = {
-            id: Date.now().toString(), mood: selectedMood, area: selectedArea,
-            companion: selectedCompanion, transport: [],
-            budget: budget ?? 0, time: '',
-            freeWord,
-            topRecommendation: recs[0]?.title ?? '',
-            createdAt: new Date().toISOString(), recommendations: recs, savedAnswers: {},
-          };
-          setHistory((prev) => [newItem, ...prev].slice(0, 500));
-        }
-      } catch {}
-      setIsLoadingRecommendations(false);
-      if (loadingTimer.current) clearInterval(loadingTimer.current);
-      return;
-    }
-
-    const baseHistoryItem = () => ({
-      id: Date.now().toString(), mood: selectedMood, area: selectedArea,
-      companion: selectedCompanion, transport: [] as string[],
-      budget: budget ?? 10000, time: '',
-      freeWord,
-      createdAt: new Date().toISOString(),
-    });
-
-    setIsLoadingRecommendations(true);
-      try {
-        const seenPlaces = history.flatMap((h) =>
-          h.recommendations?.map((r) => r.title) ?? [h.topRecommendation]
-        );
-        const answers: Partial<Answers> = {
-          mood: selectedMood, area: selectedArea,
-          age: profileAge, gender: profileGender,
-          companion: selectedCompanion,
-          budget, budgetMin, freeWord,
-          radiusKm, areaMode, distanceFeeling,
-          originLat, originLng,
-          dynamicQs: [
-            ...Object.entries(dynamicAnswers).map(([key, answer]) => ({
-              question: dynamicQuestions.find((q) => q.key === key)?.question ?? key,
-              answer,
-            })),
-            ...(scenerySubCategory ? [{ question: '絶景タイプ', answer: scenerySubCategory }] : []),
-            ...(deepDiveL1 ? [{ question: '深掘りカテゴリ', answer: deepDiveL1 }] : []),
-            ...(deepDiveL2 ? [{ question: '深掘り詳細', answer: deepDiveL2 }] : []),
-          ],
-        };
-        const res = await apiFetch('/api/recommend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            answers, pastFeedback, seenPlaces, showUnseenOnly,
-            refinementText: refineText, userPreferenceHints: [],
-          }),
-        });
-        const d = await res.json();
-        const recs = d.recommendations ?? d.data ?? [];
-        if (recs.length > 0) {
-          setApiRecommendations(recs);
-          setApiWarning(d.warning ?? '');
-          const newItem: HistoryItem = {
-            id: Date.now().toString(),
-            mood: selectedMood, area: selectedArea,
-            companion: selectedCompanion, transport: [],
-            budget: budget ?? 10000, time: '',
-            freeWord,
-            topRecommendation: recs[0]?.title ?? '',
-            createdAt: new Date().toISOString(),
-            recommendations: recs, savedAnswers: answers,
-          };
-          setHistory((prev) => [newItem, ...prev].slice(0, 500));
-        }
-      } catch {}
-      setIsLoadingRecommendations(false);
-
-    if (loadingTimer.current) clearInterval(loadingTimer.current);
-  };
-
-  // ─── Feedback ─────────────────────────────────────────────────────────
-
-  const submitFeedback = async (rating: number) => {
-    setFeedbackRating(rating);
-    const item: FeedbackItem = {
-      id: Date.now().toString(),
-      answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
-      topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
-      rating, visitedPlace: feedbackVisitedPlace,
-      createdAt: new Date().toISOString(),
-    };
-    setPastFeedback((prev) => [item, ...prev].slice(0, 50));
-    try {
-      await apiFetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mood: selectedMood, area: selectedArea, age: profileAge, gender: profileGender,
-          companion: selectedCompanion,
-          topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
-          rating, visitedPlace: feedbackVisitedPlace,
-          likedPlaces: likedInSession, mapClickedPlaces: mapClickedInSession,
-        }),
-      });
-    } catch {}
-    setFeedbackSubmitted(true);
+  const openResults = (_refineText = '', _isRefinement = false) => {
+    setStep(11);
   };
 
   // ─── Reset ────────────────────────────────────────────────────────────
 
   const resetQuiz = () => {
-    setStarted(false); setStep(1); setSelectedMood(''); setSelectedArea('');
-    setLocationDisplayArea(''); setSelectedCompanion('');
+    setStarted(false); setStep(1);
+    setSelectedMood(''); setSelectedArea(''); setLocationDisplayArea('');
+    setSelectedCompanion('');
     setBudget(10000); setBudgetMin(0); setFreeWord('');
     setDynamicQuestions([]); setDynamicAnswers({});
     setAreaMode('manual'); setDistanceFeeling('今日は出かけたい'); setRadiusKm(20);
-    setApiRecommendations([]); setApiWarning(''); setRefinementText('');
-    setFeedbackRating(null); setFeedbackVisitedPlace(''); setFeedbackSubmitted(false);
-    setLikedInSession([]); setMapClickedInSession([]); setPlaceRatings({});
-    setOnsenCategory(null); setOnsenFacilities(null);
-    setNatureSubGenre(null); setNatureDistancePref(null); setNatureFacilities(null);
+    setPlaceRatings({}); setLikedInSession([]); setMapClickedInSession([]);
+    setRefinementText('');
+    setOnsenCategory(null); setNatureSubGenre(null); setNatureDistancePref(null);
     setCafeSubCategory(null); setCafeDetail(null); setCafeDetailMode(false);
-    setCafeDistancePref(null); setCafeFacilities(null);
-    setWaiWaiSubCategory(null); setWaiWaiFacilities(null);
+    setCafeDistancePref(null); setWaiWaiSubCategory(null);
     setOnsenDistancePref(null); setScenerySubCategory(null);
-    setDriveFacilities(null); setDriveSubCategoryLabel('');
-    setFocusFacilities(null); setFocusSubCategoryLabel('');
-    setSportsFacilities(null); setSportsSubCategoryLabel('');
-    setTravelFacilities(null); setTravelSubCategoryLabel('');
-    setSelectedPrefecture(''); setPrefectureButtons([]);
     setDeepDiveL1(''); setDeepDiveL2('');
+    setSelectedPrefecture('');
     setHomeView('home');
-  };
-
-  // ─── Re-search from history ───────────────────────────────────────────
-
-  const handleResearch = async (item: HistoryItem) => {
-    if (!item.savedAnswers?.mood) return;
-    const sa = item.savedAnswers;
-    setSelectedMood(sa.mood ?? '');
-    setSelectedArea(sa.area ?? '');
-    setSelectedCompanion(sa.companion ?? '');
-    setBudget(sa.budget ?? 10000);
-    setBudgetMin(sa.budgetMin ?? 0);
-    setFreeWord(sa.freeWord ?? '');
-    if (sa.radiusKm) setRadiusKm(sa.radiusKm);
-    if (sa.areaMode) setAreaMode(sa.areaMode);
-    if (sa.distanceFeeling) setDistanceFeeling(sa.distanceFeeling);
-    setApiRecommendations([]);
-    setApiWarning('');
-    setDriveFacilities(null); setFocusFacilities(null);
-    setSportsFacilities(null); setTravelFacilities(null);
-    setOnsenFacilities(null); setCafeFacilities(null);
-    setWaiWaiFacilities(null); setNatureFacilities(null);
-    setSelectedHistoryItem(null);
-    setHomeView('home');
-    setStarted(true);
-    setStep(11);
-
-    if (loadingTimer.current) clearInterval(loadingTimer.current);
-    setLoadingMsgIdx(0);
-    loadingTimer.current = setInterval(() => {
-      setLoadingMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length);
-    }, 1800);
-
-    const getQ = (key: string) => (sa.dynamicQs ?? []).find((q) => q.question === key)?.answer ?? '';
-    const driveSubcat = getQ('drive_subcategory');
-    const focusSubcat = getQ('focus_subcategory');
-    const sportsSubcat = getQ('sports_subcategory');
-    const travelSubcat = getQ('travel_subcategory');
-    const onsenCat = getQ('onsen_category');
-    const cafeSubcat = getQ('cafe_subcategory');
-    const cafeDetailVal = getQ('cafe_detail');
-    const waiWaiSubcat = getQ('waiwai_subcategory');
-    const natureSubgenre = getQ('nature_subgenre');
-    const natureDist = getQ('nature_distance');
-
-    try {
-      if (sa.mood === 'ドライブしたい' && driveSubcat) {
-        setIsLoadingDrive(true);
-        const res = await apiFetch('/api/drive', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: driveSubcat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: ['車'], time: sa.time, companion: sa.companion, budget: sa.budget, freeWord: sa.freeWord }),
-        });
-        const d = await res.json();
-        if (d.data) { setDriveFacilities(d.data); setDriveSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingDrive(false);
-      } else if (sa.mood === '集中したい' && focusSubcat) {
-        setIsLoadingFocus(true);
-        const res = await apiFetch('/api/focus', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: focusSubcat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport, time: sa.time, companion: sa.companion, budget: sa.budget, freeWord: sa.freeWord }),
-        });
-        const d = await res.json();
-        if (d.data) { setFocusFacilities(d.data); setFocusSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingFocus(false);
-      } else if (sa.mood === '体を動かしたい' && sportsSubcat) {
-        setIsLoadingSports(true);
-        const res = await apiFetch('/api/sports', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: sportsSubcat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport, time: sa.time, companion: sa.companion, budget: sa.budget, freeWord: sa.freeWord }),
-        });
-        const d = await res.json();
-        if (d.data) { setSportsFacilities(d.data); setSportsSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingSports(false);
-      } else if (sa.mood === '遠くに行きたい' && travelSubcat) {
-        setIsLoadingTravel(true);
-        const res = await apiFetch('/api/travel', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: travelSubcat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport }),
-        });
-        const d = await res.json();
-        if (d.data) { setTravelFacilities(d.data); setTravelSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingTravel(false);
-      } else if (onsenCat) {
-        setIsLoadingOnsen(true);
-        const res = await apiFetch('/api/onsen', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category: onsenCat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport, time: sa.time, companion: sa.companion, budget: sa.budget, freeWord: sa.freeWord, distancePref: getQ('onsen_distance') || undefined }),
-        });
-        const d = await res.json();
-        if (d.data) { setOnsenFacilities(d.data); setOnsenCategoryLabel(d.categoryLabel ?? ''); }
-        setIsLoadingOnsen(false);
-      } else if (cafeSubcat) {
-        setIsLoadingCafe(true);
-        const res = await apiFetch('/api/cafe', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: cafeSubcat, detail: cafeDetailVal || undefined, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport, distancePref: getQ('cafe_distance') || undefined }),
-        });
-        const d = await res.json();
-        if (d.data) { setCafeFacilities(d.data); setCafeSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingCafe(false);
-      } else if (waiWaiSubcat) {
-        setIsLoadingWaiWai(true);
-        const res = await apiFetch('/api/waiwai', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subCategory: waiWaiSubcat, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport }),
-        });
-        const d = await res.json();
-        if (d.data) { setWaiWaiFacilities(d.data); setWaiWaiSubCategoryLabel(d.subCategoryLabel ?? ''); }
-        setIsLoadingWaiWai(false);
-      } else if (natureSubgenre) {
-        setIsLoadingNature(true);
-        const res = await apiFetch('/api/nature', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subGenre: natureSubgenre, lat: originLat, lng: originLng, areaLabel: sa.area, transport: sa.transport, distancePref: natureDist || undefined }),
-        });
-        const d = await res.json();
-        if (d.data) { setNatureFacilities(d.data); setNatureSubGenreLabel(d.subGenreLabel ?? ''); }
-        setIsLoadingNature(false);
-      } else {
-        setIsLoadingRecommendations(true);
-        const res = await apiFetch('/api/recommend', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers: sa, pastFeedback, seenPlaces: [], showUnseenOnly: false, refinementText: '', userPreferenceHints: [] }),
-        });
-        const d = await res.json();
-        const recs = d.recommendations ?? d.data ?? [];
-        if (recs.length > 0) { setApiRecommendations(recs); setApiWarning(d.warning ?? ''); }
-        setIsLoadingRecommendations(false);
-      }
-    } catch {}
-
-    if (loadingTimer.current) clearInterval(loadingTimer.current);
-  };
-
-  // ─── Place rating (👍/👎) → API ─────────────────────────────────────────
-
-  const submitPlaceRating = async (placeTitle: string, verdict: 'good' | 'bad') => {
-    // Update liked session list
-    if (verdict === 'good') {
-      setLikedInSession((prev) => prev.includes(placeTitle) ? prev : [...prev, placeTitle]);
-    }
-    const rating = verdict === 'good' ? 5 : 1;
-    // sub_category: deepDiveL2 があればそれ、なければ deepDiveL1
-    const subCategoryLabel = deepDiveL2 || deepDiveL1 || selectedMood;
-    // /api/feedback
-    apiFetch('/api/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mood: selectedMood, area: selectedArea,
-        age: profileAge, gender: profileGender,
-        companion: selectedCompanion,
-        topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
-        rating, visitedPlace: placeTitle,
-        likedPlaces: verdict === 'good' ? [placeTitle] : [],
-        mapClickedPlaces: [],
-      }),
-    }).catch(() => {});
-    // /api/mood-rating
-    apiFetch('/api/mood-rating', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ place_name: placeTitle, mood: selectedMood, sub_category: subCategoryLabel, verdict }),
-    }).catch(() => {});
   };
 
   // ─── Toggle favorite ──────────────────────────────────────────────────
@@ -649,7 +235,6 @@ export default function Home() {
         title: rec.title, area: selectedArea,
         vibe: rec.vibe ?? '', photoUrl: rec.photoUrl, mapUrl: rec.mapUrl,
         createdAt: new Date().toISOString(),
-        // 詳細ページ用の追加データ
         placeId: rec.placeId,
         address: rec.address,
         rating: rec.rating,
@@ -663,19 +248,14 @@ export default function Home() {
     }
   };
 
-  const isLoading =
-    isLoadingRecommendations || isLoadingOnsen || isLoadingNature ||
-    isLoadingCafe || isLoadingWaiWai ||
-    isLoadingDrive || isLoadingFocus || isLoadingSports || isLoadingTravel;
-
   // ─── 詳細ページへ遷移 ─────────────────────────────────────────────────────
+
   const handlePressDetail = (rec: Recommendation) => {
     setSelectedPlace(rec);
     router.push('/place');
   };
 
   const handlePressFavoriteDetail = (item: FavoriteItem) => {
-    // FavoriteItem を Recommendation に変換して詳細ページへ
     const rec: Recommendation = {
       title: item.title,
       address: item.address ?? item.area,
@@ -697,16 +277,6 @@ export default function Home() {
     router.push('/place');
   };
 
-  // 結果が出たら現在地から近い都道府県ボタンを自動生成
-  useEffect(() => {
-    if (isLoading || !originLat || !originLng) return;
-    const userPref = detectUserPrefecture(originLat, originLng);
-    if (!userPref) return;
-    const nearby = getNearbyPrefectures(userPref, 3);
-    setPrefectureButtons([userPref, ...nearby]);
-    setSelectedPrefecture('');
-  }, [isLoading]);
-
   // ─── Tab fade ─────────────────────────────────────────────────────────
 
   const tabFade = useRef(new Animated.Value(1)).current;
@@ -714,7 +284,6 @@ export default function Home() {
     tabFade.setValue(0);
     Animated.timing(tabFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [homeView]);
-
 
   // ─── Profile setup (first launch) ────────────────────────────────────
 
@@ -742,64 +311,64 @@ export default function Home() {
       <View style={styles.root}>
         <AppBackground />
         <SlideUp>
-        <QuizFlow
-        lang={lang}
-        step={step}
-        selectedMood={selectedMood}
-        selectedArea={selectedArea}
-        locationDisplayArea={locationDisplayArea}
-        selectedCompanion={selectedCompanion}
-        budget={budget}
-        budgetMin={budgetMin}
-        showUnseenOnly={showUnseenOnly}
-        freeWord={freeWord}
-        dynamicQuestions={dynamicQuestions}
-        dynamicAnswers={dynamicAnswers}
-        isLocating={isLocating}
-        locationError={locationError}
-        areaMode={areaMode}
-        distanceFeeling={distanceFeeling}
-        radiusKm={radiusKm}
-        onSelectMood={setSelectedMood}
-        onSelectArea={setSelectedArea}
-        onSelectCompanion={setSelectedCompanion}
-        onSetBudget={setBudget}
-        onSetBudgetMin={setBudgetMin}
-        onSetShowUnseenOnly={setShowUnseenOnly}
-        onSetFreeWord={setFreeWord}
-        onSetDynamicQuestions={setDynamicQuestions}
-        onSetDynamicAnswers={setDynamicAnswers}
-        onUseCurrentLocation={handleUseCurrentLocation}
-        onSetStep={setStep}
-        onBack={resetQuiz}
-        onOpenResults={() => openResults()}
-        onSetAreaMode={setAreaMode}
-        onSetDistanceFeeling={(label, km) => { setDistanceFeeling(label); setRadiusKm(km); }}
-        onsenCategory={onsenCategory}
-        onSetOnsenCategory={setOnsenCategory}
-        natureSubGenre={natureSubGenre}
-        onSetNatureSubGenre={setNatureSubGenre}
-        natureDistancePref={natureDistancePref}
-        onSetNatureDistancePref={setNatureDistancePref}
-        cafeSubCategory={cafeSubCategory}
-        onSetCafeSubCategory={setCafeSubCategory}
-        cafeDetail={cafeDetail}
-        onSetCafeDetail={setCafeDetail}
-        cafeDetailMode={cafeDetailMode}
-        onSetCafeDetailMode={setCafeDetailMode}
-        cafeDistancePref={cafeDistancePref}
-        onSetCafeDistancePref={setCafeDistancePref}
-        waiWaiSubCategory={waiWaiSubCategory}
-        onSetWaiWaiSubCategory={setWaiWaiSubCategory}
-        onsenDistancePref={onsenDistancePref}
-        onSetOnsenDistancePref={setOnsenDistancePref}
-        scenerySubCategory={scenerySubCategory}
-        onSetScenerySubCategory={setScenerySubCategory}
-        deepDiveL1={deepDiveL1}
-        deepDiveL2={deepDiveL2}
-        onSetDeepDiveL1={setDeepDiveL1}
-        onSetDeepDiveL2={setDeepDiveL2}
-      />
+          <QuizFlow
+            lang={lang}
+            step={step}
+            selectedMood={selectedMood}
+            selectedArea={selectedArea}
+            locationDisplayArea={locationDisplayArea}
+            selectedCompanion={selectedCompanion}
+            budget={budget}
+            budgetMin={budgetMin}
+            showUnseenOnly={showUnseenOnly}
+            freeWord={freeWord}
+            dynamicQuestions={dynamicQuestions}
+            dynamicAnswers={dynamicAnswers}
+            isLocating={isLocating}
+            locationError={locationError}
+            areaMode={areaMode}
+            distanceFeeling={distanceFeeling}
+            radiusKm={radiusKm}
+            onSelectMood={setSelectedMood}
+            onSelectArea={setSelectedArea}
+            onSelectCompanion={setSelectedCompanion}
+            onSetBudget={setBudget}
+            onSetBudgetMin={setBudgetMin}
+            onSetShowUnseenOnly={setShowUnseenOnly}
+            onSetFreeWord={setFreeWord}
+            onSetDynamicQuestions={setDynamicQuestions}
+            onSetDynamicAnswers={setDynamicAnswers}
+            onUseCurrentLocation={handleUseCurrentLocation}
+            onSetStep={setStep}
+            onBack={resetQuiz}
+            onOpenResults={() => openResults()}
+            onSetAreaMode={setAreaMode}
+            onSetDistanceFeeling={(label, km) => { setDistanceFeeling(label); setRadiusKm(km); }}
+            onsenCategory={onsenCategory}
+            onSetOnsenCategory={setOnsenCategory}
+            natureSubGenre={natureSubGenre}
+            onSetNatureSubGenre={setNatureSubGenre}
+            natureDistancePref={natureDistancePref}
+            onSetNatureDistancePref={setNatureDistancePref}
+            cafeSubCategory={cafeSubCategory}
+            onSetCafeSubCategory={setCafeSubCategory}
+            cafeDetail={cafeDetail}
+            onSetCafeDetail={setCafeDetail}
+            cafeDetailMode={cafeDetailMode}
+            onSetCafeDetailMode={setCafeDetailMode}
+            cafeDistancePref={cafeDistancePref}
+            onSetCafeDistancePref={setCafeDistancePref}
+            waiWaiSubCategory={waiWaiSubCategory}
+            onSetWaiWaiSubCategory={setWaiWaiSubCategory}
+            onsenDistancePref={onsenDistancePref}
+            onSetOnsenDistancePref={setOnsenDistancePref}
+            scenerySubCategory={scenerySubCategory}
+            onSetScenerySubCategory={setScenerySubCategory}
+            deepDiveL1={deepDiveL1}
+            deepDiveL2={deepDiveL2}
+            onSetDeepDiveL1={setDeepDiveL1}
+            onSetDeepDiveL2={setDeepDiveL2}
+          />
         </SlideUp>
       </View>
     );
@@ -812,144 +381,95 @@ export default function Home() {
       <View style={styles.root}>
         <AppBackground />
         <SlideUp>
-        <ResultsView
-        lang={lang}
-        selectedMood={selectedMood}
-        selectedArea={selectedArea}
-        selectedCompanion={selectedCompanion}
-        budget={budget}
-        budgetMin={budgetMin}
-        deepDiveL1={deepDiveL1}
-        deepDiveL2={deepDiveL2}
-        freeWord={freeWord}
-        areaMode={areaMode}
-        distanceFeeling={distanceFeeling}
-        radiusKm={radiusKm}
-        onChangeRadius={(km) => { setRadiusKm(km); openResults('', true); }}
-        recommendations={apiRecommendations}
-        onsenFacilities={onsenFacilities}
-        onsenCategoryLabel={onsenCategoryLabel}
-        natureFacilities={natureFacilities}
-        natureSubGenreLabel={natureSubGenreLabel}
-        cafeFacilities={cafeFacilities}
-        cafeSubCategoryLabel={cafeSubCategoryLabel}
-        waiWaiFacilities={waiWaiFacilities}
-        waiWaiSubCategoryLabel={waiWaiSubCategoryLabel}
-        driveFacilities={driveFacilities}
-        driveSubCategoryLabel={driveSubCategoryLabel}
-        focusFacilities={focusFacilities}
-        focusSubCategoryLabel={focusSubCategoryLabel}
-        sportsFacilities={sportsFacilities}
-        sportsSubCategoryLabel={sportsSubCategoryLabel}
-        travelFacilities={travelFacilities}
-        travelSubCategoryLabel={travelSubCategoryLabel}
-        isLoading={isLoading}
-        loadingMessage={LOADING_MESSAGES[loadingMsgIdx]}
-        apiWarning={apiWarning}
-        favorites={favorites}
-        onToggleFavorite={toggleFavorite}
-        placeRatings={placeRatings}
-        onSetPlaceRatings={setPlaceRatings}
-        photoIndices={photoIndices}
-        onSetPhotoIndices={setPhotoIndices}
-        blockedPlaces={blockedPlaces}
-        onBlockPlace={(title) => setBlockedPlaces((prev) => [...prev, title])}
-        feedbackRating={feedbackRating}
-        feedbackSubmitted={feedbackSubmitted}
-        onSubmitFeedback={submitFeedback}
-        likedInSession={likedInSession}
-        onSetLikedInSession={setLikedInSession}
-        mapClickedInSession={mapClickedInSession}
-        onSetMapClickedInSession={setMapClickedInSession}
-        refinementText={refinementText}
-        onSetRefinementText={setRefinementText}
-        isRefining={isRefining}
-        onRefine={async () => {
-          setIsRefining(true);
-          await openResults(refinementText, true);
-          setIsRefining(false);
-        }}
-        prefectureButtons={prefectureButtons}
-        selectedPrefecture={selectedPrefecture}
-        onSelectPrefecture={setSelectedPrefecture}
-        onShuffle={() => {
-          const shuffle = <T,>(arr: T[]) => [...arr].sort(() => Math.random() - 0.5);
-          if (driveFacilities) setDriveFacilities(shuffle(driveFacilities));
-          else if (focusFacilities) setFocusFacilities(shuffle(focusFacilities));
-          else if (sportsFacilities) setSportsFacilities(shuffle(sportsFacilities));
-          else if (travelFacilities) setTravelFacilities(shuffle(travelFacilities));
-          else if (waiWaiFacilities) setWaiWaiFacilities(shuffle(waiWaiFacilities));
-          else if (cafeFacilities) setCafeFacilities(shuffle(cafeFacilities));
-          else if (onsenFacilities) setOnsenFacilities(shuffle(onsenFacilities));
-          else if (natureFacilities) setNatureFacilities(shuffle(natureFacilities));
-          else setApiRecommendations((prev) => shuffle(prev));
-        }}
-        onReset={resetQuiz}
-        reportingSpot={reportingSpot}
-        onSetReportingSpot={setReportingSpot}
-        reportReason={reportReason}
-        onSetReportReason={setReportReason}
-        reportNote={reportNote}
-        onSetReportNote={setReportNote}
-        reportSubmitting={reportSubmitting}
-        reportDone={reportDone}
-        onSubmitReport={async () => {
-          if (!reportingSpot) return;
-          setReportSubmitting(true);
-          try {
-            // 閉店・閉業報告 → report_count をインクリメント（3件で自動非活性化）
-            if (reportReason === '閉店・閉業' || reportReason === 'Closed/Shut down') {
-              if (reportingSpot.supabaseId) {
-                await apiFetch('/api/report-closed', {
+          <ResultsView
+            lang={lang}
+            selectedMood={selectedMood}
+            selectedArea={selectedArea}
+            selectedCompanion={selectedCompanion}
+            budget={budget}
+            budgetMin={budgetMin}
+            deepDiveL1={deepDiveL1}
+            deepDiveL2={deepDiveL2}
+            freeWord={freeWord}
+            areaMode={areaMode}
+            distanceFeeling={distanceFeeling}
+            radiusKm={radiusKm}
+            onChangeRadius={(km) => { setRadiusKm(km); openResults('', true); }}
+            recommendations={apiRecommendations}
+            onsenFacilities={null}
+            onsenCategoryLabel=""
+            natureFacilities={null}
+            natureSubGenreLabel=""
+            cafeFacilities={null}
+            cafeSubCategoryLabel=""
+            waiWaiFacilities={null}
+            waiWaiSubCategoryLabel=""
+            driveFacilities={null}
+            driveSubCategoryLabel=""
+            focusFacilities={null}
+            focusSubCategoryLabel=""
+            sportsFacilities={null}
+            sportsSubCategoryLabel=""
+            travelFacilities={null}
+            travelSubCategoryLabel=""
+            isLoading={isLoadingRecommendations}
+            loadingMessage=""
+            apiWarning=""
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            placeRatings={placeRatings}
+            onSetPlaceRatings={setPlaceRatings}
+            photoIndices={photoIndices}
+            onSetPhotoIndices={setPhotoIndices}
+            blockedPlaces={blockedPlaces}
+            onBlockPlace={(title) => setBlockedPlaces((prev) => [...prev, title])}
+            feedbackRating={null}
+            feedbackSubmitted={false}
+            onSubmitFeedback={() => {}}
+            likedInSession={likedInSession}
+            onSetLikedInSession={setLikedInSession}
+            mapClickedInSession={mapClickedInSession}
+            onSetMapClickedInSession={setMapClickedInSession}
+            refinementText={refinementText}
+            onSetRefinementText={setRefinementText}
+            isRefining={isRefining}
+            onRefine={() => {}}
+            prefectureButtons={prefectureButtons}
+            selectedPrefecture={selectedPrefecture}
+            onSelectPrefecture={setSelectedPrefecture}
+            onShuffle={() => {}}
+            onReset={resetQuiz}
+            reportingSpot={reportingSpot}
+            onSetReportingSpot={setReportingSpot}
+            reportReason={reportReason}
+            onSetReportReason={setReportReason}
+            reportNote={reportNote}
+            onSetReportNote={setReportNote}
+            reportSubmitting={reportSubmitting}
+            reportDone={reportDone}
+            onSubmitReport={async () => {
+              if (!reportingSpot) return;
+              setReportSubmitting(true);
+              try {
+                await apiFetch('/api/reports', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ placeId: reportingSpot.supabaseId }),
-                }).catch(() => {});
-              }
-            }
-            // 通常の報告ログ（内容問わず /api/reports に記録）
-            await apiFetch('/api/reports', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                spot_name: reportingSpot.title,
-                spot_address: reportingSpot.address,
-                reason: reportReason, note: reportNote,
-              }),
-            });
-          } catch {}
-          setReportDone(true);
-          setReportSubmitting(false);
-        }}
-        seenPlaceTitles={history.flatMap((h) =>
-          h.recommendations?.map((r) => r.title) ?? [h.topRecommendation]
-        )}
-        onSubmitVisitedFeedback={async (title, rating) => {
-          const item: FeedbackItem = {
-            id: Date.now().toString(),
-            answers: { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
-            topRecommendations: [title],
-            rating, visitedPlace: title,
-            createdAt: new Date().toISOString(),
-          };
-          setPastFeedback((prev) => [item, ...prev].slice(0, 50));
-          try {
-            await apiFetch('/api/feedback', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                mood: selectedMood, area: selectedArea,
-                age: profileAge, gender: profileGender,
-                companion: selectedCompanion,
-                topRecommendations: [title],
-                rating, visitedPlace: title,
-              }),
-            });
-          } catch {}
-        }}
-        onPressDetail={handlePressDetail}
-        onSubmitPlaceRating={submitPlaceRating}
-      />
+                  body: JSON.stringify({
+                    spot_name: reportingSpot.title,
+                    spot_address: reportingSpot.address,
+                    reason: reportReason, note: reportNote,
+                  }),
+                });
+              } catch {}
+              setReportDone(true);
+              setReportSubmitting(false);
+            }}
+            seenPlaceTitles={history.flatMap((h) =>
+              h.recommendations?.map((r) => r.title) ?? [h.topRecommendation]
+            )}
+            onSubmitVisitedFeedback={async () => {}}
+            onPressDetail={handlePressDetail}
+          />
         </SlideUp>
       </View>
     );
@@ -969,7 +489,7 @@ export default function Home() {
             onClearHistory={() => setHistory([])}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
-            onResearch={handleResearch}
+            onResearch={() => {}}
             onPressDetail={handlePressDetail}
             resetKey={tabResetKeys.history}
           />
@@ -998,7 +518,7 @@ export default function Home() {
             lang={lang}
             onStart={() => setStarted(true)}
             onShowSettings={() => setShowSettings(true)}
-            onShowFeatured={() => { setHomeView('featured'); loadFeaturedList(); }}
+            onShowFeatured={() => setHomeView('featured')}
           />
         );
     }
@@ -1013,13 +533,9 @@ export default function Home() {
       <TabBar
         lang={lang}
         homeView={homeView}
-        onChangeView={(v) => {
-          setHomeView(v);
-          if (v === 'featured') loadFeaturedList();
-        }}
+        onChangeView={(v) => setHomeView(v)}
         onReset={(v) => {
           setTabResetKeys(prev => ({ ...prev, [v]: prev[v] + 1 }));
-          // ホームタブは最初の画面（HomeView）にリセット
           if (v === 'home') resetQuiz();
         }}
         insets={insets}
