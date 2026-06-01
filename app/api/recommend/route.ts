@@ -3501,6 +3501,10 @@ async function fetchGooglePlacesSupplement(
     const types = MOOD_TYPES[mood] ?? ["tourist_attraction"];
     const radiusM = Math.min(radiusKm * 1000, 50000);
 
+    // 毎回異なる結果を得るため、緯度経度に小さなランダムジッターを加える（±0.003° ≈ ±300m）
+    const jitterLat = lat + (Math.random() - 0.5) * 0.006;
+    const jitterLng = lng + (Math.random() - 0.5) * 0.006;
+
     const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
       method: "POST",
       headers: {
@@ -3510,11 +3514,11 @@ async function fetchGooglePlacesSupplement(
       },
       body: JSON.stringify({
         includedTypes: types,
-        maxResultCount: Math.min(limit * 2, 20),
-        rankPreference: "DISTANCE",
+        maxResultCount: 20,  // 多めに取得してシャッフルで多様化
+        rankPreference: "POPULARITY",  // 人気順の方が多様な結果を返す
         languageCode: "ja",
         locationRestriction: {
-          circle: { center: { latitude: lat, longitude: lng }, radius: radiusM },
+          circle: { center: { latitude: jitterLat, longitude: jitterLng }, radius: radiusM },
         },
       }),
       cache: "no-store",
@@ -3541,15 +3545,20 @@ async function fetchGooglePlacesSupplement(
       return (PRICE_LEVEL_COST[priceLevel] ?? 0) > budget;
     };
 
-    const filtered = places
+    // フィルタ後に Fisher-Yates シャッフル → 毎回異なる順序で limit 件を取得
+    const filteredAll = places
       .filter((p: Record<string, unknown>) => {
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
         if (existingLower.has(name.toLowerCase()) || name.length === 0) return false;
-        // 予算オーバーの場所は除外
         if (isOverBudget(p.priceLevel as string | undefined)) return false;
         return true;
-      })
-      .slice(0, limit);
+      });
+    // Fisher-Yates shuffle
+    for (let i = filteredAll.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [filteredAll[i], filteredAll[j]] = [filteredAll[j], filteredAll[i]];
+    }
+    const filtered = filteredAll.slice(0, limit);
 
     const PRICE_MAP: Record<string, string> = {
       PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
@@ -3656,12 +3665,15 @@ async function fetchYahooSupplement(
   const keyword = (DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット").slice(0, 60);
 
   try {
+    // 毎回異なる結果を得るためランダムなページオフセットを使用（0〜4ページ目をランダム選択）
+    const randomStart = Math.floor(Math.random() * 5) * limit;
     const params = new URLSearchParams({
       appid: apiKey,
       lat: String(lat),
       lon: String(lng),
       dist: String(Math.min(radiusKm, 20)),
       results: String(Math.min(limit * 2, 30)),
+      start:  String(randomStart + 1),  // Yahoo は 1-based
       sort: "score",
       output: "json",
       query: keyword,
@@ -4095,7 +4107,19 @@ export async function POST(request: Request) {
         });
 
         // Supabase（最大20件）+ Google（最大10件）+ Yahoo（最大10件）を結合
-        const recommendations = [...supabaseRecs, ...googleSupplements, ...yahooSupplements];
+        // 各ソースの結果は出揃っているのでソース内でシャッフル → インターリーブ（Supabase優先）
+        const shuffleArr = <T>(arr: T[]): T[] => {
+          const a = [...arr];
+          for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+          }
+          return a;
+        };
+        // Google/Yahoo はシャッフルして多様化（Supabase は既にniceScore+randomで順序付き）
+        const shuffledGoogle = shuffleArr(googleSupplements);
+        const shuffledYahoo  = shuffleArr(yahooSupplements);
+        const recommendations = [...supabaseRecs, ...shuffledGoogle, ...shuffledYahoo];
 
         return json({
           recommendations,
