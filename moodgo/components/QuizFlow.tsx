@@ -84,16 +84,16 @@ const COMPANIONS: { key: string; label: string; Icon: LucideIcon }[] = [
   { key: '先輩',           label: '先輩',   Icon: UserCheck },
 ];
 
-const DISTANCE_FEELINGS: { key: string; sub: string; radiusKm: number; Icon: LucideIcon }[] = [
-  { key: 'すぐそこ',           sub: '1km以内',   radiusKm: 1,   Icon: Footprints },
-  { key: '近場でいい',          sub: '3km以内',   radiusKm: 3,   Icon: Navigation },
-  { key: '少し歩ける',          sub: '5km以内',   radiusKm: 5,   Icon: Timer },
-  { key: '近めにお出かけ',      sub: '10km以内',  radiusKm: 10,  Icon: Compass },
-  { key: '今日は出かけたい',    sub: '20km以内',  radiusKm: 20,  Icon: Car },
-  { key: 'ちょっと遠くてもOK',  sub: '40km以内',  radiusKm: 40,  Icon: Activity },
-  { key: '県またぎもあり',      sub: '70km以内',  radiusKm: 70,  Icon: Mountain },
-  { key: '小旅行気分',          sub: '120km以内', radiusKm: 120, Icon: Plane },
-  { key: 'どこでも行きたい',    sub: '200km以内', radiusKm: 200, Icon: Globe },
+const DISTANCE_FEELINGS: { key: string; sub: string; hint: string; radiusKm: number; Icon: LucideIcon }[] = [
+  { key: 'すぐそこ',           sub: '1km以内',   hint: '徒歩約12分',        radiusKm: 1,   Icon: Footprints },
+  { key: '近場でいい',          sub: '3km以内',   hint: '自転車で約10分',    radiusKm: 3,   Icon: Navigation },
+  { key: '少し歩ける',          sub: '5km以内',   hint: '自転車で約20分',    radiusKm: 5,   Icon: Timer },
+  { key: '近めにお出かけ',      sub: '10km以内',  hint: '電車で約15〜20分',  radiusKm: 10,  Icon: Compass },
+  { key: '今日は出かけたい',    sub: '20km以内',  hint: '電車で約30分',      radiusKm: 20,  Icon: Car },
+  { key: 'ちょっと遠くてもOK',  sub: '40km以内',  hint: '電車で約45〜60分',  radiusKm: 40,  Icon: Activity },
+  { key: '県またぎもあり',      sub: '70km以内',  hint: '車で約1時間',       radiusKm: 70,  Icon: Mountain },
+  { key: '小旅行気分',          sub: '120km以内', hint: '車で約1.5〜2時間',  radiusKm: 120, Icon: Plane },
+  { key: 'どこでも行きたい',    sub: '200km以内', hint: '新幹線で約1〜2時間', radiusKm: 200, Icon: Globe },
 ];
 
 const BUDGET_CHIPS: { label: string; max: number | undefined; min: number }[] = [
@@ -641,8 +641,8 @@ const mc = StyleSheet.create({
 
 // ─── Option Card ──────────────────────────────────────────────────────────────
 
-function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 0 }: {
-  label: string; sub?: string; Icon: LucideIcon;
+function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, index = 0 }: {
+  label: string; sub?: string; hint?: string; Icon: LucideIcon;
   active: boolean; onPress: () => void; width: number; height: number; index?: number;
 }) {
   const entryAnim = useRef(new Animated.Value(0)).current;
@@ -672,7 +672,12 @@ function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
           <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
-          {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={2}>{sub}</Text> : null}
+          {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={1}>{sub}</Text> : null}
+          {hint ? (
+            <View style={[oc.hintWrap, active && oc.hintWrapA]}>
+              <Text style={[oc.hint, active && oc.hintA]} numberOfLines={1}>{hint}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -696,6 +701,13 @@ const oc = StyleSheet.create({
   lblA: { color: '#fff', fontWeight: '800' },
   sub: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
   subA: { color: 'rgba(255,255,255,0.85)' },
+  hintWrap: {
+    marginTop: 3, paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 6, backgroundColor: 'rgba(167,139,250,0.12)',
+  },
+  hintWrapA: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  hint: { fontSize: 9, color: '#7C3AED', textAlign: 'center', fontWeight: '600', lineHeight: 13 },
+  hintA: { color: 'rgba(255,255,255,0.9)' },
 });
 
 // ─── Step Entrance Wrapper ────────────────────────────────────────────────────
@@ -901,10 +913,11 @@ export default function QuizFlow(props: Props) {
             key={d.key}
             label={d.key}
             sub={d.sub}
+            hint={d.hint}
             Icon={d.Icon}
             active={distanceFeeling === d.key}
             width={CW3}
-            height={CW3 + 24}
+            height={CW3 + 36}
             index={i}
             onPress={() => onSetDistanceFeeling(d.key, d.radiusKm)}
           />
