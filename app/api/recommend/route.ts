@@ -3479,14 +3479,23 @@ async function fetchGooglePlacesSupplement(
 ): Promise<Array<Record<string, unknown>>> {
   try {
     const MOOD_TYPES: Record<string, string[]> = {
+      // 完全名
       "お腹すいた":         ["restaurant"],
       "まったりしたい":     ["spa", "cafe", "park"],
-      "わいわい楽しみたい": ["amusement_park", "bowling_alley", "movie_theater"],
-      "自然感じたい":       ["park"],
-      "ドライブしたい":     ["tourist_attraction"],
+      "わいわい楽しみたい": ["amusement_park", "bowling_alley", "karaoke"],
+      "自然感じたい":       ["park", "natural_feature"],
+      "ドライブしたい":     ["tourist_attraction", "scenic_point"],
       "集中したい":         ["library", "cafe"],
-      "体を動かしたい":     ["gym", "park"],
+      "体を動かしたい":     ["gym", "sports_complex", "park"],
       "遠くに行きたい":     ["tourist_attraction", "amusement_park"],
+      // クイズ短縮キー（同じマッピング）
+      "まったり":   ["spa", "cafe", "park"],
+      "わいわい":   ["amusement_park", "bowling_alley", "karaoke"],
+      "自然":       ["park", "natural_feature"],
+      "ドライブ":   ["tourist_attraction"],
+      "集中":       ["library", "cafe"],
+      "運動":       ["gym", "sports_complex", "park"],
+      "旅行":       ["tourist_attraction", "amusement_park"],
     };
     const types = MOOD_TYPES[mood] ?? ["tourist_attraction"];
     const radiusM = Math.min(radiusKm * 1000, 50000);
@@ -3842,7 +3851,8 @@ export async function POST(request: Request) {
         googleApiKey: apiKey,
       });
 
-      if (sbResults.length >= 1) {
+      // Supabase が 0 件でも GPS がある場合は Google 補足で賄う（レガシーフローへの落下を防ぐ）
+      if (sbResults.length >= 1 || hasLocation) {
         // 予算による価格フィルター（priceLevel が取得できている場合）
         const priceLevelCost: Record<string, number> = {
           "無料": 0, "￥": 1000, "￥￥": 3500, "￥￥￥": 8000, "￥￥￥￥": 15000,
@@ -3856,13 +3866,20 @@ export async function POST(request: Request) {
         const sbPool = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
-        // Google Places 補足検索 (10件 - Supabase にないスポットを追加)
+        // Google Places 補足検索
+        // Supabase 0 件時は上限を 20 件に拡大してカバーする
+        const googleLimit = sbPool.length === 0 ? 20 : 10;
         const googleSupplements = hasLocation
           ? await fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10
+              answers.mood ?? "", sbPool.map(r => r.name), apiKey, googleLimit
             )
           : [];
+
+        // 合計 0 件ならレガシーフローへ
+        if (sbPool.length === 0 && googleSupplements.length === 0) {
+          throw new Error("No results from Supabase or Google supplement");
+        }
 
         const scored = sbPool
           .map(r => ({
