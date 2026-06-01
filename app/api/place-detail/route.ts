@@ -4,10 +4,6 @@
 // GET  ?placeId=ChIJ...
 // POST { placeId: string }
 // POST { name: string, address?: string }  → テキスト検索で placeId を解決してから詳細取得
-//
-// Returns:
-//   { ok: true, place: PlaceDetail }
-//   { ok: false, error: string }
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -30,6 +26,7 @@ const FIELD_MASK = [
   "priceLevel",
   "location",
   "types",
+  "reviews",
 ].join(",");
 
 async function fetchPlaceDetail(placeId: string, apiKey: string) {
@@ -48,7 +45,7 @@ async function fetchPlaceDetail(placeId: string, apiKey: string) {
   return res.json();
 }
 
-async function resolvePhotoUrls(photoNames: string[], apiKey: string, max = 5): Promise<string[]> {
+async function resolvePhotoUrls(photoNames: string[], apiKey: string, max = 8): Promise<string[]> {
   const names = photoNames.slice(0, max);
   const results = await Promise.all(
     names.map(async (name) => {
@@ -143,7 +140,7 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
     const photoNames: string[] = (d.photos ?? [])
       .filter((p: Record<string, unknown>) => !!p?.name)
       .map((p: Record<string, unknown>) => p.name as string);
-    const photoUrls = await resolvePhotoUrls(photoNames, key, 8);
+    const photoUrls = await resolvePhotoUrls(photoNames, key, 10);
 
     // 営業時間テキスト
     const hours = d.currentOpeningHours ?? d.regularOpeningHours;
@@ -151,6 +148,26 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
       hours?.weekdayDescriptions
         ? (hours.weekdayDescriptions as string[]).join("\n")
         : null;
+
+    // 口コミ（Google は relevance 順 = いいね数重視で返す）
+    type RawReview = {
+      rating?: number;
+      text?: { text?: string };
+      authorAttribution?: { displayName?: string; photoUri?: string; uri?: string };
+      relativePublishTimeDescription?: string;
+      publishTime?: string;
+    };
+    const reviews = ((d.reviews ?? []) as RawReview[])
+      .slice(0, 5)
+      .map((r) => ({
+        rating: typeof r.rating === "number" ? r.rating : null,
+        text: r.text?.text ?? "",
+        authorName: r.authorAttribution?.displayName ?? "Anonymous",
+        authorPhoto: r.authorAttribution?.photoUri ?? null,
+        relativeTime: r.relativePublishTimeDescription ?? "",
+        publishTime: r.publishTime ?? null,
+      }))
+      .filter((r) => r.text.length > 5); // 短すぎるレビューは除外
 
     const place = {
       placeId,
@@ -167,6 +184,7 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
       photoUrls,
       lat: d.location?.latitude ?? null,
       lng: d.location?.longitude ?? null,
+      reviews,
     };
 
     return NextResponse.json({ ok: true, place });
