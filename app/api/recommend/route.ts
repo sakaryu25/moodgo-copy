@@ -3554,12 +3554,8 @@ export async function POST(request: Request) {
 
     // ─── Supabase-first メインフロー ───────────────────────────────────────────
     // placesテーブルを主軸に検索し、Google Placesで写真・営業時間・開店状況を補強
-    // ※「お腹すいた」「カフェ系」はHotPepper/既存フローを使うためスキップ
-    const isSkipSupabaseMood = answers.mood === "お腹すいた" ||
-      getDynamicQs(answers).some(q => q.answer.includes("カフェ") || q.answer.includes("スイーツ") || q.answer.includes("グルメ"));
+    // SupabaseのデータはgooglePlaceId付きなので detail ページでも正確な情報が取得できる
     try {
-      if (isSkipSupabaseMood) throw new Error("food mood — skip supabase flow");
-      // PostGIS 空間検索（PostGIS 未設定時は searchPlacesByTags に自動フォールバック）
       const { spatialSearch } = await import("@/lib/spatial-search");
       const sbMustTags = [...userTags.mustTags];
       const sbNiceTags = [...userTags.niceToHaveTags];
@@ -3568,6 +3564,7 @@ export async function POST(request: Request) {
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbMustTags.slice(0, 1),
+        orTags: sbMustTags.length === 0 ? sbNiceTags : undefined,
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm,
@@ -3576,21 +3573,20 @@ export async function POST(request: Request) {
         googleApiKey: apiKey,
       });
 
-      if (sbResults.length >= 3) {
+      if (sbResults.length >= 1) {
         // 予算による価格フィルター（priceLevel が取得できている場合）
         const priceLevelCost: Record<string, number> = {
           "無料": 0, "￥": 1000, "￥￥": 3500, "￥￥￥": 8000, "￥￥￥￥": 15000,
         };
         const budgetMax = answers.budget ?? Infinity;
         const budgetFiltered = sbResults.filter(r => {
-          if (budgetMax >= 10000) return true;       // 予算十分なら全件OK
-          if (!r.priceLevel) return true;            // 価格情報なしはスルー
+          if (budgetMax >= 10000) return true;
+          if (!r.priceLevel) return true;
           return (priceLevelCost[r.priceLevel] ?? 0) <= budgetMax;
         });
-        const poolForScore = (budgetFiltered.length >= 3 ? budgetFiltered : sbResults)
+        const poolForScore = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
-        // 追加タグ一致スコアでソート（より気分に合ったスポットを上位に）
         const scored = poolForScore
           .map(r => ({
             ...r,
@@ -3598,19 +3594,15 @@ export async function POST(request: Request) {
           }))
           .sort((a, b) => b._niceScore - a._niceScore);
 
-        // OpenAIで推薦理由を生成（ユーザーの気分に合った一言コメント）
         const reasons = await generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags);
-
-        const today = new Date().getDay(); // 0=日...6=土
-        const dayNames = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
 
         const recommendations = scored.map(r => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
-          // 今日の営業時間テキストを抽出
-          const todayHours = r.openingHours
-            ? r.openingHours.split("\n").find(l => l.startsWith(dayNames[today])) ?? r.openingHours.split("\n")[0] ?? ""
-            : "";
-          const openingHoursText = todayHours.replace(/^[^:：]+[:：]\s*/, "");
+          // SupabaseのgooglePlaceId（r.idフィールド）をplaceIdとして渡す
+          // → ExpoのdetailページでGoogle Places APIから正確な口コミ・営業時間を取得できる
+          const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
+          // supabase UUID（sb-プレフィックスあり or google place idのどちらでもない場合）
+          const supabaseUUID = r.id?.startsWith("sb-") ? r.id.replace(/^sb-/, "") : undefined;
           return {
             title: r.name,
             address: r.address,
@@ -3619,7 +3611,7 @@ export async function POST(request: Request) {
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,
-            openingHoursText,
+            openingHoursText: r.openingHours ?? undefined,  // 全曜日分をそのまま渡す
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
             reason: reasons.get(r.name) ?? r.description ?? "",
@@ -3631,6 +3623,8 @@ export async function POST(request: Request) {
             budget: "",
             time: "",
             priceLevel: r.priceLevel ?? undefined,
+            placeId: googlePlaceId,      // Google Places ID（detail ページで使用）
+            supabaseId: supabaseUUID,    // Supabase UUID（閉店報告で使用）
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,
@@ -3640,6 +3634,7 @@ export async function POST(request: Request) {
 
         return json({
           recommendations,
+          source: "supabase",
           usedAI: !!process.env.OPENAI_API_KEY,
           warning: answers.originLat ? "" : "現在地未使用のため、距離順ではない場合があります。",
         });
