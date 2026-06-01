@@ -204,6 +204,15 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
         rows = [...far, ...near];
       }
 
+      // ── 毎回異なる結果を返すためシャッフル（Fisher-Yates）──────────────────
+      // 同じ位置・タグでも検索のたびに異なるスポットが選ばれる
+      if (rows.length > limit) {
+        for (let i = rows.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [rows[i], rows[j]] = [rows[j], rows[i]];
+        }
+      }
+
       const sliced = rows.slice(0, limit);
 
       // 表示されたスポットをバックグラウンドで生存確認（UX に影響しない fire-and-forget）

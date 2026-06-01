@@ -3510,7 +3510,7 @@ async function fetchGooglePlacesSupplement(
       body: JSON.stringify({
         includedTypes: types,
         maxResultCount: Math.min(limit * 2, 20),
-        rankPreference: "POPULARITY",
+        rankPreference: "DISTANCE",
         languageCode: "ja",
         locationRestriction: {
           circle: { center: { latitude: lat, longitude: lng }, radius: radiusM },
@@ -4027,7 +4027,9 @@ export async function POST(request: Request) {
         const scored = sbPool
           .map(r => ({
             ...r,
-            _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length,
+            // niceScore にわずかなランダムノイズを加えて毎回異なる順序にする
+            _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
+              + Math.random() * 0.5,
           }))
           .sort((a, b) => b._niceScore - a._niceScore);
 
