@@ -3578,6 +3578,138 @@ async function fetchGooglePlacesSupplement(
   }
 }
 
+// ─── Yahoo!ローカルサーチ 補足検索 ───────────────────────────────────────────
+// Supabase + Google 結果を補うために Yahoo!ローカルサーチで最大 limit 件追加取得
+async function fetchYahooSupplement(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  mood: string,
+  deepDiveL1: string,
+  existingNames: string[],
+  limit: number = 10,
+): Promise<Array<Record<string, unknown>>> {
+  const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
+  if (!apiKey) return [];
+
+  // 気分ごとの基本キーワード
+  const MOOD_KW: Record<string, string> = {
+    "お腹すいた":         "レストラン グルメ",
+    "まったり":           "カフェ 温泉 公園",
+    "わいわい":           "カラオケ ボウリング アミューズメント",
+    "自然":               "公園 自然 景勝地",
+    "ドライブ":           "道の駅 展望台 景勝地",
+    "集中":               "カフェ 図書館 自習室",
+    "運動":               "スポーツ ジム 体育館",
+    "旅行":               "観光 テーマパーク 神社",
+    "時間潰し":           "観光スポット",
+  };
+  // 深掘り選択による上書きキーワード
+  const DIVE_KW: Record<string, string> = {
+    "波の音と海風":                 "海辺 海岸",
+    "森の中で深呼吸":               "森林 自然公園",
+    "広い芝生でゴロゴロ":           "大型公園 芝生広場",
+    "圧倒的な絶景":                 "展望台 絶景スポット",
+    "カフェ":                       "カフェ",
+    "温泉スパ":                     "温泉 スパ",
+    "サウナ・岩盤浴":               "サウナ 岩盤浴",
+    "温泉施設全般":                 "温泉",
+    "体を動かして遊びたい":         "ボウリング アスレチック",
+    "歌って飲んで騒ぎたい":         "カラオケ",
+    "非日常の体験で盛り上がりたい": "テーマパーク アミューズメント",
+    "海沿いを爽快に走りたい":       "海岸線 シーサイド",
+    "綺麗な景色や夜景を見に行きたい": "夜景 展望台",
+    "道の駅でご当地グルメ":         "道の駅",
+    "郊外の大型施設に行きたい":     "アウトレット ショッピングモール",
+    "カフェで作業・勉強したい":     "カフェ ファミレス",
+    "静かな専用スペースで集中したい": "図書館 自習室 コワーキング",
+    "がっつり汗を流してトレーニング": "フィットネス ジム プール",
+    "打って投げてストレス発散":     "バッティングセンター ゴルフ練習場",
+    "遊び感覚でわいわい":           "ボウリング スポッチャ",
+    "外で風を感じながらスポーツ":   "公園 屋外スポーツ施設",
+    "パワースポット":               "神社 パワースポット 寺",
+    "別世界のテーマパーク":         "テーマパーク 遊園地",
+    "知らない街をぶらぶら":         "観光地 商店街 ご当地グルメ",
+    "息を呑む絶景":                 "絶景スポット 展望台",
+  };
+
+  const keyword = (DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット").slice(0, 60);
+
+  try {
+    const params = new URLSearchParams({
+      appid: apiKey,
+      lat: String(lat),
+      lon: String(lng),
+      dist: String(Math.min(radiusKm, 20)),
+      results: String(Math.min(limit * 2, 30)),
+      sort: "score",
+      output: "json",
+      query: keyword,
+    });
+
+    const res = await fetch(
+      `https://map.yahooapis.jp/search/local/V1/localSearch?${params}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const features: Record<string, unknown>[] = data.Feature ?? [];
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const f of features) {
+      const name = String(f.Name ?? "");
+      if (!name || existingNames.includes(name)) continue;
+
+      const prop = (f.Property ?? {}) as Record<string, unknown>;
+      const address = String(prop.Address ?? "");
+      const ratingObj = (prop.Rating ?? {}) as Record<string, unknown>;
+      const rating = typeof ratingObj.Star === "number" ? ratingObj.Star : null;
+      const ratingCount = typeof ratingObj.Count === "number" ? ratingObj.Count : null;
+      const openTime = String(prop.OpenTime ?? "");
+      const detail = (prop.Detail ?? {}) as Record<string, unknown>;
+      const url = String(detail.Url ?? "");
+      const mapUrl = url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " " + address)}`;
+
+      results.push({
+        title: name,
+        address,
+        mapUrl,
+        googleMapsUrl: mapUrl,
+        rating,
+        userRatingCount: ratingCount,
+        photoUrl: undefined,
+        photoUrls: [],
+        openNow: undefined,
+        openingHoursText: openTime || undefined,
+        priceLevel: undefined,
+        placeId: undefined,
+        supabaseId: undefined,
+        reason: "",
+        features: [],
+        distanceText: "",
+        durationText: "",
+        stationText: "",
+        vibe: "",
+        budget: "",
+        time: "",
+        isUserSpot: false,
+        hasUserPhotos: false,
+        userPhotoCount: 0,
+        routesByMode: undefined,
+        source: "yahoo",
+      });
+
+      if (results.length >= limit) break;
+    }
+
+    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件`);
+    return results;
+  } catch (e) {
+    console.warn("[recommend] Yahoo supplement search failed:", e);
+    return [];
+  }
+}
+
 // ─── freeWord → OpenAI → Google Maps フロー ────────────────────────────────
 // 自由ワードが設定されている場合、全クイズ回答を OpenAI に渡して
 // 最適なスポット名を提案してもらい、Google Places で実在確認して返す
@@ -3866,19 +3998,30 @@ export async function POST(request: Request) {
         const sbPool = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
-        // Google Places 補足検索
-        // Supabase 0 件時は上限を 20 件に拡大してカバーする
-        const googleLimit = sbPool.length === 0 ? 20 : 10;
+        // deepDiveL1 を dynamicQs から取得（Yahoo キーワード選択に使用）
+        const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
+
+        // Google Places 補足検索（常に最大10件）
         const googleSupplements = hasLocation
           ? await fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", sbPool.map(r => r.name), apiKey, googleLimit
+              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10
+            )
+          : [];
+
+        // Yahoo!ローカルサーチ 補足検索（最大10件）
+        const googleNames = googleSupplements.map(r => String(r.title ?? ""));
+        const yahooSupplements = hasLocation
+          ? await fetchYahooSupplement(
+              answers.originLat!, answers.originLng!, radiusKm,
+              answers.mood ?? "", deepDiveL1,
+              [...sbPool.map(r => r.name), ...googleNames], 10
             )
           : [];
 
         // 合計 0 件ならレガシーフローへ
-        if (sbPool.length === 0 && googleSupplements.length === 0) {
-          throw new Error("No results from Supabase or Google supplement");
+        if (sbPool.length === 0 && googleSupplements.length === 0 && yahooSupplements.length === 0) {
+          throw new Error("No results from Supabase, Google, or Yahoo supplement");
         }
 
         const scored = sbPool
@@ -3926,8 +4069,8 @@ export async function POST(request: Request) {
           };
         });
 
-        // Supabase 結果 + Google 補足結果を結合
-        const recommendations = [...supabaseRecs, ...googleSupplements];
+        // Supabase（最大20件）+ Google（最大10件）+ Yahoo（最大10件）を結合
+        const recommendations = [...supabaseRecs, ...googleSupplements, ...yahooSupplements];
 
         return json({
           recommendations,
