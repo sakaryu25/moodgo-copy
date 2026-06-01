@@ -34,6 +34,17 @@ import type { Recommendation } from '@/types/app';
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const GRAD_DARK: [string, string] = ['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)'];
 
+// ── 住所からエリア名（市区町村）を抽出 ────────────────────────────────────────
+function extractAreaName(address: string | null | undefined): string | null {
+  if (!address) return null;
+  // 郵便番号を除去
+  const cleaned = address.replace(/〒\d{3}-\d{4}\s*/, '').trim();
+  // 都道府県の後の市区町村を取得（例: "東京都品川区" → "品川区"）
+  const m = cleaned.match(/[都道府県]([^\s\d０-９]+?[市区町村郡])/);
+  if (m) return m[1];
+  return null;
+}
+
 // ── 営業時間パーサー ──────────────────────────────────────────────────────────
 const DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
 
@@ -440,6 +451,7 @@ export default function PlaceDetailPage() {
   }
 
   // APIデータを優先、なければ rec のデータにフォールバック
+  const areaName = extractAreaName(extra.loaded ? (extra.address || rec.address) : rec.address);
   const displayRating = extra.loaded ? (extra.rating ?? rec.rating) : rec.rating;
   const displayUserRatingCount = extra.loaded ? (extra.userRatingCount ?? rec.userRatingCount) : rec.userRatingCount;
   const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
@@ -574,9 +586,19 @@ export default function PlaceDetailPage() {
                 </TouchableOpacity>
               ) : null}
             </View>
-            {rec.vibe ? (
-              <View style={s.vibeBadge}>
-                <Text style={s.vibeText}>{rec.vibe}</Text>
+            {(rec.vibe || areaName) ? (
+              <View style={s.badgeRow}>
+                {rec.vibe ? (
+                  <View style={s.vibeBadge}>
+                    <Text style={s.vibeText}>{rec.vibe}</Text>
+                  </View>
+                ) : null}
+                {areaName ? (
+                  <View style={s.areaBadge}>
+                    <MapPin size={10} color="#6B7280" strokeWidth={2.5} />
+                    <Text style={s.areaText}>{areaName}</Text>
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -860,13 +882,20 @@ const s = StyleSheet.create({
   titleBlock: { gap: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { flex: 1, fontSize: 26, fontWeight: '800', color: '#111827', letterSpacing: -0.5, lineHeight: 34 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   vibeBadge: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999,
     backgroundColor: 'rgba(192,132,252,0.12)',
     borderWidth: 1, borderColor: 'rgba(192,132,252,0.3)',
   },
   vibeText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
+  areaBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1, borderColor: '#E5E7EB',
+  },
+  areaText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
   // マップピルボタン（タイトル横インライン）
   mapPillBtn: {
     borderRadius: 999, overflow: 'hidden',
