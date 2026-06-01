@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Clock, Heart, MapPin, Navigation, Share2, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import { Check, Clock, Flame, Heart, Map, MapPin, Navigation, Share2, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
@@ -99,11 +99,11 @@ const T = {
     share:            '共有',
     reviewCount:      (n: number) => `(${n.toLocaleString('ja-JP')}件)`,
     visited:          '行った！',
-    visitedDone:      '✓ 行った',
+    visitedDone:      '行った',
     moodMatch:        'この気分に合う',
     moodNotMatch:     '気分には合わない',
-    moodMatchDone:    '👍 気分に合う！と評価しました',
-    moodNotMatchDone: '👎 気分には合わないと評価しました',
+    moodMatchDone:    '気分に合う！と評価しました',
+    moodNotMatchDone: '気分には合わないと評価しました',
     moodQuestion:     (mood: string) => `「${mood}」の気分の時にこの場所は？`,
   },
   en: {
@@ -115,11 +115,11 @@ const T = {
     share:            'Share',
     reviewCount:      (n: number) => `(${n.toLocaleString('en-US')} reviews)`,
     visited:          'Been there!',
-    visitedDone:      '✓ Visited',
+    visitedDone:      'Visited',
     moodMatch:        'Matches my mood',
     moodNotMatch:     "Doesn't match",
-    moodMatchDone:    '👍 Marked as mood match!',
-    moodNotMatchDone: '👎 Marked as not matching',
+    moodMatchDone:    'Marked as mood match!',
+    moodNotMatchDone: 'Marked as not matching',
     moodQuestion:     (mood: string) => `How is this place for "${mood}"?`,
   },
 };
@@ -383,9 +383,9 @@ export default function PlaceCard({
               style={[s.visitedBtn, isVisited && s.visitedBtnDone]}
               activeOpacity={0.8}
             >
-              <Text style={[s.visitedBtnText, isVisited && s.visitedBtnTextDone]}>
-                {isVisited ? t.visitedDone : `🗺 ${t.visited}`}
-              </Text>
+              {isVisited
+                ? <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
+                : <><Map size={13} color="#6B7280" strokeWidth={2} /><Text style={s.visitedBtnText}>{t.visited}</Text></>}
             </TouchableOpacity>
           ) : null}
 
@@ -396,7 +396,8 @@ export default function PlaceCard({
               style={s.hotpepperBtn}
               activeOpacity={0.8}
             >
-              <Text style={s.hotpepperText}>🌶 ホットペッパー</Text>
+              <Flame size={13} color="#EF4444" strokeWidth={2} />
+              <Text style={s.hotpepperText}>ホットペッパー</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -411,6 +412,9 @@ export default function PlaceCard({
             )}
             {moodRating ? (
               <View style={s.moodDoneRow}>
+                {moodRating === 'good'
+                  ? <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
+                  : <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />}
                 <Text style={[s.moodDoneText, { color: moodRating === 'good' ? '#10B981' : '#EF4444' }]}>
                   {moodRating === 'good' ? t.moodMatchDone : t.moodNotMatchDone}
                 </Text>
@@ -569,7 +573,7 @@ const s = StyleSheet.create({
   visitedBtn: {
     paddingHorizontal: 14, height: 48, borderRadius: 14,
     backgroundColor: '#F9FAFB',
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.35)',
   },
   visitedBtnDone:     { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
@@ -578,7 +582,7 @@ const s = StyleSheet.create({
   hotpepperBtn: {
     paddingHorizontal: 12, height: 48, borderRadius: 14,
     backgroundColor: '#FFF5F5',
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1, borderColor: '#FCA5A5',
   },
   hotpepperText: { fontSize: 13, fontWeight: '700', color: '#DC2626' },
@@ -598,7 +602,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FEF2F2', borderWidth: 1.5, borderColor: '#FCA5A5',
   },
   moodNotMatchText: { fontSize: 13, fontWeight: '600', color: '#EF4444' },
-  moodDoneRow:      { alignItems: 'center', paddingVertical: 8 },
+  moodDoneRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
   moodDoneText:     { fontSize: 13, fontWeight: '600' },
 
   // フッター

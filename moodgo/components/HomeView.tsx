@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
   Activity, Bike, BookOpen, Car, Coffee,
-  Leaf, Moon, Plane, Settings, Shuffle,
+  Leaf, MapPin, Moon, Plane, Settings, Shuffle,
   Sparkles, UtensilsCrossed, CloudRain,
 } from 'lucide-react-native';
 import React, { useEffect, useRef } from 'react';
@@ -207,7 +207,10 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
             activeOpacity={0.78}
             onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
           >
-            <Text style={s.suggestText}>📍 {lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MapPin size={13} color={PINK} strokeWidth={2.5} />
+              <Text style={s.suggestText}>{lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
+            </View>
           </TouchableOpacity>
         </Animated.View>
         <TouchableOpacity style={s.settingsBtn} onPress={onShowSettings} activeOpacity={0.72}>

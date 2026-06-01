@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Check, Clock, MapPin, Phone, Search, Train, Users } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -115,7 +116,9 @@ export default function FeaturePage() {
         </View>
       ) : notFound ? (
         <View style={s.center}>
-          <Text style={s.notFoundEmoji}>🔍</Text>
+          <View style={s.notFoundIconWrap}>
+            <Search size={40} color="#FF9500" strokeWidth={1.5} />
+          </View>
           <Text style={s.notFoundText}>{t.notFound}</Text>
           <TouchableOpacity onPress={() => router.back()} style={s.backLink}>
             <Text style={s.backLinkText}>{t.backToList}</Text>
@@ -186,7 +189,7 @@ export default function FeaturePage() {
               <Text style={s.sectionTitle}>{t.features}</Text>
               {page.features.map((f, i) => (
                 <View key={i} style={s.featureRow}>
-                  <Text style={s.featureDot}>✓</Text>
+                  <View style={s.featureDot}><Check size={14} color="#FF9500" strokeWidth={2.5} /></View>
                   <Text style={s.featureText}>{f}</Text>
                 </View>
               ))}
@@ -215,11 +218,36 @@ export default function FeaturePage() {
           {/* Info */}
           <View style={s.section}>
             <Text style={s.sectionTitle}>{t.access}</Text>
-            {page.address && <Text style={s.infoText}>📍 {page.address}</Text>}
-            {page.access && <Text style={s.infoText}>🚉 {page.access}</Text>}
-            {page.business_hours && <Text style={s.infoText}>🕒 {page.business_hours}</Text>}
-            {page.phone && <Text style={s.infoText}>📞 {page.phone}</Text>}
-            {page.congestion_info && <Text style={s.infoText}>👥 {page.congestion_info}</Text>}
+            {page.address && (
+              <View style={s.infoRow}>
+                <MapPin size={15} color="#FF9500" strokeWidth={2} />
+                <Text style={[s.infoText, { flex: 1 }]}>{page.address}</Text>
+              </View>
+            )}
+            {page.access && (
+              <View style={s.infoRow}>
+                <Train size={15} color="#FF9500" strokeWidth={2} />
+                <Text style={[s.infoText, { flex: 1 }]}>{page.access}</Text>
+              </View>
+            )}
+            {page.business_hours && (
+              <View style={s.infoRow}>
+                <Clock size={15} color="#FF9500" strokeWidth={2} />
+                <Text style={[s.infoText, { flex: 1 }]}>{page.business_hours}</Text>
+              </View>
+            )}
+            {page.phone && (
+              <View style={s.infoRow}>
+                <Phone size={15} color="#FF9500" strokeWidth={2} />
+                <Text style={[s.infoText, { flex: 1 }]}>{page.phone}</Text>
+              </View>
+            )}
+            {page.congestion_info && (
+              <View style={s.infoRow}>
+                <Users size={15} color="#FF9500" strokeWidth={2} />
+                <Text style={[s.infoText, { flex: 1 }]}>{page.congestion_info}</Text>
+              </View>
+            )}
           </View>
 
           {/* Links */}
@@ -271,7 +299,7 @@ const s = StyleSheet.create({
   backArrow: { fontSize: 18, color: '#4a3034' },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: '#1c1c1e' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
-  notFoundEmoji: { fontSize: 52 },
+  notFoundIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: '#FFF3E0', alignItems: 'center', justifyContent: 'center' },
   notFoundText: { fontSize: 17, color: '#4a3034', fontWeight: '700', textAlign: 'center' },
   backLink: { padding: 8 },
   backLinkText: { fontSize: 15, color: '#FF9500', fontWeight: '700' },
@@ -303,14 +331,15 @@ const s = StyleSheet.create({
   tagText: { fontSize: 13, fontWeight: '700', color: '#CC6600' },
   description: { fontSize: 15, color: '#4a3034', lineHeight: 26 },
   sectionTitle: { fontSize: 18, fontWeight: '900', color: '#1c1c1e' },
-  featureRow: { flexDirection: 'row', gap: 8 },
-  featureDot: { fontSize: 14, color: '#FF9500', fontWeight: '900', marginTop: 2 },
+  featureRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  featureDot: { marginTop: 3 },
   featureText: { flex: 1, fontSize: 15, color: '#4a3034', lineHeight: 22 },
   recItem: { flexDirection: 'row', gap: 12, backgroundColor: '#fff', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#f0dfe3' },
   recImg: { width: 80, height: 80, borderRadius: 12 },
   recName: { fontSize: 15, fontWeight: '800', color: '#1c1c1e' },
   recPrice: { fontSize: 13, color: '#FF9500', fontWeight: '700' },
   recDesc: { fontSize: 13, color: '#4a3034', lineHeight: 20 },
+  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   infoText: { fontSize: 14, color: '#4a3034', lineHeight: 22 },
   mapBtn: {
     height: 52, borderRadius: 999, backgroundColor: '#ff8fa5',

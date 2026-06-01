@@ -669,7 +669,7 @@ function OptionCard({ label, sub, Icon, active, onPress, width, height, index = 
         <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
           style={[oc.card, { width, height }, active && oc.cardActive]}>
           {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
-          {active && <View style={oc.badge}><Text style={oc.badgeTxt}>✓</Text></View>}
+          {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
           <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
           {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={2}>{sub}</Text> : null}
@@ -692,7 +692,6 @@ const oc = StyleSheet.create({
     position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9,
     backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center',
   },
-  badgeTxt: { fontSize: 10, color: '#fff', fontWeight: '900' },
   lbl: { fontSize: 12, fontWeight: '700', color: '#1E0753', textAlign: 'center', lineHeight: 16 },
   lblA: { color: '#fff', fontWeight: '800' },
   sub: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
@@ -872,8 +871,9 @@ export default function QuizFlow(props: Props) {
           </TouchableOpacity>
         </StepEntrance>
         {locationDisplayArea ? (
-          <View style={s.locTag}>
-            <Text style={s.locTagTxt}>📍 {locationDisplayArea}</Text>
+          <View style={[s.locTag, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+            <MapPin size={13} color="#7C3AED" strokeWidth={2} />
+            <Text style={s.locTagTxt}>{locationDisplayArea}</Text>
           </View>
         ) : null}
         <StepEntrance delay={80}>

@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, Check, ChevronLeft, MapPin, Send, Tag } from 'lucide-react-native';
+import { Camera, Check, ChevronLeft, MapPin, Send, Tag, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   Alert,
@@ -277,7 +277,8 @@ export default function SuggestScreen() {
                 {selectedTags.map(tag => (
                   <TouchableOpacity key={tag} onPress={() => toggleTag(tag)}
                     style={[s.tagChip, MOOD_TAGS.includes(tag) && s.tagChipMood]}>
-                    <Text style={[s.tagChipText, MOOD_TAGS.includes(tag) && s.tagChipTextMood]}>{tag} ✕</Text>
+                    <Text style={[s.tagChipText, MOOD_TAGS.includes(tag) && s.tagChipTextMood]}>{tag}</Text>
+                    <X size={11} color={MOOD_TAGS.includes(tag) ? '#BE185D' : '#7C3AED'} strokeWidth={2.5} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -415,7 +416,7 @@ const s = StyleSheet.create({
   },
   tagToggleText: { fontSize: 14, fontWeight: '700', color: '#A78BFA' },
   tagRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  tagChip:  { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#EDE9FE', borderWidth: 1, borderColor: '#DDD6FE' },
+  tagChip:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#EDE9FE', borderWidth: 1, borderColor: '#DDD6FE' },
   tagChipMood: { backgroundColor: '#FCE7F3', borderColor: '#FBCFE8' },
   tagChipText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
   tagChipTextMood: { color: '#BE185D' },
