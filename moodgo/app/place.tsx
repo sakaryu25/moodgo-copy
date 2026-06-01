@@ -112,6 +112,7 @@ type ExtraDetail = {
   userRatingCount?: number | null;
   priceLevel?: string | null;
   address?: string | null;
+  mapUrl?: string | null;   // Google Places の正しいURL（2枚目のページ）
   loaded?: boolean;
 };
 
@@ -323,6 +324,7 @@ export default function PlaceDetailPage() {
             userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
             priceLevel: p.priceLevel ?? null,
             address: p.address || null,
+            mapUrl: p.mapUrl || null,  // Google Places の正しいURL
             loaded: true,
           });
           setRec(prev => prev ? {
@@ -398,8 +400,9 @@ export default function PlaceDetailPage() {
   const handleShare = () => {
     if (!rec) return;
     const parts: string[] = [rec.title];
-    if (rec.address) parts.push(rec.address);
-    if (rec.mapUrl) parts.push(rec.mapUrl);
+    if (displayAddress) parts.push(displayAddress);
+    const shareUrl = (extra.loaded && extra.mapUrl) ? extra.mapUrl : rec.mapUrl;
+    if (shareUrl) parts.push(shareUrl);
     Share.share({ message: parts.join('\n') });
   };
 
@@ -428,6 +431,8 @@ export default function PlaceDetailPage() {
   const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
   const displayPriceLevel = extra.loaded ? (extra.priceLevel ?? rec.priceLevel) : rec.priceLevel;
   const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
+  // mapUrl: APIの正しいURL（2枚目のページ）を優先、なければrecのAI生成URL
+  const displayMapUrl = (extra.loaded && extra.mapUrl) ? extra.mapUrl : rec.mapUrl;
   // 営業時間: APIデータ優先。ロード前のみ rec のデータを暫定表示
   // （extra.loaded 後は AI生成の不完全データにフォールバックしない）
   const hoursSource = extra.loaded
@@ -542,9 +547,9 @@ export default function PlaceDetailPage() {
           <View style={s.titleBlock}>
             <View style={s.titleRow}>
               <Text style={s.title}>{rec.title}</Text>
-              {rec.mapUrl ? (
+              {displayMapUrl ? (
                 <TouchableOpacity
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(rec.mapUrl!); }}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(displayMapUrl); }}
                   activeOpacity={0.82}
                   style={s.mapPillBtn}
                 >
