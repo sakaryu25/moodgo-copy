@@ -529,11 +529,11 @@ export default function PlaceDetailPage() {
               </View>
               <InfoSkeleton />
             </>
-          ) : fetchError && displayRating == null && !displayAddress ? (
-            /* ── APIエラー（リトライボタン） ── */
+          ) : fetchError ? (
+            /* ── APIエラー（リトライボタン）── 評価や住所があっても常に表示 */
             <TouchableOpacity style={s.retryBtn} onPress={fetchDetail} activeOpacity={0.8}>
               <RefreshCw size={14} color="#C084FC" strokeWidth={2} />
-              <Text style={s.retryText}>情報の読み込みに失敗しました。タップして再試行</Text>
+              <Text style={s.retryText}>口コミ・営業時間の読み込みに失敗。タップして再試行</Text>
             </TouchableOpacity>
           ) : null}
 
