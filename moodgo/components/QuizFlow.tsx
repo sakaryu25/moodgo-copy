@@ -85,15 +85,15 @@ const COMPANIONS: { key: string; label: string; Icon: LucideIcon }[] = [
 ];
 
 const DISTANCE_FEELINGS: { key: string; sub: string; hint: string; radiusKm: number; Icon: LucideIcon }[] = [
-  { key: 'すぐそこ',           sub: '1km以内',   hint: '徒歩約12分',        radiusKm: 1,   Icon: Footprints },
-  { key: '近場でいい',          sub: '3km以内',   hint: '自転車で約10分',    radiusKm: 3,   Icon: Navigation },
-  { key: '少し歩ける',          sub: '5km以内',   hint: '自転車で約20分',    radiusKm: 5,   Icon: Timer },
-  { key: '近めにお出かけ',      sub: '10km以内',  hint: '電車で約15〜20分',  radiusKm: 10,  Icon: Compass },
-  { key: '今日は出かけたい',    sub: '20km以内',  hint: '電車で約30分',      radiusKm: 20,  Icon: Car },
-  { key: 'ちょっと遠くてもOK',  sub: '40km以内',  hint: '電車で約45〜60分',  radiusKm: 40,  Icon: Activity },
-  { key: '県またぎもあり',      sub: '70km以内',  hint: '車で約1時間',       radiusKm: 70,  Icon: Mountain },
-  { key: '小旅行気分',          sub: '120km以内', hint: '車で約1.5〜2時間',  radiusKm: 120, Icon: Plane },
-  { key: 'どこでも行きたい',    sub: '200km以内', hint: '新幹線で約1〜2時間', radiusKm: 200, Icon: Globe },
+  { key: 'すぐそこ',           sub: '1km以内',   hint: '徒歩\n約12分',     radiusKm: 1,   Icon: Footprints },
+  { key: '近場でいい',          sub: '3km以内',   hint: '自転車\n約10分',   radiusKm: 3,   Icon: Navigation },
+  { key: '少し歩ける',          sub: '5km以内',   hint: '自転車\n約20分',   radiusKm: 5,   Icon: Timer },
+  { key: '近めにお出かけ',      sub: '10km以内',  hint: '電車\n約15〜20分', radiusKm: 10,  Icon: Compass },
+  { key: '今日は出かけたい',    sub: '20km以内',  hint: '電車\n約30分',     radiusKm: 20,  Icon: Car },
+  { key: 'ちょっと遠くてもOK',  sub: '40km以内',  hint: '電車\n約45〜60分', radiusKm: 40,  Icon: Activity },
+  { key: '県またぎもあり',      sub: '70km以内',  hint: '車で\n約1時間',    radiusKm: 70,  Icon: Mountain },
+  { key: '小旅行気分',          sub: '120km以内', hint: '車で\n約2時間',    radiusKm: 120, Icon: Plane },
+  { key: 'どこでも行きたい',    sub: '200km以内', hint: '新幹線\n約1〜2時間', radiusKm: 200, Icon: Globe },
 ];
 
 const BUDGET_CHIPS: { label: string; max: number | undefined; min: number }[] = [
@@ -675,7 +675,7 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
           {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={1}>{sub}</Text> : null}
           {hint ? (
             <View style={[oc.hintWrap, active && oc.hintWrapA]}>
-              <Text style={[oc.hint, active && oc.hintA]} numberOfLines={1}>{hint}</Text>
+              <Text style={[oc.hint, active && oc.hintA]}>{hint}</Text>
             </View>
           ) : null}
         </TouchableOpacity>
@@ -702,12 +702,13 @@ const oc = StyleSheet.create({
   sub: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
   subA: { color: 'rgba(255,255,255,0.85)' },
   hintWrap: {
-    marginTop: 3, paddingHorizontal: 7, paddingVertical: 2,
-    borderRadius: 6, backgroundColor: 'rgba(167,139,250,0.12)',
+    marginTop: 3, paddingHorizontal: 6, paddingVertical: 3,
+    borderRadius: 7, backgroundColor: 'rgba(167,139,250,0.12)',
+    alignItems: 'center',
   },
   hintWrapA: { backgroundColor: 'rgba(255,255,255,0.18)' },
-  hint: { fontSize: 9, color: '#7C3AED', textAlign: 'center', fontWeight: '600', lineHeight: 13 },
-  hintA: { color: 'rgba(255,255,255,0.9)' },
+  hint: { fontSize: 9, color: '#7C3AED', textAlign: 'center', fontWeight: '700', lineHeight: 14 },
+  hintA: { color: 'rgba(255,255,255,0.92)' },
 });
 
 // ─── Step Entrance Wrapper ────────────────────────────────────────────────────
