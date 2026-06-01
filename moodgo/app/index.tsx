@@ -96,6 +96,8 @@ export default function Home() {
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(1);
   const [homeView, setHomeView] = useState<'home' | 'history' | 'favorites' | 'featured'>('home');
+  // 各タブのリセットカウンター（同じタブを再タップしたときにインクリメント）
+  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0 });
 
   // Quiz state
   const [selectedMood, setSelectedMood] = useState('');
@@ -1182,6 +1184,7 @@ export default function Home() {
             onToggleFavorite={toggleFavorite}
             onResearch={handleResearch}
             onPressDetail={handlePressDetail}
+            resetKey={tabResetKeys.history}
           />
         );
       case 'favorites':
@@ -1195,6 +1198,7 @@ export default function Home() {
               setFavorites((prev) => prev.filter((f) => f.title !== title))
             }
             onPressCard={handlePressFavoriteDetail}
+            resetKey={tabResetKeys.favorites}
           />
         );
       case 'featured':
@@ -1225,6 +1229,11 @@ export default function Home() {
         onChangeView={(v) => {
           setHomeView(v);
           if (v === 'featured') loadFeaturedList();
+        }}
+        onReset={(v) => {
+          setTabResetKeys(prev => ({ ...prev, [v]: prev[v] + 1 }));
+          // ホームタブは最初の画面（HomeView）にリセット
+          if (v === 'home') resetQuiz();
         }}
         insets={insets}
       />

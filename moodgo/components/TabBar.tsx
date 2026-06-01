@@ -14,6 +14,7 @@ type Tab = 'home' | 'history' | 'favorites' | 'featured';
 type Props = {
   homeView: Tab;
   onChangeView: (v: Tab) => void;
+  onReset?: (v: Tab) => void;
   insets: EdgeInsets;
   lang?: 'ja' | 'en';
 };
@@ -93,13 +94,14 @@ const TABS: { key: Tab; Icon: React.ComponentType<{ active: boolean }> }[] = [
 ];
 
 function TabItem({
-  tabKey, active, Icon, label, onPress,
+  tabKey, active, Icon, label, onPress, onReset,
 }: {
   tabKey: Tab;
   active: boolean;
   Icon: React.ComponentType<{ active: boolean }>;
   label: string;
   onPress: () => void;
+  onReset?: () => void;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   const pillOpacity = useRef(new Animated.Value(active ? 1 : 0)).current;
@@ -115,8 +117,14 @@ function TabItem({
       Animated.timing(scale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
       Animated.spring(scale, { toValue: 1, useNativeDriver: true, mass: 1, damping: 12, stiffness: 200 }),
     ]).start();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPress();
+    if (active) {
+      // 既にアクティブなタブを再タップ → リセット
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onReset?.();
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onPress();
+    }
   };
 
   return (
@@ -144,7 +152,7 @@ function TabItem({
   );
 }
 
-export default function TabBar({ homeView, onChangeView, insets, lang = 'ja' }: Props) {
+export default function TabBar({ homeView, onChangeView, onReset, insets, lang = 'ja' }: Props) {
   const labels = LABELS[lang];
   return (
     <View style={s.container}>
@@ -161,6 +169,7 @@ export default function TabBar({ homeView, onChangeView, insets, lang = 'ja' }: 
             Icon={Icon}
             label={labels[key]}
             onPress={() => onChangeView(key)}
+            onReset={() => onReset?.(key)}
           />
         ))}
       </View>

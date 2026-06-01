@@ -7,7 +7,7 @@ import {
   Coffee, Music, Leaf, Plane, BookOpen, Zap, Droplets, Car,
   Laugh, Mountain, Wind,
 } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -79,6 +79,7 @@ type Props = {
   onResearch?: (item: HistoryItem) => void;
   onPressDetail?: (rec: Recommendation) => void;
   lang?: 'ja' | 'en';
+  resetKey?: number;
 };
 
 type TStrings = {
@@ -332,11 +333,19 @@ function DetailView({
 // ── メインコンポーネント ──────────────────────────────────────────────────────
 export default function HistoryView({
   history, selectedHistoryItem, onSelectHistoryItem, onClearHistory,
-  favorites, onToggleFavorite, onResearch, onPressDetail, lang = 'ja',
+  favorites, onToggleFavorite, onResearch, onPressDetail, lang = 'ja', resetKey,
 }: Props) {
   const insets = useSafeAreaInsets();
   const isFav = (title: string) => favorites.some((f) => f.title === title);
   const t = T[lang];
+  const scrollRef = useRef<ScrollView>(null);
+
+  // resetKey が変わったら詳細を閉じてリストトップへ
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    onSelectHistoryItem(null);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [resetKey]);
 
   // ── 詳細ビュー ──
   if (selectedHistoryItem) {
@@ -391,6 +400,7 @@ export default function HistoryView({
       </LinearGradient>
 
       <ScrollView
+        ref={scrollRef}
         style={s.listScroll}
         contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 90 }]}
         showsVerticalScrollIndicator={false}

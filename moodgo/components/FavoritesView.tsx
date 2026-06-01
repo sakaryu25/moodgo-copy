@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Heart, MapPin, Navigation, Trash2, ArrowUpDown } from 'lucide-react-native';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Linking,
   ScrollView,
@@ -28,6 +28,7 @@ type Props = {
   onRemoveFavorite: (title: string) => void;
   onPressCard?: (item: FavoriteItem) => void;
   lang?: 'ja' | 'en';
+  resetKey?: number;
 };
 
 const T = {
@@ -56,10 +57,16 @@ const T = {
 };
 
 export default function FavoritesView({
-  favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, onPressCard, lang = 'ja',
+  favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, onPressCard, lang = 'ja', resetKey,
 }: Props) {
   const insets = useSafeAreaInsets();
   const t = T[lang];
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [resetKey]);
 
   const sorted = useMemo(() => {
     return [...favorites].sort((a, b) => {
@@ -111,6 +118,7 @@ export default function FavoritesView({
 
       {/* ── リスト ── */}
       <ScrollView
+        ref={scrollRef}
         style={s.listScroll}
         contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 90 }]}
         showsVerticalScrollIndicator={false}
