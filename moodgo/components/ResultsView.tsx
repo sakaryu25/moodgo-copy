@@ -202,6 +202,7 @@ type Props = {
   onSelectPrefecture?: (v: string) => void;
   seenPlaceTitles?: string[];
   lang?: 'ja' | 'en';
+  onPressDetail?: (rec: Recommendation) => void;
 };
 
 // ── Animated loading card ──────────────────────────────────────────────────────
@@ -267,6 +268,7 @@ export default function ResultsView(props: Props) {
     prefectureButtons = [], selectedPrefecture = '', onSelectPrefecture,
     seenPlaceTitles = [],
     lang = 'ja',
+    onPressDetail,
   } = props;
   const t = T[lang];
 
@@ -531,6 +533,7 @@ export default function ResultsView(props: Props) {
             onMoodMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' })}
             onMoodNotMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' })}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
+            onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
           />
         ))}
 

@@ -138,12 +138,14 @@ type Props = {
   onMoodMatch?: () => void;
   onMoodNotMatch?: () => void;
   moodLabel?: string;   // 気分ラベル（任意）
+  /** タイトルタップで詳細ページへ */
+  onPressDetail?: () => void;
 };
 
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
-  moodRating, onMoodMatch, onMoodNotMatch, moodLabel,
+  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail,
 }: Props) {
   const t = T[lang];
   const photos = (item.photoUrls ?? []).length > 0
@@ -301,7 +303,13 @@ export default function PlaceCard({
       <View style={s.body}>
 
         {/* タイトル */}
-        <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+        {onPressDetail ? (
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); }} activeOpacity={0.75}>
+            <Text style={[s.title, s.titleTappable]} numberOfLines={2}>{item.title}</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+        )}
 
         {/* 説明文（Web版と同じ small gray text） */}
         {description ? (
@@ -504,7 +512,8 @@ const s = StyleSheet.create({
 
   // ボディ
   body:        { padding: 16, gap: 8 },
-  title:       { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
+  title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
+  titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
   address:     { fontSize: 13, color: '#6B7280', lineHeight: 18 },
 

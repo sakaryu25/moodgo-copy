@@ -77,6 +77,7 @@ type Props = {
   favorites: FavoriteItem[];
   onToggleFavorite?: (rec: Recommendation) => void;
   onResearch?: (item: HistoryItem) => void;
+  onPressDetail?: (rec: Recommendation) => void;
   lang?: 'ja' | 'en';
 };
 
@@ -202,7 +203,7 @@ function formatFullDate(dateStr: string | undefined, lang: 'ja' | 'en'): string 
 
 // ── 詳細ビューのサブコンポーネント ────────────────────────────────────────────
 function DetailView({
-  item, t, lang, isFav, favorites, onToggleFavorite, onResearch, insets, onBack,
+  item, t, lang, isFav, favorites, onToggleFavorite, onResearch, insets, onBack, onPressDetail,
 }: {
   item: HistoryItem;
   t: TStrings;
@@ -211,6 +212,7 @@ function DetailView({
   favorites: FavoriteItem[];
   onToggleFavorite?: (rec: Recommendation) => void;
   onResearch?: (item: HistoryItem) => void;
+  onPressDetail?: (rec: Recommendation) => void;
   insets: ReturnType<typeof useSafeAreaInsets>;
   onBack: () => void;
 }) {
@@ -313,6 +315,7 @@ function DetailView({
                   { text: t.reportSend, style: 'destructive' },
                 ])
               }
+              onPressDetail={onPressDetail ? () => onPressDetail(rec) : undefined}
             />
           ))
           : (
@@ -329,7 +332,7 @@ function DetailView({
 // ── メインコンポーネント ──────────────────────────────────────────────────────
 export default function HistoryView({
   history, selectedHistoryItem, onSelectHistoryItem, onClearHistory,
-  favorites, onToggleFavorite, onResearch, lang = 'ja',
+  favorites, onToggleFavorite, onResearch, onPressDetail, lang = 'ja',
 }: Props) {
   const insets = useSafeAreaInsets();
   const isFav = (title: string) => favorites.some((f) => f.title === title);
@@ -346,6 +349,7 @@ export default function HistoryView({
         favorites={favorites}
         onToggleFavorite={onToggleFavorite}
         onResearch={onResearch}
+        onPressDetail={onPressDetail}
         insets={insets}
         onBack={() => onSelectHistoryItem(null)}
       />

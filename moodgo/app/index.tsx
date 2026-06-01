@@ -39,6 +39,8 @@ import {
 } from '@/lib/storage';
 import { apiFetch } from '@/lib/api';
 import { detectUserPrefecture, getNearbyPrefectures } from '@/lib/prefecture-utils';
+import { setSelectedPlace } from '@/lib/selectedPlace';
+import { router } from 'expo-router';
 
 import AppBackground from '@/components/AppBackground';
 import HomeView from '@/components/HomeView';
@@ -78,6 +80,10 @@ function placeToRecLocal(f: PlaceResponse): Recommendation {
     distanceText: f.distanceInfo || undefined, stationText: f.stationInfo || undefined,
     features: [f.description].filter(Boolean) as string[],
     source: f.source, hotpepperUrl: f.hotpepperUrl,
+    // Google Place ID（温泉・自然・カフェ等のスポットは f.id が Place ID）
+    placeId: f.id && !f.id.startsWith('sb-') && !f.id.startsWith('hp-') ? f.id : undefined,
+    openingHoursText: f.openingHours ?? undefined,
+    priceLevel: f.priceLevel ?? undefined,
   };
 }
 
@@ -855,6 +861,16 @@ export default function Home() {
         title: rec.title, area: selectedArea,
         vibe: rec.vibe ?? '', photoUrl: rec.photoUrl, mapUrl: rec.mapUrl,
         createdAt: new Date().toISOString(),
+        // 詳細ページ用の追加データ
+        placeId: rec.placeId,
+        address: rec.address,
+        rating: rec.rating,
+        openingHoursText: rec.openingHoursText,
+        openNow: rec.openNow,
+        photoUrls: rec.photoUrls,
+        stationText: rec.stationText,
+        distanceText: rec.distanceText,
+        priceLevel: rec.priceLevel,
       }, ...prev]);
     }
   };
@@ -863,6 +879,35 @@ export default function Home() {
     isLoadingRecommendations || isLoadingOnsen || isLoadingNature ||
     isLoadingCafe || isLoadingWaiWai ||
     isLoadingDrive || isLoadingFocus || isLoadingSports || isLoadingTravel;
+
+  // ─── 詳細ページへ遷移 ─────────────────────────────────────────────────────
+  const handlePressDetail = (rec: Recommendation) => {
+    setSelectedPlace(rec);
+    router.push('/place');
+  };
+
+  const handlePressFavoriteDetail = (item: FavoriteItem) => {
+    // FavoriteItem を Recommendation に変換して詳細ページへ
+    const rec: Recommendation = {
+      title: item.title,
+      address: item.address ?? item.area,
+      vibe: item.vibe,
+      photoUrl: item.photoUrl,
+      photoUrls: item.photoUrls ?? (item.photoUrl ? [item.photoUrl] : []),
+      mapUrl: item.mapUrl,
+      placeId: item.placeId,
+      rating: item.rating ?? undefined,
+      openingHoursText: item.openingHoursText,
+      openNow: item.openNow,
+      stationText: item.stationText,
+      distanceText: item.distanceText,
+      priceLevel: item.priceLevel,
+      phone: item.phone,
+      website: item.website,
+    };
+    setSelectedPlace(rec);
+    router.push('/place');
+  };
 
   // 結果が出たら現在地から近い都道府県ボタンを自動生成
   useEffect(() => {
@@ -1114,6 +1159,7 @@ export default function Home() {
             });
           } catch {}
         }}
+        onPressDetail={handlePressDetail}
       />
         </SlideUp>
       </View>
@@ -1135,6 +1181,7 @@ export default function Home() {
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
             onResearch={handleResearch}
+            onPressDetail={handlePressDetail}
           />
         );
       case 'favorites':
@@ -1147,6 +1194,7 @@ export default function Home() {
             onRemoveFavorite={(title) =>
               setFavorites((prev) => prev.filter((f) => f.title !== title))
             }
+            onPressCard={handlePressFavoriteDetail}
           />
         );
       case 'featured':

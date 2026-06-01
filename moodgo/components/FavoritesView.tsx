@@ -26,6 +26,7 @@ type Props = {
   favoriteSort: 'newest' | 'title';
   onSetFavoriteSort: (v: 'newest' | 'title') => void;
   onRemoveFavorite: (title: string) => void;
+  onPressCard?: (item: FavoriteItem) => void;
   lang?: 'ja' | 'en';
 };
 
@@ -55,7 +56,7 @@ const T = {
 };
 
 export default function FavoritesView({
-  favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, lang = 'ja',
+  favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, onPressCard, lang = 'ja',
 }: Props) {
   const insets = useSafeAreaInsets();
   const t = T[lang];
@@ -124,7 +125,12 @@ export default function FavoritesView({
           </View>
         ) : (
           sorted.map((item) => (
-            <View key={item.title} style={s.card}>
+            <TouchableOpacity
+              key={item.title}
+              style={s.card}
+              activeOpacity={onPressCard ? 0.75 : 1}
+              onPress={onPressCard ? () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressCard(item); } : undefined}
+            >
               {/* 左グラデーションアクセントバー */}
               <LinearGradient
                 colors={GRAD}
@@ -191,7 +197,7 @@ export default function FavoritesView({
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>

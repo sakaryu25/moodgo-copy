@@ -31,6 +31,16 @@ export type Recommendation = {
   hotpepperUrl?: string;
   /** Supabase places.id（UUID）。report-closed API で使用する閉店報告用 */
   supabaseId?: string;
+  /** Google Places API の Place ID。詳細情報取得に使用 */
+  placeId?: string;
+  /** 電話番号（place-detail API から取得） */
+  phone?: string;
+  /** 公式サイト URL（place-detail API から取得） */
+  website?: string;
+  /** 緯度 */
+  lat?: number;
+  /** 経度 */
+  lng?: number;
 };
 
 export type FavoriteItem = {
@@ -40,6 +50,18 @@ export type FavoriteItem = {
   photoUrl?: string;
   mapUrl?: string;
   createdAt?: string;
+  /** Google Places ID（詳細ページで追加情報取得に使用） */
+  placeId?: string;
+  address?: string;
+  rating?: number | null;
+  openingHoursText?: string;
+  openNow?: boolean;
+  photoUrls?: string[];
+  stationText?: string;
+  distanceText?: string;
+  priceLevel?: string;
+  phone?: string;
+  website?: string;
 };
 
 export type FeedbackItem = {
