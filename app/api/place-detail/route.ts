@@ -144,10 +144,8 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
 
     // 営業時間テキスト
     const hours = d.currentOpeningHours ?? d.regularOpeningHours;
-    const openingHoursText: string | null =
-      hours?.weekdayDescriptions
-        ? (hours.weekdayDescriptions as string[]).join("\n")
-        : null;
+    const weekdays = (hours?.weekdayDescriptions as string[] | undefined)?.filter(Boolean) ?? [];
+    const openingHoursText: string | null = weekdays.length > 0 ? weekdays.join("\n") : null;
 
     // 口コミ（Google は relevance 順 = いいね数重視で返す）
     type RawReview = {

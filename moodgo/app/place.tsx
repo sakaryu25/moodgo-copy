@@ -39,36 +39,55 @@ const DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
 function formatOpeningHours(text: string): { label: string; time: string; isToday?: boolean }[] {
   const today = ['日', '月', '火', '水', '木', '金', '土'][new Date().getDay()];
   const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-  if (lines.length < 2) return [{ label: '', time: text }];
+  if (lines.length === 0) return [];
 
+  // 各行を構造化パース（Google Places API 形式: "月曜日: 9:00〜23:00"）
   type Entry = { day: string; hours: string };
   const parsed: Entry[] = [];
+  let parseOk = true;
+
   for (const line of lines) {
     const m = line.match(/^([月火水木金土日])曜日?[：:]\s*(.+)$/);
-    if (!m) return [{ label: '', time: text }];
+    if (!m) { parseOk = false; break; }
     parsed.push({ day: m[1], hours: m[2].trim() });
   }
-  parsed.sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
 
-  const groups: { days: string[]; hours: string }[] = [];
-  for (const { day, hours } of parsed) {
-    const last = groups[groups.length - 1];
-    if (last && last.hours === hours) last.days.push(day);
-    else groups.push({ days: [day], hours });
+  // 構造化パースに成功した場合：同じ時間の曜日をグループ化
+  if (parseOk && parsed.length > 0) {
+    parsed.sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
+    const groups: { days: string[]; hours: string }[] = [];
+    for (const { day, hours } of parsed) {
+      const last = groups[groups.length - 1];
+      if (last && last.hours === hours) last.days.push(day);
+      else groups.push({ days: [day], hours });
+    }
+    return groups.map(({ days, hours }) => {
+      let label: string;
+      if (days.length === 1) {
+        label = `${days[0]}曜`;
+      } else {
+        const startIdx = DAY_ORDER.indexOf(days[0]);
+        const isConsecutive = days.every((d, i) => DAY_ORDER.indexOf(d) === startIdx + i);
+        label = (isConsecutive && days.length >= 3)
+          ? `${days[0]}〜${days[days.length - 1]}曜`
+          : days.map(d => `${d}曜`).join('・');
+      }
+      return { label, time: hours, isToday: days.includes(today) };
+    });
   }
 
-  return groups.map(({ days, hours }) => {
-    let label: string;
-    if (days.length === 1) {
-      label = `${days[0]}曜`;
-    } else {
-      const startIdx = DAY_ORDER.indexOf(days[0]);
-      const isConsecutive = days.every((d, i) => DAY_ORDER.indexOf(d) === startIdx + i);
-      label = (isConsecutive && days.length >= 3)
-        ? `${days[0]}〜${days[days.length - 1]}曜`
-        : days.map(d => `${d}曜`).join('・');
+  // フォールバック: 行ごとにそのまま表示（ラベルと時間を ": " で分割）
+  return lines.map(line => {
+    const sep = line.indexOf(':');
+    if (sep > 0 && sep < 10) {
+      const label = line.slice(0, sep).trim();
+      const time = line.slice(sep + 1).trim();
+      const dayChar = label.charAt(0);
+      const isToday = ['月','火','水','木','金','土','日'].includes(dayChar)
+        && dayChar === today;
+      return { label, time, isToday };
     }
-    return { label, time: hours, isToday: days.includes(today) };
+    return { label: '', time: line };
   });
 }
 
@@ -338,6 +357,10 @@ export default function PlaceDetailPage() {
 
   const openNowColor = rec.openNow === true ? '#10B981' : rec.openNow === false ? '#EF4444' : '#9CA3AF';
   const openNowLabel = rec.openNow === true ? '営業中' : rec.openNow === false ? '閉店中' : null;
+  // デバッグ: 営業時間テキストの内容を確認
+  if (__DEV__ && rec.openingHoursText) {
+    console.log('[place.tsx] openingHoursText lines:', rec.openingHoursText.split('\n').length, '\n', rec.openingHoursText);
+  }
   const hoursRows = rec.openingHoursText ? formatOpeningHours(rec.openingHoursText) : [];
 
   // featuresから#を除去し、説明文とタグに分類
