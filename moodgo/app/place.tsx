@@ -468,27 +468,27 @@ export default function PlaceDetailPage() {
         {/* ── ボディ ── */}
         <View style={s.body}>
 
-          {/* タイトル + vibeバッジ + マップボタン */}
-          <View style={s.titleRow}>
-            <View style={s.titleLeft}>
+          {/* タイトル + マップボタン（同一行）+ vibeバッジ */}
+          <View style={s.titleBlock}>
+            <View style={s.titleRow}>
               <Text style={s.title}>{rec.title}</Text>
-              {rec.vibe ? (
-                <View style={s.vibeBadge}>
-                  <Text style={s.vibeText}>{rec.vibe}</Text>
-                </View>
+              {rec.mapUrl ? (
+                <TouchableOpacity
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(rec.mapUrl!); }}
+                  activeOpacity={0.82}
+                  style={s.mapPillBtn}
+                >
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mapPillGrad}>
+                    <MapPin size={12} color="#fff" strokeWidth={2.5} />
+                    <Text style={s.mapPillText}>マップ</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               ) : null}
             </View>
-            {rec.mapUrl ? (
-              <TouchableOpacity
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(rec.mapUrl!); }}
-                activeOpacity={0.82}
-                style={s.mapIconBtn}
-              >
-                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mapIconGrad}>
-                  <MapPin size={17} color="#fff" strokeWidth={2.5} />
-                </LinearGradient>
-                <Text style={s.mapIconLabel}>マップ</Text>
-              </TouchableOpacity>
+            {rec.vibe ? (
+              <View style={s.vibeBadge}>
+                <Text style={s.vibeText}>{rec.vibe}</Text>
+              </View>
             ) : null}
           </View>
 
@@ -746,10 +746,10 @@ const s = StyleSheet.create({
   // ボディ全体
   body: { paddingHorizontal: 18, paddingTop: 20, gap: 14 },
 
-  // タイトル行
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  titleLeft: { flex: 1, gap: 8 },
-  title: { fontSize: 26, fontWeight: '800', color: '#111827', letterSpacing: -0.5, lineHeight: 34 },
+  // タイトルブロック
+  titleBlock: { gap: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { flex: 1, fontSize: 26, fontWeight: '800', color: '#111827', letterSpacing: -0.5, lineHeight: 34 },
   vibeBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999,
@@ -757,15 +757,17 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(192,132,252,0.3)',
   },
   vibeText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
-  // マップアイコンボタン
-  mapIconBtn: { alignItems: 'center', gap: 5, paddingTop: 4 },
-  mapIconGrad: {
-    width: 46, height: 46, borderRadius: 23,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  // マップピルボタン（タイトル横インライン）
+  mapPillBtn: {
+    borderRadius: 999, overflow: 'hidden',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 4,
   },
-  mapIconLabel: { fontSize: 10, fontWeight: '700', color: '#7C3AED', letterSpacing: 0.3 },
+  mapPillGrad: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 11, paddingVertical: 7,
+  },
+  mapPillText: { fontSize: 11, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
 
   // 評価バー
   ratingBar: {
