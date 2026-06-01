@@ -195,24 +195,69 @@ function DetailView({
     >
       {/* グラデーションヘッダー */}
       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.detailHeader, { paddingTop: insets.top + 10 }]}>
+        {/* 装飾サークル */}
+        <View style={s.decoCircle1} pointerEvents="none" />
+        <View style={s.decoCircle2} pointerEvents="none" />
+
         {/* 戻るボタン */}
         <TouchableOpacity onPress={onBack} style={s.backBtn} activeOpacity={0.8}>
           <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
           <Text style={s.backText}>{t.backToList}</Text>
         </TouchableOpacity>
 
-        {/* 気分 → 大きく */}
-        <Text style={s.detailMoodBig}>{item.mood}</Text>
+        {/* 気分アイコン + テキスト */}
+        <View style={s.moodRow}>
+          <View style={s.moodIconBg}>
+            <Sparkles size={22} color="#fff" strokeWidth={2} />
+          </View>
+          <Text style={s.detailMoodBig}>{item.mood}</Text>
+        </View>
 
-        {/* エリア → 小さく */}
-        {item.area ? (
-          <View style={s.areaRow}>
-            <MapPin size={13} color="rgba(255,255,255,0.75)" />
-            <Text style={s.detailAreaSmall} numberOfLines={1}>{item.area}</Text>
+        {/* ミニ条件チップ行（ヘッダー内） */}
+        <View style={s.headerMiniChips}>
+          {item.companion ? (
+            <View style={s.headerMiniChip}>
+              <Users size={11} color="rgba(255,255,255,0.9)" />
+              <Text style={s.headerMiniChipText}>{item.companion}</Text>
+            </View>
+          ) : null}
+          {item.budget != null && item.budget > 0 ? (
+            <View style={s.headerMiniChip}>
+              <Banknote size={11} color="rgba(255,255,255,0.9)" />
+              <Text style={s.headerMiniChipText}>¥{item.budget.toLocaleString()}</Text>
+            </View>
+          ) : null}
+          {(sa.distanceFeeling || (sa.radiusKm != null)) ? (
+            <View style={s.headerMiniChip}>
+              <Navigation size={11} color="rgba(255,255,255,0.9)" />
+              <Text style={s.headerMiniChipText}>{sa.distanceFeeling ?? `${sa.radiusKm}km`}</Text>
+            </View>
+          ) : null}
+          {recCount > 0 && (
+            <View style={[s.headerMiniChip, s.headerMiniChipGreen]}>
+              <Text style={s.headerMiniChipGreenText}>{t.recCount(recCount)}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* エリア + 日時 */}
+        <View style={s.headerFooterRow}>
+          {item.area ? (
+            <View style={s.areaRow}>
+              <MapPin size={12} color="rgba(255,255,255,0.75)" />
+              <Text style={s.detailAreaSmall} numberOfLines={1}>{item.area}</Text>
+            </View>
+          ) : null}
+          <Text style={s.detailDate}>{formatFullDate(item.createdAt, lang)}</Text>
+        </View>
+
+        {/* トップ推薦スポット */}
+        {item.topRecommendation ? (
+          <View style={s.topSpotRow}>
+            <Text style={s.topSpotLabel}>おすすめ No.1</Text>
+            <Text style={s.topSpotName} numberOfLines={1}>{item.topRecommendation}</Text>
           </View>
         ) : null}
-
-        <Text style={s.detailDate}>{formatFullDate(item.createdAt, lang)}</Text>
       </LinearGradient>
 
       {/* 条件チップ一覧（ResultsView「今回の条件」と同スタイル） */}
@@ -464,13 +509,50 @@ const s = StyleSheet.create({
   emptyText:   { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
 
   // ── 詳細ヘッダー ──
-  detailHeader:   { paddingHorizontal: 20, paddingBottom: 28, gap: 8 },
-  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginBottom: 8, paddingVertical: 4 },
+  detailHeader: {
+    paddingHorizontal: 20, paddingBottom: 24,
+    gap: 12, overflow: 'hidden',
+  },
+  // 装飾サークル
+  decoCircle1: {
+    position: 'absolute', width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: -60, right: -40,
+  },
+  decoCircle2: {
+    position: 'absolute', width: 120, height: 120, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    bottom: -30, left: -20,
+  },
+  backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4 },
   backText:       { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.95)' },
-  detailMoodBig:  { fontSize: 38, fontWeight: '900', color: '#fff', letterSpacing: -1, lineHeight: 44 },
+  moodRow:        { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  moodIconBg: {
+    width: 48, height: 48, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  detailMoodBig:  { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: -1, lineHeight: 42, flex: 1 },
+  headerMiniChips:{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  headerMiniChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  headerMiniChipText:      { fontSize: 12, fontWeight: '600', color: '#fff' },
+  headerMiniChipGreen:     { backgroundColor: 'rgba(16,185,129,0.3)' },
+  headerMiniChipGreenText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  headerFooterRow: { gap: 3 },
   areaRow:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  detailAreaSmall:{ fontSize: 15, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
-  detailDate:     { fontSize: 13, color: 'rgba(255,255,255,0.65)', fontWeight: '400', marginTop: 2 },
+  detailAreaSmall:{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+  detailDate:     { fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: '400' },
+  topSpotRow: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+    marginTop: 2,
+  },
+  topSpotLabel:   { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, marginBottom: 3 },
+  topSpotName:    { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
 
   // ── 条件セクション（ResultsView「今回の条件」準拠） ──
   condSection:      { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
