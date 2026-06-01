@@ -317,16 +317,89 @@ export default function Home() {
       setLoadingMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length);
     }, 1800);
 
-    const relaxPlace = dynamicAnswers['relax_place'] ?? '';
+    // ── deepDiveL1/L2 → 各専用API用サブカテゴリに変換 ──────────────────────
+    const derivedNatureSubGenre: NatureSubGenre | null = (() => {
+      const l1IsNature =
+        selectedMood === '自然' ||
+        (selectedMood === 'まったり' && deepDiveL1 === '自然の中');
+      if (!l1IsNature) return null;
+      // 自然モードの場合: selectedMood==='自然' → L1 がジャンル選択、まったり → L2 がジャンル選択
+      const key = selectedMood === '自然' ? deepDiveL1 : deepDiveL2;
+      if (key === '波の音と海風')       return 'ocean';
+      if (key === '森の中で深呼吸')     return 'forest';
+      if (key === '広い芝生でゴロゴロ') return 'park';
+      if (key === '圧倒的な絶景')       return 'view';
+      if (key === 'こだわらない' || !key) return null; // generic へ
+      return 'park'; // フォールバック
+    })();
+
+    const derivedOnsenCategory: OnsenCategory | null = (() => {
+      if (!(selectedMood === 'まったり' && deepDiveL1 === '温泉スパ')) return null;
+      if (deepDiveL2 === 'サウナ・岩盤浴') return 'sauna_ganban';
+      return 'all_onsen'; // 温泉施設全般 or 未選択
+    })();
+
+    const derivedCafeSubCategory: CafeSubCategory | null = (() => {
+      if (!(selectedMood === 'まったり' && deepDiveL1 === 'カフェ')) return null;
+      if (deepDiveL2 === 'ブックカフェ・隠れカフェ') return 'book_relax';
+      if (deepDiveL2 === '動物カフェ')               return 'animal';
+      if (deepDiveL2 === '景色が良いカフェ')         return 'view';
+      if (deepDiveL2 === '絶品スイーツカフェ')       return 'sweets';
+      return 'book_relax'; // フォールバック
+    })();
+
+    const derivedWaiWaiSubCategory: WaiWaiSubCategory | null = (() => {
+      if (selectedMood !== 'わいわい' || !deepDiveL1 || deepDiveL1 === 'こだわらない') return null;
+      if (deepDiveL1 === '体を動かして遊びたい')         return 'active';
+      if (deepDiveL1 === '歌って飲んで騒ぎたい')         return 'party';
+      if (deepDiveL1 === '非日常の体験で盛り上がりたい') return 'experience';
+      return 'active'; // フォールバック
+    })();
+
+    const derivedDriveSubCategory = (() => {
+      if (selectedMood !== 'ドライブ' || !deepDiveL1 || deepDiveL1 === 'こだわらない') return null;
+      if (deepDiveL1 === '海沿いを爽快に走りたい')         return 'ocean_drive';
+      if (deepDiveL1 === '綺麗な景色や夜景を見に行きたい') return 'night_view';
+      if (deepDiveL1 === '道の駅でご当地グルメ')           return 'road_station';
+      if (deepDiveL1 === '郊外の大型施設に行きたい')       return 'outlet';
+      return null;
+    })();
+
+    const derivedFocusSubCategory = (() => {
+      if (selectedMood !== '集中' || !deepDiveL1 || deepDiveL1 === 'こだわらない') return null;
+      if (deepDiveL1 === 'カフェで作業・勉強したい')       return 'work_cafe';
+      if (deepDiveL1 === '静かな専用スペースで集中したい') return 'coworking';
+      return null;
+    })();
+
+    const derivedSportsSubCategory = (() => {
+      if (selectedMood !== '運動' || !deepDiveL1 || deepDiveL1 === 'こだわらない') return null;
+      if (deepDiveL1 === 'がっつり汗を流してトレーニング') return 'training';
+      if (deepDiveL1 === '打って投げてストレス発散')       return 'stress_relief';
+      if (deepDiveL1 === '遊び感覚でわいわい')             return 'amusement_sport';
+      if (deepDiveL1 === '外で風を感じながらスポーツ')     return 'outdoor_sports';
+      return null;
+    })();
+
+    const derivedTravelSubCategory = (() => {
+      if (selectedMood !== '旅行' || !deepDiveL1 || deepDiveL1 === 'こだわらない') return null;
+      if (deepDiveL1 === 'パワースポット')       return 'power_spot';
+      if (deepDiveL1 === '別世界のテーマパーク') return 'theme_park';
+      if (deepDiveL1 === '知らない街をぶらぶら') return 'town_walk';
+      if (deepDiveL1 === '息を呑む絶景')         return 'super_view';
+      return null;
+    })();
+    // ─────────────────────────────────────────────────────────────────────────
+
     const isNatureMode =
       selectedMood === '自然' ||
-      (selectedMood === 'まったり' && relaxPlace.includes('自然の中'));
+      (selectedMood === 'まったり' && deepDiveL1 === '自然の中');
     const isOnsenMode =
-      selectedMood === 'まったり' && relaxPlace.includes('温泉');
+      selectedMood === 'まったり' && deepDiveL1 === '温泉スパ';
     const isCafeMode =
-      selectedMood === 'まったり' && relaxPlace.includes('カフェ');
+      selectedMood === 'まったり' && deepDiveL1 === 'カフェ';
     const isWaiWaiMode =
-      selectedMood === 'わいわい' && !!waiWaiSubCategory;
+      selectedMood === 'わいわい' && !!derivedWaiWaiSubCategory;
 
     if (!isRefinement) setStep(11);
 
@@ -378,14 +451,14 @@ export default function Home() {
       createdAt: new Date().toISOString(),
     });
 
-    if (isNatureMode && natureSubGenre) {
+    if (isNatureMode && derivedNatureSubGenre) {
       setIsLoadingNature(true);
       try {
         const res = await apiFetch('/api/nature', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subGenre: natureSubGenre, lat: originLat, lng: originLng,
+            subGenre: derivedNatureSubGenre, lat: originLat, lng: originLng,
             areaLabel: selectedArea, radiusKm, distancePref: natureDistancePref,
           }),
         });
@@ -400,7 +473,7 @@ export default function Home() {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
               dynamicQs: [
-                { question: 'nature_subgenre', answer: natureSubGenre },
+                { question: 'nature_subgenre', answer: derivedNatureSubGenre },
                 ...(natureDistancePref ? [{ question: 'nature_distance', answer: natureDistancePref }] : []),
               ],
             },
@@ -408,14 +481,14 @@ export default function Home() {
         }
       } catch {}
       setIsLoadingNature(false);
-    } else if (isOnsenMode && onsenCategory) {
+    } else if (isOnsenMode && derivedOnsenCategory) {
       setIsLoadingOnsen(true);
       try {
         const res = await apiFetch('/api/onsen', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            category: onsenCategory, lat: originLat, lng: originLng,
+            category: derivedOnsenCategory, lat: originLat, lng: originLng,
             areaLabel: selectedArea, radiusKm,
             companion: selectedCompanion, budget, freeWord,
             distancePref: onsenDistancePref,
@@ -432,7 +505,7 @@ export default function Home() {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
               dynamicQs: [
-                { question: 'onsen_category', answer: onsenCategory },
+                { question: 'onsen_category', answer: derivedOnsenCategory },
                 ...(onsenDistancePref ? [{ question: 'onsen_distance', answer: onsenDistancePref }] : []),
               ],
             },
@@ -440,14 +513,14 @@ export default function Home() {
         }
       } catch {}
       setIsLoadingOnsen(false);
-    } else if (isCafeMode && cafeSubCategory) {
+    } else if (isCafeMode && derivedCafeSubCategory) {
       setIsLoadingCafe(true);
       try {
         const res = await apiFetch('/api/cafe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: cafeSubCategory, detail: cafeDetail,
+            subCategory: derivedCafeSubCategory, detail: cafeDetail,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
             radiusKm, distancePref: cafeDistancePref,
           }),
@@ -463,7 +536,7 @@ export default function Home() {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
               dynamicQs: [
-                { question: 'cafe_subcategory', answer: cafeSubCategory },
+                { question: 'cafe_subcategory', answer: derivedCafeSubCategory },
                 ...(cafeDetail ? [{ question: 'cafe_detail', answer: cafeDetail }] : []),
                 ...(cafeDistancePref ? [{ question: 'cafe_distance', answer: cafeDistancePref }] : []),
               ],
@@ -472,14 +545,14 @@ export default function Home() {
         }
       } catch {}
       setIsLoadingCafe(false);
-    } else if (isWaiWaiMode) {
+    } else if (isWaiWaiMode && derivedWaiWaiSubCategory) {
       setIsLoadingWaiWai(true);
       try {
         const res = await apiFetch('/api/waiwai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: waiWaiSubCategory, lat: originLat, lng: originLng,
+            subCategory: derivedWaiWaiSubCategory, lat: originLat, lng: originLng,
             areaLabel: selectedArea, radiusKm, age: profileAge,
           }),
         });
@@ -493,20 +566,20 @@ export default function Home() {
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
-              dynamicQs: [{ question: 'waiwai_subcategory', answer: waiWaiSubCategory ?? '' }],
+              dynamicQs: [{ question: 'waiwai_subcategory', answer: derivedWaiWaiSubCategory }],
             },
           }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingWaiWai(false);
-    } else if (selectedMood === 'ドライブ' && dynamicAnswers['drive_subcategory']) {
+    } else if (selectedMood === 'ドライブ' && derivedDriveSubCategory) {
       setIsLoadingDrive(true);
       try {
         const res = await apiFetch('/api/drive', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: dynamicAnswers['drive_subcategory'],
+            subCategory: derivedDriveSubCategory,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
             radiusKm, companion: selectedCompanion,
             budget, freeWord,
@@ -522,20 +595,20 @@ export default function Home() {
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
-              dynamicQs: [{ question: 'drive_subcategory', answer: dynamicAnswers['drive_subcategory'] }],
+              dynamicQs: [{ question: 'drive_subcategory', answer: derivedDriveSubCategory }],
             },
           }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingDrive(false);
-    } else if (selectedMood === '集中' && dynamicAnswers['focus_subcategory']) {
+    } else if (selectedMood === '集中' && derivedFocusSubCategory) {
       setIsLoadingFocus(true);
       try {
         const res = await apiFetch('/api/focus', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: dynamicAnswers['focus_subcategory'],
+            subCategory: derivedFocusSubCategory,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
             radiusKm, companion: selectedCompanion, budget, freeWord,
           }),
@@ -550,20 +623,20 @@ export default function Home() {
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
-              dynamicQs: [{ question: 'focus_subcategory', answer: dynamicAnswers['focus_subcategory'] }],
+              dynamicQs: [{ question: 'focus_subcategory', answer: derivedFocusSubCategory }],
             },
           }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingFocus(false);
-    } else if (selectedMood === '運動' && dynamicAnswers['sports_subcategory']) {
+    } else if (selectedMood === '運動' && derivedSportsSubCategory) {
       setIsLoadingSports(true);
       try {
         const res = await apiFetch('/api/sports', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: dynamicAnswers['sports_subcategory'],
+            subCategory: derivedSportsSubCategory,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
             radiusKm, companion: selectedCompanion, budget, freeWord,
           }),
@@ -578,20 +651,20 @@ export default function Home() {
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
-              dynamicQs: [{ question: 'sports_subcategory', answer: dynamicAnswers['sports_subcategory'] }],
+              dynamicQs: [{ question: 'sports_subcategory', answer: derivedSportsSubCategory }],
             },
           }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingSports(false);
-    } else if (selectedMood === '旅行' && dynamicAnswers['travel_subcategory']) {
+    } else if (selectedMood === '旅行' && derivedTravelSubCategory) {
       setIsLoadingTravel(true);
       try {
         const res = await apiFetch('/api/travel', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            subCategory: dynamicAnswers['travel_subcategory'],
+            subCategory: derivedTravelSubCategory,
             lat: originLat, lng: originLng, areaLabel: selectedArea,
             radiusKm,
           }),
@@ -606,7 +679,7 @@ export default function Home() {
             savedAnswers: {
               mood: selectedMood, area: selectedArea, companion: selectedCompanion,
               budget: budget ?? 10000,
-              dynamicQs: [{ question: 'travel_subcategory', answer: dynamicAnswers['travel_subcategory'] }],
+              dynamicQs: [{ question: 'travel_subcategory', answer: derivedTravelSubCategory }],
             },
           }, ...prev].slice(0, 500));
         }
