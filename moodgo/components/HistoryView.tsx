@@ -1,8 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import {
-  Clock, ChevronLeft, ChevronRight, RotateCcw, Trash2,
+  Clock, ChevronLeft, ChevronRight, Trash2,
   MapPin, Users, Banknote, Navigation, MessageSquare, Tag,
   Sparkles, List,
+  Coffee, Music, Leaf, Plane, BookOpen, Zap, Droplets, Car,
+  Laugh, Mountain, Wind,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
@@ -18,6 +21,48 @@ import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+
+// ── 気分ごとの画像マッピング ────────────────────────────────────────────────
+// 画像ファイルを assets/moods/ に置いたら require() に変更してください
+// 例: まったり.png → require('@/assets/moods/mattari.png')
+type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+
+const MOOD_ICON_MAP: Record<string, LIcon> = {
+  'まったり':    Coffee,
+  'わいわい':    Laugh,
+  'ドライブ':    Car,
+  '自然':        Leaf,
+  '旅行':        Plane,
+  '集中':        BookOpen,
+  '運動':        Zap,
+  '時間潰し':    Clock,
+  '温泉':        Droplets,
+  '景色':        Mountain,
+  'カフェ':      Coffee,
+  'アウトドア':  Wind,
+  '音楽':        Music,
+};
+
+// 画像ファイルが届いたらここに追加してください
+// 例: const MOOD_IMAGE_MAP: Record<string, ReturnType<typeof require>> = {
+//   'まったり': require('@/assets/moods/mattari.png'),
+// };
+const MOOD_IMAGE_MAP: Record<string, ReturnType<typeof require>> = {};
+
+function MoodVisual({ mood, size = 36 }: { mood: string; size?: number }) {
+  const imgSrc = MOOD_IMAGE_MAP[mood];
+  if (imgSrc) {
+    return (
+      <Image
+        source={imgSrc}
+        style={{ width: size, height: size }}
+        contentFit="contain"
+      />
+    );
+  }
+  const IconComp: LIcon = MOOD_ICON_MAP[mood] ?? Sparkles;
+  return <IconComp size={size} color="#fff" strokeWidth={1.8} />;
+}
 const GRAD_LIGHT: [string, string, string] = [
   'rgba(244,114,182,0.15)',
   'rgba(192,132,252,0.15)',
@@ -206,8 +251,13 @@ function DetailView({
           <Text style={s.backText}>{t.backToList}</Text>
         </TouchableOpacity>
 
-        {/* 気分テキスト */}
-        <Text style={s.detailMoodBig}>{item.mood}</Text>
+        {/* 気分アイコン + テキスト */}
+        <View style={s.moodTitleRow}>
+          <View style={s.moodVisualBg}>
+            <MoodVisual mood={item.mood} size={30} />
+          </View>
+          <Text style={s.detailMoodBig}>{item.mood}</Text>
+        </View>
 
         {/* 今回の条件チップ（ヘッダー内・白半透明スタイル） */}
         {condChips.length > 0 && (
@@ -478,6 +528,12 @@ const s = StyleSheet.create({
   },
   backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4 },
   backText:       { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.95)' },
+  moodTitleRow:   { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  moodVisualBg: {
+    width: 56, height: 56, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   detailMoodBig:  { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: -1, lineHeight: 44 },
   headerFooterRow: { gap: 3 },
   areaRow:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
