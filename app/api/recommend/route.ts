@@ -3476,6 +3476,7 @@ async function fetchGooglePlacesSupplement(
   existingNames: string[],
   apiKey: string,
   limit: number = 10,
+  budget?: number,
 ): Promise<Array<Record<string, unknown>>> {
   try {
     const MOOD_TYPES: Record<string, string[]> = {
@@ -3524,10 +3525,29 @@ async function fetchGooglePlacesSupplement(
 
     // Supabase 結果と名前が被るものを除外
     const existingLower = new Set(existingNames.map(n => n.toLowerCase()));
+
+    // Google PriceLevel → 概算費用（円）のマッピング
+    const PRICE_LEVEL_COST: Record<string, number> = {
+      PRICE_LEVEL_FREE:          0,
+      PRICE_LEVEL_INEXPENSIVE:   1000,
+      PRICE_LEVEL_MODERATE:      3500,
+      PRICE_LEVEL_EXPENSIVE:     8000,
+      PRICE_LEVEL_VERY_EXPENSIVE: 15000,
+    };
+    // 予算オーバーか判定（priceLevel がない/不明な場合は通過させる）
+    const isOverBudget = (priceLevel: string | undefined): boolean => {
+      if (!budget || budget >= 10000) return false; // 予算未設定 or 高め → フィルタなし
+      if (!priceLevel || priceLevel === "PRICE_LEVEL_UNSPECIFIED") return false; // 不明 → 通過
+      return (PRICE_LEVEL_COST[priceLevel] ?? 0) > budget;
+    };
+
     const filtered = places
       .filter((p: Record<string, unknown>) => {
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
-        return !existingLower.has(name.toLowerCase()) && name.length > 0;
+        if (existingLower.has(name.toLowerCase()) || name.length === 0) return false;
+        // 予算オーバーの場所は除外
+        if (isOverBudget(p.priceLevel as string | undefined)) return false;
+        return true;
       })
       .slice(0, limit);
 
@@ -3986,27 +4006,29 @@ export async function POST(request: Request) {
 
       // Supabase が 0 件でも GPS がある場合は Google 補足で賄う（レガシーフローへの落下を防ぐ）
       if (sbResults.length >= 1 || hasLocation) {
-        // 予算による価格フィルター（priceLevel が取得できている場合）
+        // 予算による価格フィルター（priceLevel が取得できている場合のみ適用）
         const priceLevelCost: Record<string, number> = {
           "無料": 0, "￥": 1000, "￥￥": 3500, "￥￥￥": 8000, "￥￥￥￥": 15000,
         };
         const budgetMax = answers.budget ?? Infinity;
         const budgetFiltered = sbResults.filter(r => {
-          if (budgetMax >= 10000) return true;
-          if (!r.priceLevel) return true;
+          if (budgetMax >= 10000) return true;          // 予算10,000円以上 → フィルタなし
+          if (!r.priceLevel) return true;              // 価格不明 → 通過
           return (priceLevelCost[r.priceLevel] ?? 0) <= budgetMax;
         });
+        // フィルタ後に0件になった場合は元のリストにフォールバック（価格不明スポットが多い場合を想定）
         const sbPool = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
         // deepDiveL1 を dynamicQs から取得（Yahoo キーワード選択に使用）
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
 
-        // Google Places 補足検索（常に最大10件）
+        // Google Places 補足検索（常に最大10件、予算フィルター付き）
         const googleSupplements = hasLocation
           ? await fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10
+              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10,
+              answers.budget
             )
           : [];
 
