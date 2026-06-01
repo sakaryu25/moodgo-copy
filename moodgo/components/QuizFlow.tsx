@@ -1066,6 +1066,12 @@ export default function QuizFlow(props: Props) {
         <View style={s.titleBlock}>
           <Text style={s.title}>{meta.title}</Text>
           <Text style={s.sub}>{meta.sub}</Text>
+          {step === 4 && locationDisplayArea ? (
+            <View style={s.areaTag}>
+              <MapPin size={12} color="#7C3AED" strokeWidth={2} />
+              <Text style={s.areaTagTxt}>{locationDisplayArea} から検索</Text>
+            </View>
+          ) : null}
         </View>
         <ScrollView
           style={s.flex}
@@ -1117,6 +1123,14 @@ const s = StyleSheet.create({
   titleBlock: { paddingHorizontal: PAD, paddingTop: 14, paddingBottom: 8 },
   title: { fontSize: 30, fontWeight: '900', color: '#1E0753', marginBottom: 4, letterSpacing: -0.5 },
   sub: { fontSize: 14, color: '#A78BFA', lineHeight: 20 },
+  areaTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    alignSelf: 'flex-start', marginTop: 8,
+    backgroundColor: '#EDE9FE', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.3)',
+  },
+  areaTagTxt: { fontSize: 13, fontWeight: '700', color: '#7C3AED' },
   scrollContent: { paddingHorizontal: PAD, paddingTop: 4, paddingBottom: 20 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP, justifyContent: 'center' },
   hint: {
