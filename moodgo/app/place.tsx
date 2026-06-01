@@ -378,11 +378,6 @@ export default function PlaceDetailPage() {
   const openNowLabel = displayOpenNow === true ? '営業中' : displayOpenNow === false ? '閉店中' : null;
   const hoursRows = hoursSource ? formatOpeningHours(hoursSource) : [];
 
-  // featuresから#を除去し、説明文とタグに分類
-  const rawFeatures = rec.features ?? [];
-  const descFeatures = rawFeatures.filter(f => f.length > 15).map(f => f.replace(/^#/, ''));
-  const tagFeatures = rawFeatures.filter(f => f.length <= 15 && f.length > 0).map(f => f.replace(/^#/, ''));
-
   return (
     <View style={s.root}>
 
@@ -510,12 +505,6 @@ export default function PlaceDetailPage() {
                   <Text style={s.ratingCount}>{displayUserRatingCount.toLocaleString('ja-JP')}件の口コミ</Text>
                 ) : null}
               </View>
-              {openNowLabel && (
-                <View style={[s.openPill, { backgroundColor: openNowColor + '18', borderColor: openNowColor + '55' }]}>
-                  <View style={[s.openDot, { backgroundColor: openNowColor }]} />
-                  <Text style={[s.openText, { color: openNowColor }]}>{openNowLabel}</Text>
-                </View>
-              )}
             </View>
           )}
 
@@ -621,24 +610,6 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
-          {/* ─── このスポットについて（#なし） ─── */}
-          {extra.loaded && (descFeatures.length > 0 || tagFeatures.length > 0) && (
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>このスポットについて</Text>
-              {descFeatures.map((f, i) => (
-                <Text key={i} style={s.descText}>{f}</Text>
-              ))}
-              {tagFeatures.length > 0 && (
-                <View style={s.tagWrap}>
-                  {tagFeatures.map((f, i) => (
-                    <View key={i} style={s.tag}>
-                      <Text style={s.tagText}>{f}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
 
           {/* ─── 口コミセクション ─── */}
           {(extra.reviews?.length ?? 0) > 0 && (
