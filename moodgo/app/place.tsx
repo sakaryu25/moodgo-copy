@@ -302,13 +302,8 @@ export default function PlaceDetailPage() {
     setFetchError(false);
     setExtra(prev => ({ ...prev, loaded: false }));
 
-    const id = rec.placeId;
-    // placeId がなければ名前+エリアでテキスト検索
-    const body = id
-      ? { placeId: id }
-      : { name: rec.title, address: rec.address ?? '' };
-
-    const attempt = async (): Promise<boolean> => {
+    // APIを1回呼び出してExtraデータをセットする共通処理
+    const callApi = async (body: Record<string, unknown>): Promise<boolean> => {
       try {
         const res = await fetch(`${API_BASE}/api/place-detail`, {
           method: 'POST',
@@ -345,12 +340,33 @@ export default function PlaceDetailPage() {
       }
     };
 
-    let ok = await attempt();
-    // 失敗時は1回だけ自動リトライ（1秒後）
+    // ① placeId がある場合はまずplaceIdで試みる
+    // ② 失敗したら名前+住所でテキスト検索にフォールバック（placeIdが古い/誤りの場合に対応）
+    // ③ それも失敗した場合はリトライ
+    const id = rec.placeId;
+    let ok = false;
+
+    if (id) {
+      ok = await callApi({ placeId: id });
+      // placeIdで失敗 → 名前+住所で再検索（正しいplaceIdを取り直す）
+      if (!ok) {
+        ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+      }
+    } else {
+      ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+    }
+
+    // それでも失敗時は1秒後にリトライ
     if (!ok && retries > 0) {
       await new Promise(r => setTimeout(r, 1000));
-      ok = await attempt();
+      if (id) {
+        ok = await callApi({ placeId: id });
+        if (!ok) ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+      } else {
+        ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+      }
     }
+
     if (!ok) {
       setExtra(prev => ({ ...prev, loaded: true }));
       setFetchError(true);
