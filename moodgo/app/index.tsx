@@ -624,6 +624,7 @@ export default function Home() {
           companion: selectedCompanion,
           budget, budgetMin, freeWord,
           radiusKm, areaMode, distanceFeeling,
+          originLat, originLng,
           dynamicQs: [
             ...Object.entries(dynamicAnswers).map(([key, answer]) => ({
               question: dynamicQuestions.find((q) => q.key === key)?.question ?? key,

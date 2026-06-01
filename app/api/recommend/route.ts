@@ -28,6 +28,12 @@ type Answers = {
   freeWord?: string;
   originLat?: number;
   originLng?: number;
+  /** クイズ Step4 で選んだ距離感のkm数 */
+  radiusKm?: number;
+  /** 'current_location' = GPS使用, 'manual' = エリア名入力 */
+  areaMode?: "current_location" | "manual";
+  /** 距離感ラベル（例: 'ちょっと遠くてもOK'） */
+  distanceFeeling?: string;
   dynamicQ1?: { question: string; answer: string } | string;
   dynamicQ2?: { question: string; answer: string } | string;
   dynamicQ3?: { question: string; answer: string } | string;
@@ -3460,6 +3466,244 @@ function getRadiusKmFromTransportAndTime(transport?: string | string[], time?: s
   return Math.max(2, Math.round(base * mult));
 }
 
+// ─── Google Places 補足検索 ─────────────────────────────────────────────────
+// Supabase 結果を補うために Google Places Nearby Search で 10 件追加取得
+async function fetchGooglePlacesSupplement(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  mood: string,
+  existingNames: string[],
+  apiKey: string,
+  limit: number = 10,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const MOOD_TYPES: Record<string, string[]> = {
+      "お腹すいた":         ["restaurant"],
+      "まったりしたい":     ["spa", "cafe", "park"],
+      "わいわい楽しみたい": ["amusement_park", "bowling_alley", "movie_theater"],
+      "自然感じたい":       ["park"],
+      "ドライブしたい":     ["tourist_attraction"],
+      "集中したい":         ["library", "cafe"],
+      "体を動かしたい":     ["gym", "park"],
+      "遠くに行きたい":     ["tourist_attraction", "amusement_park"],
+    };
+    const types = MOOD_TYPES[mood] ?? ["tourist_attraction"];
+    const radiusM = Math.min(radiusKm * 1000, 50000);
+
+    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel",
+      },
+      body: JSON.stringify({
+        includedTypes: types,
+        maxResultCount: Math.min(limit * 2, 20),
+        rankPreference: "POPULARITY",
+        languageCode: "ja",
+        locationRestriction: {
+          circle: { center: { latitude: lat, longitude: lng }, radius: radiusM },
+        },
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const places = (data.places ?? []) as Array<Record<string, unknown>>;
+
+    // Supabase 結果と名前が被るものを除外
+    const existingLower = new Set(existingNames.map(n => n.toLowerCase()));
+    const filtered = places
+      .filter((p: Record<string, unknown>) => {
+        const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
+        return !existingLower.has(name.toLowerCase()) && name.length > 0;
+      })
+      .slice(0, limit);
+
+    const PRICE_MAP: Record<string, string> = {
+      PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
+      PRICE_LEVEL_MODERATE: "￥￥", PRICE_LEVEL_EXPENSIVE: "￥￥￥",
+      PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
+    };
+
+    return filtered.map((p: Record<string, unknown>) => {
+      const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
+      const photos = (p.photos as Array<{ name: string }> | undefined) ?? [];
+      const photoUrl = photos[0]
+        ? `https://places.googleapis.com/v1/${photos[0].name}/media?maxWidthPx=800&key=${apiKey}`
+        : undefined;
+      const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
+      return {
+        title: name,
+        address: (p.formattedAddress as string | undefined) ?? "",
+        photoUrl,
+        photoUrls: photoUrl ? [photoUrl] : [],
+        rating: typeof p.rating === "number" ? p.rating : null,
+        userRatingCount: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
+        openNow: undefined,
+        openingHoursText: hours?.weekdayDescriptions?.join("\n") ?? undefined,
+        mapUrl: (p.googleMapsUri as string | undefined) ?? "",
+        googleMapsUrl: (p.googleMapsUri as string | undefined) ?? "",
+        reason: "",
+        features: [],
+        distanceText: "",
+        durationText: "",
+        stationText: "",
+        vibe: "",
+        budget: "",
+        time: "",
+        priceLevel: PRICE_MAP[(p.priceLevel as string) ?? ""] ?? undefined,
+        placeId: (p.id as string | undefined) ?? undefined,
+        supabaseId: undefined,
+        isUserSpot: false,
+        hasUserPhotos: false,
+        userPhotoCount: 0,
+        routesByMode: undefined,
+      };
+    });
+  } catch (e) {
+    console.error("[recommend] Google supplement search failed:", e);
+    return [];
+  }
+}
+
+// ─── freeWord → OpenAI → Google Maps フロー ────────────────────────────────
+// 自由ワードが設定されている場合、全クイズ回答を OpenAI に渡して
+// 最適なスポット名を提案してもらい、Google Places で実在確認して返す
+async function buildFreeWordRecommendations(
+  answers: {
+    mood?: string; companion?: string; budget?: number; freeWord?: string;
+    distanceFeeling?: string; radiusKm?: number; originLat?: number; originLng?: number;
+    area?: string; dynamicQs?: { question: string; answer: string }[];
+  },
+  apiKey: string,
+  openaiClient: import("openai").default,
+  seenPlaces: string[],
+  showUnseenOnly: boolean,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const lat = answers.originLat;
+    const lng = answers.originLng;
+    const area = answers.area ?? "東京";
+    const dynamicDesc = (answers.dynamicQs ?? [])
+      .map((q: { question: string; answer: string }) => `${q.question}: ${q.answer}`)
+      .join("\n");
+
+    const prompt = `ユーザーの情報をもとに、今すぐ行けるおすすめスポットを${lat ? "現在地付近で" : area + "で"}最大15個提案してください。
+
+【ユーザー情報】
+- 気分: ${answers.mood ?? "未設定"}
+- 同行者: ${answers.companion ?? "未設定"}
+- 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "未設定"}
+- 希望キーワード: ${answers.freeWord}
+- 距離感: ${answers.distanceFeeling ?? "指定なし"}
+${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
+
+出力は必ず以下のJSON形式のみ（日本語）:
+{"places": [{"name": "スポット名", "query": "${lat ? "現在地付近" : area} スポット名"}]}
+- 実在する具体的な施設名のみ（駅名や地名だけはNG）
+- 予算内で行けるスポット優先`;
+
+    const resp = await openaiClient.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.8,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "あなたはお出かけプランナーAIです。ユーザーの希望に合ったリアルな施設を提案してください。" },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 600,
+    });
+
+    const text = resp.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(text) as { places?: Array<{ name: string; query: string }> };
+    const suggestions = parsed.places ?? [];
+    if (suggestions.length === 0) return [];
+
+    const PRICE_MAP: Record<string, string> = {
+      PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
+      PRICE_LEVEL_MODERATE: "￥￥", PRICE_LEVEL_EXPENSIVE: "￥￥￥",
+      PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
+    };
+
+    const results = await Promise.all(
+      suggestions.slice(0, 15).map(async (p) => {
+        try {
+          const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": apiKey,
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel",
+            },
+            body: JSON.stringify({
+              textQuery: p.query || `${area} ${p.name}`,
+              languageCode: "ja",
+              regionCode: "JP",
+              maxResultCount: 1,
+              ...(lat && lng ? {
+                locationBias: {
+                  circle: {
+                    center: { latitude: lat, longitude: lng },
+                    radius: Math.min((answers.radiusKm ?? 40) * 1000, 50000),
+                  },
+                },
+              } : {}),
+            }),
+            cache: "no-store",
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          const place = data.places?.[0];
+          if (!place) return null;
+          const name = (place.displayName?.text as string | undefined) ?? p.name;
+          if (showUnseenOnly && seenPlaces.includes(name)) return null;
+          const photos = (place.photos ?? []) as Array<{ name: string }>;
+          const photoUrl = photos[0]
+            ? `https://places.googleapis.com/v1/${photos[0].name}/media?maxWidthPx=800&key=${apiKey}`
+            : undefined;
+          const hours = place.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
+          return {
+            title: name,
+            address: (place.formattedAddress as string | undefined) ?? "",
+            photoUrl,
+            photoUrls: photoUrl ? [photoUrl] : [],
+            rating: typeof place.rating === "number" ? place.rating : null,
+            userRatingCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
+            openNow: undefined,
+            openingHoursText: hours?.weekdayDescriptions?.join("\n") ?? undefined,
+            mapUrl: (place.googleMapsUri as string | undefined) ?? "",
+            googleMapsUrl: (place.googleMapsUri as string | undefined) ?? "",
+            reason: `「${answers.freeWord}」のイメージにぴったりなスポットです`,
+            features: [],
+            distanceText: "",
+            durationText: "",
+            stationText: "",
+            vibe: "",
+            budget: "",
+            time: "",
+            priceLevel: PRICE_MAP[(place.priceLevel as string) ?? ""] ?? undefined,
+            placeId: (place.id as string | undefined) ?? undefined,
+            supabaseId: undefined,
+            isUserSpot: false,
+            hasUserPhotos: false,
+            userPhotoCount: 0,
+            routesByMode: undefined,
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return results.filter((r): r is Record<string, unknown> => r !== null);
+  } catch (e) {
+    console.error("[recommend] freeWord OpenAI flow failed:", e);
+    return [];
+  }
+}
+
 async function generateSupabaseReasons(
   spots: import("@/types/onsen").PlaceResponse[],
   answers: { mood?: string; companion?: string; transport?: string | string[]; time?: string; budget?: number; freeWord?: string; dynamicQs?: { question: string; answer: string }[] },
@@ -3553,23 +3797,48 @@ export async function POST(request: Request) {
     const allUserTags = new Set([...userTags.mustTags, ...userTags.niceToHaveTags]);
 
     // ─── Supabase-first メインフロー ───────────────────────────────────────────
-    // placesテーブルを主軸に検索し、Google Placesで写真・営業時間・開店状況を補強
-    // SupabaseのデータはgooglePlaceId付きなので detail ページでも正確な情報が取得できる
+    // placesテーブルを主軸に検索し、Google Placesで補足検索
+    // GPS使用時はクイズの距離感（radiusKm）を優先使用 + 遠端バイアスで近すぎる場所を後回し
     try {
+      // ─── freeWord → OpenAI → Google Maps フロー ──────────────────────────
+      // 自由ワードがある場合は OpenAI にスポット提案を依頼し Google で実在確認して返す
+      if (answers.freeWord && openai) {
+        const fwRecs = await buildFreeWordRecommendations(
+          answers, apiKey, openai, seenPlaces, showUnseenOnly
+        );
+        if (fwRecs.length > 0) {
+          return json({
+            recommendations: fwRecs,
+            source: "ai_freeword",
+            usedAI: true,
+            warning: "",
+          });
+        }
+      }
+
       const { spatialSearch } = await import("@/lib/spatial-search");
       const sbMustTags = [...userTags.mustTags];
       const sbNiceTags = [...userTags.niceToHaveTags];
-      const radiusKm = getRadiusKmFromTransportAndTime(answers.transport, answers.time);
+
+      // クイズ Step4 で選んだ距離感を優先使用（GPS使用時のみ）
+      const hasLocation = !!(answers.originLat && answers.originLng);
+      const useQuizRadius = hasLocation && answers.areaMode === "current_location" && !!answers.radiusKm;
+      const radiusKm = useQuizRadius
+        ? answers.radiusKm!
+        : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
+
+      // 遠端バイアス: 半径20km以上の場合、外縁部のスポットを優先（近場を後回し）
+      const minRadiusKm = useQuizRadius && radiusKm >= 20 ? Math.round(radiusKm * 0.6) : 0;
 
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbMustTags.slice(0, 1),
-        orTags: sbMustTags.length === 0 ? sbNiceTags : undefined,
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm,
+        minRadiusKm,
         transport: answers.transport,
-        limit: 15,
+        limit: 20,  // Supabaseから最大20件
         googleApiKey: apiKey,
       });
 
@@ -3584,10 +3853,18 @@ export async function POST(request: Request) {
           if (!r.priceLevel) return true;
           return (priceLevelCost[r.priceLevel] ?? 0) <= budgetMax;
         });
-        const poolForScore = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
+        const sbPool = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
-        const scored = poolForScore
+        // Google Places 補足検索 (10件 - Supabase にないスポットを追加)
+        const googleSupplements = hasLocation
+          ? await fetchGooglePlacesSupplement(
+              answers.originLat!, answers.originLng!, radiusKm,
+              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10
+            )
+          : [];
+
+        const scored = sbPool
           .map(r => ({
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length,
@@ -3596,7 +3873,7 @@ export async function POST(request: Request) {
 
         const reasons = await generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags);
 
-        const recommendations = scored.map(r => {
+        const supabaseRecs = scored.map(r => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
           // SupabaseのgooglePlaceId（r.idフィールド）をplaceIdとして渡す
           // → ExpoのdetailページでGoogle Places APIから正確な口コミ・営業時間を取得できる
@@ -3632,11 +3909,14 @@ export async function POST(request: Request) {
           };
         });
 
+        // Supabase 結果 + Google 補足結果を結合
+        const recommendations = [...supabaseRecs, ...googleSupplements];
+
         return json({
           recommendations,
           source: "supabase",
           usedAI: !!process.env.OPENAI_API_KEY,
-          warning: answers.originLat ? "" : "現在地未使用のため、距離順ではない場合があります。",
+          warning: hasLocation ? "" : "現在地未使用のため、距離順ではない場合があります。",
         });
       }
     } catch (err) {
