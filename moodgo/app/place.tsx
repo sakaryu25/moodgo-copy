@@ -9,10 +9,11 @@ import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import {
   ArrowLeft, ChevronDown, ChevronUp, Clock, ExternalLink, Globe,
-  MapPin, Navigation, Phone, Share2, Star, ThumbsUp, Train,
+  MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Linking,
   NativeScrollEvent,
@@ -156,6 +157,68 @@ function ReviewCard({ review, index }: { review: Review; index: number }) {
   );
 }
 
+// ── スケルトンローダー ─────────────────────────────────────────────────────────
+function SkeletonBox({ widthPct, widthPx, height, radius = 8 }: { widthPct?: string; widthPx?: number; height: number; radius?: number }) {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.9, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return (
+    <Animated.View style={{
+      width: widthPx ?? (widthPct as any), height, borderRadius: radius,
+      backgroundColor: '#E5E7EB', opacity,
+    }} />
+  );
+}
+
+function InfoSkeleton() {
+  return (
+    <View style={{ gap: 14 }}>
+      {/* 評価バースケルトン */}
+      <View style={{ backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 10,
+        borderWidth: 1, borderColor: 'rgba(192,132,252,0.1)' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <SkeletonBox widthPx={52} height={38} radius={8} />
+          <View style={{ gap: 8 }}>
+            <SkeletonBox widthPx={100} height={14} />
+            <SkeletonBox widthPx={80} height={12} />
+          </View>
+        </View>
+      </View>
+      {/* 情報カードスケルトン */}
+      <View style={{ backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
+        borderWidth: 1, borderColor: 'rgba(192,132,252,0.1)' }}>
+        {[0,1,2].map(i => (
+          <View key={i} style={{ flexDirection: 'row', gap: 12, padding: 14,
+            borderTopWidth: i > 0 ? 1 : 0, borderTopColor: 'rgba(192,132,252,0.08)' }}>
+            <SkeletonBox widthPx={30} height={30} radius={9} />
+            <View style={{ flex: 1, gap: 6, paddingTop: 4 }}>
+              <SkeletonBox widthPct="80%" height={14} />
+              {i === 0 && <SkeletonBox widthPct="60%" height={12} />}
+            </View>
+          </View>
+        ))}
+      </View>
+      {/* 営業時間スケルトン */}
+      <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 10,
+        borderWidth: 1, borderColor: 'rgba(192,132,252,0.1)' }}>
+        <SkeletonBox widthPx={80} height={15} />
+        {[0,1,2,3].map(i => (
+          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <SkeletonBox widthPx={70} height={13} />
+            <SkeletonBox widthPx={120} height={13} />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ── メインコンポーネント ────────────────────────────────────────────────────────
 export default function PlaceDetailPage() {
   const insets = useSafeAreaInsets();
@@ -167,6 +230,7 @@ export default function PlaceDetailPage() {
     reviews: [],
     loaded: false,
   });
+  const [fetchError, setFetchError] = useState(false);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoWidth, setPhotoWidth] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
@@ -176,45 +240,60 @@ export default function PlaceDetailPage() {
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
 
-  // Google Place Detail APIから追加情報取得（口コミ含む）
-  useEffect(() => {
+  // Google Place Detail APIから完全な情報を取得
+  const fetchDetail = useCallback(async () => {
     if (!rec) return;
+    setFetchError(false);
+    setExtra(prev => ({ ...prev, loaded: false }));
+
     const id = rec.placeId;
-    // placeId がない場合は名前で検索
+    // placeId がなければ名前+エリアでテキスト検索
     const body = id
       ? { placeId: id }
       : { name: rec.title, address: rec.address ?? '' };
 
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/place-detail`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+    try {
+      const res = await fetch(`${API_BASE}/api/place-detail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (d.ok && d.place) {
+        const p = d.place;
+        setExtra({
+          phone: p.phone ?? null,
+          website: p.website ?? null,
+          reviews: p.reviews ?? [],
+          loaded: true,
         });
-        const d = await res.json();
-        if (d.ok && d.place) {
-          setExtra({
-            phone: d.place.phone ?? null,
-            website: d.place.website ?? null,
-            reviews: d.place.reviews ?? [],
-            loaded: true,
-          });
-          // 写真・営業時間も上書き（既存データより新鮮）
-          setRec(prev => prev ? {
-            ...prev,
-            photoUrls: d.place.photoUrls?.length ? d.place.photoUrls : prev.photoUrls,
-            openingHoursText: d.place.openingHoursText ?? prev.openingHoursText,
-            openNow: d.place.openNow ?? prev.openNow,
-          } : prev);
-        } else {
-          setExtra(prev => ({ ...prev, loaded: true }));
-        }
-      } catch {
+        // APIから返ってきた全フィールドで rec を上書き（お気に入りの不足データを補完）
+        setRec(prev => prev ? {
+          ...prev,
+          address:          p.address        || prev.address,
+          rating:           p.rating         ?? prev.rating,
+          userRatingCount:  p.userRatingCount ?? prev.userRatingCount,
+          openNow:          p.openNow         ?? prev.openNow,
+          openingHoursText: p.openingHoursText || prev.openingHoursText,
+          priceLevel:       p.priceLevel      || prev.priceLevel,
+          mapUrl:           p.mapUrl          || prev.mapUrl,
+          photoUrls:        p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
+          phone:            p.phone           ?? prev.phone,
+          website:          p.website         ?? prev.website,
+          lat:              p.lat             ?? prev.lat,
+          lng:              p.lng             ?? prev.lng,
+        } : prev);
+      } else {
         setExtra(prev => ({ ...prev, loaded: true }));
+        setFetchError(true);
       }
-    })();
-  }, []);
+    } catch {
+      setExtra(prev => ({ ...prev, loaded: true }));
+      setFetchError(true);
+    }
+  }, [rec?.title, rec?.placeId]);
+
+  useEffect(() => { fetchDetail(); }, []);
 
   const onPhotoScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (photoWidth <= 0) return;
@@ -366,8 +445,25 @@ export default function PlaceDetailPage() {
             ) : null}
           </View>
 
-          {/* 評価バー */}
-          {rec.rating != null && (
+          {/* ── データ読み込み中：スケルトン ── */}
+          {!extra.loaded ? (
+            <>
+              <View style={s.loadingBanner}>
+                <ActivityIndicator size="small" color="#C084FC" />
+                <Text style={s.loadingText}>詳細情報を読み込み中...</Text>
+              </View>
+              <InfoSkeleton />
+            </>
+          ) : fetchError && rec.rating == null && !rec.address ? (
+            /* ── APIエラー（リトライボタン） ── */
+            <TouchableOpacity style={s.retryBtn} onPress={fetchDetail} activeOpacity={0.8}>
+              <RefreshCw size={14} color="#C084FC" strokeWidth={2} />
+              <Text style={s.retryText}>情報の読み込みに失敗しました。タップして再試行</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* 評価バー（データあり時のみ） */}
+          {extra.loaded && rec.rating != null && (
             <View style={s.ratingBar}>
               <Text style={s.ratingBig}>{rec.rating.toFixed(1)}</Text>
               <View style={s.ratingMid}>
@@ -386,13 +482,14 @@ export default function PlaceDetailPage() {
           )}
 
           {/* 価格帯 */}
-          {rec.priceLevel && (
+          {extra.loaded && rec.priceLevel && (
             <View style={s.pricePill}>
               <Text style={s.priceText}>{rec.priceLevel}</Text>
             </View>
           )}
 
-          {/* ─── 情報カード ─── */}
+          {/* ─── 情報カード（読み込み完了後のみ） ─── */}
+          {extra.loaded && (rec.address || rec.stationText || rec.distanceText || extra.phone || extra.website) && (
           <View style={s.infoCard}>
             {/* 住所 */}
             {rec.address ? (
@@ -453,9 +550,10 @@ export default function PlaceDetailPage() {
               </TouchableOpacity>
             ) : null}
           </View>
+          )}
 
           {/* ─── 営業時間セクション ─── */}
-          {hoursRows.length > 0 && (
+          {extra.loaded && hoursRows.length > 0 && (
             <View style={s.section}>
               <View style={s.sectionHeader}>
                 <Clock size={15} color="#C084FC" strokeWidth={2} />
@@ -486,7 +584,7 @@ export default function PlaceDetailPage() {
           )}
 
           {/* ─── このスポットについて（#なし） ─── */}
-          {(descFeatures.length > 0 || tagFeatures.length > 0) && (
+          {extra.loaded && (descFeatures.length > 0 || tagFeatures.length > 0) && (
             <View style={s.section}>
               <Text style={s.sectionTitle}>このスポットについて</Text>
               {descFeatures.map((f, i) => (
@@ -566,6 +664,24 @@ const rs = StyleSheet.create({
 // ── メインスタイル ────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8F9FB' },
+
+  // ローディング
+  loadingBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(192,132,252,0.08)',
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.15)',
+  },
+  loadingText: { fontSize: 13, color: '#7C3AED', fontWeight: '500' },
+
+  // リトライ
+  retryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(192,132,252,0.06)',
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
+  },
+  retryText: { flex: 1, fontSize: 13, color: '#7C3AED' },
 
   stickyHeader: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
