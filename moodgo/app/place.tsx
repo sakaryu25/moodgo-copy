@@ -18,6 +18,7 @@ import {
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -285,6 +286,7 @@ export default function PlaceDetailPage() {
     loaded: false,
   });
   const [fetchError, setFetchError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoWidth, setPhotoWidth] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
@@ -294,8 +296,8 @@ export default function PlaceDetailPage() {
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
 
-  // Google Place Detail APIから完全な情報を取得
-  const fetchDetail = useCallback(async () => {
+  // Google Place Detail APIから完全な情報を取得（retries: 最大試行回数）
+  const fetchDetail = useCallback(async (retries = 1) => {
     if (!rec) return;
     setFetchError(false);
     setExtra(prev => ({ ...prev, loaded: false }));
@@ -306,45 +308,60 @@ export default function PlaceDetailPage() {
       ? { placeId: id }
       : { name: rec.title, address: rec.address ?? '' };
 
-    try {
-      const res = await fetch(`${API_BASE}/api/place-detail`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const d = await res.json();
-      if (d.ok && d.place) {
-        const p = d.place;
-        // APIデータをすべて extra に格納（rec のAI生成データより確実に優先される）
-        setExtra({
-          phone: p.phone ?? null,
-          website: p.website ?? null,
-          reviews: p.reviews ?? [],
-          openingHoursText: p.openingHoursText ?? null,
-          openNow: p.openNow ?? null,
-          rating: typeof p.rating === 'number' ? p.rating : null,
-          userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
-          priceLevel: p.priceLevel ?? null,
-          address: p.address || null,
-          loaded: true,
+    const attempt = async (): Promise<boolean> => {
+      try {
+        const res = await fetch(`${API_BASE}/api/place-detail`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
         });
-        // rec は写真URL・mapUrl・位置情報のみ更新（これらは extra に持たない）
-        setRec(prev => prev ? {
-          ...prev,
-          mapUrl:    p.mapUrl    || prev.mapUrl,
-          photoUrls: p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
-          lat:       p.lat       ?? prev.lat,
-          lng:       p.lng       ?? prev.lng,
-        } : prev);
-      } else {
-        setExtra(prev => ({ ...prev, loaded: true }));
-        setFetchError(true);
+        const d = await res.json();
+        if (d.ok && d.place) {
+          const p = d.place;
+          setExtra({
+            phone: p.phone ?? null,
+            website: p.website ?? null,
+            reviews: p.reviews ?? [],
+            openingHoursText: p.openingHoursText ?? null,
+            openNow: p.openNow ?? null,
+            rating: typeof p.rating === 'number' ? p.rating : null,
+            userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
+            priceLevel: p.priceLevel ?? null,
+            address: p.address || null,
+            loaded: true,
+          });
+          setRec(prev => prev ? {
+            ...prev,
+            mapUrl:    p.mapUrl    || prev.mapUrl,
+            photoUrls: p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
+            lat:       p.lat       ?? prev.lat,
+            lng:       p.lng       ?? prev.lng,
+          } : prev);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
       }
-    } catch {
+    };
+
+    let ok = await attempt();
+    // 失敗時は1回だけ自動リトライ（1秒後）
+    if (!ok && retries > 0) {
+      await new Promise(r => setTimeout(r, 1000));
+      ok = await attempt();
+    }
+    if (!ok) {
       setExtra(prev => ({ ...prev, loaded: true }));
       setFetchError(true);
     }
   }, [rec?.title, rec?.placeId]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchDetail(1);
+    setRefreshing(false);
+  }, [fetchDetail]);
 
   useEffect(() => { fetchDetail(); }, []);
 
@@ -395,10 +412,11 @@ export default function PlaceDetailPage() {
   const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
   const displayPriceLevel = extra.loaded ? (extra.priceLevel ?? rec.priceLevel) : rec.priceLevel;
   const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
-  // 営業時間: APIデータ優先（必ず全曜日分が返る）
+  // 営業時間: APIデータ優先。ロード前のみ rec のデータを暫定表示
+  // （extra.loaded 後は AI生成の不完全データにフォールバックしない）
   const hoursSource = extra.loaded
-    ? (extra.openingHoursText ?? rec.openingHoursText)
-    : rec.openingHoursText;
+    ? extra.openingHoursText                          // APIから取得した確実なデータのみ
+    : rec.openingHoursText;                           // 読み込み中は暫定表示
   if (__DEV__ && hoursSource) {
     console.log('[place.tsx] hoursSource lines:', hoursSource.split('\n').length, hoursSource.slice(0, 80));
   }
@@ -441,6 +459,14 @@ export default function PlaceDetailPage() {
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#C084FC"
+            colors={['#C084FC', '#F472B6']}
+          />
+        }
       >
         {/* ── ヒーロー写真 ── */}
         <View style={s.heroWrap} onLayout={e => setPhotoWidth(e.nativeEvent.layout.width)}>
