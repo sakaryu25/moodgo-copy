@@ -3477,8 +3477,52 @@ async function fetchGooglePlacesSupplement(
   apiKey: string,
   limit: number = 10,
   budget?: number,
+  deepDiveL1: string = "",
 ): Promise<Array<Record<string, unknown>>> {
   try {
+    // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
+    const DEEP_DIVE_TYPES: Record<string, string[]> = {
+      // まったり
+      "自然の中":                       ["park", "nature_park", "hiking_area"],
+      "カフェ":                          ["cafe", "coffee_shop"],
+      "温泉スパ":                        ["spa", "sauna"],
+      "温泉サウナ":                      ["spa", "sauna"],
+      "絶景スポット":                    ["viewpoint", "scenic_point", "tourist_attraction"],
+      "ブックカフェ・隠れカフェ":        ["cafe", "book_store"],
+      "アニマルカフェ":                  ["pet_store", "zoo"],
+      "景色が良いカフェ":                ["cafe", "scenic_point"],
+      "流行りのカフェ":                  ["cafe", "coffee_shop"],
+      "サウナ・岩盤浴":                  ["spa", "sauna", "fitness_center"],
+      // わいわい
+      "体を動かして遊びたい":            ["bowling_alley", "amusement_park", "sports_complex"],
+      "歌って飲んで騒ぎたい":            ["karaoke", "bar", "night_club"],
+      "非日常の体験で盛り上がりたい":    ["amusement_park", "tourist_attraction"],
+      // 自然
+      "波の音と海風":                    ["beach", "marina"],
+      "森の中で深呼吸":                  ["park", "nature_park", "hiking_area"],
+      "広い芝生でゴロゴロ":              ["park", "national_park"],
+      "圧倒的な絶景":                    ["viewpoint", "scenic_point"],
+      // ドライブ
+      "海沿いを爽快に走りたい":          ["beach", "marina", "scenic_point"],
+      "綺麗な景色や夜景を見に行きたい":  ["viewpoint", "scenic_point", "tourist_attraction"],
+      "道の駅でご当地グルメ":            ["restaurant", "food"],
+      "郊外の大型施設に行きたい":        ["shopping_mall", "department_store"],
+      // 集中
+      "カフェで作業・勉強したい":        ["cafe", "coffee_shop", "library"],
+      "静かな専用スペースで集中したい":  ["library", "university"],
+      // 運動
+      "がっつり汗を流してトレーニング":  ["gym", "fitness_center", "sports_complex"],
+      "打って投げてストレス発散":        ["driving_range", "sports_complex"],
+      "遊び感覚でわいわい":              ["bowling_alley", "amusement_park"],
+      "外で風を感じながらスポーツ":      ["park", "sports_complex", "hiking_area"],
+      // 旅行
+      "パワースポット":                  ["hindu_temple", "mosque", "tourist_attraction"],
+      "パワースポットへ":                ["hindu_temple", "mosque", "tourist_attraction"],
+      "別世界のテーマパーク":            ["amusement_park", "tourist_attraction"],
+      "知らない街をぶらぶら":            ["shopping", "market", "tourist_attraction"],
+      "息を呑む絶景":                    ["viewpoint", "scenic_point"],
+    };
+
     const MOOD_TYPES: Record<string, string[]> = {
       // 完全名
       "お腹すいた":         ["restaurant"],
@@ -3498,7 +3542,9 @@ async function fetchGooglePlacesSupplement(
       "運動":       ["gym", "sports_complex", "park"],
       "旅行":       ["tourist_attraction", "amusement_park"],
     };
-    const types = MOOD_TYPES[mood] ?? ["tourist_attraction"];
+
+    // 深掘りタグが一致すればそちらを優先（より具体的な結果）
+    const types = DEEP_DIVE_TYPES[deepDiveL1] ?? MOOD_TYPES[mood] ?? ["tourist_attraction"];
     const radiusM = Math.min(radiusKm * 1000, 50000);
 
     // 毎回異なる結果を得るため、緯度経度に小さなランダムジッターを加える（±0.003° ≈ ±300m）
@@ -3990,8 +4036,21 @@ export async function POST(request: Request) {
       }
 
       const { spatialSearch } = await import("@/lib/spatial-search");
-      const sbMustTags = [...userTags.mustTags];
-      const sbNiceTags = [...userTags.niceToHaveTags];
+      const allMustTags = [...userTags.mustTags];
+      const sbNiceTags  = [...userTags.niceToHaveTags];
+
+      // ── Supabase 検索タグ戦略 ──────────────────────────────────────────────
+      // mustTags の先頭は気分タグ（#まったりしたい 等）、2番目以降が深掘りカテゴリタグ
+      // 【問題】気分タグをmustTagsに含めると「全気分対応」タグを持つスポットが
+      //         どの気分でも同じように返ってきてしまう（毎回同じ結果の原因）
+      // 【解決】深掘りタグがある場合 → 深掘りタグのみで検索（より具体的に絞り込み）
+      //         深掘りタグがない場合  → 気分タグで検索（従来通り）
+      const moodBaseTag  = allMustTags[0];                      // "#まったりしたい" など
+      const deepDiveTags = allMustTags.slice(1);                // 深掘りで追加されたタグ
+      const sbMustTags   = deepDiveTags.length > 0
+        ? deepDiveTags                                          // 深掘りタグのみで絞り込み
+        : allMustTags;                                          // 気分タグのみ（深掘りなし）
+      const sbFallbackTags = moodBaseTag ? [moodBaseTag] : [];  // 気分タグはフォールバックへ
 
       // クイズ Step4 で選んだ距離感を優先使用（GPS使用時のみ）
       const hasLocation = !!(answers.originLat && answers.originLng);
@@ -4006,7 +4065,7 @@ export async function POST(request: Request) {
 
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
-        fallbackTags: sbMustTags.slice(0, 1),
+        fallbackTags: sbFallbackTags,  // 気分タグにフォールバック（深掘りタグが0件の場合）
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm,
@@ -4035,12 +4094,12 @@ export async function POST(request: Request) {
         // deepDiveL1 を dynamicQs から取得（Yahoo キーワード選択に使用）
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
 
-        // Google Places 補足検索（常に最大10件、予算フィルター付き）
+        // Google Places 補足検索（常に最大10件、予算フィルター付き、deepDiveL1で精度向上）
         const googleSupplements = hasLocation
           ? await fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
               answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10,
-              answers.budget
+              answers.budget, deepDiveL1
             )
           : [];
 
