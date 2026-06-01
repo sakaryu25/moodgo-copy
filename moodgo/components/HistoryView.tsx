@@ -6,7 +6,6 @@ import {
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,7 +14,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
-import PlaceCard from './PlaceCard';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const GRAD_LIGHT: [string, string, string] = [
@@ -30,7 +28,7 @@ type Props = {
   onSelectHistoryItem: (item: HistoryItem | null) => void;
   onClearHistory: () => void;
   favorites: FavoriteItem[];
-  onToggleFavorite: (rec: Recommendation) => void;
+  onToggleFavorite?: (rec: Recommendation) => void;
   onResearch?: (item: HistoryItem) => void;
   lang?: 'ja' | 'en';
 };
@@ -170,7 +168,6 @@ function DetailView({
 }) {
   const recCount = item.recommendations?.length ?? 0;
   const sa = item.savedAnswers ?? {};
-  const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
 
   // ResultsView と同じスタイルの条件チップ
   type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -205,40 +202,32 @@ function DetailView({
           <Text style={s.backText}>{t.backToList}</Text>
         </TouchableOpacity>
 
-        {/* 気分アイコン + テキスト */}
-        <View style={s.moodRow}>
-          <View style={s.moodIconBg}>
-            <Sparkles size={22} color="#fff" strokeWidth={2} />
-          </View>
-          <Text style={s.detailMoodBig}>{item.mood}</Text>
-        </View>
+        {/* 気分テキスト */}
+        <Text style={s.detailMoodBig}>{item.mood}</Text>
 
-        {/* ミニ条件チップ行（ヘッダー内） */}
-        <View style={s.headerMiniChips}>
-          {item.companion ? (
-            <View style={s.headerMiniChip}>
-              <Users size={11} color="rgba(255,255,255,0.9)" />
-              <Text style={s.headerMiniChipText}>{item.companion}</Text>
+        {/* 今回の条件チップ（ヘッダー内・白半透明スタイル） */}
+        {condChips.length > 0 && (
+          <View style={s.headerCondSection}>
+            <View style={s.headerCondHeaderRow}>
+              <List size={13} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+              <Text style={s.headerCondTitle}>{t.conditionsLabel}</Text>
+              {recCount > 0 && (
+                <View style={s.headerRecBadge}>
+                  <Text style={s.headerRecBadgeText}>{t.recCount(recCount)}</Text>
+                </View>
+              )}
             </View>
-          ) : null}
-          {item.budget != null && item.budget > 0 ? (
-            <View style={s.headerMiniChip}>
-              <Banknote size={11} color="rgba(255,255,255,0.9)" />
-              <Text style={s.headerMiniChipText}>¥{item.budget.toLocaleString()}</Text>
+            <View style={s.headerCondChips}>
+              {condChips.map((c, i) => (
+                <View key={i} style={s.headerCondChip}>
+                  <c.Icon size={12} color="rgba(255,255,255,0.8)" strokeWidth={2} />
+                  <Text style={s.headerCondChipLabel}>{c.label}</Text>
+                  <Text style={s.headerCondChipValue}>{c.value}</Text>
+                </View>
+              ))}
             </View>
-          ) : null}
-          {(sa.distanceFeeling || (sa.radiusKm != null)) ? (
-            <View style={s.headerMiniChip}>
-              <Navigation size={11} color="rgba(255,255,255,0.9)" />
-              <Text style={s.headerMiniChipText}>{sa.distanceFeeling ?? `${sa.radiusKm}km`}</Text>
-            </View>
-          ) : null}
-          {recCount > 0 && (
-            <View style={[s.headerMiniChip, s.headerMiniChipGreen]}>
-              <Text style={s.headerMiniChipGreenText}>{t.recCount(recCount)}</Text>
-            </View>
-          )}
-        </View>
+          </View>
+        )}
 
         {/* エリア + 日時 */}
         <View style={s.headerFooterRow}>
@@ -250,39 +239,7 @@ function DetailView({
           ) : null}
           <Text style={s.detailDate}>{formatFullDate(item.createdAt, lang)}</Text>
         </View>
-
-        {/* トップ推薦スポット */}
-        {item.topRecommendation ? (
-          <View style={s.topSpotRow}>
-            <Text style={s.topSpotLabel}>おすすめ No.1</Text>
-            <Text style={s.topSpotName} numberOfLines={1}>{item.topRecommendation}</Text>
-          </View>
-        ) : null}
       </LinearGradient>
-
-      {/* 条件チップ一覧（ResultsView「今回の条件」と同スタイル） */}
-      {condChips.length > 0 && (
-        <View style={s.condSection}>
-          <View style={s.condHeaderRow}>
-            <List size={15} color="#374151" strokeWidth={2} />
-            <Text style={s.condSectionTitle}>{t.conditionsLabel}</Text>
-            {recCount > 0 && (
-              <View style={s.recCountBadge}>
-                <Text style={s.recCountBadgeText}>{t.recCount(recCount)}</Text>
-              </View>
-            )}
-          </View>
-          <View style={s.condChips}>
-            {condChips.map((c, i) => (
-              <View key={i} style={s.condChip}>
-                <c.Icon size={13} color="#A78BFA" strokeWidth={2} />
-                <Text style={s.condChipLabel}>{c.label}</Text>
-                <Text style={s.condChipValue}>{c.value}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
 
       {/* 再検索ボタン */}
       {item.savedAnswers?.mood && onResearch && (
@@ -293,34 +250,6 @@ function DetailView({
           </LinearGradient>
         </TouchableOpacity>
       )}
-
-      {/* おすすめスポット */}
-      <View style={{ paddingHorizontal: 0, paddingTop: 8 }}>
-        {item.recommendations && item.recommendations.length > 0
-          ? item.recommendations.map((rec, i) => (
-            <PlaceCard
-              key={`${rec.title}-${i}`}
-              item={rec}
-              isFavorited={isFav(rec.title)}
-              onToggleFavorite={() => onToggleFavorite(rec)}
-              lang={lang}
-              isVisited={visitedSet.has(rec.title)}
-              onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
-              onReport={() =>
-                Alert.alert(t.reportTitle, t.reportMsg, [
-                  { text: t.reportCancel, style: 'cancel' },
-                  { text: t.reportSend, style: 'destructive' },
-                ])
-              }
-            />
-          ))
-          : (
-            <View style={s.emptyBox}>
-              <Text style={s.emptyText}>{t.noRecs}</Text>
-            </View>
-          )
-        }
-      </View>
     </ScrollView>
   );
 }
@@ -342,7 +271,7 @@ export default function HistoryView({
         t={t}
         lang={lang}
         isFav={isFav}
-        onToggleFavorite={onToggleFavorite}
+        onToggleFavorite={onToggleFavorite ?? (() => {})}
         onResearch={onResearch}
         insets={insets}
         onBack={() => onSelectHistoryItem(null)}
@@ -526,49 +455,27 @@ const s = StyleSheet.create({
   },
   backBtn:        { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4 },
   backText:       { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.95)' },
-  moodRow:        { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
-  moodIconBg: {
-    width: 48, height: 48, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  detailMoodBig:  { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: -1, lineHeight: 42, flex: 1 },
-  headerMiniChips:{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  headerMiniChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  headerMiniChipText:      { fontSize: 12, fontWeight: '600', color: '#fff' },
-  headerMiniChipGreen:     { backgroundColor: 'rgba(16,185,129,0.3)' },
-  headerMiniChipGreenText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  detailMoodBig:  { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: -1, lineHeight: 44 },
   headerFooterRow: { gap: 3 },
   areaRow:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
   detailAreaSmall:{ fontSize: 14, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
   detailDate:     { fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: '400' },
-  topSpotRow: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
-    marginTop: 2,
-  },
-  topSpotLabel:   { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, marginBottom: 3 },
-  topSpotName:    { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: -0.3 },
 
-  // ── 条件セクション（ResultsView「今回の条件」準拠） ──
-  condSection:      { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  condHeaderRow:    { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
-  condSectionTitle: { fontSize: 13, fontWeight: '700', color: '#374151', flex: 1 },
-  recCountBadge:    { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0' },
-  recCountBadgeText:{ fontSize: 11, fontWeight: '600', color: '#10B981' },
-  condChips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  condChip: {
+  // ── ヘッダー内「今回の条件」 ──
+  headerCondSection:    { gap: 8 },
+  headerCondHeaderRow:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  headerCondTitle:      { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)', flex: 1 },
+  headerRecBadge:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(16,185,129,0.35)' },
+  headerRecBadgeText:   { fontSize: 11, fontWeight: '700', color: '#fff' },
+  headerCondChips:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  headerCondChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FAF8FF', borderRadius: 10,
-    paddingHorizontal: 9, paddingVertical: 6,
-    borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
   },
-  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#A78BFA' },
-  condChipValue: { fontSize: 12, fontWeight: '700', color: '#1E0753' },
+  headerCondChipLabel:  { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+  headerCondChipValue:  { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   // ── 再検索ボタン ──
   reSearchBtn:  { marginHorizontal: 16, marginTop: 14, marginBottom: 2, borderRadius: 14, overflow: 'hidden' },
