@@ -297,14 +297,15 @@ export default function PlaceDetailPage() {
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
 
-  // Google Place Detail APIから完全な情報を取得（retries: 最大試行回数）
+  // Google Place Detail APIから完全な情報を取得
   const fetchDetail = useCallback(async (retries = 1) => {
     if (!rec) return;
     setFetchError(false);
     setExtra(prev => ({ ...prev, loaded: false }));
 
-    // APIを1回呼び出してExtraデータをセットする共通処理
-    const callApi = async (body: Record<string, unknown>): Promise<boolean> => {
+    // APIを呼び出してデータを返す（stateはセットしない）
+    type PlaceData = Record<string, unknown>;
+    const fetchPlace = async (body: Record<string, unknown>): Promise<PlaceData | null> => {
       try {
         const res = await fetch(`${API_BASE}/api/place-detail`, {
           method: 'POST',
@@ -312,64 +313,77 @@ export default function PlaceDetailPage() {
           body: JSON.stringify(body),
         });
         const d = await res.json();
-        if (d.ok && d.place) {
-          const p = d.place;
-          setExtra({
-            phone: p.phone ?? null,
-            website: p.website ?? null,
-            reviews: p.reviews ?? [],
-            openingHoursText: p.openingHoursText ?? null,
-            openNow: p.openNow ?? null,
-            rating: typeof p.rating === 'number' ? p.rating : null,
-            userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
-            priceLevel: p.priceLevel ?? null,
-            address: p.address || null,
-            mapUrl: p.mapUrl || null,  // Google Places の正しいURL
-            loaded: true,
-          });
-          setRec(prev => prev ? {
-            ...prev,
-            mapUrl:    p.mapUrl    || prev.mapUrl,
-            photoUrls: p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
-            lat:       p.lat       ?? prev.lat,
-            lng:       p.lng       ?? prev.lng,
-          } : prev);
-          return true;
-        }
-        return false;
+        if (d.ok && d.place) return d.place as PlaceData;
+        return null;
       } catch {
-        return false;
+        return null;
       }
     };
 
-    // ① placeId がある場合はまずplaceIdで試みる
-    // ② 失敗したら名前+住所でテキスト検索にフォールバック（placeIdが古い/誤りの場合に対応）
-    // ③ それも失敗した場合はリトライ
-    const id = rec.placeId;
-    let ok = false;
+    // データの品質を判定（口コミまたは営業時間があれば「完全」）
+    const isComplete = (p: PlaceData) =>
+      ((p.reviews as unknown[])?.length ?? 0) > 0 || !!p.openingHoursText;
 
-    if (id) {
-      ok = await callApi({ placeId: id });
-      // placeIdで失敗 → 名前+住所で再検索（正しいplaceIdを取り直す）
-      if (!ok) {
-        ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+    // stateに反映
+    const applyData = (p: PlaceData) => {
+      setExtra({
+        phone: (p.phone as string) ?? null,
+        website: (p.website as string) ?? null,
+        reviews: (p.reviews as Review[]) ?? [],
+        openingHoursText: (p.openingHoursText as string) ?? null,
+        openNow: (p.openNow as boolean) ?? null,
+        rating: typeof p.rating === 'number' ? p.rating : null,
+        userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
+        priceLevel: (p.priceLevel as string) ?? null,
+        address: (p.address as string) || null,
+        mapUrl: (p.mapUrl as string) || null,
+        loaded: true,
+      });
+      setRec(prev => prev ? {
+        ...prev,
+        mapUrl:    (p.mapUrl as string) || prev.mapUrl,
+        photoUrls: (p.photoUrls as string[])?.length ? (p.photoUrls as string[]) : prev.photoUrls,
+        lat:       (p.lat as number)    ?? prev.lat,
+        lng:       (p.lng as number)    ?? prev.lng,
+      } : prev);
+    };
+
+    const nameBody = { name: rec.title, address: rec.address ?? '' };
+    const idBody   = rec.placeId ? { placeId: rec.placeId } : null;
+
+    // 戦略:
+    // 1. placeIdで取得 → 口コミ・営業時間あり → 採用
+    // 2. placeIdで取得したが不完全 → 名前+住所で再取得 → より良い方を採用
+    // 3. placeIdなし / 失敗 → 名前+住所のみ
+    // 4. 全失敗 → 1秒後リトライ
+    let best: PlaceData | null = null;
+
+    if (idBody) {
+      const byId = await fetchPlace(idBody);
+      if (byId) {
+        best = byId;
+        // 不完全（口コミ・営業時間なし）なら名前検索でも試みる
+        if (!isComplete(byId)) {
+          const byName = await fetchPlace(nameBody);
+          // 名前検索の方が完全なデータを持っていれば優先
+          if (byName && isComplete(byName)) best = byName;
+        }
+      } else {
+        best = await fetchPlace(nameBody);
       }
     } else {
-      ok = await callApi({ name: rec.title, address: rec.address ?? '' });
+      best = await fetchPlace(nameBody);
     }
 
-    // それでも失敗時は1秒後にリトライ
-    if (!ok && retries > 0) {
-      await new Promise(r => setTimeout(r, 1000));
-      if (id) {
-        ok = await callApi({ placeId: id });
-        if (!ok) ok = await callApi({ name: rec.title, address: rec.address ?? '' });
-      } else {
-        ok = await callApi({ name: rec.title, address: rec.address ?? '' });
-      }
+    if (!best && retries > 0) {
+      await new Promise(r => setTimeout(r, 1200));
+      best = idBody ? (await fetchPlace(idBody) ?? await fetchPlace(nameBody))
+                    : await fetchPlace(nameBody);
     }
 
-    if (!ok) {
+    if (best) {
+      applyData(best);
+    } else {
       setExtra(prev => ({ ...prev, loaded: true }));
       setFetchError(true);
     }
