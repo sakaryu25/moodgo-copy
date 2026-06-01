@@ -270,13 +270,6 @@ export default function PlaceCard({
           </>
         )}
 
-        {/* 報告バッジ — top-left (赤・Web版と同じ) */}
-        {onReport && (
-          <TouchableOpacity onPress={onReport} style={s.reportBadge} activeOpacity={0.8}>
-            <Text style={s.reportIcon}>▶</Text>
-            <Text style={s.reportText}>{t.report}</Text>
-          </TouchableOpacity>
-        )}
 
         {/* ハートボタン — top-right */}
         <TouchableOpacity
@@ -454,6 +447,11 @@ export default function PlaceCard({
                 <Text style={s.footBtnText}>{t.hide}</Text>
               </TouchableOpacity>
             )}
+            {onReport && (
+              <TouchableOpacity onPress={onReport} style={s.footBtn}>
+                <Text style={s.footBtnText}>{t.report}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -495,15 +493,6 @@ const s = StyleSheet.create({
   pageDot:       { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.45)' },
   pageDotActive: { backgroundColor: '#fff', width: 16, borderRadius: 3 },
 
-  // 報告バッジ（赤・Web版と同じ）
-  reportBadge: {
-    position: 'absolute', top: 14, left: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(220,38,38,0.9)',
-    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6,
-  },
-  reportIcon: { fontSize: 9, color: '#fff' },
-  reportText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   // ハートボタン
   favBtn: {
