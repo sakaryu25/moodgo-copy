@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import {
-  ArrowLeft, ChevronDown, ChevronUp, Clock, ExternalLink, Globe,
+  ArrowLeft, ChevronDown, ChevronUp, Clock, Globe,
   MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -468,13 +468,27 @@ export default function PlaceDetailPage() {
         {/* ── ボディ ── */}
         <View style={s.body}>
 
-          {/* タイトル + vibeバッジ */}
+          {/* タイトル + vibeバッジ + マップボタン */}
           <View style={s.titleRow}>
-            <Text style={s.title}>{rec.title}</Text>
-            {rec.vibe ? (
-              <View style={s.vibeBadge}>
-                <Text style={s.vibeText}>{rec.vibe}</Text>
-              </View>
+            <View style={s.titleLeft}>
+              <Text style={s.title}>{rec.title}</Text>
+              {rec.vibe ? (
+                <View style={s.vibeBadge}>
+                  <Text style={s.vibeText}>{rec.vibe}</Text>
+                </View>
+              ) : null}
+            </View>
+            {rec.mapUrl ? (
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(rec.mapUrl!); }}
+                activeOpacity={0.82}
+                style={s.mapIconBtn}
+              >
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mapIconGrad}>
+                  <MapPin size={17} color="#fff" strokeWidth={2.5} />
+                </LinearGradient>
+                <Text style={s.mapIconLabel}>マップ</Text>
+              </TouchableOpacity>
             ) : null}
           </View>
 
@@ -625,19 +639,6 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
-          {/* ─── GoogleMAP CTAボタン ─── */}
-          <TouchableOpacity
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); rec.mapUrl && Linking.openURL(rec.mapUrl); }}
-            style={s.mapBtn}
-            activeOpacity={0.88}
-            disabled={!rec.mapUrl}
-          >
-            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
-              <MapPin size={18} color="#fff" strokeWidth={2.5} />
-              <Text style={s.mapBtnText}>Googleマップで見る</Text>
-              <ExternalLink size={14} color="rgba(255,255,255,0.75)" strokeWidth={2} />
-            </LinearGradient>
-          </TouchableOpacity>
 
         </View>
       </Animated.ScrollView>
@@ -746,7 +747,8 @@ const s = StyleSheet.create({
   body: { paddingHorizontal: 18, paddingTop: 20, gap: 14 },
 
   // タイトル行
-  titleRow: { gap: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  titleLeft: { flex: 1, gap: 8 },
   title: { fontSize: 26, fontWeight: '800', color: '#111827', letterSpacing: -0.5, lineHeight: 34 },
   vibeBadge: {
     alignSelf: 'flex-start',
@@ -755,6 +757,15 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(192,132,252,0.3)',
   },
   vibeText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
+  // マップアイコンボタン
+  mapIconBtn: { alignItems: 'center', gap: 5, paddingTop: 4 },
+  mapIconGrad: {
+    width: 46, height: 46, borderRadius: 23,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  },
+  mapIconLabel: { fontSize: 10, fontWeight: '700', color: '#7C3AED', letterSpacing: 0.3 },
 
   // 評価バー
   ratingBar: {
@@ -839,11 +850,4 @@ const s = StyleSheet.create({
   },
   tagText: { fontSize: 12, fontWeight: '600', color: '#7C3AED' },
 
-  // Googleマップボタン
-  mapBtn: { borderRadius: 18, overflow: 'hidden', marginTop: 4 },
-  mapBtnGrad: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, height: 54, paddingHorizontal: 20,
-  },
-  mapBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });
