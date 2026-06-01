@@ -1,5 +1,5 @@
 // ─── /api/place-detail ────────────────────────────────────────────────────────
-// Google Places (New) API から場所の詳細情報を取得する
+// Google Places (New) API から場所の詳細情報を取得する (v2)
 //
 // GET  ?placeId=ChIJ...
 // POST { placeId: string }
