@@ -203,6 +203,7 @@ type Props = {
   seenPlaceTitles?: string[];
   lang?: 'ja' | 'en';
   onPressDetail?: (rec: Recommendation) => void;
+  onSubmitPlaceRating?: (title: string, verdict: 'good' | 'bad') => void;
 };
 
 // ── Animated loading card ──────────────────────────────────────────────────────
@@ -269,6 +270,7 @@ export default function ResultsView(props: Props) {
     seenPlaceTitles = [],
     lang = 'ja',
     onPressDetail,
+    onSubmitPlaceRating,
   } = props;
   const t = T[lang];
 
@@ -530,8 +532,8 @@ export default function ResultsView(props: Props) {
             accentColor={accentColor}
             lang={lang}
             moodRating={placeRatings[item.title] ?? null}
-            onMoodMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' })}
-            onMoodNotMatch={() => onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' })}
+            onMoodMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' }); onSubmitPlaceRating?.(item.title, 'good'); }}
+            onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
             onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
           />

@@ -606,6 +606,38 @@ export default function Home() {
     if (loadingTimer.current) clearInterval(loadingTimer.current);
   };
 
+  // ─── Place rating (👍/👎) → API ─────────────────────────────────────────
+
+  const submitPlaceRating = async (placeTitle: string, verdict: 'good' | 'bad') => {
+    // Update liked session list
+    if (verdict === 'good') {
+      setLikedInSession((prev) => prev.includes(placeTitle) ? prev : [...prev, placeTitle]);
+    }
+    const rating = verdict === 'good' ? 5 : 1;
+    // sub_category: deepDiveL2 があればそれ、なければ deepDiveL1
+    const subCategoryLabel = deepDiveL2 || deepDiveL1 || selectedMood;
+    // /api/feedback
+    apiFetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mood: selectedMood, area: selectedArea,
+        age: profileAge, gender: profileGender,
+        companion: selectedCompanion,
+        topRecommendations: apiRecommendations.slice(0, 3).map((r) => r.title),
+        rating, visitedPlace: placeTitle,
+        likedPlaces: verdict === 'good' ? [placeTitle] : [],
+        mapClickedPlaces: [],
+      }),
+    }).catch(() => {});
+    // /api/mood-rating
+    apiFetch('/api/mood-rating', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_name: placeTitle, mood: selectedMood, sub_category: subCategoryLabel, verdict }),
+    }).catch(() => {});
+  };
+
   // ─── Toggle favorite ──────────────────────────────────────────────────
 
   const toggleFavorite = (rec: Recommendation) => {
@@ -916,6 +948,7 @@ export default function Home() {
           } catch {}
         }}
         onPressDetail={handlePressDetail}
+        onSubmitPlaceRating={submitPlaceRating}
       />
         </SlideUp>
       </View>
