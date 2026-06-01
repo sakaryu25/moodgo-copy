@@ -6,6 +6,7 @@ import {
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
+import PlaceCard from './PlaceCard';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const GRAD_LIGHT: [string, string, string] = [
@@ -155,19 +157,21 @@ function formatFullDate(dateStr: string | undefined, lang: 'ja' | 'en'): string 
 
 // ── 詳細ビューのサブコンポーネント ────────────────────────────────────────────
 function DetailView({
-  item, t, lang, isFav, onToggleFavorite, onResearch, insets, onBack,
+  item, t, lang, isFav, favorites, onToggleFavorite, onResearch, insets, onBack,
 }: {
   item: HistoryItem;
   t: TStrings;
   lang: 'ja' | 'en';
   isFav: (title: string) => boolean;
-  onToggleFavorite: (rec: Recommendation) => void;
+  favorites: FavoriteItem[];
+  onToggleFavorite?: (rec: Recommendation) => void;
   onResearch?: (item: HistoryItem) => void;
   insets: ReturnType<typeof useSafeAreaInsets>;
   onBack: () => void;
 }) {
   const recCount = item.recommendations?.length ?? 0;
   const sa = item.savedAnswers ?? {};
+  const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
 
   // ResultsView と同じスタイルの条件チップ
   type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -250,6 +254,34 @@ function DetailView({
           </LinearGradient>
         </TouchableOpacity>
       )}
+
+      {/* スポット一覧 */}
+      <View style={{ paddingTop: 8 }}>
+        {item.recommendations && item.recommendations.length > 0
+          ? item.recommendations.map((rec, i) => (
+            <PlaceCard
+              key={`${rec.title}-${i}`}
+              item={rec}
+              isFavorited={(favorites ?? []).some((f) => f.title === rec.title)}
+              onToggleFavorite={() => onToggleFavorite?.(rec)}
+              lang={lang}
+              isVisited={visitedSet.has(rec.title)}
+              onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
+              onReport={() =>
+                Alert.alert(t.reportTitle, t.reportMsg, [
+                  { text: t.reportCancel, style: 'cancel' },
+                  { text: t.reportSend, style: 'destructive' },
+                ])
+              }
+            />
+          ))
+          : (
+            <View style={s.emptyBox}>
+              <Text style={s.emptyText}>{t.noRecs}</Text>
+            </View>
+          )
+        }
+      </View>
     </ScrollView>
   );
 }
@@ -271,7 +303,8 @@ export default function HistoryView({
         t={t}
         lang={lang}
         isFav={isFav}
-        onToggleFavorite={onToggleFavorite ?? (() => {})}
+        favorites={favorites}
+        onToggleFavorite={onToggleFavorite}
         onResearch={onResearch}
         insets={insets}
         onBack={() => onSelectHistoryItem(null)}
