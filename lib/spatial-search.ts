@@ -197,20 +197,26 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
     }
 
     if (rows.length > 0) {
-      // minRadiusKm フィルタ（遠出モード: 近すぎる場所を後回し）
+      // ── Fisher-Yates シャッフル（インプレース）─────────────────────────────
+      const shuffle = <T>(arr: T[]): T[] => {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      };
+
+      // ── 遠端バイアス + グループ内シャッフル ──────────────────────────────────
+      // 選択した距離の外縁部（minRadiusKm以上）を優先し、足りなければ近場で補完
+      // グループ内はシャッフルして毎回異なる結果を返す
       if (minRadiusKm > 0) {
         const far  = rows.filter(r => (r.distance_m / 1000) >= minRadiusKm);
         const near = rows.filter(r => (r.distance_m / 1000) <  minRadiusKm);
-        rows = [...far, ...near];
-      }
-
-      // ── 毎回異なる結果を返すためシャッフル（Fisher-Yates）──────────────────
-      // 同じ位置・タグでも検索のたびに異なるスポットが選ばれる
-      if (rows.length > limit) {
-        for (let i = rows.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [rows[i], rows[j]] = [rows[j], rows[i]];
-        }
+        // 各グループ内でシャッフル（far グループが優先、near は補完）
+        rows = [...shuffle(far), ...shuffle(near)];
+      } else {
+        // minRadiusKm なし: 全件シャッフルで毎回異なる結果
+        shuffle(rows);
       }
 
       const sliced = rows.slice(0, limit);
