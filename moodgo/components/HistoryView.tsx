@@ -245,16 +245,6 @@ function DetailView({
         </View>
       </LinearGradient>
 
-      {/* 再検索ボタン */}
-      {item.savedAnswers?.mood && onResearch && (
-        <TouchableOpacity onPress={() => onResearch(item)} style={s.reSearchBtn} activeOpacity={0.8}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.reSearchGrad}>
-            <RotateCcw size={16} color="#fff" />
-            <Text style={s.reSearchText}>{t.reSearch}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
-
       {/* スポット一覧 */}
       <View style={{ paddingTop: 8 }}>
         {item.recommendations && item.recommendations.length > 0
