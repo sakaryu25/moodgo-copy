@@ -12,6 +12,7 @@ import {
   MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Svg, { Path, Rect, Circle, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
 import {
   ActivityIndicator,
   Animated,
@@ -113,6 +114,29 @@ type ExtraDetail = {
   address?: string | null;
   loaded?: boolean;
 };
+
+// ── Instagram アイコン ────────────────────────────────────────────────────────
+function IconInstagram({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Defs>
+        <SvgGrad id="igGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+          <Stop offset="0%"   stopColor="#FFDC80" />
+          <Stop offset="25%"  stopColor="#FCAF45" />
+          <Stop offset="50%"  stopColor="#F77737" />
+          <Stop offset="75%"  stopColor="#E1306C" />
+          <Stop offset="100%" stopColor="#833AB4" />
+        </SvgGrad>
+      </Defs>
+      {/* 外枠 */}
+      <Rect x="2" y="2" width="20" height="20" rx="6" ry="6" fill="url(#igGrad)" />
+      {/* 内側の白いリング（カメラレンズ） */}
+      <Circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none" />
+      {/* 右上の白い点 */}
+      <Circle cx="17.5" cy="6.5" r="1.2" fill="white" />
+    </Svg>
+  );
+}
 
 // ── 星表示 ────────────────────────────────────────────────────────────────────
 function StarRow({ rating, size = 13 }: { rating: number; size?: number }) {
@@ -530,7 +554,7 @@ export default function PlaceDetailPage() {
           )}
 
           {/* ─── 情報カード（読み込み完了後のみ） ─── */}
-          {extra.loaded && (displayAddress || rec.stationText || rec.distanceText || extra.phone || extra.website) && (
+          {extra.loaded && (
           <View style={s.infoCard}>
             {/* 住所 */}
             {displayAddress ? (
@@ -590,6 +614,27 @@ export default function PlaceDetailPage() {
                 </Text>
               </TouchableOpacity>
             ) : null}
+
+            {/* Instagram 検索 */}
+            <TouchableOpacity
+              style={[s.infoRow, s.infoRowBorder]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                const tag = encodeURIComponent(rec.title.replace(/\s+/g, ''));
+                Linking.openURL(`https://www.instagram.com/explore/tags/${tag}/`);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={s.infoIconWrap}>
+                <IconInstagram size={18} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>
+                  Instagramで検索
+                </Text>
+                <Text style={s.infoSubText}>#{rec.title.replace(/\s+/g, '')}</Text>
+              </View>
+            </TouchableOpacity>
           </View>
           )}
 
@@ -815,6 +860,7 @@ const s = StyleSheet.create({
   },
   infoText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, paddingTop: 4 },
   infoLink: { color: '#7C3AED' },
+  infoSubText: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
 
   // セクション共通
   section: {
