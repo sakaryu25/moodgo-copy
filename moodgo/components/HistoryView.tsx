@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Clock, ChevronLeft, ChevronRight, RotateCcw, Trash2,
   MapPin, Users, Banknote, Navigation, MessageSquare, Tag,
+  Sparkles, List,
 } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
@@ -48,11 +49,14 @@ type TStrings = {
   yesterday: string;
   thisWeek: string;
   older: string;
+  moodLabel: string;
   withLabel: string;
   budgetLabel: string;
   distanceLabel: string;
+  areaLabel: string;
   deepDiveLabel: string;
   freeWordLabel: string;
+  conditionsLabel: string;
   free: string;
   reportTitle: string;
   reportMsg: string;
@@ -62,54 +66,60 @@ type TStrings = {
 
 const T: Record<'ja' | 'en', TStrings> = {
   ja: {
-    backToList:    '戻る',
-    title:         '履歴',
-    sub:           'これまで見たおすすめ',
-    clear:         'クリア',
-    empty:         'まだ履歴はありません',
-    emptySub:      '気分から場所を探してみましょう！',
-    recCount:      (n: number) => `${n}件`,
-    reSearch:      '再検索',
-    noRecs:        '詳細なし',
-    today:         '今日',
-    yesterday:     '昨日',
-    thisWeek:      '今週',
-    older:         'それ以前',
-    withLabel:     '同伴',
-    budgetLabel:   '予算',
-    distanceLabel: '距離感',
-    deepDiveLabel: 'こだわり',
-    freeWordLabel: 'フリーワード',
-    free:          '無料',
-    reportTitle:   '報告',
-    reportMsg:     'この場所の情報に問題がありますか？',
-    reportCancel:  'キャンセル',
-    reportSend:    '報告する',
+    backToList:      '戻る',
+    title:           '履歴',
+    sub:             'これまで見たおすすめ',
+    clear:           'クリア',
+    empty:           'まだ履歴はありません',
+    emptySub:        '気分から場所を探してみましょう！',
+    recCount:        (n: number) => `${n}件`,
+    reSearch:        '再検索',
+    noRecs:          '詳細なし',
+    today:           '今日',
+    yesterday:       '昨日',
+    thisWeek:        '今週',
+    older:           'それ以前',
+    moodLabel:       '気分',
+    withLabel:       '誰と',
+    budgetLabel:     '予算',
+    distanceLabel:   '距離',
+    areaLabel:       'エリア',
+    deepDiveLabel:   'こだわり',
+    freeWordLabel:   'キーワード',
+    conditionsLabel: '今回の条件',
+    free:            '無料',
+    reportTitle:     '報告',
+    reportMsg:       'この場所の情報に問題がありますか？',
+    reportCancel:    'キャンセル',
+    reportSend:      '報告する',
   },
   en: {
-    backToList:    'Back',
-    title:         'History',
-    sub:           'Past recommendations',
-    clear:         'Clear',
-    empty:         'No history yet',
-    emptySub:      "Let's find a place by mood!",
-    recCount:      (n: number) => `${n} spots`,
-    reSearch:      'Re-search',
-    noRecs:        'No detail',
-    today:         'Today',
-    yesterday:     'Yesterday',
-    thisWeek:      'This Week',
-    older:         'Earlier',
-    withLabel:     'With',
-    budgetLabel:   'Budget',
-    distanceLabel: 'Distance',
-    deepDiveLabel: 'Preference',
-    freeWordLabel: 'Keyword',
-    free:          'Free',
-    reportTitle:   'Report',
-    reportMsg:     'Is there an issue with this place?',
-    reportCancel:  'Cancel',
-    reportSend:    'Report',
+    backToList:      'Back',
+    title:           'History',
+    sub:             'Past recommendations',
+    clear:           'Clear',
+    empty:           'No history yet',
+    emptySub:        "Let's find a place by mood!",
+    recCount:        (n: number) => `${n} spots`,
+    reSearch:        'Re-search',
+    noRecs:          'No detail',
+    today:           'Today',
+    yesterday:       'Yesterday',
+    thisWeek:        'This Week',
+    older:           'Earlier',
+    moodLabel:       'Mood',
+    withLabel:       'With',
+    budgetLabel:     'Budget',
+    distanceLabel:   'Distance',
+    areaLabel:       'Area',
+    deepDiveLabel:   'Preference',
+    freeWordLabel:   'Keyword',
+    conditionsLabel: 'Conditions',
+    free:            'Free',
+    reportTitle:     'Report',
+    reportMsg:       'Is there an issue with this place?',
+    reportCancel:    'Cancel',
+    reportSend:      'Report',
   },
 };
 
@@ -135,9 +145,14 @@ function formatTime(dateStr: string | undefined, lang: 'ja' | 'en'): string {
 
 function formatFullDate(dateStr: string | undefined, lang: 'ja' | 'en'): string {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US', {
+  const d = new Date(dateStr);
+  const datePart = d.toLocaleDateString(lang === 'ja' ? 'ja-JP' : 'en-US', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
   });
+  const timePart = d.toLocaleTimeString(lang === 'ja' ? 'ja-JP' : 'en-US', {
+    hour: '2-digit', minute: '2-digit',
+  });
+  return `${datePart} ${timePart}`;
 }
 
 // ── 詳細ビューのサブコンポーネント ────────────────────────────────────────────
@@ -157,16 +172,20 @@ function DetailView({
   const sa = item.savedAnswers ?? {};
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
 
-  // 条件チップの定義
-  type CondChip = { icon: React.ReactNode; label: string; value: string };
+  // ResultsView と同じスタイルの条件チップ
+  type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  type CondChip = { Icon: LIcon; label: string; value: string };
   const condChips: CondChip[] = [];
 
-  if (item.companion)                       condChips.push({ icon: <Users size={13} color="#C084FC" />,       label: t.withLabel,     value: item.companion });
-  if (sa.distanceFeeling)                   condChips.push({ icon: <Navigation size={13} color="#C084FC" />,  label: t.distanceLabel, value: sa.distanceFeeling });
-  if (item.budget != null && item.budget > 0) condChips.push({ icon: <Banknote size={13} color="#C084FC" />, label: t.budgetLabel,   value: `¥${item.budget.toLocaleString()}` });
-  if ((sa as any).deepDiveL1)               condChips.push({ icon: <Tag size={13} color="#C084FC" />,         label: t.deepDiveLabel, value: (sa as any).deepDiveL1 });
-  if ((sa as any).deepDiveL2)               condChips.push({ icon: <Tag size={13} color="#C084FC" />,         label: t.deepDiveLabel, value: (sa as any).deepDiveL2 });
-  if (item.freeWord)                        condChips.push({ icon: <MessageSquare size={13} color="#C084FC" />, label: t.freeWordLabel, value: item.freeWord });
+  if (item.mood)                              condChips.push({ Icon: Sparkles,      label: t.moodLabel,      value: item.mood });
+  if (item.companion)                         condChips.push({ Icon: Users,         label: t.withLabel,      value: item.companion });
+  if (item.budget != null && item.budget > 0) condChips.push({ Icon: Banknote,      label: t.budgetLabel,    value: `〜¥${item.budget.toLocaleString()}` });
+  if (sa.distanceFeeling)                     condChips.push({ Icon: Navigation,    label: t.distanceLabel,  value: sa.distanceFeeling });
+  else if (sa.radiusKm)                       condChips.push({ Icon: Navigation,    label: t.distanceLabel,  value: `${sa.radiusKm}km以内` });
+  if (item.area)                              condChips.push({ Icon: MapPin,        label: t.areaLabel,      value: item.area });
+  if ((sa as any).deepDiveL1 && (sa as any).deepDiveL1 !== 'こだわらない') condChips.push({ Icon: Tag, label: t.deepDiveLabel, value: (sa as any).deepDiveL1 });
+  if ((sa as any).deepDiveL2 && (sa as any).deepDiveL2 !== 'こだわらない') condChips.push({ Icon: Tag, label: t.deepDiveLabel, value: (sa as any).deepDiveL2 });
+  if (item.freeWord)                          condChips.push({ Icon: MessageSquare, label: t.freeWordLabel,  value: item.freeWord });
 
   return (
     <ScrollView
@@ -196,22 +215,26 @@ function DetailView({
         <Text style={s.detailDate}>{formatFullDate(item.createdAt, lang)}</Text>
       </LinearGradient>
 
-      {/* 条件チップ一覧 */}
+      {/* 条件チップ一覧（ResultsView「今回の条件」と同スタイル） */}
       {condChips.length > 0 && (
         <View style={s.condSection}>
+          <View style={s.condHeaderRow}>
+            <List size={15} color="#374151" strokeWidth={2} />
+            <Text style={s.condSectionTitle}>{t.conditionsLabel}</Text>
+            {recCount > 0 && (
+              <View style={s.recCountBadge}>
+                <Text style={s.recCountBadgeText}>{t.recCount(recCount)}</Text>
+              </View>
+            )}
+          </View>
           <View style={s.condChips}>
             {condChips.map((c, i) => (
               <View key={i} style={s.condChip}>
-                {c.icon}
+                <c.Icon size={13} color="#A78BFA" strokeWidth={2} />
                 <Text style={s.condChipLabel}>{c.label}</Text>
                 <Text style={s.condChipValue}>{c.value}</Text>
               </View>
             ))}
-            {recCount > 0 && (
-              <View style={[s.condChip, s.condChipGreen]}>
-                <Text style={s.condChipGreenText}>{t.recCount(recCount)}</Text>
-              </View>
-            )}
           </View>
         </View>
       )}
@@ -449,19 +472,21 @@ const s = StyleSheet.create({
   detailAreaSmall:{ fontSize: 15, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
   detailDate:     { fontSize: 13, color: 'rgba(255,255,255,0.65)', fontWeight: '400', marginTop: 2 },
 
-  // ── 条件セクション ──
-  condSection: { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  condChips:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // ── 条件セクション（ResultsView「今回の条件」準拠） ──
+  condSection:      { backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  condHeaderRow:    { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 },
+  condSectionTitle: { fontSize: 13, fontWeight: '700', color: '#374151', flex: 1 },
+  recCountBadge:    { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0' },
+  recCountBadgeText:{ fontSize: 11, fontWeight: '600', color: '#10B981' },
+  condChips:        { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   condChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 999, backgroundColor: 'rgba(192,132,252,0.08)',
-    borderWidth: 1, borderColor: 'rgba(192,132,252,0.22)',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FAF8FF', borderRadius: 10,
+    paddingHorizontal: 9, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.2)',
   },
-  condChipLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
-  condChipValue: { fontSize: 12, color: '#6B21A8', fontWeight: '700' },
-  condChipGreen: { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
-  condChipGreenText: { fontSize: 12, color: '#10B981', fontWeight: '700' },
+  condChipLabel: { fontSize: 10, fontWeight: '600', color: '#A78BFA' },
+  condChipValue: { fontSize: 12, fontWeight: '700', color: '#1E0753' },
 
   // ── 再検索ボタン ──
   reSearchBtn:  { marginHorizontal: 16, marginTop: 14, marginBottom: 2, borderRadius: 14, overflow: 'hidden' },
