@@ -247,10 +247,12 @@ export default function Home() {
     })();
   }, []);
 
-  useEffect(() => { saveJSON(FAVORITES_KEY, favorites); }, [favorites]);
-  useEffect(() => { saveJSON(HISTORY_KEY, history); }, [history]);
-  useEffect(() => { saveJSON(FEEDBACK_KEY, pastFeedback); }, [pastFeedback]);
-  useEffect(() => { saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces]);
+  // profileLoaded が true になってから（初回ロード完了後）のみ保存する
+  // → 起動直後の空配列で保存データが上書きされるバグを防ぐ
+  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY, favorites); }, [favorites, profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY, history); }, [history, profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(FEEDBACK_KEY, pastFeedback); }, [pastFeedback, profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces, profileLoaded]);
 
   // ─── Featured ───────────────────────────────────────────────────────────
 
@@ -352,7 +354,7 @@ export default function Home() {
             topRecommendation: recs[0]?.title ?? '',
             createdAt: new Date().toISOString(), recommendations: recs, savedAnswers: {},
           };
-          setHistory((prev) => [newItem, ...prev].slice(0, 30));
+          setHistory((prev) => [newItem, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingRecommendations(false);
@@ -394,7 +396,7 @@ export default function Home() {
                 ...(natureDistancePref ? [{ question: 'nature_distance', answer: natureDistancePref }] : []),
               ],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingNature(false);
@@ -426,7 +428,7 @@ export default function Home() {
                 ...(onsenDistancePref ? [{ question: 'onsen_distance', answer: onsenDistancePref }] : []),
               ],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingOnsen(false);
@@ -458,7 +460,7 @@ export default function Home() {
                 ...(cafeDistancePref ? [{ question: 'cafe_distance', answer: cafeDistancePref }] : []),
               ],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingCafe(false);
@@ -485,7 +487,7 @@ export default function Home() {
               budget: budget ?? 10000,
               dynamicQs: [{ question: 'waiwai_subcategory', answer: waiWaiSubCategory ?? '' }],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingWaiWai(false);
@@ -514,7 +516,7 @@ export default function Home() {
               budget: budget ?? 10000,
               dynamicQs: [{ question: 'drive_subcategory', answer: dynamicAnswers['drive_subcategory'] }],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingDrive(false);
@@ -542,7 +544,7 @@ export default function Home() {
               budget: budget ?? 10000,
               dynamicQs: [{ question: 'focus_subcategory', answer: dynamicAnswers['focus_subcategory'] }],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingFocus(false);
@@ -570,7 +572,7 @@ export default function Home() {
               budget: budget ?? 10000,
               dynamicQs: [{ question: 'sports_subcategory', answer: dynamicAnswers['sports_subcategory'] }],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingSports(false);
@@ -598,7 +600,7 @@ export default function Home() {
               budget: budget ?? 10000,
               dynamicQs: [{ question: 'travel_subcategory', answer: dynamicAnswers['travel_subcategory'] }],
             },
-          }, ...prev].slice(0, 30));
+          }, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingTravel(false);
@@ -647,7 +649,7 @@ export default function Home() {
             createdAt: new Date().toISOString(),
             recommendations: recs, savedAnswers: answers,
           };
-          setHistory((prev) => [newItem, ...prev].slice(0, 30));
+          setHistory((prev) => [newItem, ...prev].slice(0, 500));
         }
       } catch {}
       setIsLoadingRecommendations(false);
