@@ -12,7 +12,6 @@ import {
   MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Svg, { Path, Rect, Circle, Defs, LinearGradient as SvgGrad, Stop } from 'react-native-svg';
 import {
   ActivityIndicator,
   Animated,
@@ -115,28 +114,33 @@ type ExtraDetail = {
   loaded?: boolean;
 };
 
-// ── Instagram アイコン ────────────────────────────────────────────────────────
-function IconInstagram({ size = 18 }: { size?: number }) {
+// ── Instagram アイコン（expo-linear-gradient + lucide Camera） ────────────────
+const IG_GRAD: [string, string, string] = ['#FCAF45', '#E1306C', '#833AB4'];
+function IconInstagram() {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Defs>
-        <SvgGrad id="igGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-          <Stop offset="0%"   stopColor="#FFDC80" />
-          <Stop offset="25%"  stopColor="#FCAF45" />
-          <Stop offset="50%"  stopColor="#F77737" />
-          <Stop offset="75%"  stopColor="#E1306C" />
-          <Stop offset="100%" stopColor="#833AB4" />
-        </SvgGrad>
-      </Defs>
-      {/* 外枠 */}
-      <Rect x="2" y="2" width="20" height="20" rx="6" ry="6" fill="url(#igGrad)" />
-      {/* 内側の白いリング（カメラレンズ） */}
-      <Circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.8" fill="none" />
-      {/* 右上の白い点 */}
-      <Circle cx="17.5" cy="6.5" r="1.2" fill="white" />
-    </Svg>
+    <LinearGradient
+      colors={IG_GRAD}
+      start={{ x: 0, y: 1 }}
+      end={{ x: 1, y: 0 }}
+      style={igStyle.wrap}
+    >
+      {/* カメラ外枠 */}
+      <View style={igStyle.outer}>
+        {/* レンズ */}
+        <View style={igStyle.lens} />
+        {/* 右上ドット */}
+        <View style={igStyle.dot} />
+      </View>
+    </LinearGradient>
   );
 }
+const igStyle = StyleSheet.create({
+  wrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  outer: { width: 18, height: 18, borderRadius: 5, borderWidth: 2, borderColor: '#fff',
+    alignItems: 'center', justifyContent: 'center' },
+  lens: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#fff' },
+  dot: { position: 'absolute', top: 1, right: 1, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#fff' },
+});
 
 // ── 星表示 ────────────────────────────────────────────────────────────────────
 function StarRow({ rating, size = 13 }: { rating: number; size?: number }) {
@@ -626,7 +630,7 @@ export default function PlaceDetailPage() {
               activeOpacity={0.7}
             >
               <View style={s.infoIconWrap}>
-                <IconInstagram size={18} />
+                <IconInstagram />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>
