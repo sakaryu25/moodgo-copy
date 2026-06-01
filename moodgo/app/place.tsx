@@ -104,6 +104,13 @@ type ExtraDetail = {
   phone?: string | null;
   website?: string | null;
   reviews?: Review[];
+  // APIから取得した確実なデータ（recのAI生成データより優先）
+  openingHoursText?: string | null;
+  openNow?: boolean | null;
+  rating?: number | null;
+  userRatingCount?: number | null;
+  priceLevel?: string | null;
+  address?: string | null;
   loaded?: boolean;
 };
 
@@ -280,27 +287,26 @@ export default function PlaceDetailPage() {
       const d = await res.json();
       if (d.ok && d.place) {
         const p = d.place;
+        // APIデータをすべて extra に格納（rec のAI生成データより確実に優先される）
         setExtra({
           phone: p.phone ?? null,
           website: p.website ?? null,
           reviews: p.reviews ?? [],
+          openingHoursText: p.openingHoursText ?? null,
+          openNow: p.openNow ?? null,
+          rating: typeof p.rating === 'number' ? p.rating : null,
+          userRatingCount: typeof p.userRatingCount === 'number' ? p.userRatingCount : null,
+          priceLevel: p.priceLevel ?? null,
+          address: p.address || null,
           loaded: true,
         });
-        // APIから返ってきた全フィールドで rec を上書き（お気に入りの不足データを補完）
+        // rec は写真URL・mapUrl・位置情報のみ更新（これらは extra に持たない）
         setRec(prev => prev ? {
           ...prev,
-          address:          p.address        || prev.address,
-          rating:           p.rating         ?? prev.rating,
-          userRatingCount:  p.userRatingCount ?? prev.userRatingCount,
-          openNow:          p.openNow         ?? prev.openNow,
-          openingHoursText: p.openingHoursText || prev.openingHoursText,
-          priceLevel:       p.priceLevel      || prev.priceLevel,
-          mapUrl:           p.mapUrl          || prev.mapUrl,
-          photoUrls:        p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
-          phone:            p.phone           ?? prev.phone,
-          website:          p.website         ?? prev.website,
-          lat:              p.lat             ?? prev.lat,
-          lng:              p.lng             ?? prev.lng,
+          mapUrl:    p.mapUrl    || prev.mapUrl,
+          photoUrls: p.photoUrls?.length ? p.photoUrls : prev.photoUrls,
+          lat:       p.lat       ?? prev.lat,
+          lng:       p.lng       ?? prev.lng,
         } : prev);
       } else {
         setExtra(prev => ({ ...prev, loaded: true }));
@@ -355,13 +361,22 @@ export default function PlaceDetailPage() {
     );
   }
 
-  const openNowColor = rec.openNow === true ? '#10B981' : rec.openNow === false ? '#EF4444' : '#9CA3AF';
-  const openNowLabel = rec.openNow === true ? '営業中' : rec.openNow === false ? '閉店中' : null;
-  // デバッグ: 営業時間テキストの内容を確認
-  if (__DEV__ && rec.openingHoursText) {
-    console.log('[place.tsx] openingHoursText lines:', rec.openingHoursText.split('\n').length, '\n', rec.openingHoursText);
+  // APIデータを優先、なければ rec のデータにフォールバック
+  const displayRating = extra.loaded ? (extra.rating ?? rec.rating) : rec.rating;
+  const displayUserRatingCount = extra.loaded ? (extra.userRatingCount ?? rec.userRatingCount) : rec.userRatingCount;
+  const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
+  const displayPriceLevel = extra.loaded ? (extra.priceLevel ?? rec.priceLevel) : rec.priceLevel;
+  const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
+  // 営業時間: APIデータ優先（必ず全曜日分が返る）
+  const hoursSource = extra.loaded
+    ? (extra.openingHoursText ?? rec.openingHoursText)
+    : rec.openingHoursText;
+  if (__DEV__ && hoursSource) {
+    console.log('[place.tsx] hoursSource lines:', hoursSource.split('\n').length, hoursSource.slice(0, 80));
   }
-  const hoursRows = rec.openingHoursText ? formatOpeningHours(rec.openingHoursText) : [];
+  const openNowColor = displayOpenNow === true ? '#10B981' : displayOpenNow === false ? '#EF4444' : '#9CA3AF';
+  const openNowLabel = displayOpenNow === true ? '営業中' : displayOpenNow === false ? '閉店中' : null;
+  const hoursRows = hoursSource ? formatOpeningHours(hoursSource) : [];
 
   // featuresから#を除去し、説明文とタグに分類
   const rawFeatures = rec.features ?? [];
@@ -477,7 +492,7 @@ export default function PlaceDetailPage() {
               </View>
               <InfoSkeleton />
             </>
-          ) : fetchError && rec.rating == null && !rec.address ? (
+          ) : fetchError && displayRating == null && !displayAddress ? (
             /* ── APIエラー（リトライボタン） ── */
             <TouchableOpacity style={s.retryBtn} onPress={fetchDetail} activeOpacity={0.8}>
               <RefreshCw size={14} color="#C084FC" strokeWidth={2} />
@@ -486,13 +501,13 @@ export default function PlaceDetailPage() {
           ) : null}
 
           {/* 評価バー（データあり時のみ） */}
-          {extra.loaded && rec.rating != null && (
+          {extra.loaded && displayRating != null && (
             <View style={s.ratingBar}>
-              <Text style={s.ratingBig}>{rec.rating.toFixed(1)}</Text>
+              <Text style={s.ratingBig}>{displayRating.toFixed(1)}</Text>
               <View style={s.ratingMid}>
-                <StarRow rating={rec.rating} size={16} />
-                {rec.userRatingCount ? (
-                  <Text style={s.ratingCount}>{rec.userRatingCount.toLocaleString('ja-JP')}件の口コミ</Text>
+                <StarRow rating={displayRating} size={16} />
+                {displayUserRatingCount ? (
+                  <Text style={s.ratingCount}>{displayUserRatingCount.toLocaleString('ja-JP')}件の口コミ</Text>
                 ) : null}
               </View>
               {openNowLabel && (
@@ -505,22 +520,22 @@ export default function PlaceDetailPage() {
           )}
 
           {/* 価格帯 */}
-          {extra.loaded && rec.priceLevel && (
+          {extra.loaded && displayPriceLevel && (
             <View style={s.pricePill}>
-              <Text style={s.priceText}>{rec.priceLevel}</Text>
+              <Text style={s.priceText}>{displayPriceLevel}</Text>
             </View>
           )}
 
           {/* ─── 情報カード（読み込み完了後のみ） ─── */}
-          {extra.loaded && (rec.address || rec.stationText || rec.distanceText || extra.phone || extra.website) && (
+          {extra.loaded && (displayAddress || rec.stationText || rec.distanceText || extra.phone || extra.website) && (
           <View style={s.infoCard}>
             {/* 住所 */}
-            {rec.address ? (
+            {displayAddress ? (
               <View style={s.infoRow}>
                 <View style={s.infoIconWrap}>
                   <MapPin size={15} color="#C084FC" strokeWidth={2} />
                 </View>
-                <Text style={s.infoText} selectable>{rec.address}</Text>
+                <Text style={s.infoText} selectable>{displayAddress}</Text>
               </View>
             ) : null}
 
