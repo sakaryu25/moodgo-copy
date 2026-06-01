@@ -3968,9 +3968,9 @@ export async function POST(request: Request) {
         ? answers.radiusKm!
         : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
 
-      // 遠端バイアス: GPS使用時は常に外縁50%以上の場所を優先
-      // すぐそこ(1km)→0.5km以上、近場(3km)→1.5km以上、…、ちょっと遠く(40km)→20km以上
-      const minRadiusKm = useQuizRadius ? Math.round(radiusKm * 0.5) : 0;
+      // 遠端バイアス: GPS使用時は外縁60%以上の場所を優先（Math.roundしない）
+      // すぐそこ(1km)→0.6km〜1km、近場(3km)→1.8km〜3km、40km→24km〜40km
+      const minRadiusKm = useQuizRadius ? radiusKm * 0.6 : 0;
 
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,

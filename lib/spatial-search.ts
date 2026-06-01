@@ -175,11 +175,13 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
 
   // ── PostGIS RPC を試みる ──────────────────────────────────────────────────
   if (hasLocation) {
-    let rows = await findNearbyPlacesRaw(lat, lng, radiusM, mustTags, limit * 3);
+    // 遠端バイアスがある場合は取得数を多めに（far グループが十分集まるよう）
+    const fetchLimit = minRadiusKm > 0 ? limit * 5 : limit * 3;
+    let rows = await findNearbyPlacesRaw(lat, lng, radiusM, mustTags, fetchLimit);
 
-    // フォールバック1: タグを緩める
+    // フォールバック1: タグを緩める（元の半径内で再試行）
     if (rows.length < limit && fallbackTags.length > 0) {
-      const morRows = await findNearbyPlacesRaw(lat, lng, radiusM * 1.5, fallbackTags, limit * 3);
+      const morRows = await findNearbyPlacesRaw(lat, lng, radiusM, fallbackTags, fetchLimit);
       // 重複排除してマージ
       const seen = new Set(rows.map(r => r.id));
       for (const r of morRows) {
@@ -187,9 +189,12 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       }
     }
 
-    // フォールバック2: 半径を2倍に広げる
-    if (rows.length < limit) {
-      const wideRows = await findNearbyPlacesRaw(lat, lng, radiusM * 2, mustTags, limit * 3);
+    // フォールバック2: far グループが足りない場合のみ半径を1.5倍に広げる
+    const farCount = minRadiusKm > 0
+      ? rows.filter(r => (r.distance_m / 1000) >= minRadiusKm).length
+      : rows.length;
+    if (farCount < limit) {
+      const wideRows = await findNearbyPlacesRaw(lat, lng, radiusM * 1.5, mustTags, fetchLimit);
       const seen = new Set(rows.map(r => r.id));
       for (const r of wideRows) {
         if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); }
