@@ -597,7 +597,7 @@ const s = StyleSheet.create({
   // フッター
   footRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   footBtnShare: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
-  footRight:    { flexDirection: 'row', gap: 14 },
+  footRight:    { flexDirection: 'row', gap: 14, marginRight: 16 },
   footBtn:      { paddingVertical: 2 },
   footBtnText:  { fontSize: 12, color: COLORS.textMuted },
 });
