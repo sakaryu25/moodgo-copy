@@ -4176,8 +4176,10 @@ export async function POST(request: Request) {
                 sbNames, 10
               )
             : Promise.resolve([]),
-          // OpenAI 推薦理由生成（Supabase スポット用）
-          generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags),
+          // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
+          (answers.freeWord || refinementText)
+            ? generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags)
+            : Promise.resolve(new Map<string, string>()),
           // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで並列補完
           (async (): Promise<Map<string, string>> => {
             const photoMap = new Map<string, string>();
@@ -4975,10 +4977,11 @@ export async function POST(request: Request) {
     const timeContext = getTimeContext();
     const distancePref = getDistancePreference(answers);
 
-    // お腹すいた のときは hotpepper側でOpenAIを使用済みなので、ここでは呼ばない（二重課金防止）
-    const aiResult = isFoodMood
-      ? null
-      : await buildSearchPlansWithAI(answers, pastFeedback, globalStatsContext + approvedContext, weather, timeContext, userPreferenceHints, refinementText);
+    // OpenAI は 自由ワード・絞り込み時のみ使用（通常のボタン選択ではSupabaseを優先）
+    const useAI = !!(answers.freeWord || refinementText) && !isFoodMood;
+    const aiResult = useAI
+      ? await buildSearchPlansWithAI(answers, pastFeedback, globalStatsContext + approvedContext, weather, timeContext, userPreferenceHints, refinementText)
+      : null;
     const aiPlans = aiResult?.plans ?? null;
     const aiReasons: Map<string, ReasonData> = aiResult?.aiReasons ?? new Map();
     console.log(`[recommend] OpenAI plans: ${aiPlans ? aiPlans.length + '件 (AI使用)' : 'null (フォールバック)'}`);
