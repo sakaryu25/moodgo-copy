@@ -435,6 +435,19 @@ export default function PlaceCard({
           </>
         )}
 
+        {/* ソース表示 */}
+        {item.source && (
+          <View style={s.sourceRow}>
+            <Text style={s.sourceText}>
+              {item.source === 'admin'     ? '🗄 DB登録済み' :
+               item.source === 'user'      ? '👤 ユーザー投稿' :
+               item.source === 'google'    ? '🔍 Google検索' :
+               item.source === 'hotpepper' ? '🍽 ホットペッパー' :
+               `📍 ${item.source}`}
+            </Text>
+          </View>
+        )}
+
         {/* フッター */}
         <View style={s.footRow}>
           <TouchableOpacity onPress={handleShare} style={s.footBtnShare}>
@@ -593,6 +606,10 @@ const s = StyleSheet.create({
   moodNotMatchText: { fontSize: 13, fontWeight: '600', color: '#EF4444' },
   moodDoneRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
   moodDoneText:     { fontSize: 13, fontWeight: '600' },
+
+  // ソース
+  sourceRow:  { marginBottom: 2 },
+  sourceText: { fontSize: 11, color: '#A78BFA', fontWeight: '500' },
 
   // フッター
   footRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },

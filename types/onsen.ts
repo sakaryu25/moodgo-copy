@@ -27,6 +27,8 @@ export interface PlaceResponse {
   // ── ソース情報（HotPepper 由来スポットの識別）────────────────────────────
   source?: "hotpepper" | "google" | "admin" | "user";
   hotpepperUrl?: string;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 // ── APIリクエスト型 ────────────────────────────────────────────────────────

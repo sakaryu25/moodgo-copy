@@ -3615,24 +3615,21 @@ async function fetchGooglePlacesSupplement(
       PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
     };
 
-    // photo-proxy 経由にすることで API キーをクライアントに渡さず、
-    // かつ Expo アプリから確実に画像を読み込めるようにする
-    const proxyBase = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
-    return filtered.map((p: Record<string, unknown>) => {
+    // 写真は getPhotoUrl で CDN URL を直接取得（最大10枚）
+    return await Promise.all(filtered.map(async (p: Record<string, unknown>) => {
       const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
-      const photos = (p.photos as Array<{ name: string }> | undefined) ?? [];
-      const rawPhotoPath = photos[0]?.name
-        ? `https://places.googleapis.com/v1/${photos[0].name}/media`
-        : null;
-      const photoUrl = rawPhotoPath
-        ? `${proxyBase}/api/photo-proxy?url=${encodeURIComponent(rawPhotoPath)}`
-        : undefined;
+      const photoObjs = (p.photos as Array<{ name: string }> | undefined) ?? [];
+      const photoNames = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
+      const photoUrls = photoNames.length > 0
+        ? (await Promise.all(photoNames.map(n => getPhotoUrl(n, apiKey)))).filter(Boolean)
+        : [];
+      const photoUrl = photoUrls[0] ?? undefined;
       const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
       return {
         title: name,
         address: (p.formattedAddress as string | undefined) ?? "",
         photoUrl,
-        photoUrls: photoUrl ? [photoUrl] : [],
+        photoUrls,
         rating: typeof p.rating === "number" ? p.rating : null,
         userRatingCount: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
         openNow: undefined,
@@ -3650,12 +3647,13 @@ async function fetchGooglePlacesSupplement(
         priceLevel: PRICE_MAP[(p.priceLevel as string) ?? ""] ?? undefined,
         placeId: (p.id as string | undefined) ?? undefined,
         supabaseId: undefined,
+        source: "google" as const,
         isUserSpot: false,
         hasUserPhotos: false,
         userPhotoCount: 0,
         routesByMode: undefined,
       };
-    });
+    }));
   } catch (e) {
     console.error("[recommend] Google supplement search failed:", e);
     return [];
@@ -4157,7 +4155,7 @@ export async function POST(request: Request) {
         const noPhotoNames = scored.filter(r => !r.imageUrl).map(r => r.name);
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
-        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap] = await Promise.all([
+        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
           // Google Places 補足検索（最大10件、予算フィルター付き）
           hasLocation
             ? fetchGooglePlacesSupplement(
@@ -4180,9 +4178,9 @@ export async function POST(request: Request) {
           (answers.freeWord || refinementText)
             ? generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags)
             : Promise.resolve(new Map<string, string>()),
-          // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで並列補完
-          (async (): Promise<Map<string, string>> => {
-            const photoMap = new Map<string, string>();
+          // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで最大10枚並列補完
+          (async (): Promise<Map<string, string[]>> => {
+            const photoMap = new Map<string, string[]>();
             if (!apiKey || !hasLocation || noPhotoNames.length === 0) return photoMap;
             await Promise.all(noPhotoNames.map(async (name) => {
               try {
@@ -4208,13 +4206,30 @@ export async function POST(request: Request) {
                 });
                 if (!res.ok) return;
                 const data = await res.json().catch(() => null);
-                const photoName = data?.places?.[0]?.photos?.[0]?.name as string | undefined;
-                if (!photoName) return;
-                const cdnUrl = await getPhotoUrl(photoName, apiKey);
-                if (cdnUrl) photoMap.set(name, cdnUrl);
+                const photoObjs = (data?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+                const photoNamesArr = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
+                if (photoNamesArr.length === 0) return;
+                const urls = (await Promise.all(photoNamesArr.map(n => getPhotoUrl(n, apiKey)))).filter(Boolean);
+                if (urls.length > 0) photoMap.set(name, urls);
               } catch { /* 写真取得失敗は無視 */ }
             }));
             return photoMap;
+          })(),
+          // 最寄り駅を並列検索（Supabase スポット用）
+          (async (): Promise<Map<string, string>> => {
+            const stationMap = new Map<string, string>();
+            if (!apiKey) return stationMap;
+            await Promise.all(scored.map(async (r) => {
+              if (r.stationInfo) {
+                stationMap.set(r.name, r.stationInfo);
+                return;
+              }
+              if (typeof r.lat === "number" && typeof r.lng === "number") {
+                const st = await findNearestStation(r.lat, r.lng, apiKey);
+                if (st) stationMap.set(r.name, st);
+              }
+            }));
+            return stationMap;
           })(),
         ]);
 
@@ -4233,11 +4248,11 @@ export async function POST(request: Request) {
           return {
             title: r.name,
             address: r.address,
-            photoUrl: r.imageUrl || sbPhotoMap.get(r.name) || "",
+            photoUrl: r.imageUrl || (sbPhotoMap.get(r.name) ?? [])[0] || "",
             photoUrls: r.imageUrl
               ? r.photoUrls
-              : sbPhotoMap.get(r.name)
-                ? [sbPhotoMap.get(r.name)!]
+              : (sbPhotoMap.get(r.name) ?? []).length > 0
+                ? sbPhotoMap.get(r.name)!
                 : [],
             rating: r.rating,
             userRatingCount: r.reviewCount,
@@ -4249,13 +4264,14 @@ export async function POST(request: Request) {
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             durationText: "",
-            stationText: r.stationInfo ?? "",
+            stationText: sbStationMap.get(r.name) || r.stationInfo || "",
             vibe: "",
             budget: "",
             time: "",
             priceLevel: r.priceLevel ?? undefined,
             placeId: googlePlaceId,      // Google Places ID（detail ページで使用）
             supabaseId: supabaseUUID,    // Supabase UUID（閉店報告で使用）
+            source: r.source ?? "admin", // Supabase ソース種別（admin/user/google/hotpepper）
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,

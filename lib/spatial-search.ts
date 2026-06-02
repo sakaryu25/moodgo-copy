@@ -145,6 +145,8 @@ export function nearbyRowToPlaceResponse(
     priceLevel:   null,
     googleMapsUrl,
     stationInfo:  row.nearest_station ?? null,
+    lat:          row.lat ?? null,
+    lng:          row.lng ?? null,
     tags:         row.tags,
     source:       (row.source_type as "hotpepper" | "google" | "admin" | "user") ?? "admin",
     hotpepperUrl: row.hotpepper_url ?? undefined,

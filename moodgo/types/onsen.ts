@@ -23,6 +23,9 @@ export interface PlaceResponse {
   stationInfo: string | null;
   source?: "hotpepper" | "google" | "admin" | "user";
   hotpepperUrl?: string;
+  lat?: number | null;
+  lng?: number | null;
+  tags?: string[];
 }
 
 export interface OnsenRequest {
