@@ -4052,9 +4052,10 @@ export async function POST(request: Request) {
         : allMustTags;                                          // 気分タグのみ（深掘りなし）
       const sbFallbackTags = moodBaseTag ? [moodBaseTag] : [];  // 気分タグはフォールバックへ
 
-      // クイズ Step4 で選んだ距離感を優先使用（GPS使用時のみ）
+      // クイズ Step4 で選んだ距離感を優先使用（GPS座標がある場合は常に有効）
+      // areaMode チェックを外すことで、GPS座標さえあれば distanceFeeling が確実に適用される
       const hasLocation = !!(answers.originLat && answers.originLng);
-      const useQuizRadius = hasLocation && answers.areaMode === "current_location" && !!answers.radiusKm;
+      const useQuizRadius = hasLocation && !!answers.radiusKm;
       const radiusKm = useQuizRadius
         ? answers.radiusKm!
         : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
