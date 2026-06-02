@@ -4114,7 +4114,7 @@ export async function POST(request: Request) {
         radiusKm,
         minRadiusKm,
         transport: answers.transport,
-        limit: 15,  // Supabaseから最大15件
+        limit: 5,  // Supabaseから最大5件
         googleApiKey: apiKey,
       });
 
@@ -4149,7 +4149,7 @@ export async function POST(request: Request) {
               + Math.random() * 0.5,
           }))
           .sort((a, b) => b._niceScore - a._niceScore)
-          .slice(0, 15);  // Supabase: 最大15件
+          .slice(0, 5);  // Supabase: 最大5件
 
         const sbNames = sbPool.map(r => r.name);
         // 写真がないSupabase結果の名前リスト（Google写真補完対象）
@@ -4157,22 +4157,22 @@ export async function POST(request: Request) {
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
-          // Google Places 補足検索（最大10件、予算フィルター付き）
+          // Google Places 補足検索（最大5件、予算フィルター付き）
           hasLocation
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
-                answers.mood ?? "", sbNames, apiKey, 10,
+                answers.mood ?? "", sbNames, apiKey, 5,
                 answers.budget, effectiveDeepDive
               )
             : Promise.resolve([]),
-          // Yahoo!ローカルサーチ 補足検索（最大10件）
+          // Yahoo!ローカルサーチ 補足検索（最大5件）
           // ※ Google と並列実行するため Google 名の除外は行わず sbPool 名のみ除外
           //   最終マージ時にタイトル重複を除去する
           hasLocation
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 10
+                sbNames, 5
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
