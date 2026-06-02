@@ -211,14 +211,17 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
         return arr;
       };
 
-      // ── 遠端バイアス + グループ内シャッフル ──────────────────────────────────
+      // ── 遠端バイアス ─────────────────────────────────────────────────────────
       // 選択した距離の外縁部（minRadiusKm以上）を優先し、足りなければ近場で補完
-      // グループ内はシャッフルして毎回異なる結果を返す
+      // far グループ: 距離降順（外縁に近いほど上位）でソートしてから毎回ランダムノイズを加える
+      //   → 同距離帯でも毎回異なる結果になり、かつ遠いスポットが優先される
       if (minRadiusKm > 0) {
         const far  = rows.filter(r => (r.distance_m / 1000) >= minRadiusKm);
         const near = rows.filter(r => (r.distance_m / 1000) <  minRadiusKm);
-        // 各グループ内でシャッフル（far グループが優先、near は補完）
-        rows = [...shuffle(far), ...shuffle(near)];
+        // far: 距離降順 + ランダムノイズで並べ替え（遠いほど上、毎回少し変わる）
+        far.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
+        // near: シャッフルして補完（順不同）
+        rows = [...far, ...shuffle(near)];
       } else {
         // minRadiusKm なし: 全件シャッフルで毎回異なる結果
         shuffle(rows);
