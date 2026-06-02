@@ -4114,7 +4114,7 @@ export async function POST(request: Request) {
         radiusKm,
         minRadiusKm,
         transport: answers.transport,
-        limit: 20,  // Supabaseから最大20件
+        limit: 15,  // Supabaseから最大15件
         googleApiKey: apiKey,
       });
 
@@ -4148,7 +4148,8 @@ export async function POST(request: Request) {
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
               + Math.random() * 0.5,
           }))
-          .sort((a, b) => b._niceScore - a._niceScore);
+          .sort((a, b) => b._niceScore - a._niceScore)
+          .slice(0, 15);  // Supabase: 最大15件
 
         const sbNames = sbPool.map(r => r.name);
         // 写真がないSupabase結果の名前リスト（Google写真補完対象）
