@@ -2,13 +2,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   Easing,
-  Linking,
-  ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 
@@ -27,6 +22,7 @@ function SlideUp({ children }: { children: React.ReactNode }) {
     </Animated.View>
   );
 }
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { OnsenCategory, PlaceResponse } from '@/types/onsen';
 import type { NatureSubGenre, NatureDistancePref } from '@/types/nature';
@@ -34,124 +30,140 @@ import type { CafeSubCategory, CafeDetail, CafeDistancePref } from '@/types/cafe
 import type { WaiWaiSubCategory } from '@/types/waiwai';
 import {
   FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
-  PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, PROFILE_KEY,
+  BLOCKED_PLACES_KEY, PROFILE_KEY,
   loadJSON, saveJSON,
 } from '@/lib/storage';
 import { apiFetch } from '@/lib/api';
-import { detectUserPrefecture, getNearbyPrefectures } from '@/lib/prefecture-utils';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { router } from 'expo-router';
 
-import AppBackground from '@/components/AppBackground';
-import HomeView from '@/components/HomeView';
-import TabBar from '@/components/TabBar';
-import HistoryView from '@/components/HistoryView';
-import FavoritesView from '@/components/FavoritesView';
-import FeaturedView from '@/components/FeaturedView';
-import FeatureScreen from '@/components/FeatureScreen';
-import ProfileSetup from '@/components/ProfileSetup';
-import QuizFlow from '@/components/QuizFlow';
-import ResultsView from '@/components/ResultsView';
-import SettingsView from '@/components/SettingsView';
+import AppBackground    from '@/components/AppBackground';
+import HomeView         from '@/components/HomeView';
+import TabBar           from '@/components/TabBar';
+import HistoryView      from '@/components/HistoryView';
+import FavoritesView    from '@/components/FavoritesView';
+import FeatureScreen    from '@/components/FeatureScreen';
+import ProfileSetup     from '@/components/ProfileSetup';
+import QuizFlow         from '@/components/QuizFlow';
+import ResultsView      from '@/components/ResultsView';
+import SettingsView     from '@/components/SettingsView';
 import type {
   Recommendation, FavoriteItem, FeedbackItem, HistoryItem,
   Answers, DynamicQuestion, FeaturedPageSummary,
 } from '@/types/app';
 export type { Recommendation, FavoriteItem, FeedbackItem, HistoryItem, Answers, DynamicQuestion, FeaturedPageSummary };
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const LOADING_MESSAGES = [
+  'あなたにぴったりの場所を探しています…',
+  'AIが気分をもとに分析中…',
+  '近くのスポットを調べています…',
+  'もう少しお待ちください…',
+  'おすすめを厳選中…',
+];
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const insets = useSafeAreaInsets();
 
-  // Navigation
-  const [started, setStarted] = useState(false);
-  const [step, setStep] = useState(1);
-  const [homeView, setHomeView] = useState<'home' | 'history' | 'favorites' | 'featured'>('home');
+  // ── Navigation ───────────────────────────────────────────────────────────
+  const [started,    setStarted]    = useState(false);
+  const [step,       setStep]       = useState(1);
+  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'featured'>('home');
   const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0 });
 
-  // Quiz state
-  const [selectedMood, setSelectedMood] = useState('');
-  const [selectedArea, setSelectedArea] = useState('');
+  // ── Quiz state ───────────────────────────────────────────────────────────
+  const [selectedMood,       setSelectedMood]       = useState('');
+  const [selectedArea,       setSelectedArea]       = useState('');
   const [locationDisplayArea, setLocationDisplayArea] = useState('');
-  const [selectedCompanion, setSelectedCompanion] = useState('');
-  const [budget, setBudget] = useState<number | undefined>(10000);
-  const [budgetMin, setBudgetMin] = useState<number>(0);
-  const [showUnseenOnly, setShowUnseenOnly] = useState(false);
-  const [freeWord, setFreeWord] = useState('');
-  const [dynamicQuestions, setDynamicQuestions] = useState<DynamicQuestion[]>([]);
-  const [dynamicAnswers, setDynamicAnswers] = useState<Record<string, string>>({});
-  const [areaMode, setAreaMode] = useState<'current_location' | 'manual'>('manual');
-  const [distanceFeeling, setDistanceFeeling] = useState('今日は出かけたい');
-  const [radiusKm, setRadiusKm] = useState(20);
+  const [selectedCompanion,  setSelectedCompanion]  = useState('');
+  const [budget,             setBudget]             = useState<number | undefined>(10000);
+  const [budgetMin,          setBudgetMin]          = useState<number>(0);
+  const [showUnseenOnly,     setShowUnseenOnly]     = useState(false);
+  const [freeWord,           setFreeWord]           = useState('');
+  const [dynamicQuestions,   setDynamicQuestions]   = useState<DynamicQuestion[]>([]);
+  const [dynamicAnswers,     setDynamicAnswers]     = useState<Record<string, string>>({});
+  const [areaMode,           setAreaMode]           = useState<'current_location' | 'manual'>('manual');
+  const [distanceFeeling,    setDistanceFeeling]    = useState('今日は出かけたい');
+  const [radiusKm,           setRadiusKm]           = useState(20);
+  const [deepDiveL1,         setDeepDiveL1]         = useState('');
+  const [deepDiveL2,         setDeepDiveL2]         = useState('');
 
-  // QuizFlow mood-specific UI state（クイズ画面の選択状態 — 検索には使わない）
-  const [onsenCategory, setOnsenCategory] = useState<OnsenCategory | null>(null);
-  const [natureSubGenre, setNatureSubGenre] = useState<NatureSubGenre | null>(null);
+  // QuizFlow 内の気分別 UI 状態（クイズ画面の選択肢表示に必要）
+  const [onsenCategory,      setOnsenCategory]      = useState<OnsenCategory | null>(null);
+  const [natureSubGenre,     setNatureSubGenre]     = useState<NatureSubGenre | null>(null);
   const [natureDistancePref, setNatureDistancePref] = useState<NatureDistancePref | null>(null);
-  const [cafeSubCategory, setCafeSubCategory] = useState<CafeSubCategory | null>(null);
-  const [cafeDetail, setCafeDetail] = useState<CafeDetail | null>(null);
-  const [cafeDetailMode, setCafeDetailMode] = useState(false);
-  const [cafeDistancePref, setCafeDistancePref] = useState<CafeDistancePref | null>(null);
-  const [waiWaiSubCategory, setWaiWaiSubCategory] = useState<WaiWaiSubCategory | null>(null);
-  const [onsenDistancePref, setOnsenDistancePref] = useState<NatureDistancePref | null>(null);
+  const [cafeSubCategory,    setCafeSubCategory]    = useState<CafeSubCategory | null>(null);
+  const [cafeDetail,         setCafeDetail]         = useState<CafeDetail | null>(null);
+  const [cafeDetailMode,     setCafeDetailMode]     = useState(false);
+  const [cafeDistancePref,   setCafeDistancePref]   = useState<CafeDistancePref | null>(null);
+  const [waiWaiSubCategory,  setWaiWaiSubCategory]  = useState<WaiWaiSubCategory | null>(null);
+  const [onsenDistancePref,  setOnsenDistancePref]  = useState<NatureDistancePref | null>(null);
   const [scenerySubCategory, setScenerySubCategory] = useState<string | null>(null);
-  const [deepDiveL1, setDeepDiveL1] = useState('');
-  const [deepDiveL2, setDeepDiveL2] = useState('');
 
-  // Profile
+  // ── Profile ──────────────────────────────────────────────────────────────
   const [profileSetupDone, setProfileSetupDone] = useState(false);
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const [profileAge, setProfileAge] = useState('');
-  const [profileGender, setProfileGender] = useState('');
+  const [profileLoaded,    setProfileLoaded]    = useState(false);
+  const [profileAge,       setProfileAge]       = useState('');
+  const [profileGender,    setProfileGender]    = useState('');
   const [profilePrefecture, setProfilePrefecture] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings,     setShowSettings]     = useState(false);
 
-  // Results（常に空 — 検索ロジックは未実装）
-  const [apiRecommendations] = useState<Recommendation[]>([]);
-  const [isLoadingRecommendations] = useState(false);
-  const [placeRatings, setPlaceRatings] = useState<Record<string, 'good' | 'bad'>>({});
-  const [photoIndices, setPhotoIndices] = useState<Record<string, number>>({});
-  const [blockedPlaces, setBlockedPlaces] = useState<string[]>([]);
-  const [likedInSession, setLikedInSession] = useState<string[]>([]);
+  // ── Results ──────────────────────────────────────────────────────────────
+  const [apiRecommendations,     setApiRecommendations]     = useState<Recommendation[]>([]);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [loadingMsgIdx,          setLoadingMsgIdx]          = useState(0);
+  const [apiWarning,             setApiWarning]             = useState('');
+  const [refinementText,         setRefinementText]         = useState('');
+  const [isRefining,             setIsRefining]             = useState(false);
+  const [selectedPrefecture,     setSelectedPrefecture]     = useState('');
+
+  // ── Feedback ─────────────────────────────────────────────────────────────
+  const [pastFeedback,        setPastFeedback]        = useState<FeedbackItem[]>([]);
+  const [placeRatings,        setPlaceRatings]        = useState<Record<string, 'good' | 'bad'>>({});
+  const [likedInSession,      setLikedInSession]      = useState<string[]>([]);
   const [mapClickedInSession, setMapClickedInSession] = useState<string[]>([]);
-  const [refinementText, setRefinementText] = useState('');
-  const [isRefining] = useState(false);
-  const [prefectureButtons] = useState<string[]>([]);
-  const [selectedPrefecture, setSelectedPrefecture] = useState('');
 
-  // Favorites & History
-  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  // ── UI ───────────────────────────────────────────────────────────────────
+  const [photoIndices,  setPhotoIndices]  = useState<Record<string, number>>({});
+  const [blockedPlaces, setBlockedPlaces] = useState<string[]>([]);
+  const [lang,          setLang]          = useState<'ja' | 'en'>('ja');
+
+  // ── Favorites & History ──────────────────────────────────────────────────
+  const [favorites,           setFavorites]           = useState<FavoriteItem[]>([]);
+  const [history,             setHistory]             = useState<HistoryItem[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
-  const [favoriteSort, setFavoriteSort] = useState<'newest' | 'title'>('newest');
+  const [favoriteSort,        setFavoriteSort]        = useState<'newest' | 'title'>('newest');
 
-  // Report modal
-  const [reportingSpot, setReportingSpot] = useState<{ title: string; address: string; supabaseId?: string } | null>(null);
-  const [reportReason, setReportReason] = useState('');
-  const [reportNote, setReportNote] = useState('');
-  const [reportSubmitting, setReportSubmitting] = useState(false);
-  const [reportDone, setReportDone] = useState(false);
-
-  // Location
-  const [originLat, setOriginLat] = useState<number | undefined>();
-  const [originLng, setOriginLng] = useState<number | undefined>();
-  const [isLocating, setIsLocating] = useState(false);
+  // ── Location ─────────────────────────────────────────────────────────────
+  const [originLat,     setOriginLat]     = useState<number | undefined>();
+  const [originLng,     setOriginLng]     = useState<number | undefined>();
+  const [isLocating,    setIsLocating]    = useState(false);
   const [locationError, setLocationError] = useState('');
 
-  // UI
-  const [lang, setLang] = useState<'ja' | 'en'>('ja');
+  // ── Report modal ─────────────────────────────────────────────────────────
+  const [reportingSpot,    setReportingSpot]    = useState<{ title: string; address: string; supabaseId?: string } | null>(null);
+  const [reportReason,     setReportReason]     = useState('');
+  const [reportNote,       setReportNote]       = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportDone,       setReportDone]       = useState(false);
+
+  const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Load from AsyncStorage ──────────────────────────────────────────────
 
   useEffect(() => {
     (async () => {
-      const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-      const hist  = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
+      const faves   = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
+      const hist    = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
+      const feed    = await loadJSON<FeedbackItem[]>(FEEDBACK_KEY, []);
       const blocked = await loadJSON<string[]>(BLOCKED_PLACES_KEY, []);
       const profile = await loadJSON<{ age?: string; gender?: string; prefecture?: string }>(PROFILE_KEY, {});
       setFavorites(faves);
       setHistory(hist);
+      setPastFeedback(feed);
       setBlockedPlaces(blocked);
       if (profile.age)        setProfileAge(profile.age);
       if (profile.gender)     setProfileGender(profile.gender);
@@ -161,8 +173,9 @@ export default function Home() {
     })();
   }, []);
 
-  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,    favorites);    }, [favorites,    profileLoaded]);
-  useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY,      history);      }, [history,      profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,     favorites);    }, [favorites,    profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY,       history);      }, [history,      profileLoaded]);
+  useEffect(() => { if (profileLoaded) saveJSON(FEEDBACK_KEY,      pastFeedback); }, [pastFeedback, profileLoaded]);
   useEffect(() => { if (profileLoaded) saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces, profileLoaded]);
 
   // ─── Location ──────────────────────────────────────────────────────────
@@ -198,13 +211,287 @@ export default function Home() {
     setIsLocating(false);
   };
 
-  // ─── Open results（検索ロジック未実装 — 結果画面を表示するだけ）──────────
+  // ─── Open results ─────────────────────────────────────────────────────────
+  // Web版 openResults() と同じ構造：
+  //   1. 前回結果をクリア
+  //   2. 既見スポットセットを構築（showUnseenOnly が true のとき）
+  //   3. answers オブジェクトを構築（transport×time は省略）
+  //   4. POST /api/recommend
+  //   5. setApiRecommendations → 履歴保存 → setStep(11)
+  // ─────────────────────────────────────────────────────────────────────────
 
-  const openResults = (_refineText = '', _isRefinement = false) => {
-    setStep(11);
+  const openResults = async (refineText = '', isRefinement = false) => {
+    // 新規検索時: 前回結果・評価をクリアしてから結果画面へ
+    if (!isRefinement) {
+      setApiRecommendations([]);
+      setPlaceRatings({});
+      setSelectedPrefecture('');
+      setApiWarning('');
+      setStep(11);
+    }
+
+    // ローディング開始
+    setIsLoadingRecommendations(true);
+    if (refineText) setIsRefining(true);
+    if (loadingTimer.current) clearInterval(loadingTimer.current);
+    setLoadingMsgIdx(0);
+    loadingTimer.current = setInterval(() => {
+      setLoadingMsgIdx(i => (i + 1) % LOADING_MESSAGES.length);
+    }, 1800);
+
+    try {
+      // ── 既見スポットセットを構築（showUnseenOnly フィルター用）──────────────
+      const seenSet = new Set<string>();
+      if (showUnseenOnly) {
+        for (const h of history) {
+          if (h.topRecommendation) seenSet.add(h.topRecommendation);
+          for (const r of h.recommendations ?? []) seenSet.add(r.title);
+        }
+        for (const title of Object.keys(placeRatings)) seenSet.add(title);
+        for (const f of pastFeedback) {
+          if (f.visitedPlace) seenSet.add(f.visitedPlace);
+        }
+      }
+
+      // ── answers オブジェクト（Web版と同じキー構成）──────────────────────────
+      // ※ transport / time は省略（クイズに存在しないため）
+      const answers: Partial<Answers> = {
+        mood:            selectedMood,
+        area:            selectedArea,
+        age:             profileAge,
+        gender:          profileGender,
+        companion:       selectedCompanion,
+        budget,
+        budgetMin,
+        freeWord,
+        radiusKm,
+        areaMode,
+        distanceFeeling,
+        originLat,
+        originLng,
+        // 深掘り質問を dynamicQs 配列に統合
+        dynamicQs: [
+          ...Object.entries(dynamicAnswers).map(([key, answer]) => ({
+            question: dynamicQuestions.find(q => q.key === key)?.question ?? key,
+            answer,
+          })),
+          ...(scenerySubCategory ? [{ question: '絶景タイプ', answer: scenerySubCategory }] : []),
+          ...(deepDiveL1 ? [{ question: '深掘りカテゴリ', answer: deepDiveL1 }] : []),
+          ...(deepDiveL2 ? [{ question: '深掘り詳細',     answer: deepDiveL2 }] : []),
+        ],
+      };
+
+      // refinement 時は freeWord に追記（Web版と同じ）
+      const refinedAnswers = refineText
+        ? { ...answers, freeWord: [answers.freeWord, refineText].filter(Boolean).join(' / ') }
+        : answers;
+
+      // ── POST /api/recommend ──────────────────────────────────────────────
+      const res = await apiFetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers:            refinedAnswers,
+          pastFeedback:       pastFeedback.slice(0, 5),  // 直近5件のフィードバックを渡す
+          seenPlaces:         [...seenSet],
+          showUnseenOnly,
+          refinementText:     refineText ?? '',
+          userPreferenceHints: [],
+        }),
+      });
+
+      const d = await res.json();
+      const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
+
+      setApiRecommendations(recs);
+      setApiWarning(d.warning ?? '');
+
+      // ── 履歴保存（新規検索のみ）────────────────────────────────────────────
+      if (recs.length > 0 && !isRefinement) {
+        const newItem: HistoryItem = {
+          id:               Date.now().toString(),
+          mood:             selectedMood,
+          area:             selectedArea,
+          companion:        selectedCompanion,
+          transport:        [],
+          budget:           budget ?? 10000,
+          time:             '',
+          freeWord,
+          topRecommendation: recs[0]?.title ?? '',
+          createdAt:        new Date().toISOString(),
+          recommendations:  recs,
+          savedAnswers:     answers,
+        };
+        setHistory(prev => [newItem, ...prev].slice(0, 30));
+      }
+    } catch (e) {
+      console.error('[openResults]', e);
+    }
+
+    // ローディング終了
+    if (loadingTimer.current) clearInterval(loadingTimer.current);
+    setIsLoadingRecommendations(false);
+    setIsRefining(false);
   };
 
-  // ─── Reset ────────────────────────────────────────────────────────────
+  // ─── Shuffle: API を再呼び出し（Web版 reshuffleFacilities 相当）──────────
+
+  const handleShuffle = () => {
+    openResults(refinementText || '', true);
+  };
+
+  // ─── Place rating (👍/👎) ─────────────────────────────────────────────────
+  // Web版 submitPlaceRating() と同じ構造：
+  //   ローカル state 更新 → pastFeedback に追加 → /api/feedback → /api/mood-rating
+
+  const submitPlaceRating = async (placeTitle: string, verdict: 'good' | 'bad') => {
+    setPlaceRatings(prev => ({ ...prev, [placeTitle]: verdict }));
+    if (verdict === 'good') {
+      setLikedInSession(prev => prev.includes(placeTitle) ? prev : [...prev, placeTitle]);
+    }
+
+    const rating = verdict === 'good' ? 5 : 1;
+    const subCategoryLabel = deepDiveL2 || deepDiveL1 || '';
+
+    // pastFeedback に追加（Web版と同じ）
+    const newFeedback: FeedbackItem = {
+      id:               `place-${Date.now()}`,
+      answers:          { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
+      topRecommendations: apiRecommendations.slice(0, 3).map(r => r.title),
+      rating,
+      visitedPlace:     placeTitle,
+      createdAt:        new Date().toISOString(),
+    };
+    setPastFeedback(prev => [newFeedback, ...prev].slice(0, 50));
+
+    // /api/feedback（AIの学習データとして蓄積）
+    apiFetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mood:             selectedMood,
+        area:             selectedArea,
+        age:              profileAge,
+        gender:           profileGender,
+        companion:        selectedCompanion,
+        topRecommendations: apiRecommendations.slice(0, 3).map(r => r.title),
+        rating,
+        visitedPlace:     placeTitle,
+        likedPlaces:      verdict === 'good' ? [placeTitle] : [],
+        mapClickedPlaces: [],
+      }),
+    }).catch(() => {});
+
+    // /api/mood-rating（気分別評価 — 管理者集計用）
+    apiFetch('/api/mood-rating', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        place_name:   placeTitle,
+        mood:         selectedMood,
+        sub_category: subCategoryLabel || undefined,
+        verdict,
+      }),
+    }).catch(() => {});
+  };
+
+  // ─── Visited feedback (行った！) ─────────────────────────────────────────
+
+  const submitVisitedFeedback = async (title: string, rating: number) => {
+    const item: FeedbackItem = {
+      id:               Date.now().toString(),
+      answers:          { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
+      topRecommendations: [title],
+      rating,
+      visitedPlace:     title,
+      createdAt:        new Date().toISOString(),
+    };
+    setPastFeedback(prev => [item, ...prev].slice(0, 50));
+
+    apiFetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mood:             selectedMood,
+        area:             selectedArea,
+        age:              profileAge,
+        gender:           profileGender,
+        companion:        selectedCompanion,
+        topRecommendations: [title],
+        rating,
+        visitedPlace:     title,
+        likedPlaces:      [],
+        mapClickedPlaces: [],
+      }),
+    }).catch(() => {});
+  };
+
+  // ─── Re-search from history ───────────────────────────────────────────────
+
+  const handleResearch = async (item: HistoryItem) => {
+    if (!item.savedAnswers?.mood) return;
+    const sa = item.savedAnswers;
+
+    // クイズ状態を復元
+    setSelectedMood(sa.mood ?? '');
+    setSelectedArea(sa.area ?? '');
+    setSelectedCompanion(sa.companion ?? '');
+    setBudget(sa.budget ?? 10000);
+    setBudgetMin(sa.budgetMin ?? 0);
+    setFreeWord(sa.freeWord ?? '');
+    if (sa.radiusKm)        setRadiusKm(sa.radiusKm);
+    if (sa.areaMode)        setAreaMode(sa.areaMode);
+    if (sa.distanceFeeling) setDistanceFeeling(sa.distanceFeeling);
+
+    // 深掘り回答を復元
+    const getQ = (key: string) => (sa.dynamicQs ?? []).find(q => q.question === key)?.answer ?? '';
+    setDeepDiveL1(getQ('深掘りカテゴリ'));
+    setDeepDiveL2(getQ('深掘り詳細'));
+
+    setApiRecommendations([]);
+    setApiWarning('');
+    setPlaceRatings({});
+    setSelectedHistoryItem(null);
+    setHomeView('home');
+    setStarted(true);
+    setStep(11);
+
+    // 保存済み answers で再検索
+    setIsLoadingRecommendations(true);
+    if (loadingTimer.current) clearInterval(loadingTimer.current);
+    setLoadingMsgIdx(0);
+    loadingTimer.current = setInterval(() => {
+      setLoadingMsgIdx(i => (i + 1) % LOADING_MESSAGES.length);
+    }, 1800);
+
+    try {
+      const res = await apiFetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers:            sa,
+          pastFeedback:       pastFeedback.slice(0, 5),
+          seenPlaces:         [],
+          showUnseenOnly:     false,
+          refinementText:     '',
+          userPreferenceHints: [],
+        }),
+      });
+      const d = await res.json();
+      const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
+      if (recs.length > 0) {
+        setApiRecommendations(recs);
+        setApiWarning(d.warning ?? '');
+      }
+    } catch (e) {
+      console.error('[handleResearch]', e);
+    }
+
+    if (loadingTimer.current) clearInterval(loadingTimer.current);
+    setIsLoadingRecommendations(false);
+  };
+
+  // ─── Reset ────────────────────────────────────────────────────────────────
 
   const resetQuiz = () => {
     setStarted(false); setStep(1);
@@ -213,37 +500,40 @@ export default function Home() {
     setBudget(10000); setBudgetMin(0); setFreeWord('');
     setDynamicQuestions([]); setDynamicAnswers({});
     setAreaMode('manual'); setDistanceFeeling('今日は出かけたい'); setRadiusKm(20);
-    setPlaceRatings({}); setLikedInSession([]); setMapClickedInSession([]);
-    setRefinementText('');
+    setDeepDiveL1(''); setDeepDiveL2('');
     setOnsenCategory(null); setNatureSubGenre(null); setNatureDistancePref(null);
     setCafeSubCategory(null); setCafeDetail(null); setCafeDetailMode(false);
     setCafeDistancePref(null); setWaiWaiSubCategory(null);
     setOnsenDistancePref(null); setScenerySubCategory(null);
-    setDeepDiveL1(''); setDeepDiveL2('');
-    setSelectedPrefecture('');
+    setApiRecommendations([]); setApiWarning('');
+    setPlaceRatings({}); setLikedInSession([]); setMapClickedInSession([]);
+    setRefinementText(''); setSelectedPrefecture('');
     setHomeView('home');
   };
 
-  // ─── Toggle favorite ──────────────────────────────────────────────────
+  // ─── Toggle favorite ──────────────────────────────────────────────────────
 
   const toggleFavorite = (rec: Recommendation) => {
-    const exists = favorites.find((f) => f.title === rec.title);
+    const exists = favorites.find(f => f.title === rec.title);
     if (exists) {
-      setFavorites((prev) => prev.filter((f) => f.title !== rec.title));
+      setFavorites(prev => prev.filter(f => f.title !== rec.title));
     } else {
-      setFavorites((prev) => [{
-        title: rec.title, area: selectedArea,
-        vibe: rec.vibe ?? '', photoUrl: rec.photoUrl, mapUrl: rec.mapUrl,
-        createdAt: new Date().toISOString(),
-        placeId: rec.placeId,
-        address: rec.address,
-        rating: rec.rating,
+      setFavorites(prev => [{
+        title:            rec.title,
+        area:             selectedArea,
+        vibe:             rec.vibe ?? '',
+        photoUrl:         rec.photoUrl,
+        mapUrl:           rec.mapUrl,
+        createdAt:        new Date().toISOString(),
+        placeId:          rec.placeId,
+        address:          rec.address,
+        rating:           rec.rating,
         openingHoursText: rec.openingHoursText,
-        openNow: rec.openNow,
-        photoUrls: rec.photoUrls,
-        stationText: rec.stationText,
-        distanceText: rec.distanceText,
-        priceLevel: rec.priceLevel,
+        openNow:          rec.openNow,
+        photoUrls:        rec.photoUrls,
+        stationText:      rec.stationText,
+        distanceText:     rec.distanceText,
+        priceLevel:       rec.priceLevel,
       }, ...prev]);
     }
   };
@@ -257,27 +547,27 @@ export default function Home() {
 
   const handlePressFavoriteDetail = (item: FavoriteItem) => {
     const rec: Recommendation = {
-      title: item.title,
-      address: item.address ?? item.area,
-      vibe: item.vibe,
-      photoUrl: item.photoUrl,
-      photoUrls: item.photoUrls ?? (item.photoUrl ? [item.photoUrl] : []),
-      mapUrl: item.mapUrl,
-      placeId: item.placeId,
-      rating: item.rating ?? undefined,
+      title:            item.title,
+      address:          item.address ?? item.area,
+      vibe:             item.vibe,
+      photoUrl:         item.photoUrl,
+      photoUrls:        item.photoUrls ?? (item.photoUrl ? [item.photoUrl] : []),
+      mapUrl:           item.mapUrl,
+      placeId:          item.placeId,
+      rating:           item.rating ?? undefined,
       openingHoursText: item.openingHoursText,
-      openNow: item.openNow,
-      stationText: item.stationText,
-      distanceText: item.distanceText,
-      priceLevel: item.priceLevel,
-      phone: item.phone,
-      website: item.website,
+      openNow:          item.openNow,
+      stationText:      item.stationText,
+      distanceText:     item.distanceText,
+      priceLevel:       item.priceLevel,
+      phone:            item.phone,
+      website:          item.website,
     };
     setSelectedPlace(rec);
     router.push('/place');
   };
 
-  // ─── Tab fade ─────────────────────────────────────────────────────────
+  // ─── Tab fade ─────────────────────────────────────────────────────────────
 
   const tabFade = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -285,7 +575,7 @@ export default function Home() {
     Animated.timing(tabFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [homeView]);
 
-  // ─── Profile setup (first launch) ────────────────────────────────────
+  // ─── Profile setup (first launch) ────────────────────────────────────────
 
   if (profileLoaded && !profileSetupDone) {
     return (
@@ -304,7 +594,7 @@ export default function Home() {
     );
   }
 
-  // ─── Quiz flow ────────────────────────────────────────────────────────
+  // ─── Quiz flow ────────────────────────────────────────────────────────────
 
   if (started && step <= 8) {
     return (
@@ -374,7 +664,7 @@ export default function Home() {
     );
   }
 
-  // ─── Results screen ───────────────────────────────────────────────────
+  // ─── Results screen ───────────────────────────────────────────────────────
 
   if (started && step === 11) {
     return (
@@ -395,6 +685,7 @@ export default function Home() {
             distanceFeeling={distanceFeeling}
             radiusKm={radiusKm}
             onChangeRadius={(km) => { setRadiusKm(km); openResults('', true); }}
+            // ── 検索結果（全気分とも recommendations に統一）──────────────────
             recommendations={apiRecommendations}
             onsenFacilities={null}
             onsenCategoryLabel=""
@@ -413,16 +704,21 @@ export default function Home() {
             travelFacilities={null}
             travelSubCategoryLabel=""
             isLoading={isLoadingRecommendations}
-            loadingMessage=""
-            apiWarning=""
+            loadingMessage={LOADING_MESSAGES[loadingMsgIdx]}
+            apiWarning={apiWarning}
+            // ── お気に入り ────────────────────────────────────────────────────
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
+            // ── 気分評価 (👍/👎) ──────────────────────────────────────────────
             placeRatings={placeRatings}
             onSetPlaceRatings={setPlaceRatings}
+            onSubmitPlaceRating={submitPlaceRating}
+            // ── UI state ─────────────────────────────────────────────────────
             photoIndices={photoIndices}
             onSetPhotoIndices={setPhotoIndices}
             blockedPlaces={blockedPlaces}
-            onBlockPlace={(title) => setBlockedPlaces((prev) => [...prev, title])}
+            onBlockPlace={(title) => setBlockedPlaces(prev => [...prev, title])}
+            // ── フィードバック ────────────────────────────────────────────────
             feedbackRating={null}
             feedbackSubmitted={false}
             onSubmitFeedback={() => {}}
@@ -430,14 +726,21 @@ export default function Home() {
             onSetLikedInSession={setLikedInSession}
             mapClickedInSession={mapClickedInSession}
             onSetMapClickedInSession={setMapClickedInSession}
+            // ── 絞り込み ──────────────────────────────────────────────────────
             refinementText={refinementText}
             onSetRefinementText={setRefinementText}
             isRefining={isRefining}
-            onRefine={() => {}}
-            prefectureButtons={prefectureButtons}
+            onRefine={async () => {
+              setIsRefining(true);
+              await openResults(refinementText, true);
+              setIsRefining(false);
+            }}
+            prefectureButtons={[]}
             selectedPrefecture={selectedPrefecture}
             onSelectPrefecture={setSelectedPrefecture}
-            onShuffle={() => {}}
+            // ── シャッフル ────────────────────────────────────────────────────
+            onShuffle={handleShuffle}
+            // ── その他 ───────────────────────────────────────────────────────
             onReset={resetQuiz}
             reportingSpot={reportingSpot}
             onSetReportingSpot={setReportingSpot}
@@ -451,23 +754,33 @@ export default function Home() {
               if (!reportingSpot) return;
               setReportSubmitting(true);
               try {
+                if (reportReason === '閉店・閉業' || reportReason === 'Closed/Shut down') {
+                  if (reportingSpot.supabaseId) {
+                    await apiFetch('/api/report-closed', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ placeId: reportingSpot.supabaseId }),
+                    }).catch(() => {});
+                  }
+                }
                 await apiFetch('/api/reports', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
-                    spot_name: reportingSpot.title,
+                    spot_name:    reportingSpot.title,
                     spot_address: reportingSpot.address,
-                    reason: reportReason, note: reportNote,
+                    reason:       reportReason,
+                    note:         reportNote,
                   }),
                 });
               } catch {}
               setReportDone(true);
               setReportSubmitting(false);
             }}
-            seenPlaceTitles={history.flatMap((h) =>
-              h.recommendations?.map((r) => r.title) ?? [h.topRecommendation]
+            seenPlaceTitles={history.flatMap(h =>
+              h.recommendations?.map(r => r.title) ?? [h.topRecommendation]
             )}
-            onSubmitVisitedFeedback={async () => {}}
+            onSubmitVisitedFeedback={submitVisitedFeedback}
             onPressDetail={handlePressDetail}
           />
         </SlideUp>
@@ -475,7 +788,7 @@ export default function Home() {
     );
   }
 
-  // ─── Home screens ─────────────────────────────────────────────────────
+  // ─── Home screens ─────────────────────────────────────────────────────────
 
   const renderContent = () => {
     switch (homeView) {
@@ -489,7 +802,7 @@ export default function Home() {
             onClearHistory={() => setHistory([])}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
-            onResearch={() => {}}
+            onResearch={handleResearch}
             onPressDetail={handlePressDetail}
             resetKey={tabResetKeys.history}
           />
@@ -502,7 +815,7 @@ export default function Home() {
             favoriteSort={favoriteSort}
             onSetFavoriteSort={setFavoriteSort}
             onRemoveFavorite={(title) =>
-              setFavorites((prev) => prev.filter((f) => f.title !== title))
+              setFavorites(prev => prev.filter(f => f.title !== title))
             }
             onPressCard={handlePressFavoriteDetail}
             resetKey={tabResetKeys.favorites}

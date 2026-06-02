@@ -107,6 +107,8 @@ export type Answers = {
   radiusKm?: number;
   areaMode?: 'current_location' | 'manual';
   distanceFeeling?: string;
+  originLat?: number;
+  originLng?: number;
 };
 
 export type DynamicQuestion = {
