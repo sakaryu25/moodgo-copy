@@ -4153,9 +4153,11 @@ export async function POST(request: Request) {
           .sort((a, b) => b._niceScore - a._niceScore);
 
         const sbNames = sbPool.map(r => r.name);
+        // 写真がないSupabase結果の名前リスト（Google写真補完対象）
+        const noPhotoNames = scored.filter(r => !r.imageUrl).map(r => r.name);
 
-        // ── Google / Yahoo / OpenAI 理由生成 を並列実行でレイテンシ削減 ──────
-        const [googleSupplements, yahooSupplements, reasons] = await Promise.all([
+        // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
+        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap] = await Promise.all([
           // Google Places 補足検索（最大10件、予算フィルター付き）
           hasLocation
             ? fetchGooglePlacesSupplement(
@@ -4176,6 +4178,42 @@ export async function POST(request: Request) {
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（Supabase スポット用）
           generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags),
+          // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで並列補完
+          (async (): Promise<Map<string, string>> => {
+            const photoMap = new Map<string, string>();
+            if (!apiKey || !hasLocation || noPhotoNames.length === 0) return photoMap;
+            await Promise.all(noPhotoNames.map(async (name) => {
+              try {
+                const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": apiKey,
+                    "X-Goog-FieldMask": "places.photos",
+                  },
+                  body: JSON.stringify({
+                    textQuery: name,
+                    locationBias: {
+                      circle: {
+                        center: { latitude: answers.originLat, longitude: answers.originLng },
+                        radius: 50000,
+                      },
+                    },
+                    maxResultCount: 1,
+                    languageCode: "ja",
+                  }),
+                  cache: "no-store",
+                });
+                if (!res.ok) return;
+                const data = await res.json().catch(() => null);
+                const photoName = data?.places?.[0]?.photos?.[0]?.name as string | undefined;
+                if (!photoName) return;
+                const cdnUrl = await getPhotoUrl(photoName, apiKey);
+                if (cdnUrl) photoMap.set(name, cdnUrl);
+              } catch { /* 写真取得失敗は無視 */ }
+            }));
+            return photoMap;
+          })(),
         ]);
 
         // 合計 0 件ならレガシーフローへ
@@ -4193,8 +4231,12 @@ export async function POST(request: Request) {
           return {
             title: r.name,
             address: r.address,
-            photoUrl: r.imageUrl,
-            photoUrls: r.photoUrls,
+            photoUrl: r.imageUrl || sbPhotoMap.get(r.name) || "",
+            photoUrls: r.imageUrl
+              ? r.photoUrls
+              : sbPhotoMap.get(r.name)
+                ? [sbPhotoMap.get(r.name)!]
+                : [],
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,
