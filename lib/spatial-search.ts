@@ -177,11 +177,32 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
   if (hasLocation) {
     // 遠端バイアスがある場合は取得数を多めに（far グループが十分集まるよう）
     const fetchLimit = minRadiusKm > 0 ? limit * 5 : limit * 3;
-    let rows = await findNearbyPlacesRaw(lat, lng, radiusM, mustTags, fetchLimit);
+
+    // ── OR semantics: mustTags が複数の場合、各タグで個別に検索して union ──
+    // find_nearby_places RPC は AND 検索のため、複数タグ（わいわい系・運動系など）は
+    // タグ1件ずつで検索してマージすることで OR 検索と同等の結果を得る
+    const fetchWithOrSemantics = async (tags: string[], radM: number): Promise<NearbyPlaceRow[]> => {
+      if (tags.length <= 1) {
+        return findNearbyPlacesRaw(lat, lng, radM, tags, fetchLimit);
+      }
+      // 複数タグ → 各タグで個別取得して重複排除しながらマージ（OR semantics）
+      const seen = new Set<string>();
+      const merged: NearbyPlaceRow[] = [];
+      const perTagLimit = Math.ceil(fetchLimit / tags.length) + 10;
+      await Promise.all(tags.map(async (tag) => {
+        const tagRows = await findNearbyPlacesRaw(lat, lng, radM, [tag], perTagLimit);
+        for (const r of tagRows) {
+          if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+        }
+      }));
+      return merged;
+    };
+
+    let rows = await fetchWithOrSemantics(mustTags, radiusM);
 
     // フォールバック1: タグを緩める（元の半径内で再試行）
     if (rows.length < limit && fallbackTags.length > 0) {
-      const morRows = await findNearbyPlacesRaw(lat, lng, radiusM, fallbackTags, fetchLimit);
+      const morRows = await fetchWithOrSemantics(fallbackTags, radiusM);
       // 重複排除してマージ
       const seen = new Set(rows.map(r => r.id));
       for (const r of morRows) {
@@ -194,7 +215,7 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       ? rows.filter(r => (r.distance_m / 1000) >= minRadiusKm).length
       : rows.length;
     if (farCount < limit) {
-      const wideRows = await findNearbyPlacesRaw(lat, lng, radiusM * 1.5, mustTags, fetchLimit);
+      const wideRows = await fetchWithOrSemantics(mustTags, radiusM * 1.5);
       const seen = new Set(rows.map(r => r.id));
       for (const r of wideRows) {
         if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); }

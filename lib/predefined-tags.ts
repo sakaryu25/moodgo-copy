@@ -628,7 +628,15 @@ export function extractUserTagsFromAnswers(answers: {
 
     const mustTagsForAns = DRILL_ANSWER_TO_MUST[ans];
     if (mustTagsForAns) {
-      for (const tag of mustTagsForAns) addUniq(mustTags, tag);
+      // L2 が選択されている場合、L1 の回答タグは niceToHave に格下げ
+      // （L2 が最も具体的な指定のため、L1 との AND で絞りすぎるのを防ぐ）
+      // 例: 自然の中(→ #自然感じたい) + 波の音と海風(→ #海辺) → #海辺 のみ mustTags
+      const isL1WhenL2Exists = (ans === deepDiveL1) && !!deepDiveL2 && deepDiveL2 !== "こだわらない";
+      if (isL1WhenL2Exists) {
+        for (const tag of mustTagsForAns) addUniq(niceToHaveTags, tag);
+      } else {
+        for (const tag of mustTagsForAns) addUniq(mustTags, tag);
+      }
     } else {
       const niceTags = NICE_ANSWER_TO_TAGS[ans];
       if (niceTags) {

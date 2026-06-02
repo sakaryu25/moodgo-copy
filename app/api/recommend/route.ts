@@ -3489,10 +3489,13 @@ async function fetchGooglePlacesSupplement(
       "温泉サウナ":                      ["spa", "sauna"],
       "絶景スポット":                    ["viewpoint", "scenic_point", "tourist_attraction"],
       "ブックカフェ・隠れカフェ":        ["cafe", "book_store"],
-      "アニマルカフェ":                  ["pet_store", "zoo"],
+      "動物カフェ":                      ["cafe", "pet_store"],          // 猫カフェ・犬カフェ・小動物カフェ
+      "アニマルカフェ":                  ["cafe", "pet_store"],          // 旧キー（後方互換）
       "景色が良いカフェ":                ["cafe", "scenic_point"],
       "流行りのカフェ":                  ["cafe", "coffee_shop"],
+      "絶品スイーツカフェ":              ["cafe", "coffee_shop"],
       "サウナ・岩盤浴":                  ["spa", "sauna", "fitness_center"],
+      "温泉施設全般":                    ["spa", "onsen", "bath"],
       // わいわい
       "体を動かして遊びたい":            ["bowling_alley", "amusement_park", "sports_complex"],
       "歌って飲んで騒ぎたい":            ["karaoke", "bar", "night_club"],
@@ -3681,28 +3684,43 @@ async function fetchYahooSupplement(
   };
   // 深掘り選択による上書きキーワード
   const DIVE_KW: Record<string, string> = {
+    // ── まったりしたい L2 ──────────────────────────────────────────────────
     "波の音と海風":                 "海辺 海岸",
     "森の中で深呼吸":               "森林 自然公園",
     "広い芝生でゴロゴロ":           "大型公園 芝生広場",
     "圧倒的な絶景":                 "展望台 絶景スポット",
+    // ── まったりしたい カフェ L2 ────────────────────────────────────────────
+    "ブックカフェ・隠れカフェ":     "ブックカフェ 隠れ家カフェ",
+    "動物カフェ":                   "猫カフェ 犬カフェ 動物カフェ 小動物カフェ",
+    "アニマルカフェ":               "猫カフェ 犬カフェ 動物カフェ",      // 旧キー
+    "景色が良いカフェ":             "景色カフェ 海辺カフェ 森林カフェ",
+    "流行りのカフェ":               "おしゃれカフェ トレンドカフェ",
+    "絶品スイーツカフェ":           "スイーツカフェ パンケーキカフェ",
+    // ── まったりしたい 温泉スパ L2 ─────────────────────────────────────────
     "カフェ":                       "カフェ",
     "温泉スパ":                     "温泉 スパ",
     "サウナ・岩盤浴":               "サウナ 岩盤浴",
     "温泉施設全般":                 "温泉",
-    "体を動かして遊びたい":         "ボウリング アスレチック",
-    "歌って飲んで騒ぎたい":         "カラオケ",
-    "非日常の体験で盛り上がりたい": "テーマパーク アミューズメント",
+    // ── わいわい L1 ────────────────────────────────────────────────────────
+    "体を動かして遊びたい":         "ボウリング アスレチック アミューズメントパーク",
+    "歌って飲んで騒ぎたい":         "カラオケ ダーツバー",
+    "非日常の体験で盛り上がりたい": "テーマパーク 謎解き VR",
+    // ── ドライブ L1 ────────────────────────────────────────────────────────
     "海沿いを爽快に走りたい":       "海岸線 シーサイド",
     "綺麗な景色や夜景を見に行きたい": "夜景 展望台",
-    "道の駅でご当地グルメ":         "道の駅",
+    "道の駅でご当地グルメ":         "道の駅 SA サービスエリア",
     "郊外の大型施設に行きたい":     "アウトレット ショッピングモール",
-    "カフェで作業・勉強したい":     "カフェ ファミレス",
+    // ── 集中 L1 ────────────────────────────────────────────────────────────
+    "カフェで作業・勉強したい":     "カフェ ファミレス スタバ",
     "静かな専用スペースで集中したい": "図書館 自習室 コワーキング",
-    "がっつり汗を流してトレーニング": "フィットネス ジム プール",
+    // ── 運動 L1 ────────────────────────────────────────────────────────────
+    "がっつり汗を流してトレーニング": "フィットネス ジム プール スポーツセンター",
     "打って投げてストレス発散":     "バッティングセンター ゴルフ練習場",
     "遊び感覚でわいわい":           "ボウリング スポッチャ",
     "外で風を感じながらスポーツ":   "公園 屋外スポーツ施設",
+    // ── 旅行 L1 ────────────────────────────────────────────────────────────
     "パワースポット":               "神社 パワースポット 寺",
+    "パワースポットへ":             "神社 パワースポット 寺",
     "別世界のテーマパーク":         "テーマパーク 遊園地",
     "知らない街をぶらぶら":         "観光地 商店街 ご当地グルメ",
     "息を呑む絶景":                 "絶景スポット 展望台",
@@ -4108,15 +4126,19 @@ export async function POST(request: Request) {
         const sbPool = (budgetFiltered.length >= 1 ? budgetFiltered : sbResults)
           .filter(r => !seenPlaces.includes(r.name) || !showUnseenOnly);
 
-        // deepDiveL1 を dynamicQs から取得（Yahoo キーワード選択に使用）
+        // deepDiveL1 / L2 を dynamicQs から取得（Google/Yahoo 検索精度向上に使用）
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
+        const deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+        // L2 がより具体的なカテゴリを指す場合（動物カフェ・波の音と海風 etc.）は L2 を優先
+        // → Google/Yahoo がより精度の高い検索を行えるようにする
+        const effectiveDeepDive = deepDiveL2 || deepDiveL1;
 
-        // Google Places 補足検索（常に最大10件、予算フィルター付き、deepDiveL1で精度向上）
+        // Google Places 補足検索（常に最大10件、予算フィルター付き）
         const googleSupplements = hasLocation
           ? await fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
               answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10,
-              answers.budget, deepDiveL1
+              answers.budget, effectiveDeepDive
             )
           : [];
 
@@ -4125,7 +4147,7 @@ export async function POST(request: Request) {
         const yahooSupplements = hasLocation
           ? await fetchYahooSupplement(
               answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", deepDiveL1,
+              answers.mood ?? "", effectiveDeepDive,
               [...sbPool.map(r => r.name), ...googleNames], 10
             )
           : [];
