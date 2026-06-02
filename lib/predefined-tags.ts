@@ -645,10 +645,28 @@ export function extractUserTagsFromAnswers(answers: {
     }
   }
 
-  // mustTags と重複する niceToHaveTags を除去
-  const finalNice = niceToHaveTags.filter(t => !mustTags.includes(t));
+  // 気分の大括りタグ（#まったりしたい / #わいわい楽しみたい 等）は answers.mood から来るもの
+  // 深掘りで具体的なサブタグが入った場合だけ、最初の気分タグを niceToHave に降格する
+  // ※ こだわらない で追加された #自然感じたい 等は降格しない（サブタグとして有効）
+  const initialMoodTag: string | undefined =
+    MOOD_SHORT_KEY_TO_TAG[answers.mood ?? ""]
+    ?? (answers.mood ? Object.entries(MOOD_SHORT_KEY_TO_TAG).find(([, v]) => v === answers.mood)?.[1] : undefined);
 
-  return { mustTags, niceToHaveTags: finalNice, excludeTags };
+  // mustTags から initialMoodTag を除いたもの（=深掘りで追加されたタグ群）
+  const drillOnlyMustTags = initialMoodTag
+    ? mustTags.filter(t => t !== initialMoodTag)
+    : mustTags;
+
+  // 深掘りタグが1つ以上あれば initialMoodTag を niceToHave に降格
+  const finalMustTags = drillOnlyMustTags.length > 0 ? drillOnlyMustTags : mustTags;
+  if (drillOnlyMustTags.length > 0 && initialMoodTag && mustTags.includes(initialMoodTag)) {
+    addUniq(niceToHaveTags, initialMoodTag);
+  }
+
+  // mustTags と重複する niceToHaveTags を除去
+  const finalNice = niceToHaveTags.filter(t => !finalMustTags.includes(t));
+
+  return { mustTags: finalMustTags, niceToHaveTags: finalNice, excludeTags };
 }
 
 function addUniq(arr: string[], item: string) {
