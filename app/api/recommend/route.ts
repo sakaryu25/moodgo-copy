@@ -3482,43 +3482,87 @@ async function fetchGooglePlacesSupplement(
   try {
     // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
     const DEEP_DIVE_TYPES: Record<string, string[]> = {
-      // まったり
-      "自然の中":                       ["park", "nature_park", "hiking_area"],
+      // ── お腹すいた L1 ────────────────────────────────────────────────────────
+      "居酒屋":                          ["bar", "japanese_restaurant"],
+      "和食":                            ["japanese_restaurant"],
+      "洋食":                            ["restaurant"],
+      "イタリアン":                      ["italian_restaurant"],
+      "中華料理":                        ["chinese_restaurant"],
+      "焼肉":                            ["barbecue_restaurant"],
+      "韓国料理":                        ["korean_restaurant"],
+      "アジア系統":                      ["thai_restaurant", "indian_restaurant"],
+      "各国料理":                        ["restaurant"],
+      "ラーメン":                        ["ramen_restaurant"],
+      "お好み焼き":                      ["japanese_restaurant"],
+      "カフェスイーツ":                  ["cafe", "dessert_shop"],
+      "高層ビル料理":                    ["restaurant"],
+      // ── お腹すいた L2 ────────────────────────────────────────────────────────
+      "個室居酒屋":                      ["bar", "japanese_restaurant"],
+      "大衆酒場":                        ["bar", "japanese_restaurant"],
+      "海鮮・お寿司":                    ["sushi_restaurant", "seafood_restaurant"],
+      "天ぷら":                          ["japanese_restaurant"],
+      "うどん・そば":                    ["japanese_restaurant"],
+      "懐石料理":                        ["japanese_restaurant"],
+      "ハンバーグ":                      ["hamburger_restaurant"],
+      "オムライス":                      ["restaurant"],
+      "ステーキ":                        ["steak_house"],
+      "レトロ洋食":                      ["restaurant"],
+      "焼肉食べ放題":                    ["barbecue_restaurant"],
+      "高級焼肉":                        ["barbecue_restaurant"],
+      "焼肉単品":                        ["barbecue_restaurant"],
+      "インド・ネパール":                ["indian_restaurant"],
+      "タイ料理":                        ["thai_restaurant"],
+      "ベトナム料理":                    ["vietnamese_restaurant"],
+      "アジアンエスニック料理":          ["restaurant"],
+      "メキシコ料理":                    ["mexican_restaurant"],
+      "ブラジル料理":                    ["restaurant"],
+      "ロシア料理":                      ["restaurant"],
+      "その他各国":                      ["restaurant"],
+      "こってりラーメン":                ["ramen_restaurant"],
+      "あっさりラーメン":                ["ramen_restaurant"],
+      "味噌ラーメン":                    ["ramen_restaurant"],
+      "つけ麺・まぜそば":               ["ramen_restaurant"],
+      "カフェスイーツ系":                ["cafe", "dessert_shop"],
+      "喫茶店":                          ["cafe"],
+      "流行りカフェ":                    ["cafe", "coffee_shop"],
+      // ── まったり L1 ──────────────────────────────────────────────────────────
+      "自然の中":                        ["park", "nature_park", "hiking_area"],
       "カフェ":                          ["cafe", "coffee_shop"],
       "温泉スパ":                        ["spa", "sauna"],
       "温泉サウナ":                      ["spa", "sauna"],
       "絶景スポット":                    ["viewpoint", "scenic_point", "tourist_attraction"],
+      // ── まったり L2 ──────────────────────────────────────────────────────────
       "ブックカフェ・隠れカフェ":        ["cafe", "book_store"],
-      "動物カフェ":                      ["cafe", "pet_store"],          // 猫カフェ・犬カフェ・小動物カフェ
-      "アニマルカフェ":                  ["cafe", "pet_store"],          // 旧キー（後方互換）
+      "動物カフェ":                      ["cafe", "pet_store"],
+      "アニマルカフェ":                  ["cafe", "pet_store"],           // 旧キー（後方互換）
       "景色が良いカフェ":                ["cafe", "scenic_point"],
-      "流行りのカフェ":                  ["cafe", "coffee_shop"],
-      "絶品スイーツカフェ":              ["cafe", "coffee_shop"],
+      "流行りのカフェ":                  ["cafe", "coffee_shop"],         // 旧キー（後方互換）
+      "絶品スイーツカフェ":              ["cafe", "dessert_shop"],
       "サウナ・岩盤浴":                  ["spa", "sauna", "fitness_center"],
       "温泉施設全般":                    ["spa", "onsen", "bath"],
-      // わいわい
+      // ── わいわい L1 ──────────────────────────────────────────────────────────
       "体を動かして遊びたい":            ["bowling_alley", "amusement_park", "sports_complex"],
       "歌って飲んで騒ぎたい":            ["karaoke", "bar", "night_club"],
       "非日常の体験で盛り上がりたい":    ["amusement_park", "tourist_attraction"],
-      // 自然
+      // ── 自然 L1 ──────────────────────────────────────────────────────────────
       "波の音と海風":                    ["beach", "marina"],
       "森の中で深呼吸":                  ["park", "nature_park", "hiking_area"],
       "広い芝生でゴロゴロ":              ["park", "national_park"],
       "圧倒的な絶景":                    ["viewpoint", "scenic_point"],
-      // ドライブ
+      // ── ドライブ L1 ──────────────────────────────────────────────────────────
       "海沿いを爽快に走りたい":          ["beach", "marina", "scenic_point"],
       "綺麗な景色や夜景を見に行きたい":  ["viewpoint", "scenic_point", "tourist_attraction"],
       "道の駅でご当地グルメ":            ["restaurant", "food"],
       "郊外の大型施設に行きたい":        ["shopping_mall", "department_store"],
-      // 集中
+      // ── 集中 L1 ──────────────────────────────────────────────────────────────
       "カフェで作業・勉強したい":        ["cafe", "coffee_shop", "library"],
       "静かな専用スペースで集中したい":  ["library", "university"],
-      // 運動
+      // ── 運動 L1 ──────────────────────────────────────────────────────────────
       "がっつり汗を流してトレーニング":  ["gym", "fitness_center", "sports_complex"],
       "打って投げてストレス発散":        ["driving_range", "sports_complex"],
       "遊び感覚でわいわい":              ["bowling_alley", "amusement_park"],
       "外で風を感じながらスポーツ":      ["park", "sports_complex", "hiking_area"],
-      // 旅行
+      // ── 旅行 L1 ──────────────────────────────────────────────────────────────
       "パワースポット":                  ["hindu_temple", "mosque", "tourist_attraction"],
       "パワースポットへ":                ["hindu_temple", "mosque", "tourist_attraction"],
       "別世界のテーマパーク":            ["amusement_park", "tourist_attraction"],
@@ -3688,21 +3732,65 @@ async function fetchYahooSupplement(
   };
   // 深掘り選択による上書きキーワード
   const DIVE_KW: Record<string, string> = {
-    // ── まったりしたい L2 ──────────────────────────────────────────────────
+    // ── お腹すいた L1 ──────────────────────────────────────────────────────
+    "居酒屋":                       "居酒屋",
+    "和食":                         "和食 日本料理",
+    "洋食":                         "洋食",
+    "イタリアン":                   "イタリアン",
+    "中華料理":                     "中華料理 中華",
+    "焼肉":                         "焼肉",
+    "韓国料理":                     "韓国料理 韓国",
+    "アジア系統":                   "アジア料理 エスニック料理",
+    "各国料理":                     "各国料理 レストラン",
+    "ラーメン":                     "ラーメン",
+    "お好み焼き":                   "お好み焼き もんじゃ焼き",
+    "カフェスイーツ":                "カフェ スイーツ",
+    "高層ビル料理":                  "高層ビル レストラン 展望レストラン",
+    // ── お腹すいた L2 ──────────────────────────────────────────────────────
+    "個室居酒屋":                   "個室居酒屋",
+    "大衆酒場":                     "大衆酒場 大衆居酒屋",
+    "海鮮・お寿司":                 "海鮮 寿司 寿司屋",
+    "天ぷら":                       "天ぷら",
+    "うどん・そば":                 "うどん そば",
+    "懐石料理":                     "懐石料理 日本料理",
+    "ハンバーグ":                   "ハンバーグ",
+    "オムライス":                   "オムライス",
+    "ステーキ":                     "ステーキ",
+    "レトロ洋食":                   "レトロ洋食 洋食",
+    "焼肉食べ放題":                 "焼肉食べ放題",
+    "高級焼肉":                     "高級焼肉",
+    "焼肉単品":                     "焼肉",
+    "インド・ネパール":              "インド料理 ネパール料理",
+    "タイ料理":                     "タイ料理",
+    "ベトナム料理":                 "ベトナム料理",
+    "アジアンエスニック料理":       "アジアン エスニック",
+    "メキシコ料理":                 "メキシコ料理",
+    "ブラジル料理":                 "ブラジル料理 シュラスコ",
+    "ロシア料理":                   "ロシア料理",
+    "その他各国":                   "各国料理 レストラン",
+    "こってりラーメン":             "こってりラーメン 濃厚ラーメン",
+    "あっさりラーメン":             "あっさりラーメン",
+    "味噌ラーメン":                 "味噌ラーメン",
+    "つけ麺・まぜそば":             "つけ麺 まぜそば",
+    "カフェスイーツ系":             "カフェ スイーツ",
+    "喫茶店":                       "喫茶店 レトロカフェ",
+    "流行りカフェ":                 "おしゃれカフェ トレンドカフェ",  // クイズ実際のキー
+    // ── まったり L1 ────────────────────────────────────────────────────────
+    "自然の中":                     "公園 自然 景勝地 海辺",
+    "カフェ":                       "カフェ",
+    "温泉スパ":                     "温泉 スパ",
+    "絶景スポット":                 "絶景スポット 展望台 景色",
+    // ── まったり L2 ────────────────────────────────────────────────────────
     "波の音と海風":                 "海辺 海岸",
     "森の中で深呼吸":               "森林 自然公園",
     "広い芝生でゴロゴロ":           "大型公園 芝生広場",
     "圧倒的な絶景":                 "展望台 絶景スポット",
-    // ── まったりしたい カフェ L2 ────────────────────────────────────────────
     "ブックカフェ・隠れカフェ":     "ブックカフェ 隠れ家カフェ",
     "動物カフェ":                   "猫カフェ 犬カフェ 動物カフェ 小動物カフェ",
-    "アニマルカフェ":               "猫カフェ 犬カフェ 動物カフェ",      // 旧キー
+    "アニマルカフェ":               "猫カフェ 犬カフェ 動物カフェ",   // 旧キー（後方互換）
     "景色が良いカフェ":             "景色カフェ 海辺カフェ 森林カフェ",
-    "流行りのカフェ":               "おしゃれカフェ トレンドカフェ",
+    "流行りのカフェ":               "おしゃれカフェ トレンドカフェ",  // 旧キー（後方互換）
     "絶品スイーツカフェ":           "スイーツカフェ パンケーキカフェ",
-    // ── まったりしたい 温泉スパ L2 ─────────────────────────────────────────
-    "カフェ":                       "カフェ",
-    "温泉スパ":                     "温泉 スパ",
     "サウナ・岩盤浴":               "サウナ 岩盤浴",
     "温泉施設全般":                 "温泉",
     // ── わいわい L1 ────────────────────────────────────────────────────────
@@ -4138,8 +4226,10 @@ export async function POST(request: Request) {
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
         const deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
         // L2 がより具体的なカテゴリを指す場合（動物カフェ・波の音と海風 etc.）は L2 を優先
-        // → Google/Yahoo がより精度の高い検索を行えるようにする
-        const effectiveDeepDive = deepDiveL2 || deepDiveL1;
+        // "こだわらない" は検索キーとして使えないので除外し、上位カテゴリにフォールバック
+        const cleanL2 = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : "";
+        const cleanL1 = (deepDiveL1 && deepDiveL1 !== "こだわらない") ? deepDiveL1 : "";
+        const effectiveDeepDive = cleanL2 || cleanL1;
 
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         const scored = sbPool
