@@ -5,6 +5,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
+// Expo / モバイルクライアントからのリクエストを許可する CORS ヘッダー
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get("url");
   if (!raw) return new NextResponse("url is required", { status: 400 });
@@ -31,7 +41,7 @@ export async function GET(req: NextRequest) {
         const data = await res.json().catch(() => null);
         const cdnUrl = data?.photoUri as string | undefined;
         if (cdnUrl?.startsWith("https://")) {
-          return NextResponse.redirect(cdnUrl, { status: 302 });
+          return NextResponse.redirect(cdnUrl, { status: 302, headers: CORS_HEADERS });
         }
       }
     } catch { /* fallthrough */ }
@@ -43,7 +53,7 @@ export async function GET(req: NextRequest) {
     targetUrl.startsWith("https://maps.gstatic.com") ||
     targetUrl.startsWith("https://streetviewpixels-pa.googleapis.com")
   ) {
-    return NextResponse.redirect(targetUrl, { status: 302 });
+    return NextResponse.redirect(targetUrl, { status: 302, headers: CORS_HEADERS });
   }
 
   // 旧 Maps API 写真（photo_reference）
@@ -61,7 +71,7 @@ export async function GET(req: NextRequest) {
           const buf = await res.arrayBuffer();
           return new NextResponse(buf, {
             status: 200,
-            headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400" },
+            headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400", ...CORS_HEADERS },
           });
         }
       }
@@ -80,7 +90,7 @@ export async function GET(req: NextRequest) {
     const buf = await res.arrayBuffer();
     return new NextResponse(buf, {
       status: 200,
-      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400" },
+      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400", ...CORS_HEADERS },
     });
   } catch (e) {
     return new NextResponse(String(e), { status: 500 });

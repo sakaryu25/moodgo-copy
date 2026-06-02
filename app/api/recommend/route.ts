@@ -3615,11 +3615,17 @@ async function fetchGooglePlacesSupplement(
       PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
     };
 
+    // photo-proxy 経由にすることで API キーをクライアントに渡さず、
+    // かつ Expo アプリから確実に画像を読み込めるようにする
+    const proxyBase = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
     return filtered.map((p: Record<string, unknown>) => {
       const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
       const photos = (p.photos as Array<{ name: string }> | undefined) ?? [];
-      const photoUrl = photos[0]
-        ? `https://places.googleapis.com/v1/${photos[0].name}/media?maxWidthPx=800&key=${apiKey}`
+      const rawPhotoPath = photos[0]?.name
+        ? `https://places.googleapis.com/v1/${photos[0].name}/media`
+        : null;
+      const photoUrl = rawPhotoPath
+        ? `${proxyBase}/api/photo-proxy?url=${encodeURIComponent(rawPhotoPath)}`
         : undefined;
       const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
       return {
@@ -3898,8 +3904,12 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
           const name = (place.displayName?.text as string | undefined) ?? p.name;
           if (showUnseenOnly && seenPlaces.includes(name)) return null;
           const photos = (place.photos ?? []) as Array<{ name: string }>;
-          const photoUrl = photos[0]
-            ? `https://places.googleapis.com/v1/${photos[0].name}/media?maxWidthPx=800&key=${apiKey}`
+          const rawPhotoPath2 = photos[0]?.name
+            ? `https://places.googleapis.com/v1/${photos[0].name}/media`
+            : null;
+          const proxyBase2 = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
+          const photoUrl = rawPhotoPath2
+            ? `${proxyBase2}/api/photo-proxy?url=${encodeURIComponent(rawPhotoPath2)}`
             : undefined;
           const hours = place.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
           return {
@@ -4133,40 +4143,45 @@ export async function POST(request: Request) {
         // → Google/Yahoo がより精度の高い検索を行えるようにする
         const effectiveDeepDive = deepDiveL2 || deepDiveL1;
 
-        // Google Places 補足検索（常に最大10件、予算フィルター付き）
-        const googleSupplements = hasLocation
-          ? await fetchGooglePlacesSupplement(
-              answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", sbPool.map(r => r.name), apiKey, 10,
-              answers.budget, effectiveDeepDive
-            )
-          : [];
-
-        // Yahoo!ローカルサーチ 補足検索（最大10件）
-        const googleNames = googleSupplements.map(r => String(r.title ?? ""));
-        const yahooSupplements = hasLocation
-          ? await fetchYahooSupplement(
-              answers.originLat!, answers.originLng!, radiusKm,
-              answers.mood ?? "", effectiveDeepDive,
-              [...sbPool.map(r => r.name), ...googleNames], 10
-            )
-          : [];
-
-        // 合計 0 件ならレガシーフローへ
-        if (sbPool.length === 0 && googleSupplements.length === 0 && yahooSupplements.length === 0) {
-          throw new Error("No results from Supabase, Google, or Yahoo supplement");
-        }
-
+        // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         const scored = sbPool
           .map(r => ({
             ...r,
-            // niceScore にわずかなランダムノイズを加えて毎回異なる順序にする
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
               + Math.random() * 0.5,
           }))
           .sort((a, b) => b._niceScore - a._niceScore);
 
-        const reasons = await generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags);
+        const sbNames = sbPool.map(r => r.name);
+
+        // ── Google / Yahoo / OpenAI 理由生成 を並列実行でレイテンシ削減 ──────
+        const [googleSupplements, yahooSupplements, reasons] = await Promise.all([
+          // Google Places 補足検索（最大10件、予算フィルター付き）
+          hasLocation
+            ? fetchGooglePlacesSupplement(
+                answers.originLat!, answers.originLng!, radiusKm,
+                answers.mood ?? "", sbNames, apiKey, 10,
+                answers.budget, effectiveDeepDive
+              )
+            : Promise.resolve([]),
+          // Yahoo!ローカルサーチ 補足検索（最大10件）
+          // ※ Google と並列実行するため Google 名の除外は行わず sbPool 名のみ除外
+          //   最終マージ時にタイトル重複を除去する
+          hasLocation
+            ? fetchYahooSupplement(
+                answers.originLat!, answers.originLng!, radiusKm,
+                answers.mood ?? "", effectiveDeepDive,
+                sbNames, 10
+              )
+            : Promise.resolve([]),
+          // OpenAI 推薦理由生成（Supabase スポット用）
+          generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags),
+        ]);
+
+        // 合計 0 件ならレガシーフローへ
+        if (sbPool.length === 0 && googleSupplements.length === 0 && yahooSupplements.length === 0) {
+          throw new Error("No results from Supabase, Google, or Yahoo supplement");
+        }
 
         const supabaseRecs = scored.map(r => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
@@ -4244,6 +4259,15 @@ export async function POST(request: Request) {
           // 遠端バイアスなし(すぐそこ・近場): 従来通り Supabase 優先
           recommendations = [...supabaseRecs, ...shuffledGoogle, ...shuffledYahoo];
         }
+
+        // Google と Yahoo の並列実行により重複が発生する場合があるため除去
+        const seenTitles = new Set<string>();
+        recommendations = recommendations.filter(r => {
+          const t = r.title?.trim().toLowerCase() ?? "";
+          if (!t || seenTitles.has(t)) return false;
+          seenTitles.add(t);
+          return true;
+        });
 
         return json({
           recommendations,
