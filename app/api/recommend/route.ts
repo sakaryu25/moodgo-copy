@@ -4169,8 +4169,17 @@ export async function POST(request: Request) {
           };
         });
 
-        // Supabase（最大20件）+ Google（最大10件）+ Yahoo（最大10件）を結合
-        // 各ソースの結果は出揃っているのでソース内でシャッフル → インターリーブ（Supabase優先）
+        // ── 結果の結合 ─────────────────────────────────────────────────────────
+        // 遠端バイアスが有効(minRadiusKm > 0)のとき、Supabase の近場スポットが
+        // 常に先頭に来て「毎回同じ」になる問題を防ぐため順序を制御する。
+        //
+        // distanceText 例: "車で約2分 / 1.0km"  "電車で約20分 / 15.3km"
+        const parseKmFromDistText = (distText?: string): number => {
+          if (!distText) return 0;
+          const m = distText.match(/\/\s*([\d.]+)\s*km/);
+          return m ? parseFloat(m[1]) : 0;
+        };
+
         const shuffleArr = <T>(arr: T[]): T[] => {
           const a = [...arr];
           for (let i = a.length - 1; i > 0; i--) {
@@ -4179,10 +4188,27 @@ export async function POST(request: Request) {
           }
           return a;
         };
-        // Google/Yahoo はシャッフルして多様化（Supabase は既にniceScore+randomで順序付き）
+
         const shuffledGoogle = shuffleArr(googleSupplements);
         const shuffledYahoo  = shuffleArr(yahooSupplements);
-        const recommendations = [...supabaseRecs, ...shuffledGoogle, ...shuffledYahoo];
+
+        let recommendations: typeof supabaseRecs;
+        if (minRadiusKm > 0) {
+          // 遠端バイアス有効: Supabase を far/near に分離して near を末尾へ
+          //   far  (≥ minRadiusKm): 距離条件を満たす → Google/Yahoo より前
+          //   near (< minRadiusKm): 近すぎる近場スポット → 補完として末尾
+          const sbFar:  typeof supabaseRecs = [];
+          const sbNear: typeof supabaseRecs = [];
+          for (const r of supabaseRecs) {
+            const km = parseKmFromDistText(r.distanceText);
+            (km >= minRadiusKm ? sbFar : sbNear).push(r);
+          }
+          // 順序: Supabase遠端 → Google → Yahoo → Supabase近場(補完)
+          recommendations = [...sbFar, ...shuffledGoogle, ...shuffledYahoo, ...sbNear];
+        } else {
+          // 遠端バイアスなし(すぐそこ・近場): 従来通り Supabase 優先
+          recommendations = [...supabaseRecs, ...shuffledGoogle, ...shuffledYahoo];
+        }
 
         return json({
           recommendations,
