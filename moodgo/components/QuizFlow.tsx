@@ -552,51 +552,71 @@ const rsl = StyleSheet.create({
 });
 
 // ─── MarqueeLabel ─────────────────────────────────────────────────────────────
-// テキストがコンテナ幅を超える場合、左スクロールアニメーションで全文字を表示
+// テキストがコンテナ幅を超える場合のみ左スクロールアニメーション。収まる場合はそのまま表示。
 function MarqueeLabel({ text, textStyle, maxWidth }: {
   text: string; textStyle?: object; maxWidth: number;
 }) {
-  const [textW, setTextW] = useState(0);
-  const anim = useRef(new Animated.Value(0)).current;
-  const needs = textW > 0 && textW > maxWidth;
+  const [measuredW, setMeasuredW] = useState(0);
+  const translateX = useRef(new Animated.Value(0)).current;
+  const needsScroll = measuredW > 0 && measuredW > maxWidth;
 
   useEffect(() => {
-    if (!needs) { anim.setValue(0); return; }
-    const dist = textW - maxWidth + 4;
-    const loop = Animated.loop(
+    translateX.setValue(0);
+    if (!needsScroll) return;
+
+    const dist = measuredW - maxWidth + 2;
+    let active = true;
+
+    function run() {
+      if (!active) return;
+      translateX.setValue(0);
       Animated.sequence([
-        Animated.delay(1200),
-        Animated.timing(anim, {
+        Animated.delay(1000),
+        Animated.timing(translateX, {
           toValue: -dist,
-          duration: dist * 40,
+          duration: Math.max(dist * 45, 800),
           easing: Easing.linear,
           useNativeDriver: true,
         }),
-        Animated.delay(600),
-        Animated.timing(anim, { toValue: 0, duration: 300, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => { loop.stop(); anim.setValue(0); };
-  }, [needs, textW, maxWidth]);
+        Animated.delay(500),
+        Animated.timing(translateX, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start(result => {
+        if (result.finished && active) run(); // 無限ループ
+      });
+    }
+
+    run();
+    return () => { active = false; translateX.setValue(0); };
+  }, [needsScroll, measuredW, maxWidth]);
 
   return (
-    <View style={{ width: maxWidth, overflow: 'hidden', alignItems: 'center' }}>
-      {/* ゴースト: 実際のテキスト幅を計測 */}
+    <View style={{ width: maxWidth, overflow: 'hidden' }}>
+      {/* ゴースト: 自然幅を計測（レイアウトに影響しない） */}
       <Text
         numberOfLines={1}
-        style={[textStyle, { position: 'absolute', opacity: 0, width: 1000, left: 0 }]}
-        onLayout={e => setTextW(e.nativeEvent.layout.width)}
+        style={[textStyle, { position: 'absolute', width: 2000, opacity: 0 }]}
+        onLayout={e => setMeasuredW(e.nativeEvent.layout.width)}
       >
         {text}
       </Text>
-      {/* アニメーション表示 */}
-      <Animated.Text
-        numberOfLines={1}
-        style={[textStyle, { transform: [{ translateX: anim }] }]}
-      >
-        {text}
-      </Animated.Text>
+
+      {needsScroll ? (
+        // スクロール必要: 明示的な幅を与えて「...」を防ぎ、左から流す
+        <Animated.Text
+          style={[textStyle, {
+            width: measuredW + 4,
+            textAlign: 'left',
+            transform: [{ translateX }],
+          }]}
+        >
+          {text}
+        </Animated.Text>
+      ) : (
+        // 収まる: 通常表示（中央寄せ・1行）
+        <Text style={[textStyle, { textAlign: 'center' }]} numberOfLines={1}>
+          {text}
+        </Text>
+      )}
     </View>
   );
 }
