@@ -1733,6 +1733,16 @@ async function getPhotoUrl(photoName: string, apiKey: string) {
   return data?.photoUri || "";
 }
 
+// ─── 写真プロキシURL生成（遅延解決・高速化用）─────────────────────────────────
+// getPhotoUrl は写真1枚ごとに Google へ追加リクエストして CDN URL を解決するため遅い。
+// 代わりに /api/photo-proxy を経由する URL を組み立てると、解決は画像表示時まで遅延され、
+// 推薦APIのレスポンスが大幅に高速化する（ユーザーが実際に見た写真だけ解決される）。
+const PHOTO_PROXY_BASE = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
+function buildPhotoProxyUrl(photoName: string): string {
+  const mediaUrl = `https://places.googleapis.com/v1/${photoName}/media`;
+  return `${PHOTO_PROXY_BASE}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
+}
+
 async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherContext> {
   if (typeof lat !== "number" || typeof lng !== "number") return {};
 
@@ -3689,14 +3699,12 @@ async function fetchGooglePlacesSupplement(
       PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
     };
 
-    // 写真は getPhotoUrl で CDN URL を直接取得（最大10枚）
-    return await Promise.all(filtered.map(async (p: Record<string, unknown>) => {
+    // 写真は photo-proxy URL を直接組み立て（解決は表示時に遅延 → 高速化、最大10枚）
+    return filtered.map((p: Record<string, unknown>) => {
       const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
       const photoObjs = (p.photos as Array<{ name: string }> | undefined) ?? [];
       const photoNames = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
-      const photoUrls = photoNames.length > 0
-        ? (await Promise.all(photoNames.map(n => getPhotoUrl(n, apiKey)))).filter(Boolean)
-        : [];
+      const photoUrls = photoNames.map(n => buildPhotoProxyUrl(n));
       const photoUrl = photoUrls[0] ?? undefined;
       const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
       return {
@@ -3727,7 +3735,7 @@ async function fetchGooglePlacesSupplement(
         userPhotoCount: 0,
         routesByMode: undefined,
       };
-    }));
+    });
   } catch (e) {
     console.error("[recommend] Google supplement search failed:", e);
     return [];
@@ -3745,6 +3753,7 @@ async function fetchYahooSupplement(
   existingNames: string[],
   limit: number = 10,
   minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
+  googleApiKey: string = "", // Yahoo結果の写真をGoogle Placesで補完するためのキー
 ): Promise<Array<Record<string, unknown>>> {
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
@@ -3958,6 +3967,40 @@ async function fetchYahooSupplement(
       });
 
       if (results.length >= limit) break;
+    }
+
+    // ── Yahoo結果の写真をGoogle Placesで補完 ───────────────────────────────────
+    // Yahooローカルサーチは写真を返さないため、施設名でGoogle Places Text Searchして
+    // 写真を取得（photo-proxy URLで遅延解決 → 高速）。各施設1リクエストのみ・並列実行。
+    if (googleApiKey && results.length > 0) {
+      await Promise.all(results.map(async (r) => {
+        try {
+          const sres = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": googleApiKey,
+              "X-Goog-FieldMask": "places.photos",
+            },
+            body: JSON.stringify({
+              textQuery: `${r.title} ${r.address ?? ""}`.trim(),
+              locationBias: { circle: { center: { latitude: lat, longitude: lng }, radius: 50000 } },
+              maxResultCount: 1,
+              languageCode: "ja",
+            }),
+            cache: "no-store",
+            signal: AbortSignal.timeout(6000),
+          });
+          if (!sres.ok) return;
+          const sdata = await sres.json().catch(() => null);
+          const photoObjs = (sdata?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+          const photoNamesArr = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
+          if (photoNamesArr.length === 0) return;
+          const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
+          r.photoUrls = urls;
+          r.photoUrl = urls[0];
+        } catch { /* 写真取得失敗は無視（プレースホルダー表示） */ }
+      }));
     }
 
     console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km)`);
@@ -4333,7 +4376,7 @@ export async function POST(request: Request) {
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 5, minRadiusKm
+                sbNames, 5, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
@@ -4371,7 +4414,8 @@ export async function POST(request: Request) {
                 const photoObjs = (data?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
                 const photoNamesArr = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
                 if (photoNamesArr.length === 0) return;
-                const urls = (await Promise.all(photoNamesArr.map(n => getPhotoUrl(n, apiKey)))).filter(Boolean);
+                // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
+                const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) photoMap.set(name, urls);
               } catch { /* 写真取得失敗は無視 */ }
             }));
