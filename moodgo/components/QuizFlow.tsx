@@ -554,9 +554,8 @@ const rsl = StyleSheet.create({
 // ─── Marquee Label ────────────────────────────────────────────────────────────
 // 枠に収まらない（…で省略される）テキストのみ、永遠に流れ続けるアニメーションを付ける。
 // 収まるテキストは静止表示のまま。
-const MQ_GAP = 30;     // 2つのコピーの間隔(px)
-const MQ_SPEED = 22;   // スクロール速度(px/秒) ← ゆっくり
-const MQ_PAUSE = 900;  // 1周ごとに先頭で止まる時間(ms)
+const MQ_GAP = 36;     // 2つのコピーの間隔(px)
+const MQ_SPEED = 22;   // スクロール速度(px/秒) ← ゆっくり一定
 
 function MarqueeLabel({ text, style, maxWidth }: {
   text: string; style: any; maxWidth: number;
@@ -570,24 +569,22 @@ function MarqueeLabel({ text, style, maxWidth }: {
     tx.stopAnimation();
     tx.setValue(0);
     if (!needsScroll) return;
-    let cancelled = false;
     const distance = textW + MQ_GAP;
     const duration = (distance / MQ_SPEED) * 1000;
-    const loop = () => {
-      if (cancelled) return;
-      tx.setValue(0);
-      Animated.sequence([
-        Animated.delay(MQ_PAUSE),
-        Animated.timing(tx, {
-          toValue: -distance,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => { if (finished && !cancelled) loop(); });
-    };
-    loop();
-    return () => { cancelled = true; tx.stopAnimation(); };
+    // Animated.loop はネイティブ側で繰り返すため、JS往復による引っ掛かり(カクつき)が無く
+    // 切れ目なく永遠に流れ続ける。2コピー+間隔なので 0 へのリセットは視覚的に継ぎ目なし。
+    const anim = Animated.loop(
+      Animated.timing(tx, {
+        toValue: -distance,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: true,
+        isInteraction: false,
+      }),
+      { resetBeforeIteration: true },
+    );
+    anim.start();
+    return () => { anim.stop(); tx.stopAnimation(); };
   }, [needsScroll, textW]);
 
   return (
