@@ -551,45 +551,65 @@ const rsl = StyleSheet.create({
   scaleText: { fontSize: 10, color: '#C4B5FD', fontWeight: '600' },
 });
 
-// ─── Marquee Label ────────────────────────────────────────────────────────────
-// 枠に収まらない（…で省略される）テキストのみ、永遠に流れ続けるアニメーションを付ける。
-// 収まるテキストは静止表示のまま。
-const MQ_GAP = 36;     // 2つのコピーの間隔(px)
-const MQ_SPEED = 22;   // スクロール速度(px/秒) ← ゆっくり一定
+// ─── MarqueeText（汎用・横スクロールテキスト）────────────────────────────────
+// カード幅に収まらない長いテキストだけを、左方向へゆっくりループで流して全文を見せる。
+// 収まる短いテキストは静止表示（…にならない）。タイトル・サブラベル共用。
+//   props: text / style? / speed?(px/秒) / delay?(1周ごとの先頭休止ms) / containerWidth?
+const MQ_GAP = 36;       // 1周の末尾に入れる余白(px)＝先頭テキストとの間隔
+const MQ_SPEED = 22;     // 既定スクロール速度(px/秒) ← ゆっくり
+const MQ_DELAY = 1200;   // 既定: 1周ごとに先頭で休止する時間(ms)
 
-function MarqueeLabel({ text, style, maxWidth }: {
-  text: string; style: any; maxWidth: number;
+function MarqueeText({ text, style, speed = MQ_SPEED, delay = MQ_DELAY, containerWidth }: {
+  text: string;
+  style?: any;
+  speed?: number;
+  delay?: number;
+  containerWidth?: number;
 }) {
+  const [measuredBoxW, setMeasuredBoxW] = useState(0);
   const [textW, setTextW] = useState(0);
   const tx = useRef(new Animated.Value(0)).current;
-  // 自然幅が枠を1pxでも超えたらスクロール。収まるなら静止（…を出さない）。
-  const needsScroll = textW > 0 && textW > maxWidth;
+
+  // 表示領域の幅: 明示指定があればそれ、無ければ onLayout で実測
+  const boxW = containerWidth != null ? containerWidth : measuredBoxW;
+  // 自然なテキスト幅が表示領域を1pxでも超えたらスクロール（収まるなら静止＝…を出さない）
+  const needsScroll = textW > 0 && boxW > 0 && textW > boxW;
 
   useEffect(() => {
     tx.stopAnimation();
     tx.setValue(0);
     if (!needsScroll) return;
-    const distance = textW + MQ_GAP;
-    const duration = (distance / MQ_SPEED) * 1000;
-    // Animated.loop はネイティブ側で繰り返すため、JS往復による引っ掛かり(カクつき)が無く
-    // 切れ目なく永遠に流れ続ける。2コピー+間隔なので 0 へのリセットは視覚的に継ぎ目なし。
+    const distance = textW + MQ_GAP;            // この距離スクロールすると2枚目が先頭位置に来る
+    const duration = (distance / speed) * 1000; // px / (px/秒) → 秒 → ms
+    // Animated.loop はネイティブ側で繰り返すため JS往復のカクつきが無く滑らか。
+    // [流す → 先頭で delay 休止] を1周とし、2コピー+間隔なので先頭への戻りは継ぎ目なし。
     const anim = Animated.loop(
-      Animated.timing(tx, {
-        toValue: -distance,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-        isInteraction: false,
-      }),
+      Animated.sequence([
+        Animated.timing(tx, {
+          toValue: -distance,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.delay(delay),
+      ]),
       { resetBeforeIteration: true },
     );
     anim.start();
     return () => { anim.stop(); tx.stopAnimation(); };
-  }, [needsScroll, textW]);
+  }, [needsScroll, textW, speed, delay]);
 
   return (
-    <View style={{ width: maxWidth, overflow: 'hidden' }}>
+    <View
+      style={[{ overflow: 'hidden' }, containerWidth != null ? { width: containerWidth } : { alignSelf: 'stretch' }]}
+      onLayout={containerWidth != null ? undefined : (e) => {
+        const w = Math.floor(e.nativeEvent.layout.width);
+        if (w > 0 && w !== measuredBoxW) setMeasuredBoxW(w);
+      }}
+    >
       {needsScroll ? (
+        // 同じテキストを2コピー並べ、距離 distance だけ流して0へ戻す＝途切れず流れ続ける
         <Animated.View style={{
           flexDirection: 'row', alignSelf: 'flex-start',
           width: textW * 2 + MQ_GAP, transform: [{ translateX: tx }],
@@ -599,7 +619,7 @@ function MarqueeLabel({ text, style, maxWidth }: {
           <Text style={[style, { width: textW, textAlign: 'left' }]} numberOfLines={1}>{text}</Text>
         </Animated.View>
       ) : (
-        <Text style={[style, { width: maxWidth }]} numberOfLines={1}>{text}</Text>
+        <Text style={[style, boxW > 0 ? { width: boxW } : null]} numberOfLines={1}>{text}</Text>
       )}
       {/* 幅計測用ゴースト（rowで自然幅を測る・非表示）
           row 内の子は幅制約を受けず自然幅で測れるため、…で切られた幅にならない */}
@@ -671,8 +691,8 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
           <View style={[mc.iconCircle, active && mc.iconCircleA]}>
             <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
           </View>
-          <MarqueeLabel text={label} style={[mc.label, active && mc.labelA]} maxWidth={cardWidth - 24} />
-          {sub ? <MarqueeLabel text={sub} style={[mc.sublabel, active && mc.sublabelA]} maxWidth={cardWidth - 24} /> : null}
+          <MarqueeText text={label} style={[mc.label, active && mc.labelA]} containerWidth={cardWidth - 24} />
+          {sub ? <MarqueeText text={sub} style={[mc.sublabel, active && mc.sublabelA]} containerWidth={cardWidth - 24} /> : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -741,8 +761,8 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
           {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
-          <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
-          {sub ? <MarqueeLabel text={sub} style={[oc.sub, active && oc.subA]} maxWidth={width - 16} /> : null}
+          <MarqueeText text={label} style={[oc.lbl, active && oc.lblA]} containerWidth={width - 16} />
+          {sub ? <MarqueeText text={sub} style={[oc.sub, active && oc.subA]} containerWidth={width - 16} /> : null}
           {hint ? (
             <View style={[oc.hintWrap, active && oc.hintWrapA]}>
               <Text style={[oc.hint, active && oc.hintA]}>{hint}</Text>
