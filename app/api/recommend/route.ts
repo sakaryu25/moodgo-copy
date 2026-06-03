@@ -4184,7 +4184,8 @@ async function buildFreeWordRecommendations(
   answers: {
     mood?: string; companion?: string; budget?: number; freeWord?: string;
     distanceFeeling?: string; radiusKm?: number; originLat?: number; originLng?: number;
-    area?: string; dynamicQs?: { question: string; answer: string }[];
+    area?: string; areaMode?: string;
+    dynamicQs?: { question: string; answer: string }[];
   },
   apiKey: string,
   openaiClient: import("openai").default,
@@ -4192,37 +4193,62 @@ async function buildFreeWordRecommendations(
   showUnseenOnly: boolean,
 ): Promise<Array<Record<string, unknown>>> {
   try {
-    const lat = answers.originLat;
-    const lng = answers.originLng;
+    const lat  = answers.originLat;
+    const lng  = answers.originLng;
     const area = answers.area ?? "東京";
-    const dynamicDesc = (answers.dynamicQs ?? [])
-      .map((q: { question: string; answer: string }) => `${q.question}: ${q.answer}`)
+    const isManual = answers.areaMode === "manual";
+
+    // エリア・半径の表現（プロンプトに使う）
+    const radiusKm   = answers.radiusKm ?? (isManual ? 2 : 20);
+    const areaDesc   = isManual
+      ? `${area}（半径2km圏内のみ）`
+      : lat
+        ? `現在地から${answers.distanceFeeling ?? ""}（${radiusKm}km圏内）`
+        : `${area}（${radiusKm}km圏内）`;
+
+    // deepDive カテゴリを抽出
+    const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
+    const deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+    const deepDiveDesc = ([deepDiveL2, deepDiveL1].filter(v => v && v !== "こだわらない").join(" / ")) || (answers.mood ?? "");
+
+    // 深掘り以外の dynamicQs（絶景タイプ等）
+    const extraQs = (answers.dynamicQs ?? [])
+      .filter(q => q.question !== "深掘りカテゴリ" && q.question !== "深掘り詳細")
+      .map(q => `${q.question}: ${q.answer}`)
       .join("\n");
 
-    const prompt = `ユーザーの情報をもとに、今すぐ行けるおすすめスポットを${lat ? "現在地付近で" : area + "で"}最大15個提案してください。
+    const prompt = `あなたはお出かけプランナーAIです。
+ユーザーの希望に厳密に合致する実在スポットを10件提案してください。
 
-【ユーザー情報】
+【最重要条件（必ず全て満たすこと）】
+1. エリア: ${areaDesc}
+2. カテゴリ: ${deepDiveDesc}
+3. 希望キーワード（最優先）: ${answers.freeWord}
+
+【参考条件】
 - 気分: ${answers.mood ?? "未設定"}
 - 同行者: ${answers.companion ?? "未設定"}
 - 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "未設定"}
-- 希望キーワード: ${answers.freeWord}
-- 距離感: ${answers.distanceFeeling ?? "指定なし"}
-${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
+${extraQs ? extraQs : ""}
 
-出力は必ず以下のJSON形式のみ（日本語）:
-{"places": [{"name": "スポット名", "query": "${lat ? "現在地付近" : area} スポット名"}]}
-- 実在する具体的な施設名のみ（駅名や地名だけはNG）
-- 予算内で行けるスポット優先`;
+【ルール】
+- 「${answers.freeWord}」の条件に合う施設のみ（関係ないスポットは除外）
+- ${area} エリアに今も実在する具体的な店舗・施設名（チェーン店名だけでなく支店名まで）
+- 駅名・地名・エリア名だけのNG。実際の店名を出すこと
+- 予算内に収まるスポット優先
+
+出力は必ず以下のJSON形式のみ（説明文は不要）:
+{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"}]}`;
 
     const resp = await openaiClient.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.8,
+      temperature: 0.7,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "あなたはお出かけプランナーAIです。ユーザーの希望に合ったリアルな施設を提案してください。" },
+        { role: "system", content: "あなたはお出かけプランナーAIです。ユーザーの条件に厳密に合致したリアルな施設のみを提案してください。条件に合わないスポットは絶対に含めないこと。" },
         { role: "user", content: prompt },
       ],
-      max_tokens: 600,
+      max_tokens: 800,
     });
 
     const text = resp.choices[0]?.message?.content ?? "{}";
@@ -4235,6 +4261,7 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
       PRICE_LEVEL_MODERATE: "￥￥", PRICE_LEVEL_EXPENSIVE: "￥￥￥",
       PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
     };
+    const proxyBase = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
 
     const results = await Promise.all(
       suggestions.slice(0, 15).map(async (p) => {
@@ -4244,7 +4271,8 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
             headers: {
               "Content-Type": "application/json",
               "X-Goog-Api-Key": apiKey,
-              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel",
+              // photos を最大10枚・location を追加取得
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location",
             },
             body: JSON.stringify({
               textQuery: p.query || `${area} ${p.name}`,
@@ -4255,7 +4283,7 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
                 locationBias: {
                   circle: {
                     center: { latitude: lat, longitude: lng },
-                    radius: Math.min((answers.radiusKm ?? 40) * 1000, 50000),
+                    radius: Math.min(radiusKm * 1000, 50000),
                   },
                 },
               } : {}),
@@ -4266,22 +4294,45 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
           const data = await res.json();
           const place = data.places?.[0];
           if (!place) return null;
+
           const name = (place.displayName?.text as string | undefined) ?? p.name;
           if (showUnseenOnly && seenPlaces.includes(name)) return null;
+
+          // ── 複数写真を取得（最大5枚）────────────────────────────────────────
           const photos = (place.photos ?? []) as Array<{ name: string }>;
-          const rawPhotoPath2 = photos[0]?.name
-            ? `https://places.googleapis.com/v1/${photos[0].name}/media`
-            : null;
-          const proxyBase2 = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-main.vercel.app";
-          const photoUrl = rawPhotoPath2
-            ? `${proxyBase2}/api/photo-proxy?url=${encodeURIComponent(rawPhotoPath2)}`
-            : undefined;
+          const photoUrls = photos.slice(0, 5)
+            .map((ph: { name: string }) =>
+              ph.name
+                ? `${proxyBase}/api/photo-proxy?url=${encodeURIComponent(`https://places.googleapis.com/v1/${ph.name}/media`)}`
+                : null
+            )
+            .filter((u): u is string => u !== null);
+
+          // ── 最寄り駅（座標がある場合のみ）────────────────────────────────────
+          const placeLat = (place.location as { latitude?: number } | undefined)?.latitude;
+          const placeLng = (place.location as { longitude?: number } | undefined)?.longitude;
+          let stationText = "";
+          if (typeof placeLat === "number" && typeof placeLng === "number") {
+            stationText = await findNearestStation(placeLat, placeLng, apiKey).catch(() => "");
+          }
+
+          // ── 現在地からの距離テキスト ─────────────────────────────────────────
+          let distanceText = "";
+          if (lat && lng && typeof placeLat === "number" && typeof placeLng === "number") {
+            const distM = haversineMeters(lat, lng, placeLat, placeLng);
+            const distKm = distM / 1000;
+            const mins = Math.round((distKm / 40) * 60);
+            distanceText = mins < 60
+              ? `車で約${mins}分 / ${distKm.toFixed(1)}km`
+              : `車で約${Math.floor(mins / 60)}時間${mins % 60 > 0 ? (mins % 60) + "分" : ""} / ${distKm.toFixed(1)}km`;
+          }
+
           const hours = place.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
           return {
             title: name,
             address: (place.formattedAddress as string | undefined) ?? "",
-            photoUrl,
-            photoUrls: photoUrl ? [photoUrl] : [],
+            photoUrl: photoUrls[0] ?? "",
+            photoUrls,
             rating: typeof place.rating === "number" ? place.rating : null,
             userRatingCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
             openNow: undefined,
@@ -4290,9 +4341,14 @@ ${dynamicDesc ? "【深掘り回答】\n" + dynamicDesc : ""}
             googleMapsUrl: (place.googleMapsUri as string | undefined) ?? "",
             reason: `「${answers.freeWord}」のイメージにぴったりなスポットです`,
             features: [],
-            distanceText: "",
+            distanceText,
+            distanceKm: (lat && lng && typeof placeLat === "number" && typeof placeLng === "number")
+              ? haversineMeters(lat, lng, placeLat, placeLng) / 1000
+              : undefined,
+            lat: typeof placeLat === "number" ? placeLat : undefined,
+            lng: typeof placeLng === "number" ? placeLng : undefined,
             durationText: "",
-            stationText: "",
+            stationText,
             vibe: "",
             budget: "",
             time: "",
