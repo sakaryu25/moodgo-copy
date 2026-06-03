@@ -3963,33 +3963,74 @@ async function fetchYahooSupplement(
   const keyword = (DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット").slice(0, 60);
 
   try {
-    // Yahoo の dist 上限は 20km。半径が大きい場合も最大 20km まで広げて検索する
+    // Yahoo の dist 上限は 20km。
     const yahooDistKm = Math.min(radiusKm, 20);
     // 遠端バイアス時は候補を多く取り、距離でソートしてから絞る
     const wantFarBias = minRadiusKm > 0;
+    const fetchCount = wantFarBias ? 50 : Math.min(limit * 2, 30);
     // far bias 時は start を先頭固定で候補プールを最大化（ランダムページは多様性用）
     const randomStart = wantFarBias ? 0 : Math.floor(Math.random() * 5) * limit;
-    const fetchCount = wantFarBias ? 50 : Math.min(limit * 2, 30);
-    const params = new URLSearchParams({
-      appid: apiKey,
-      lat: String(lat),
-      lon: String(lng),
-      dist: String(yahooDistKm),
-      results: String(fetchCount),
-      start:  String(randomStart + 1),  // Yahoo は 1-based
-      // far bias 時は距離ソート（遠い順に並べ替えるため一旦取得）。通常は score 順
-      sort: wantFarBias ? "dist" : "score",
-      output: "json",
-      query: keyword,
-    });
 
-    const res = await fetch(
-      `https://map.yahooapis.jp/search/local/V1/localSearch?${params}`,
-      { signal: AbortSignal.timeout(8000) }
+    // 1地点で Yahoo ローカルサーチを実行するヘルパー（dist は最大20km）
+    const searchYahooAt = async (
+      cLat: number, cLng: number, distKm: number, start1: number,
+    ): Promise<Record<string, unknown>[]> => {
+      const params = new URLSearchParams({
+        appid: apiKey,
+        lat: String(cLat),
+        lon: String(cLng),
+        dist: String(Math.min(Math.max(distKm, 1), 20)),
+        results: String(fetchCount),
+        start: String(start1),  // Yahoo は 1-based
+        // far bias 時は距離ソート（遠い順）。通常は score 順
+        sort: wantFarBias ? "dist" : "score",
+        output: "json",
+        query: keyword,
+      });
+      try {
+        const r = await fetch(
+          `https://map.yahooapis.jp/search/local/V1/localSearch?${params}`,
+          { signal: AbortSignal.timeout(8000) },
+        );
+        if (!r.ok) return [];
+        const d = await r.json().catch(() => null);
+        return (d?.Feature ?? []) as Record<string, unknown>[];
+      } catch { return []; }
+    };
+
+    // ── 検索中心点の構築 ─────────────────────────────────────────────────────
+    // ① 中心点（現在地）。dist は最大20km。
+    type YCenter = { lat: number; lng: number; distKm: number; start1: number };
+    const centers: YCenter[] = [{ lat, lng, distKm: yahooDistKm, start1: randomStart + 1 }];
+
+    // ② 遠距離設定（要求半径が Yahoo の20km上限を超える）場合、リング状に中心点を配置。
+    //    各点で 20km 検索 → union することで 20km〜200km の遠方帯を取得する。
+    //    Google のリングサンプリングと同じ思想（外縁寄りに配置し遠方を優先）。
+    if (radiusKm > 20) {
+      const ringDistKm = Math.max(minRadiusKm, radiusKm - 20, 20);
+      // 遠いほどリング点を増やして角度方向のカバレッジを上げる（最大8点）
+      const ringN = ringDistKm >= 140 ? 8 : ringDistKm >= 90 ? 6 : 5;
+      const baseBearing = Math.random() * 360; // 毎回少し回転させて多様化
+      for (let i = 0; i < ringN; i++) {
+        const bearing = baseBearing + (360 / ringN) * i;
+        const pt = destinationPoint(lat, lng, bearing, ringDistKm);
+        centers.push({ lat: pt.lat, lng: pt.lng, distKm: 20, start1: 1 });
+      }
+    }
+
+    // ── 全中心点を並列検索して union（施設名で重複排除）────────────────────────
+    const rawFeatures = await Promise.all(
+      centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1)),
     );
-    if (!res.ok) return [];
-    const data = await res.json();
-    const features: Record<string, unknown>[] = data.Feature ?? [];
+    const seenNames = new Set<string>();
+    const features: Record<string, unknown>[] = [];
+    for (const arr of rawFeatures) {
+      for (const f of arr) {
+        const nm = String(f.Name ?? "");
+        if (nm && !seenNames.has(nm)) { seenNames.add(nm); features.push(f); }
+      }
+    }
+    if (features.length === 0) return [];
 
     // Yahoo Geometry.Coordinates ("経度,緯度") から距離(km)を計算
     const distOf = (f: Record<string, unknown>): number => {
@@ -4004,6 +4045,9 @@ async function fetchYahooSupplement(
     // 名前重複・除外を済ませた候補リスト（距離付き）
     // 食事系（お腹すいた）はホテル内レストランを許容するため宿泊施設の名前フィルタを緩める
     const isFoodMoodYahoo = mood === "お腹すいた";
+    // リング検索は各点20kmを拾うため、要求半径を大きく超えるスポットが混ざりうる。
+    // 要求半径の約1.15倍を上限に行き過ぎを除外（座標不明 distKm<0 は残す）。
+    const maxDistKm = radiusKm > 0 ? radiusKm * 1.15 : Infinity;
     const candidates = features
       .filter(f => {
         const name = String(f.Name ?? "");
@@ -4012,13 +4056,16 @@ async function fetchYahooSupplement(
         if (!isFoodMoodYahoo && isLodgingName(name)) return false;
         return true;
       })
-      .map(f => ({ f, distKm: distOf(f) }));
+      .map(f => ({ f, distKm: distOf(f) }))
+      .filter(c => c.distKm < 0 || c.distKm <= maxDistKm);
 
     // 遠端バイアス: minRadiusKm 以上を優先（Yahoo の 20km 上限内で最も遠い側）
     // far 群が空なら全候補を距離降順にして外側を優先
     let orderedFeatures: { f: Record<string, unknown>; distKm: number }[];
     if (wantFarBias) {
-      const effMin = Math.min(minRadiusKm, yahooDistKm);
+      // リングサンプリングにより遠方(minRadiusKm以上)も取得できるため、
+      // far 判定にはクイズの遠端しきい値(minRadiusKm)をそのまま使う。
+      const effMin = minRadiusKm;
       const far  = candidates.filter(c => c.distKm >= effMin);
       const near = candidates.filter(c => c.distKm < effMin && c.distKm >= 0);
       // far: 距離降順 + ランダムノイズ（遠いほど上位、毎回少し変わる）
@@ -4110,7 +4157,7 @@ async function fetchYahooSupplement(
       }));
     }
 
-    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km)`);
+    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km, centers=${centers.length}, pool=${features.length})`);
     return results;
   } catch (e) {
     console.warn("[recommend] Yahoo supplement search failed:", e);
