@@ -4496,9 +4496,10 @@ export async function POST(request: Request) {
         "小旅行気分":          96,
         "どこでも行きたい":    160,
       };
-      const minRadiusKm = useQuizRadius
-        ? (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8))
-        : 0;
+      // 手動エリア入力時は距離バイアスなし（2km固定半径で近場を返す）
+      const minRadiusKm = (answers.areaMode === 'manual' || !useQuizRadius)
+        ? 0
+        : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
@@ -4547,7 +4548,7 @@ export async function POST(request: Request) {
           .sort((a, b) => b._niceScore - a._niceScore)
           .slice(0, 5);  // Supabase: 最大5件
 
-        const sbNames = sbPool.map(r => r.name);
+        const sbNames = scored.map(r => r.name);
         // 写真がないSupabase結果の名前リスト（Google写真補完対象）
         const noPhotoNames = scored.filter(r => !r.imageUrl).map(r => r.name);
 
@@ -4557,7 +4558,7 @@ export async function POST(request: Request) {
           hasLocation
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
-                answers.mood ?? "", sbNames, apiKey, 5,
+                answers.mood ?? "", sbNames, apiKey, 7,
                 answers.budget, effectiveDeepDive, minRadiusKm
               )
             : Promise.resolve([]),
@@ -4568,7 +4569,7 @@ export async function POST(request: Request) {
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 5, minRadiusKm, apiKey
+                sbNames, 7, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）

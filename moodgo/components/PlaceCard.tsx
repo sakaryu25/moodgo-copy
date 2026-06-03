@@ -10,6 +10,7 @@ import {
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -360,7 +361,15 @@ export default function PlaceCard({
         <View style={s.actions}>
           {item.mapUrl ? (
             <TouchableOpacity
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(item.mapUrl!); }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (Platform.OS === 'ios') {
+                  const query = encodeURIComponent(item.title || '');
+                  Linking.openURL(`comgooglemaps://?q=${query}`).catch(() => Linking.openURL(item.mapUrl!));
+                } else {
+                  Linking.openURL(item.mapUrl!);
+                }
+              }}
               style={s.mapBtn}
               activeOpacity={0.88}
             >

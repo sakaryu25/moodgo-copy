@@ -220,6 +220,7 @@ export default function Home() {
       setOriginLat(undefined);
       setOriginLng(undefined);
       setLocationDisplayArea('');
+      setRadiusKm(2); // 手動入力時は2km固定半径
     }
   };
 
@@ -232,7 +233,7 @@ export default function Home() {
   //   5. setApiRecommendations → 履歴保存 → setStep(11)
   // ─────────────────────────────────────────────────────────────────────────
 
-  const openResults = async (refineText = '', isRefinement = false) => {
+  const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number) => {
     // 新規検索時: 前回結果・評価をクリアしてから結果画面へ
     if (!isRefinement) {
       setApiRecommendations([]);
@@ -276,7 +277,7 @@ export default function Home() {
         budget,
         budgetMin,
         freeWord,
-        radiusKm,
+        radiusKm: radiusOverride ?? radiusKm,
         areaMode,
         distanceFeeling,
         originLat,
@@ -696,7 +697,7 @@ export default function Home() {
             areaMode={areaMode}
             distanceFeeling={distanceFeeling}
             radiusKm={radiusKm}
-            onChangeRadius={(km) => { setRadiusKm(km); openResults('', true); }}
+            onChangeRadius={(km) => { setRadiusKm(km); openResults('', true, km); }}
             // ── 検索結果（全気分とも recommendations に統一）──────────────────
             recommendations={apiRecommendations}
             onsenFacilities={null}

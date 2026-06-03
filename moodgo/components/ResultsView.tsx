@@ -481,6 +481,26 @@ export default function ResultsView(props: Props) {
           </View>
         )}
 
+        {/* ── エリアを広げる（手動エリアモード専用） ─── */}
+        {!isLoading && areaMode === 'manual' && onChangeRadius && (() => {
+          const RADIUS_STEPS = [2, 5, 10, 20, 40];
+          const nextRadius = RADIUS_STEPS.find(r => r > (radiusKm ?? 0));
+          if (!nextRadius) return null;
+          return (
+            <TouchableOpacity
+              onPress={() => onChangeRadius(nextRadius)}
+              activeOpacity={0.82}
+              style={s.expandAreaBtn}
+            >
+              <LinearGradient colors={['#E0F2FE', '#EDE9FE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <Navigation size={14} color={BRAND} strokeWidth={2.5} />
+              <Text style={s.expandAreaText}>
+                エリアを広げる（{nextRadius}km圏内）
+              </Text>
+            </TouchableOpacity>
+          );
+        })()}
+
         {/* ── 都道府県フィルター ─────────────────────── */}
         {!isLoading && prefectureButtons.length > 0 && (
           <ScrollView
@@ -836,4 +856,13 @@ const s = StyleSheet.create({
   modalSubmitText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   modalCloseBtn: { alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999, backgroundColor: '#F9FAFB', marginTop: 8, borderWidth: 1, borderColor: '#F3F4F6' },
   modalCloseBtnText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  // ── エリアを広げるボタン ─────────────────────────────────────────────────
+  expandAreaBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    height: 46, borderRadius: 999, marginBottom: 10,
+    overflow: 'hidden',
+    borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.3)',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3,
+  },
+  expandAreaText: { fontSize: 14, fontWeight: '700', color: BRAND },
 });

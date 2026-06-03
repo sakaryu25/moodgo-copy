@@ -735,7 +735,7 @@ export default function QuizFlow(props: Props) {
     freeWord, onSetFreeWord,
     onUseCurrentLocation, onSetStep, onBack, onOpenResults,
     deepDiveL1, deepDiveL2, onSetDeepDiveL1, onSetDeepDiveL2,
-    distanceFeeling, radiusKm,
+    distanceFeeling, radiusKm, areaMode,
     onSetAreaMode, onSetDistanceFeeling,
   } = props;
 
@@ -786,7 +786,7 @@ export default function QuizFlow(props: Props) {
     if (step === 2)  { onSetStep(1);  return; }
     if (step === 3)  { onSetStep(2);  return; }
     if (step === 4)  { onSetStep(3);  return; }
-    if (step === 5)  { onSetStep(4); return; }
+    if (step === 5)  { onSetStep(areaMode === 'manual' ? 3 : 4); return; }
     if (step === 6)  { onSetStep(5);  return; }
     if (step === 7)  { onSetStep(6);  return; }
     if (step === 8)  {
@@ -799,7 +799,7 @@ export default function QuizFlow(props: Props) {
   const handleNext = () => {
     if (step === 1)  { onSetStep(2);  return; }
     if (step === 2)  { onSetStep(3);  return; }
-    if (step === 3)  { onSetStep(4); return; }
+    if (step === 3)  { onSetStep(areaMode === 'manual' ? 5 : 4); return; }
     if (step === 4)  { onSetStep(5);  return; }
     if (step === 5)  { onSetStep((hasDive && selectedMood !== '時間潰し') ? 6 : 8); return; }
     if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 8); return; }
