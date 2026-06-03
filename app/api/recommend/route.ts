@@ -4538,6 +4538,12 @@ export async function POST(request: Request) {
         const cleanL1 = (deepDiveL1 && deepDiveL1 !== "こだわらない") ? deepDiveL1 : "";
         const effectiveDeepDive = cleanL2 || cleanL1;
 
+        // API-only deepDive（動物カフェ・ブックカフェ等）の判定
+        // deepDiveTags が空 かつ deepDive が指定されている場合、Supabase は気分タグで
+        // カテゴリ無関係なスポットを返してしまう。Google/Yahoo 専用検索に委ねるため
+        // Supabase 結果は最終マージでフォールバック扱いにする。
+        const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0);
+
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         const scored = sbPool
           .map(r => ({
@@ -4706,6 +4712,11 @@ export async function POST(request: Request) {
           return a;
         };
 
+        // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
+        // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う
+        const hasApiResults = googleSupplements.length > 0 || yahooSupplements.length > 0;
+        const mergedSb = (isApiOnlyDeepDive && hasApiResults) ? [] : supabaseRecs;
+
         let recommendations: typeof supabaseRecs;
         if (minRadiusKm > 0) {
           // 遠端バイアス有効（例：「どこでも行きたい」「ちょっと遠くてもOK」）:
@@ -4714,7 +4725,7 @@ export async function POST(request: Request) {
           //   同距離帯はランダムノイズで毎回少し変化させる。距離不明(=0)は末尾へ。
           //   ※ Google(最大50km)・Yahoo(最大20km)は API 仕様上それ以上遠くを返せないため、
           //     選択距離に届くスポットが無い場合は「利用可能な中で最も遠い」候補が先頭になる。
-          recommendations = [...supabaseRecs, ...googleSupplements, ...yahooSupplements]
+          recommendations = [...mergedSb, ...googleSupplements, ...yahooSupplements]
             .map(r => ({
               r,
               // 数値の distanceKm を優先使用。無い場合のみ表示文字列からパース（後方互換フォールバック）
@@ -4727,7 +4738,7 @@ export async function POST(request: Request) {
         } else {
           // 遠端バイアスなし(すぐそこ・近場): 3ソースをまとめてランダムに混ぜる
           recommendations = shuffleArr([
-            ...supabaseRecs,
+            ...mergedSb,
             ...googleSupplements,
             ...yahooSupplements,
           ]) as typeof supabaseRecs;
