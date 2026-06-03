@@ -4248,6 +4248,32 @@ export async function POST(request: Request) {
     const refinementText = (body?.refinementText || "") as string;
     const userPreferenceHints = (body?.userPreferenceHints || []) as string[];
 
+    // ── 手動エリア入力の座標解決 ──────────────────────────────────────────────
+    // ユーザーが「現在地を使う」ではなくエリア名を手入力した場合（areaMode==='manual'）、
+    // 入力されたエリア名をジオコーディングして originLat/originLng を上書きする。
+    // これにより以降の全フロー（Supabase空間検索・Google・Yahoo）が
+    // 入力エリアの座標を起点に検索されるようになる。
+    // （以前は現在地取得済みの座標が残っていると手入力エリアが無視されていた）
+    if (answers.areaMode === "manual" && answers.area && answers.area.trim()) {
+      try {
+        const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+          answers.area.trim()
+        )}&language=ja&region=JP&key=${apiKey}`;
+        const geoRes = await fetch(geoUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+        const geoData = await geoRes.json().catch(() => null);
+        const loc = geoData?.status === "OK" ? geoData?.results?.[0]?.geometry?.location : null;
+        if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+          answers.originLat = loc.lat;
+          answers.originLng = loc.lng;
+          console.log(`[recommend] 手動エリア「${answers.area}」→ ${loc.lat}, ${loc.lng}`);
+        } else {
+          console.warn(`[recommend] 手動エリア「${answers.area}」のジオコーディング失敗: ${geoData?.status}`);
+        }
+      } catch (e) {
+        console.warn("[recommend] 手動エリアのジオコーディングエラー:", e);
+      }
+    }
+
     // Supabaseの学習データを取得（全属性で類似ユーザーを特定）
     const { context: globalStatsContext, engagedPlaces, goodVisitedPlaces, badVisitedPlaces } = await fetchGlobalStats(answers);
 
