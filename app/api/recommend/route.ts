@@ -285,6 +285,23 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// 起点(lat,lng)から方位 bearingDeg・距離 distKm の地点の緯度経度を返す（球面三角法）
+// 遠距離設定時に「リング状の検索中心点」を生成して、Nearby Search の 50km 上限を超えた
+// 遠方スポットを取得するために使用する。
+function destinationPoint(lat: number, lng: number, bearingDeg: number, distKm: number): { lat: number; lng: number } {
+  const R = 6371; // km
+  const δ = distKm / R;
+  const θ = (bearingDeg * Math.PI) / 180;
+  const φ1 = (lat * Math.PI) / 180;
+  const λ1 = (lng * Math.PI) / 180;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
+  const λ2 = λ1 + Math.atan2(
+    Math.sin(θ) * Math.sin(δ) * Math.cos(φ1),
+    Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2),
+  );
+  return { lat: (φ2 * 180) / Math.PI, lng: (((λ2 * 180) / Math.PI + 540) % 360) - 180 };
+}
+
 // 最寄り駅を検索して「〇〇駅から徒歩約N分」を返す
 // Nearby SearchはRankPreference:DISTANCEを使い、距離順で取得する
 async function findNearestStation(lat: number, lng: number, apiKey: string): Promise<string> {
@@ -3634,36 +3651,74 @@ async function fetchGooglePlacesSupplement(
 
     // 深掘りタグが一致すればそちらを優先（より具体的な結果）
     const types = DEEP_DIVE_TYPES[deepDiveL1] ?? MOOD_TYPES[mood] ?? ["tourist_attraction"];
-    const radiusM = Math.min(radiusKm * 1000, 50000);
 
-    // 毎回異なる結果を得るため、緯度経度に小さなランダムジッターを加える（±0.003° ≈ ±300m）
+    // ── 1回分の Nearby Search を実行して places を返すヘルパー ──────────────────
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType";
+    const searchNearbyAt = async (cLat: number, cLng: number, rM: number): Promise<Array<Record<string, unknown>>> => {
+      try {
+        const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": FIELD_MASK,
+          },
+          body: JSON.stringify({
+            includedTypes: types,
+            // 宿泊メインの施設（ホテル・旅館など日帰り不可）は除外。
+            // primaryType が restaurant 等の施設（ホテル内レストラン）は残る。
+            excludedPrimaryTypes: LODGING_PRIMARY_TYPES,
+            maxResultCount: 20,  // 多めに取得してシャッフルで多様化
+            rankPreference: "POPULARITY",  // 人気順の方が多様な結果を返す
+            languageCode: "ja",
+            locationRestriction: {
+              circle: { center: { latitude: cLat, longitude: cLng }, radius: Math.min(rM, 50000) },
+            },
+          }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) return [];
+        const data = await res.json().catch(() => null);
+        return (data?.places ?? []) as Array<Record<string, unknown>>;
+      } catch { return []; }
+    };
+
+    // ── 検索中心点リストを構築 ────────────────────────────────────────────────
+    // ① 現在地中心（最大50km）。毎回異なる結果のため小さなジッターを加える。
     const jitterLat = lat + (Math.random() - 0.5) * 0.006;
     const jitterLng = lng + (Math.random() - 0.5) * 0.006;
+    const centralRadiusM = Math.min(radiusKm * 1000, 50000);
+    type SearchCenter = { lat: number; lng: number; radiusM: number };
+    const centers: SearchCenter[] = [{ lat: jitterLat, lng: jitterLng, radiusM: centralRadiusM }];
 
-    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType",
-      },
-      body: JSON.stringify({
-        includedTypes: types,
-        // 宿泊メインの施設（ホテル・旅館など日帰り不可）は除外。
-        // primaryType が restaurant 等の施設（ホテル内レストラン）は残る。
-        excludedPrimaryTypes: LODGING_PRIMARY_TYPES,
-        maxResultCount: 20,  // 多めに取得してシャッフルで多様化
-        rankPreference: "POPULARITY",  // 人気順の方が多様な結果を返す
-        languageCode: "ja",
-        locationRestriction: {
-          circle: { center: { latitude: jitterLat, longitude: jitterLng }, radius: radiusM },
-        },
-      }),
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const places = (data.places ?? []) as Array<Record<string, unknown>>;
+    // ② 遠距離設定（要求半径が Nearby の50km上限を超える）場合、リング状に中心点を配置。
+    //    各点で 50km の Nearby Search を行い、union することで 50km〜200km の遠方帯を取得する。
+    //    遠方を優先するため、リング中心は外縁寄り（radiusKm-50 と minRadiusKm の大きい方）に置く。
+    if (radiusKm > 50) {
+      const ringDistKm = Math.max(minRadiusKm, radiusKm - 50, 50);
+      // 遠いほどリング点を増やして角度方向のカバレッジを上げる（最大8点）
+      const ringN = ringDistKm >= 140 ? 8 : ringDistKm >= 90 ? 6 : 5;
+      const baseBearing = Math.random() * 360; // 毎回少し回転させて多様化
+      for (let i = 0; i < ringN; i++) {
+        const bearing = baseBearing + (360 / ringN) * i;
+        const pt = destinationPoint(lat, lng, bearing, ringDistKm);
+        centers.push({ lat: pt.lat, lng: pt.lng, radiusM: 50000 });
+      }
+    }
+
+    // ── 全中心点を並列検索して union（place id で重複排除）────────────────────
+    const rawResults = await Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM)));
+    const seenIds = new Set<string>();
+    const places: Array<Record<string, unknown>> = [];
+    for (const arr of rawResults) {
+      for (const p of arr) {
+        const pid = (p.id as string | undefined) ?? "";
+        const key = pid || ((p.displayName as { text?: string } | undefined)?.text ?? "");
+        if (key && !seenIds.has(key)) { seenIds.add(key); places.push(p); }
+      }
+    }
+    if (places.length === 0) return [];
 
     // Supabase 結果と名前が被るものを除外
     const existingLower = new Set(existingNames.map(n => n.toLowerCase()));
@@ -3700,13 +3755,19 @@ async function fetchGooglePlacesSupplement(
       });
 
     // 各スポットの現在地からの距離(km)を計算
-    const withDist = filteredAll.map((p) => {
-      const loc = p.location as { latitude?: number; longitude?: number } | undefined;
-      const distKm = (typeof loc?.latitude === "number" && typeof loc?.longitude === "number")
-        ? haversineMeters(lat, lng, loc.latitude, loc.longitude) / 1000
-        : -1;  // 座標不明
-      return { p, distKm };
-    });
+    // リング検索は各点で最大50km拾うため、要求半径(radiusKm)を大きく超えるスポットが
+    // 含まれうる。要求半径の約1.15倍を上限に、行き過ぎたスポットを除外する。
+    // (座標不明 distKm<0 は判定不能なので残す)
+    const maxDistKm = radiusKm > 0 ? radiusKm * 1.15 : Infinity;
+    const withDist = filteredAll
+      .map((p) => {
+        const loc = p.location as { latitude?: number; longitude?: number } | undefined;
+        const distKm = (typeof loc?.latitude === "number" && typeof loc?.longitude === "number")
+          ? haversineMeters(lat, lng, loc.latitude, loc.longitude) / 1000
+          : -1;  // 座標不明
+        return { p, distKm };
+      })
+      .filter((d) => d.distKm < 0 || d.distKm <= maxDistKm);
 
     // Fisher-Yates shuffle ヘルパー
     const shuffleArr = <T,>(arr: T[]): T[] => {
