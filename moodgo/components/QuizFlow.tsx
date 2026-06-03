@@ -551,76 +551,6 @@ const rsl = StyleSheet.create({
   scaleText: { fontSize: 10, color: '#C4B5FD', fontWeight: '600' },
 });
 
-// ─── MarqueeLabel ─────────────────────────────────────────────────────────────
-// テキストがコンテナ幅を超える場合のみ左スクロールアニメーション。収まる場合はそのまま表示。
-function MarqueeLabel({ text, textStyle, maxWidth }: {
-  text: string; textStyle?: object; maxWidth: number;
-}) {
-  const [measuredW, setMeasuredW] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const needsScroll = measuredW > 0 && measuredW > maxWidth;
-
-  useEffect(() => {
-    translateX.setValue(0);
-    if (!needsScroll) return;
-
-    const dist = measuredW - maxWidth + 2;
-    let active = true;
-
-    function run() {
-      if (!active) return;
-      translateX.setValue(0);
-      Animated.sequence([
-        Animated.delay(1000),
-        Animated.timing(translateX, {
-          toValue: -dist,
-          duration: Math.max(dist * 45, 800),
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.delay(500),
-        Animated.timing(translateX, { toValue: 0, duration: 300, useNativeDriver: true }),
-      ]).start(result => {
-        if (result.finished && active) run(); // 無限ループ
-      });
-    }
-
-    run();
-    return () => { active = false; translateX.setValue(0); };
-  }, [needsScroll, measuredW, maxWidth]);
-
-  return (
-    <View style={{ width: maxWidth, overflow: 'hidden' }}>
-      {/* ゴースト: 自然幅を計測（レイアウトに影響しない） */}
-      <Text
-        numberOfLines={1}
-        style={[textStyle, { position: 'absolute', width: 2000, opacity: 0 }]}
-        onLayout={e => setMeasuredW(e.nativeEvent.layout.width)}
-      >
-        {text}
-      </Text>
-
-      {needsScroll ? (
-        // スクロール必要: 明示的な幅を与えて「...」を防ぎ、左から流す
-        <Animated.Text
-          style={[textStyle, {
-            width: measuredW + 4,
-            textAlign: 'left',
-            transform: [{ translateX }],
-          }]}
-        >
-          {text}
-        </Animated.Text>
-      ) : (
-        // 収まる: 通常表示（中央寄せ・1行）
-        <Text style={[textStyle, { textAlign: 'center' }]} numberOfLines={1}>
-          {text}
-        </Text>
-      )}
-    </View>
-  );
-}
-
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
 function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }: {
@@ -675,8 +605,8 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
           <View style={[mc.iconCircle, active && mc.iconCircleA]}>
             <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
           </View>
-          <MarqueeLabel text={label} textStyle={[mc.label, active && mc.labelA]} maxWidth={cardWidth - 24} />
-          {sub ? <MarqueeLabel text={sub} textStyle={[mc.sublabel, active && mc.sublabelA]} maxWidth={cardWidth - 24} /> : null}
+          <Text style={[mc.label, active && mc.labelA]} numberOfLines={1}>{label}</Text>
+          {sub ? <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text> : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -746,7 +676,7 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
           <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
-          {sub ? <MarqueeLabel text={sub} textStyle={[oc.sub, active && oc.subA]} maxWidth={width - 16} /> : null}
+          {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={1}>{sub}</Text> : null}
           {hint ? (
             <View style={[oc.hintWrap, active && oc.hintWrapA]}>
               <Text style={[oc.hint, active && oc.hintA]}>{hint}</Text>
