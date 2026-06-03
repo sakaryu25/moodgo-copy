@@ -79,7 +79,7 @@ export default function Home() {
   const [selectedArea,       setSelectedArea]       = useState('');
   const [locationDisplayArea, setLocationDisplayArea] = useState('');
   const [selectedCompanion,  setSelectedCompanion]  = useState('');
-  const [budget,             setBudget]             = useState<number | undefined>(10000);
+  const [budget,             setBudget]             = useState<number | undefined>(undefined);
   const [budgetMin,          setBudgetMin]          = useState<number>(0);
   const [showUnseenOnly,     setShowUnseenOnly]     = useState(false);
   const [freeWord,           setFreeWord]           = useState('');
@@ -509,7 +509,7 @@ export default function Home() {
     setStarted(false); setStep(1);
     setSelectedMood(''); setSelectedArea(''); setLocationDisplayArea('');
     setSelectedCompanion('');
-    setBudget(10000); setBudgetMin(0); setFreeWord('');
+    setBudget(undefined); setBudgetMin(0); setFreeWord('');
     setDynamicQuestions([]); setDynamicAnswers({});
     setAreaMode('manual'); setDistanceFeeling('今日は出かけたい'); setRadiusKm(20);
     setDeepDiveL1(''); setDeepDiveL2('');
@@ -883,6 +883,9 @@ export default function Home() {
           setHistory([]);
           setShowSettings(false);
         }}
+        blockedPlaces={blockedPlaces}
+        onUnblockPlace={(title) => setBlockedPlaces(prev => prev.filter(t => t !== title))}
+        onClearBlocked={() => setBlockedPlaces([])}
       />
     </View>
   );

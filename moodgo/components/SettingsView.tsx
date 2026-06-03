@@ -2,7 +2,7 @@
  * SettingsView.tsx — 設定画面 (MoodGo UI統一)
  */
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, ChevronRight, Globe, MapPin, Trash2, UserRound } from 'lucide-react-native';
+import { Check, ChevronRight, EyeOff, Globe, MapPin, Trash2, UserRound } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert, Animated, Dimensions, Modal, ScrollView,
@@ -38,6 +38,9 @@ type Props = {
   profilePrefecture: string;
   onSaveProfile: (age: string, gender: string, prefecture: string) => void;
   onClearHistory: () => void;
+  blockedPlaces: string[];
+  onUnblockPlace: (title: string) => void;
+  onClearBlocked: () => void;
 };
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
@@ -96,6 +99,7 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 export default function SettingsView({
   visible, onClose, lang, onChangeLang,
   profileAge, profileGender, profilePrefecture, onSaveProfile, onClearHistory,
+  blockedPlaces, onUnblockPlace, onClearBlocked,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -133,6 +137,19 @@ export default function SettingsView({
       [
         { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
         { text: lang === 'ja' ? '削除する' : 'Delete', style: 'destructive', onPress: onClearHistory },
+      ]
+    );
+  };
+
+  const handleClearBlocked = () => {
+    Alert.alert(
+      lang === 'ja' ? '非表示をすべて解除' : 'Unhide all',
+      lang === 'ja'
+        ? '非表示にしたスポットをすべて解除し、検索結果に再表示します。よろしいですか？'
+        : 'All hidden spots will appear in search results again. Continue?',
+      [
+        { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        { text: lang === 'ja' ? 'すべて解除' : 'Unhide all', style: 'destructive', onPress: onClearBlocked },
       ]
     );
   };
@@ -267,6 +284,46 @@ export default function SettingsView({
               </View>
             </View>
 
+            {/* ── 非表示にしたスポット ── */}
+            <SectionHeader
+              icon={<EyeOff size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? '非表示にしたスポット' : 'Hidden spots'}
+            />
+            <View style={s.card}>
+              {blockedPlaces.length === 0 ? (
+                <Text style={s.blockedEmpty}>
+                  {lang === 'ja' ? '非表示にしたスポットはありません' : 'No hidden spots yet'}
+                </Text>
+              ) : (
+                <>
+                  {blockedPlaces.map((name, i) => (
+                    <View
+                      key={name}
+                      style={[s.blockedRow, i < blockedPlaces.length - 1 && s.blockedRowBorder]}
+                    >
+                      <Text style={s.blockedName} numberOfLines={1}>{name}</Text>
+                      <TouchableOpacity
+                        onPress={() => onUnblockPlace(name)}
+                        activeOpacity={0.7}
+                        style={s.unblockBtn}
+                      >
+                        <Text style={s.unblockText}>{lang === 'ja' ? '解除' : 'Unhide'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    onPress={handleClearBlocked}
+                    style={[s.dangerRow, { marginTop: 14 }]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.dangerText}>
+                      {lang === 'ja' ? 'すべて解除' : 'Unhide all'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+
             {/* ── データ ── */}
             <SectionHeader
               icon={<Trash2 size={15} color="#FF6B8A" strokeWidth={2} />}
@@ -378,6 +435,22 @@ const s = StyleSheet.create({
     paddingVertical: 4, alignItems: 'center',
   },
   dangerText: { fontSize: 15, fontWeight: '700', color: '#FF6B8A' },
+
+  blockedEmpty: {
+    fontSize: 13, color: '#A78BFA', fontWeight: '500',
+    textAlign: 'center', paddingVertical: 8,
+  },
+  blockedRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, gap: 12,
+  },
+  blockedRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F1ECFF' },
+  blockedName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1E0753' },
+  unblockBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999,
+    borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#FAFAFF',
+  },
+  unblockText: { fontSize: 13, fontWeight: '700', color: PURPLE },
 
   versionRow: { alignItems: 'center', marginTop: 32 },
   versionText: { fontSize: 12, color: '#C4B5FD', fontWeight: '500' },

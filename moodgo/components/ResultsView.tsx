@@ -2,6 +2,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useEffect } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   ScrollView,
@@ -525,7 +526,16 @@ export default function ResultsView(props: Props) {
             item={item}
             isFavorited={isFav(item.title)}
             onToggleFavorite={() => onToggleFavorite(item)}
-            onBlock={() => onBlockPlace(item.title)}
+            onBlock={() => Alert.alert(
+              lang === 'ja' ? 'このスポットを非表示にしますか？' : 'Hide this spot?',
+              lang === 'ja'
+                ? `「${item.title}」を今後の検索結果に表示しなくなります。\n設定 →「非表示にしたスポット」からいつでも解除できます。`
+                : `"${item.title}" will no longer appear in search results.\nYou can undo this anytime from Settings → Hidden spots.`,
+              [
+                { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+                { text: lang === 'ja' ? '非表示にする' : 'Hide', style: 'destructive', onPress: () => onBlockPlace(item.title) },
+              ],
+            )}
             onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '', supabaseId: item.supabaseId })}
             onMarkVisited={() => { setVisitingSpot(item); setVisitingRating(0); }}
             isVisited={visitedTitles.includes(item.title)}
