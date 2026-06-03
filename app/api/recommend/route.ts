@@ -1743,6 +1743,22 @@ function buildPhotoProxyUrl(photoName: string): string {
   return `${PHOTO_PROXY_BASE}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
 }
 
+// ─── 宿泊施設（日帰り不可）の除外 ─────────────────────────────────────────────
+// ホテル・旅館など宿泊メインの施設は「日帰りで遊びに行く」用途に合わないため推薦から除外。
+// Google Places の primaryType で判定（hotel-restaurant のように primaryType が
+// restaurant の施設は除外されないので、ホテル内レストランは食事用途として残る）。
+const LODGING_PRIMARY_TYPES = [
+  "hotel", "lodging", "resort_hotel", "motel", "bed_and_breakfast",
+  "hostel", "inn", "guest_house", "extended_stay_hotel",
+  "budget_japanese_inn", "japanese_inn", "campground", "camping_cabin",
+  "rv_park", "cottage", "farmstay", "private_guest_room",
+];
+const LODGING_PRIMARY_SET = new Set(LODGING_PRIMARY_TYPES);
+// 施設名から宿泊施設を判定（Yahoo 等タイプ情報がないソース用の補助）
+function isLodgingName(name: string): boolean {
+  return /(ホテル|旅館|HOTEL|Hotel|ゲストハウス|民宿|ペンション|オーベルジュ|リゾートイン)/.test(name);
+}
+
 async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherContext> {
   if (typeof lat !== "number" || typeof lng !== "number") return {};
 
@@ -3614,10 +3630,13 @@ async function fetchGooglePlacesSupplement(
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType",
       },
       body: JSON.stringify({
         includedTypes: types,
+        // 宿泊メインの施設（ホテル・旅館など日帰り不可）は除外。
+        // primaryType が restaurant 等の施設（ホテル内レストラン）は残る。
+        excludedPrimaryTypes: LODGING_PRIMARY_TYPES,
         maxResultCount: 20,  // 多めに取得してシャッフルで多様化
         rankPreference: "POPULARITY",  // 人気順の方が多様な結果を返す
         languageCode: "ja",
@@ -3649,12 +3668,19 @@ async function fetchGooglePlacesSupplement(
       return (PRICE_LEVEL_COST[priceLevel] ?? 0) > budget;
     };
 
+    // 食事系の気分（お腹すいた）はホテル内レストランを許容するため名前フィルタを緩める
+    const isFoodMoodGoogle = mood === "お腹すいた";
+
     // フィルタ後に Fisher-Yates シャッフル → 毎回異なる順序で limit 件を取得
     const filteredAll = places
       .filter((p: Record<string, unknown>) => {
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
         if (existingLower.has(name.toLowerCase()) || name.length === 0) return false;
         if (isOverBudget(p.priceLevel as string | undefined)) return false;
+        // 宿泊施設の除外（primaryType ベース。API除外をすり抜けた場合の保険）
+        if (LODGING_PRIMARY_SET.has((p.primaryType as string) ?? "")) return false;
+        // 名前ベースの宿泊施設除外（食事系以外）。ホテル内レストランは食事用途で残す
+        if (!isFoodMoodGoogle && isLodgingName(name)) return false;
         return true;
       });
 
@@ -3900,10 +3926,15 @@ async function fetchYahooSupplement(
     };
 
     // 名前重複・除外を済ませた候補リスト（距離付き）
+    // 食事系（お腹すいた）はホテル内レストランを許容するため宿泊施設の名前フィルタを緩める
+    const isFoodMoodYahoo = mood === "お腹すいた";
     const candidates = features
       .filter(f => {
         const name = String(f.Name ?? "");
-        return name && !existingNames.includes(name);
+        if (!name || existingNames.includes(name)) return false;
+        // 宿泊施設の除外（Yahooはtype情報がないため名前ベースのみ。食事系以外で適用）
+        if (!isFoodMoodYahoo && isLodgingName(name)) return false;
+        return true;
       })
       .map(f => ({ f, distKm: distOf(f) }));
 
@@ -4505,13 +4536,10 @@ export async function POST(request: Request) {
           return a;
         };
 
-        const shuffledGoogle = shuffleArr(googleSupplements);
-        const shuffledYahoo  = shuffleArr(yahooSupplements);
-
         let recommendations: typeof supabaseRecs;
         if (minRadiusKm > 0) {
           // 遠端バイアス有効: Supabase を far/near に分離して near を末尾へ
-          //   far  (≥ minRadiusKm): 距離条件を満たす → Google/Yahoo より前
+          //   far  (≥ minRadiusKm): 距離条件を満たす → 表示対象
           //   near (< minRadiusKm): 近すぎる近場スポット → 補完として末尾
           const sbFar:  typeof supabaseRecs = [];
           const sbNear: typeof supabaseRecs = [];
@@ -4519,11 +4547,19 @@ export async function POST(request: Request) {
             const km = parseKmFromDistText(r.distanceText);
             (km >= minRadiusKm ? sbFar : sbNear).push(r);
           }
-          // 順序: Supabase遠端 → Google → Yahoo → Supabase近場(補完)
-          recommendations = [...sbFar, ...shuffledGoogle, ...shuffledYahoo, ...sbNear];
+          // ソースを固定ブロックにせず、距離条件を満たす全件(Supabase遠端+Google+Yahoo)を
+          // ランダムに混ぜて表示 → 近場補完(sbNear)のみ末尾に維持
+          recommendations = [
+            ...shuffleArr([...sbFar, ...googleSupplements, ...yahooSupplements]),
+            ...sbNear,
+          ] as typeof supabaseRecs;
         } else {
-          // 遠端バイアスなし(すぐそこ・近場): 従来通り Supabase 優先
-          recommendations = [...supabaseRecs, ...shuffledGoogle, ...shuffledYahoo];
+          // 遠端バイアスなし(すぐそこ・近場): 3ソースをまとめてランダムに混ぜる
+          recommendations = shuffleArr([
+            ...supabaseRecs,
+            ...googleSupplements,
+            ...yahooSupplements,
+          ]) as typeof supabaseRecs;
         }
 
         // Google と Yahoo の並列実行により重複が発生する場合があるため除去
