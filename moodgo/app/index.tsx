@@ -211,6 +211,18 @@ export default function Home() {
     setIsLocating(false);
   };
 
+  // エリア名を手入力したら手動モードに切り替え、前回取得した現在地座標をクリアする。
+  // （クリアしないと現在地の座標が検索の起点に残り、入力したエリアが無視されてしまう）
+  const handleSelectArea = (v: string) => {
+    setSelectedArea(v);
+    if (v.trim().length > 0) {
+      setAreaMode('manual');
+      setOriginLat(undefined);
+      setOriginLng(undefined);
+      setLocationDisplayArea('');
+    }
+  };
+
   // ─── Open results ─────────────────────────────────────────────────────────
   // Web版 openResults() と同じ構造：
   //   1. 前回結果をクリア
@@ -620,7 +632,7 @@ export default function Home() {
             distanceFeeling={distanceFeeling}
             radiusKm={radiusKm}
             onSelectMood={setSelectedMood}
-            onSelectArea={setSelectedArea}
+            onSelectArea={handleSelectArea}
             onSelectCompanion={setSelectedCompanion}
             onSetBudget={setBudget}
             onSetBudgetMin={setBudgetMin}

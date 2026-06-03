@@ -872,12 +872,6 @@ export default function QuizFlow(props: Props) {
             </LinearGradient>
           </TouchableOpacity>
         </StepEntrance>
-        {locationDisplayArea ? (
-          <View style={[s.locTag, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-            <MapPin size={13} color="#7C3AED" strokeWidth={2} />
-            <Text style={s.locTagTxt}>{locationDisplayArea}</Text>
-          </View>
-        ) : null}
         <StepEntrance delay={80}>
           <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
           <TextInput
@@ -1069,10 +1063,10 @@ export default function QuizFlow(props: Props) {
         <View style={s.titleBlock}>
           <Text style={s.title}>{meta.title}</Text>
           <Text style={s.sub}>{meta.sub}</Text>
-          {step === 4 && (locationDisplayArea || selectedArea) ? (
+          {step === 4 && (selectedArea || locationDisplayArea) ? (
             <View style={s.areaTag}>
               <MapPin size={12} color="#7C3AED" strokeWidth={2} />
-              <Text style={s.areaTagTxt}>{locationDisplayArea || selectedArea} から検索</Text>
+              <Text style={s.areaTagTxt}>{selectedArea || locationDisplayArea} から検索</Text>
             </View>
           ) : null}
         </View>
