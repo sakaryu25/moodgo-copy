@@ -177,8 +177,9 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
 
   // ── PostGIS RPC を試みる ──────────────────────────────────────────────────
   if (hasLocation) {
-    // 遠端バイアスがある場合は取得数を多めに（far グループが十分集まるよう）
-    const fetchLimit = minRadiusKm > 0 ? limit * 5 : limit * 3;
+    // 遠端バイアスがある場合は取得数を大きめに（遠方スポットを取りこぼさないよう広く取得）
+    // RPC は近い順に limit 件返すため、遠端優先時は母数を増やして遠いスポットを捕捉する
+    const fetchLimit = minRadiusKm > 0 ? Math.max(limit * 12, 60) : limit * 3;
 
     // ── OR semantics: mustTags が複数の場合、各タグで個別に検索して union ──
     // find_nearby_places RPC は AND 検索のため、複数タグ（わいわい系・運動系など）は
@@ -243,8 +244,12 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
         const near = rows.filter(r => (r.distance_m / 1000) <  minRadiusKm);
         // far: 距離降順 + ランダムノイズで並べ替え（遠いほど上、毎回少し変わる）
         far.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
-        // near: シャッフルして補完（順不同）
-        rows = [...far, ...shuffle(near)];
+        // near: こちらも距離降順（遠い順）で補完。
+        //   far が空（=選択距離に届くスポットが無い）でも、利用可能な中で最も遠いものが
+        //   先頭に来るようにする。これにより「どこでも行きたい」等で近すぎる場所が
+        //   上位に出る問題を防ぐ。
+        near.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
+        rows = [...far, ...near];
       } else {
         // minRadiusKm なし: 全件シャッフルで毎回異なる結果
         shuffle(rows);

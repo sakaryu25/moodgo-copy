@@ -3159,6 +3159,21 @@ function formatDistance(distanceMeters?: number) {
   return `${(distanceMeters / 1000).toFixed(1)}km`;
 }
 
+// km と移動手段から「車で約N分 / X.Xkm」形式の距離テキストを生成
+// （Google/Yahoo 補足結果に距離表示を付与し、遠端優先ソートにも使う）
+function formatDistTextFromKm(km: number, transport?: string | string[]): string {
+  const t = Array.isArray(transport) ? transport.join(",") : (transport ?? "");
+  let speed = 40, mode = "車";
+  if (t.includes("電車") || t.includes("バス")) { speed = 30; mode = "電車"; }
+  else if (t.includes("自転車"))                { speed = 12; mode = "自転車"; }
+  else if (t.includes("徒歩"))                  { speed = 4;  mode = "歩き"; }
+  const mins = Math.round((km / speed) * 60);
+  const timeStr = mins < 60
+    ? `${mins}分`
+    : `${Math.floor(mins / 60)}時間${mins % 60 > 0 ? (mins % 60) + "分" : ""}`;
+  return `${mode}で約${timeStr} / ${km.toFixed(1)}km`;
+}
+
 function formatDuration(duration?: string) {
   if (!duration) return "";
   const seconds = Number(duration.replace("s", ""));
@@ -3717,7 +3732,7 @@ async function fetchGooglePlacesSupplement(
       ordered = shuffleArr(withDist);
     }
 
-    const filtered = ordered.slice(0, limit).map(d => d.p);
+    const filtered = ordered.slice(0, limit);
 
     const PRICE_MAP: Record<string, string> = {
       PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
@@ -3726,7 +3741,7 @@ async function fetchGooglePlacesSupplement(
     };
 
     // 写真は photo-proxy URL を直接組み立て（解決は表示時に遅延 → 高速化、最大10枚）
-    return filtered.map((p: Record<string, unknown>) => {
+    return filtered.map(({ p, distKm }: { p: Record<string, unknown>; distKm: number }) => {
       const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
       const photoObjs = (p.photos as Array<{ name: string }> | undefined) ?? [];
       const photoNames = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
@@ -3746,7 +3761,7 @@ async function fetchGooglePlacesSupplement(
         googleMapsUrl: (p.googleMapsUri as string | undefined) ?? "",
         reason: "",
         features: [],
-        distanceText: "",
+        distanceText: distKm >= 0 ? formatDistTextFromKm(distKm) : "",
         durationText: "",
         stationText: "",
         vibe: "",
@@ -3940,7 +3955,7 @@ async function fetchYahooSupplement(
 
     // 遠端バイアス: minRadiusKm 以上を優先（Yahoo の 20km 上限内で最も遠い側）
     // far 群が空なら全候補を距離降順にして外側を優先
-    let orderedFeatures: Record<string, unknown>[];
+    let orderedFeatures: { f: Record<string, unknown>; distKm: number }[];
     if (wantFarBias) {
       const effMin = Math.min(minRadiusKm, yahooDistKm);
       const far  = candidates.filter(c => c.distKm >= effMin);
@@ -3949,13 +3964,13 @@ async function fetchYahooSupplement(
       far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 1);
       // near: 距離降順（外側優先）で補完
       near.sort((a, b) => b.distKm - a.distKm);
-      orderedFeatures = (far.length > 0 ? [...far, ...near] : near).map(c => c.f);
+      orderedFeatures = far.length > 0 ? [...far, ...near] : near;
     } else {
-      orderedFeatures = candidates.map(c => c.f);
+      orderedFeatures = candidates;
     }
 
     const results: Array<Record<string, unknown>> = [];
-    for (const f of orderedFeatures) {
+    for (const { f, distKm } of orderedFeatures) {
       const name = String(f.Name ?? "");
 
       const prop = (f.Property ?? {}) as Record<string, unknown>;
@@ -3984,7 +3999,7 @@ async function fetchYahooSupplement(
         supabaseId: undefined,
         reason: "",
         features: [],
-        distanceText: "",
+        distanceText: distKm >= 0 ? formatDistTextFromKm(distKm) : "",
         durationText: "",
         stationText: "",
         vibe: "",
@@ -4564,21 +4579,16 @@ export async function POST(request: Request) {
 
         let recommendations: typeof supabaseRecs;
         if (minRadiusKm > 0) {
-          // 遠端バイアス有効: Supabase を far/near に分離して near を末尾へ
-          //   far  (≥ minRadiusKm): 距離条件を満たす → 表示対象
-          //   near (< minRadiusKm): 近すぎる近場スポット → 補完として末尾
-          const sbFar:  typeof supabaseRecs = [];
-          const sbNear: typeof supabaseRecs = [];
-          for (const r of supabaseRecs) {
-            const km = parseKmFromDistText(r.distanceText);
-            (km >= minRadiusKm ? sbFar : sbNear).push(r);
-          }
-          // ソースを固定ブロックにせず、距離条件を満たす全件(Supabase遠端+Google+Yahoo)を
-          // ランダムに混ぜて表示 → 近場補完(sbNear)のみ末尾に維持
-          recommendations = [
-            ...shuffleArr([...sbFar, ...googleSupplements, ...yahooSupplements]),
-            ...sbNear,
-          ] as typeof supabaseRecs;
+          // 遠端バイアス有効（例：「どこでも行きたい」「ちょっと遠くてもOK」）:
+          //   選択した距離感に対して「できるだけ遠い場所」を上位に出す。
+          //   ソースは区別せず、全件(Supabase+Google+Yahoo)を距離降順（遠い順）で整列。
+          //   同距離帯はランダムノイズで毎回少し変化させる。距離不明(=0)は末尾へ。
+          //   ※ Google(最大50km)・Yahoo(最大20km)は API 仕様上それ以上遠くを返せないため、
+          //     選択距離に届くスポットが無い場合は「利用可能な中で最も遠い」候補が先頭になる。
+          recommendations = [...supabaseRecs, ...googleSupplements, ...yahooSupplements]
+            .map(r => ({ r, km: parseKmFromDistText(r.distanceText as string | undefined) }))
+            .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
+            .map(x => x.r) as typeof supabaseRecs;
         } else {
           // 遠端バイアスなし(すぐそこ・近場): 3ソースをまとめてランダムに混ぜる
           recommendations = shuffleArr([
