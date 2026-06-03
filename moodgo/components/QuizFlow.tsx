@@ -551,6 +551,56 @@ const rsl = StyleSheet.create({
   scaleText: { fontSize: 10, color: '#C4B5FD', fontWeight: '600' },
 });
 
+// ─── MarqueeLabel ─────────────────────────────────────────────────────────────
+// テキストがコンテナ幅を超える場合、左スクロールアニメーションで全文字を表示
+function MarqueeLabel({ text, textStyle, maxWidth }: {
+  text: string; textStyle?: object; maxWidth: number;
+}) {
+  const [textW, setTextW] = useState(0);
+  const anim = useRef(new Animated.Value(0)).current;
+  const needs = textW > 0 && textW > maxWidth;
+
+  useEffect(() => {
+    if (!needs) { anim.setValue(0); return; }
+    const dist = textW - maxWidth + 4;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.timing(anim, {
+          toValue: -dist,
+          duration: dist * 40,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.delay(600),
+        Animated.timing(anim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => { loop.stop(); anim.setValue(0); };
+  }, [needs, textW, maxWidth]);
+
+  return (
+    <View style={{ width: maxWidth, overflow: 'hidden', alignItems: 'center' }}>
+      {/* ゴースト: 実際のテキスト幅を計測 */}
+      <Text
+        numberOfLines={1}
+        style={[textStyle, { position: 'absolute', opacity: 0, width: 1000, left: 0 }]}
+        onLayout={e => setTextW(e.nativeEvent.layout.width)}
+      >
+        {text}
+      </Text>
+      {/* アニメーション表示 */}
+      <Animated.Text
+        numberOfLines={1}
+        style={[textStyle, { transform: [{ translateX: anim }] }]}
+      >
+        {text}
+      </Animated.Text>
+    </View>
+  );
+}
+
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
 function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }: {
@@ -605,8 +655,8 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
           <View style={[mc.iconCircle, active && mc.iconCircleA]}>
             <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
           </View>
-          <Text style={[mc.label, active && mc.labelA]} numberOfLines={1}>{label}</Text>
-          {sub ? <Text style={[mc.sublabel, active && mc.sublabelA]} numberOfLines={1}>{sub}</Text> : null}
+          <MarqueeLabel text={label} textStyle={[mc.label, active && mc.labelA]} maxWidth={cardWidth - 24} />
+          {sub ? <MarqueeLabel text={sub} textStyle={[mc.sublabel, active && mc.sublabelA]} maxWidth={cardWidth - 24} /> : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -676,7 +726,7 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
           <Text style={[oc.lbl, active && oc.lblA]} numberOfLines={2}>{label}</Text>
-          {sub ? <Text style={[oc.sub, active && oc.subA]} numberOfLines={1}>{sub}</Text> : null}
+          {sub ? <MarqueeLabel text={sub} textStyle={[oc.sub, active && oc.subA]} maxWidth={width - 16} /> : null}
           {hint ? (
             <View style={[oc.hintWrap, active && oc.hintWrapA]}>
               <Text style={[oc.hint, active && oc.hintA]}>{hint}</Text>
