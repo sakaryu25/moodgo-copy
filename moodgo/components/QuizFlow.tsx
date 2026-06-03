@@ -735,7 +735,7 @@ export default function QuizFlow(props: Props) {
     freeWord, onSetFreeWord,
     onUseCurrentLocation, onSetStep, onBack, onOpenResults,
     deepDiveL1, deepDiveL2, onSetDeepDiveL1, onSetDeepDiveL2,
-    areaMode, distanceFeeling, radiusKm,
+    distanceFeeling, radiusKm,
     onSetAreaMode, onSetDistanceFeeling,
   } = props;
 
@@ -768,8 +768,6 @@ export default function QuizFlow(props: Props) {
   // こだわらない を選んだ場合は L2 をスキップ
   const hasDiveL2 = !!(deepDiveL1 && deepDiveL1 !== 'こだわらない' && selectedDiveOpt?.subs?.length);
 
-  const useCurrentLoc = areaMode === 'current_location';
-
   const meta = step === 6
     ? { title: diveConfig?.title ?? 'こだわりを教えて', sub: 'スキップもできます' }
     : step === 7
@@ -788,7 +786,7 @@ export default function QuizFlow(props: Props) {
     if (step === 2)  { onSetStep(1);  return; }
     if (step === 3)  { onSetStep(2);  return; }
     if (step === 4)  { onSetStep(3);  return; }
-    if (step === 5)  { onSetStep(useCurrentLoc ? 4 : 3); return; }
+    if (step === 5)  { onSetStep(4); return; }
     if (step === 6)  { onSetStep(5);  return; }
     if (step === 7)  { onSetStep(6);  return; }
     if (step === 8)  {
@@ -801,7 +799,7 @@ export default function QuizFlow(props: Props) {
   const handleNext = () => {
     if (step === 1)  { onSetStep(2);  return; }
     if (step === 2)  { onSetStep(3);  return; }
-    if (step === 3)  { onSetStep(useCurrentLoc ? 4 : 5); return; }
+    if (step === 3)  { onSetStep(4); return; }
     if (step === 4)  { onSetStep(5);  return; }
     if (step === 5)  { onSetStep((hasDive && selectedMood !== '時間潰し') ? 6 : 8); return; }
     if (step === 6)  { onSetStep(hasDiveL2 ? 7 : 8); return; }
@@ -1071,10 +1069,10 @@ export default function QuizFlow(props: Props) {
         <View style={s.titleBlock}>
           <Text style={s.title}>{meta.title}</Text>
           <Text style={s.sub}>{meta.sub}</Text>
-          {step === 4 && locationDisplayArea ? (
+          {step === 4 && (locationDisplayArea || selectedArea) ? (
             <View style={s.areaTag}>
               <MapPin size={12} color="#7C3AED" strokeWidth={2} />
-              <Text style={s.areaTagTxt}>{locationDisplayArea} から検索</Text>
+              <Text style={s.areaTagTxt}>{locationDisplayArea || selectedArea} から検索</Text>
             </View>
           ) : null}
         </View>
