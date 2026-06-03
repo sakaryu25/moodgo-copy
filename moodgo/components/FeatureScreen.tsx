@@ -35,6 +35,7 @@ import { apiFetch } from "@/lib/api";
 import {
   Bookmark,
   Building2,
+  ChevronLeft,
   ChevronRight,
   Landmark,
   Leaf,
@@ -50,6 +51,8 @@ import type { LucideIcon } from "lucide-react-native";
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
 // ─────────────────────────────────────────────────────────────────────────────
+const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+
 const C = {
   accent: "#F26A3D",
   accentLight: "#FFF1EA",
@@ -799,19 +802,14 @@ type AreaSelectViewProps = { onSelectRegion: (tab: Tab) => void };
 
 function AreaSelectView({ onSelectRegion }: AreaSelectViewProps) {
   return (
-    <LinearGradient colors={["#EDF5FF", "#FFF8F2", "#FFFAF5"]} style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: '#F8F6FF' }}>
       <View style={s.areaIntro}>
-        {/* バッジ */}
-        <View style={s.areaBadge}>
-          <Text style={s.areaBadgeText}>{CURRENT_MONTH}の特集</Text>
-        </View>
-        <Text style={s.areaTitle}>どこへ行く？</Text>
         <Text style={s.areaSubtitle}>エリアをタップして特集を見る</Text>
       </View>
 
       {/* 地図画像 + 重ね置きボタン（残りスペースをすべて使う） */}
       <JapanMapWithButtons onSelectRegion={onSelectRegion} />
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -1166,23 +1164,33 @@ export default function FeatureScreen() {
 
   return (
     <View style={s.safe}>
-      {/* ── ヘッダー ── */}
-      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
-        <View>
-          <Text style={s.headerTitle}>特集</Text>
-          <Text style={s.headerSub}>Pick your destination</Text>
+      {/* ── グラデーションヘッダー ── */}
+      <LinearGradient
+        colors={GRAD}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[s.header, { paddingTop: insets.top + 14 }]}
+      >
+        <View style={s.decoCircle1} pointerEvents="none" />
+        <View style={s.decoCircle2} pointerEvents="none" />
+        <View style={s.headerContent}>
+          {showBack ? (
+            <TouchableOpacity
+              style={s.backBtn}
+              activeOpacity={0.72}
+              onPress={handleBack}
+            >
+              <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+              <Text style={s.backText}>特集</Text>
+            </TouchableOpacity>
+          ) : (
+            <View>
+              <Text style={s.headerTitle}>特集</Text>
+              <Text style={s.headerSub}>どこへ行く？</Text>
+            </View>
+          )}
         </View>
-        <TouchableOpacity
-          style={s.headerIconBtn}
-          activeOpacity={0.72}
-          onPress={showBack ? handleBack : undefined}
-        >
-          {showBack
-            ? <MapPin size={19} color={C.accent} />
-            : <Search size={19} color={C.accent} />
-          }
-        </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
       {/* ── メインコンテンツ ── */}
       <View style={{ flex: 1 }}>
@@ -1212,36 +1220,54 @@ const s = StyleSheet.create({
 
   // ── Header ──
   header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: 22,
-    paddingBottom: 12,
-    backgroundColor: C.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
+    paddingHorizontal: 20,
+    paddingBottom: 22,
+    overflow: 'hidden',
+  },
+  decoCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  decoCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "800",
-    color: C.text,
+    color: "#fff",
     letterSpacing: -0.5,
+    marginBottom: 4,
   },
   headerSub: {
-    fontSize: 11,
-    color: C.subText,
-    letterSpacing: 0.3,
-    marginTop: 1,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    fontWeight: '500',
   },
-  headerIconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#FFF0EA",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#FFD9C8",
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
   },
 
   // ── PrefOverlayBtn (地図上の都道府県ボタン) ──
