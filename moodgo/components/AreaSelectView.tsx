@@ -20,6 +20,7 @@ import {
   Sun,
   Waves,
 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
   Dimensions,
@@ -33,6 +34,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 
 // 画像を assets/images/japan-map.png に置いてください
 const JAPAN_MAP_IMAGE = require('../assets/images/japan-map.png');
@@ -175,32 +178,38 @@ export default function AreaSelectView({ onSelectRegion, lang = 'ja' }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
-    <ScrollView
-      style={s.root}
-      contentContainerStyle={[
-        s.content,
-        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* 背景デコ円 */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={s.decoCircle1} />
-        <View style={s.decoCircle2} />
-      </View>
+    <View style={s.root}>
+      {/* ── グラデーションヘッダー（履歴・お気に入りと共通デザイン）── */}
+      <LinearGradient
+        colors={GRAD}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[s.heroHeader, { paddingTop: insets.top + 14 }]}
+      >
+        <View style={s.decoCircle1} pointerEvents="none" />
+        <View style={s.decoCircle2} pointerEvents="none" />
+        <View style={s.heroContent}>
+          <View>
+            <Text style={s.heroTitle}>{lang === 'ja' ? '特集' : 'Featured'}</Text>
+            <Text style={s.heroSub}>{lang === 'ja' ? 'どこへ行く？' : 'Pick your destination'}</Text>
+          </View>
+        </View>
+      </LinearGradient>
 
-      {/* ページタイトル */}
-      <Text style={s.pageTitle}>特集</Text>
+      {/* ── スクロールコンテンツ ── */}
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={s.sectionDesc}>
+          {lang === 'ja' ? 'エリアをタップして特集を見る' : 'Tap a region to see the feature'}
+        </Text>
 
-      {/* サブヘッダー */}
-      <Text style={s.sectionTitle}>エリアを選ぶ</Text>
-      <Text style={s.sectionDesc}>
-        行きたいエリアを選ぶと、あなたに合った特集が見られます。
-      </Text>
-
-      {/* 日本地図カード */}
-      <JapanMapCard onSelectRegion={onSelectRegion} />
-    </ScrollView>
+        {/* 日本地図カード */}
+        <JapanMapCard onSelectRegion={onSelectRegion} />
+      </ScrollView>
+    </View>
   );
 }
 
@@ -219,52 +228,61 @@ const CARD_SHADOW = Platform.select({
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8F6FF',
   },
+  scroll: { flex: 1 },
   content: {
     paddingHorizontal: 20,
+    paddingTop: 20,
   },
 
-  // デコ円
+  // ── グラデーションヘッダー（履歴・お気に入りと共通）─────────────────────────
+  heroHeader: {
+    paddingHorizontal: 20,
+    paddingBottom: 22,
+    overflow: 'hidden',
+  },
   decoCircle1: {
     position: 'absolute',
-    top: -50,
-    right: -70,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(229,107,155,0.11)',
+    top: -30,
+    right: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   decoCircle2: {
     position: 'absolute',
-    top: 60,
-    right: -90,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(168,120,230,0.08)',
+    top: 40,
+    right: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-
-  // ヘッダー
-  pageTitle: {
-    fontSize: 30,
+  heroContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  heroTitle: {
+    fontSize: 28,
     fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 22,
+    color: '#fff',
+    marginBottom: 4,
     letterSpacing: -0.5,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 6,
-    letterSpacing: -0.3,
+  heroSub: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
   },
+
   sectionDesc: {
     fontSize: 14,
-    color: '#777777',
+    color: '#9CA3AF',
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: 20,
   },
 
   // 地図カード

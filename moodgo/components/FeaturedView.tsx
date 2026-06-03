@@ -6,7 +6,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, MapPin, Star, Heart } from 'lucide-react-native';
 import React, { useState } from 'react';
 import AreaSelectView, { type Region, REGION_LABELS } from './AreaSelectView';
 import {
@@ -23,6 +23,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FeaturedPageSummary } from '@/types/app';
 import { useRouter } from 'expo-router';
+
+const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+const BRAND = '#C084FC';
 
 const { width: W } = Dimensions.get('window');
 
@@ -125,15 +128,7 @@ const DEMO_DATA: FeaturedPageData = {
 
 // ─── サブコンポーネント ────────────────────────────────────────────────────────
 
-/** 右上の背景デコレーション円（ポインターイベント無効） */
-function BgDecoration() {
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={s.decoCircle1} />
-      <View style={s.decoCircle2} />
-    </View>
-  );
-}
+// BgDecoration は gradient ヘッダーに統合されたため削除
 
 /** バナーカード：ImageBackground + グラデーションオーバーレイ */
 function BannerCard({ data }: { data: FeaturedBanner }) {
@@ -290,43 +285,49 @@ export default function FeaturedView({
 
   return (
     <View style={s.root}>
-      {/* ── 背景デコレーション ── */}
-      <BgDecoration />
+      {/* ── グラデーションヘッダー（履歴・お気に入りと共通デザイン）── */}
+      <LinearGradient
+        colors={GRAD}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[s.heroHeader, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={s.decoCircleH1} pointerEvents="none" />
+        <View style={s.decoCircleH2} pointerEvents="none" />
+
+        {/* 戻るボタン */}
+        <TouchableOpacity
+          onPress={() => setSelectedRegion(null)}
+          style={s.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+        >
+          <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+          <Text style={s.backText}>{lang === 'ja' ? 'エリア' : 'Regions'}</Text>
+        </TouchableOpacity>
+
+        <View style={s.heroContent}>
+          <View>
+            <Text style={s.heroTitle}>{REGION_LABELS[selectedRegion]}</Text>
+            <Text style={s.heroSub}>{pageData.banner.issue}の特集</Text>
+          </View>
+        </View>
+      </LinearGradient>
 
       {/* ── スクロールコンテンツ ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          s.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 88 },
-        ]}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 88 }]}
         refreshControl={
           onRefresh ? (
             <RefreshControl
               refreshing={featuredListLoading}
               onRefresh={onRefresh}
-              tintColor={PINK}
+              tintColor={BRAND}
             />
           ) : undefined
         }
       >
-        {/* 号数バッジ + ページタイトル + 戻るボタン */}
-        <View style={s.issueBadge}>
-          <Text style={s.issueText}>{pageData.banner.issue}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-          <TouchableOpacity
-            onPress={() => setSelectedRegion(null)}
-            style={{ marginRight: 10, paddingVertical: 4, paddingHorizontal: 2 }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <ChevronLeft size={22} color="#BBAAAA" strokeWidth={2} />
-          </TouchableOpacity>
-          <Text style={[s.pageTitle, { marginBottom: 0 }]}>
-            {REGION_LABELS[selectedRegion]}
-          </Text>
-        </View>
-
         {/* バナーカード */}
         <BannerCard data={pageData.banner} />
 
@@ -366,7 +367,7 @@ export default function FeaturedView({
 
 // ─── 定数 ─────────────────────────────────────────────────────────────────────
 
-const PINK = '#E56B9B';
+const PINK = BRAND; // 旧 #E56B9B → MoodGo ブランドカラーに統一
 
 const CARD_SHADOW = Platform.select({
   ios: {
@@ -384,54 +385,71 @@ const s = StyleSheet.create({
   // ── ルート ────────────────────────────────────────────────────────────────
   root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8F6FF',
   },
   scrollContent: {
     paddingHorizontal: 20,
+    paddingTop: 20,
   },
 
-  // ── 背景デコ円 ─────────────────────────────────────────────────────────────
-  decoCircle1: {
-    position: 'absolute',
-    top: -50,
-    right: -70,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(229, 107, 155, 0.13)',
+  // ── グラデーションヘッダー ─────────────────────────────────────────────────
+  heroHeader: {
+    paddingHorizontal: 20,
+    paddingBottom: 22,
+    overflow: 'hidden',
   },
-  decoCircle2: {
+  decoCircleH1: {
     position: 'absolute',
-    top: 55,
-    right: -90,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(168, 120, 230, 0.09)',
+    top: -30,
+    right: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
-
-  // ── ページヘッダー ──────────────────────────────────────────────────────────
-  issueBadge: {
+  decoCircleH2: {
+    position: 'absolute',
+    top: 40,
+    right: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginBottom: 10,
     alignSelf: 'flex-start',
-    backgroundColor: '#FCE8F0',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginBottom: 6,
   },
-  issueText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: PINK,
-    letterSpacing: 0.3,
+  backText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
-  pageTitle: {
-    fontSize: 30,
+  heroContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  heroTitle: {
+    fontSize: 28,
     fontWeight: '800',
-    color: '#1A1A1A',
-    marginBottom: 20,
+    color: '#fff',
+    marginBottom: 4,
     letterSpacing: -0.5,
   },
+  heroSub: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
+  },
+
+  // ── 旧ヘッダーエイリアス（BannerCard等で参照しているかもしれないため残す）──
+  issueBadge: { display: 'none' },
+  issueText:  { display: 'none' },
+  pageTitle:  { display: 'none' },
 
   // ── バナーカード ────────────────────────────────────────────────────────────
   bannerWrap: {
@@ -473,7 +491,7 @@ const s = StyleSheet.create({
   bannerLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: PINK,
+    color: 'rgba(255,255,255,0.9)',
     marginBottom: 7,
     letterSpacing: 0.5,
   },
