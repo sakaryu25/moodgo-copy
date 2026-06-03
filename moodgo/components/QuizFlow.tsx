@@ -16,7 +16,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Activity, BookOpen,
-  ChefHat, Check, ChevronLeft,
+  ChefHat, Check, Cherry, ChevronLeft,
   Coffee, Compass, Dumbbell,
   Fish, Flame, Footprints, Gamepad2, Globe,
   Heart, Home,
@@ -174,7 +174,7 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: 'お好み焼き',       label: 'お好み焼き・もんじゃ', sub: '鉄板焼き系',         Icon: Flame },
       { key: 'カフェスイーツ',   label: 'カフェスイーツ',   sub: 'パンケーキ・スイーツ',   Icon: Heart,
         subs: [
-          { key: 'カフェスイーツ系', label: 'カフェスイーツ',  Icon: Heart },
+          { key: 'フルーツ', label: 'フルーツ',  Icon: Cherry },
           { key: '喫茶店',           label: '喫茶店・レトロ',  Icon: Coffee },
           { key: '流行りカフェ',     label: '流行りカフェ',    Icon: Camera },
         ],
