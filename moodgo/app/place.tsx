@@ -18,6 +18,7 @@ import {
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   RefreshControl,
   ScrollView,
   Share,
@@ -575,7 +576,15 @@ export default function PlaceDetailPage() {
               <Text style={s.title}>{rec.title}</Text>
               {displayMapUrl ? (
                 <TouchableOpacity
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); Linking.openURL(displayMapUrl); }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    if (Platform.OS === 'ios') {
+                      const q = encodeURIComponent(rec.title || '');
+                      Linking.openURL(`comgooglemaps://?q=${q}`).catch(() => Linking.openURL(displayMapUrl));
+                    } else {
+                      Linking.openURL(displayMapUrl);
+                    }
+                  }}
                   activeOpacity={0.82}
                   style={s.mapPillBtn}
                 >
