@@ -3809,6 +3809,7 @@ async function fetchGooglePlacesSupplement(
       const photoUrls = photoNames.map(n => buildPhotoProxyUrl(n));
       const photoUrl = photoUrls[0] ?? undefined;
       const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
+      const gloc = p.location as { latitude?: number; longitude?: number } | undefined;
       return {
         title: name,
         address: (p.formattedAddress as string | undefined) ?? "",
@@ -3823,6 +3824,9 @@ async function fetchGooglePlacesSupplement(
         reason: "",
         features: [],
         distanceText: distKm >= 0 ? formatDistTextFromKm(distKm) : "",
+        distanceKm: distKm >= 0 ? distKm : undefined,
+        lat: typeof gloc?.latitude === "number" ? gloc.latitude : undefined,
+        lng: typeof gloc?.longitude === "number" ? gloc.longitude : undefined,
         durationText: "",
         stationText: "",
         vibe: "",
@@ -4081,6 +4085,11 @@ async function fetchYahooSupplement(
     for (const { f, distKm } of orderedFeatures) {
       const name = String(f.Name ?? "");
 
+      // Yahoo Geometry.Coordinates ("経度,緯度") から数値座標を取り出す（近接dedup・距離ソート用）
+      const ygeo = (f.Geometry ?? {}) as Record<string, unknown>;
+      const [yLonStr, yLatStr] = String(ygeo.Coordinates ?? "").split(",");
+      const yLon = parseFloat(yLonStr), yLat = parseFloat(yLatStr);
+
       const prop = (f.Property ?? {}) as Record<string, unknown>;
       const address = String(prop.Address ?? "");
       const ratingObj = (prop.Rating ?? {}) as Record<string, unknown>;
@@ -4108,6 +4117,9 @@ async function fetchYahooSupplement(
         reason: "",
         features: [],
         distanceText: distKm >= 0 ? formatDistTextFromKm(distKm) : "",
+        distanceKm: distKm >= 0 ? distKm : undefined,
+        lat: isFinite(yLat) ? yLat : undefined,
+        lng: isFinite(yLon) ? yLon : undefined,
         durationText: "",
         stationText: "",
         vibe: "",
@@ -4631,6 +4643,11 @@ export async function POST(request: Request) {
           const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
           // supabase UUID（sb-プレフィックスあり or google place idのどちらでもない場合）
           const supabaseUUID = r.id?.startsWith("sb-") ? r.id.replace(/^sb-/, "") : undefined;
+          // 現在地からの数値距離（km）。座標が揃っている場合のみ算出（最終ソート・dedup用）
+          const sbDistKm = (typeof r.lat === "number" && typeof r.lng === "number"
+            && typeof answers.originLat === "number" && typeof answers.originLng === "number")
+            ? haversineMeters(answers.originLat, answers.originLng, r.lat, r.lng) / 1000
+            : undefined;
           return {
             title: r.name,
             address: r.address,
@@ -4649,6 +4666,9 @@ export async function POST(request: Request) {
             reason: reasons.get(r.name) ?? r.description ?? "",
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
+            distanceKm: sbDistKm,
+            lat: typeof r.lat === "number" ? r.lat : undefined,
+            lng: typeof r.lng === "number" ? r.lng : undefined,
             durationText: "",
             stationText: sbStationMap.get(r.name) || r.stationInfo || "",
             vibe: "",
@@ -4694,7 +4714,13 @@ export async function POST(request: Request) {
           //   ※ Google(最大50km)・Yahoo(最大20km)は API 仕様上それ以上遠くを返せないため、
           //     選択距離に届くスポットが無い場合は「利用可能な中で最も遠い」候補が先頭になる。
           recommendations = [...supabaseRecs, ...googleSupplements, ...yahooSupplements]
-            .map(r => ({ r, km: parseKmFromDistText(r.distanceText as string | undefined) }))
+            .map(r => ({
+              r,
+              // 数値の distanceKm を優先使用。無い場合のみ表示文字列からパース（後方互換フォールバック）
+              km: typeof r.distanceKm === "number"
+                ? r.distanceKm
+                : parseKmFromDistText(r.distanceText as string | undefined),
+            }))
             .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
             .map(x => x.r) as typeof supabaseRecs;
         } else {
@@ -4706,12 +4732,36 @@ export async function POST(request: Request) {
           ]) as typeof supabaseRecs;
         }
 
-        // Google と Yahoo の並列実行により重複が発生する場合があるため除去
-        const seenTitles = new Set<string>();
+        // ── 重複排除：表記ゆれ（全角半角・空白・記号）＋座標近接に対応 ─────────────
+        // 同一スポットが Supabase / Google / Yahoo から別表記（例「スターバックス」と
+        // 「スターバックスコーヒー」）で返ることがある。
+        //   1) 名前を NFKC 正規化し英数字＋かな漢字のみ残して比較（完全一致は重複）
+        //   2) 座標が両方にあり 80m 以内 かつ 名前が部分一致 → 同一スポットの表記ゆれとみなす
+        const normalizeName = (str: string): string =>
+          (str ?? "")
+            .normalize("NFKC")
+            .toLowerCase()
+            .replace(/[^0-9a-z぀-ヿ一-鿿ｦ-ﾟ]+/g, "");
+        const namesOverlap = (a: string, b: string): boolean => {
+          if (!a || !b) return false;
+          if (a === b) return true;
+          if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) return true;
+          return a.slice(0, 4) === b.slice(0, 4);
+        };
+        const kept: { key: string; lat?: number; lng?: number }[] = [];
         recommendations = recommendations.filter(r => {
-          const t = r.title?.trim().toLowerCase() ?? "";
-          if (!t || seenTitles.has(t)) return false;
-          seenTitles.add(t);
+          const key = normalizeName(r.title ?? "");
+          if (!key) return false;
+          const rl = typeof r.lat === "number" ? r.lat : undefined;
+          const rg = typeof r.lng === "number" ? r.lng : undefined;
+          for (const k of kept) {
+            if (k.key === key) return false;  // 正規化名が完全一致 → 重複
+            if (rl !== undefined && rg !== undefined && k.lat !== undefined && k.lng !== undefined
+                && haversineMeters(rl, rg, k.lat, k.lng) <= 80 && namesOverlap(key, k.key)) {
+              return false;  // 近接 + 名前部分一致 → 同一スポットの表記ゆれ
+            }
+          }
+          kept.push({ key, lat: rl, lng: rg });
           return true;
         });
 
