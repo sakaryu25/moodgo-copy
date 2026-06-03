@@ -3478,6 +3478,7 @@ async function fetchGooglePlacesSupplement(
   limit: number = 10,
   budget?: number,
   deepDiveL1: string = "",
+  minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
 ): Promise<Array<Record<string, unknown>>> {
   try {
     // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
@@ -3603,7 +3604,7 @@ async function fetchGooglePlacesSupplement(
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel",
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location",
       },
       body: JSON.stringify({
         includedTypes: types,
@@ -3646,12 +3647,41 @@ async function fetchGooglePlacesSupplement(
         if (isOverBudget(p.priceLevel as string | undefined)) return false;
         return true;
       });
-    // Fisher-Yates shuffle
-    for (let i = filteredAll.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [filteredAll[i], filteredAll[j]] = [filteredAll[j], filteredAll[i]];
+
+    // 各スポットの現在地からの距離(km)を計算
+    const withDist = filteredAll.map((p) => {
+      const loc = p.location as { latitude?: number; longitude?: number } | undefined;
+      const distKm = (typeof loc?.latitude === "number" && typeof loc?.longitude === "number")
+        ? haversineMeters(lat, lng, loc.latitude, loc.longitude) / 1000
+        : -1;  // 座標不明
+      return { p, distKm };
+    });
+
+    // Fisher-Yates shuffle ヘルパー
+    const shuffleArr = <T,>(arr: T[]): T[] => {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+
+    let ordered: typeof withDist;
+    if (minRadiusKm > 0) {
+      // ── 遠端バイアス ───────────────────────────────────────────────────────
+      // minRadiusKm 以上の遠いスポットを優先（40km選択なら40km側を優先）
+      // far: 距離降順 + ランダムノイズ（遠いほど上位、毎回少し変わる）
+      // 座標不明(distKm<0)は near 扱いで後ろに回す
+      const far  = withDist.filter(d => d.distKm >= minRadiusKm);
+      const near = withDist.filter(d => d.distKm < minRadiusKm);
+      far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 2);
+      ordered = [...far, ...shuffleArr(near)];
+    } else {
+      // 距離指定なし: 全件シャッフル
+      ordered = shuffleArr(withDist);
     }
-    const filtered = filteredAll.slice(0, limit);
+
+    const filtered = ordered.slice(0, limit).map(d => d.p);
 
     const PRICE_MAP: Record<string, string> = {
       PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
@@ -3714,6 +3744,7 @@ async function fetchYahooSupplement(
   deepDiveL1: string,
   existingNames: string[],
   limit: number = 10,
+  minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
 ): Promise<Array<Record<string, unknown>>> {
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
@@ -3821,16 +3852,22 @@ async function fetchYahooSupplement(
   const keyword = (DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット").slice(0, 60);
 
   try {
-    // 毎回異なる結果を得るためランダムなページオフセットを使用（0〜4ページ目をランダム選択）
-    const randomStart = Math.floor(Math.random() * 5) * limit;
+    // Yahoo の dist 上限は 20km。半径が大きい場合も最大 20km まで広げて検索する
+    const yahooDistKm = Math.min(radiusKm, 20);
+    // 遠端バイアス時は候補を多く取り、距離でソートしてから絞る
+    const wantFarBias = minRadiusKm > 0;
+    // far bias 時は start を先頭固定で候補プールを最大化（ランダムページは多様性用）
+    const randomStart = wantFarBias ? 0 : Math.floor(Math.random() * 5) * limit;
+    const fetchCount = wantFarBias ? 50 : Math.min(limit * 2, 30);
     const params = new URLSearchParams({
       appid: apiKey,
       lat: String(lat),
       lon: String(lng),
-      dist: String(Math.min(radiusKm, 20)),
-      results: String(Math.min(limit * 2, 30)),
+      dist: String(yahooDistKm),
+      results: String(fetchCount),
       start:  String(randomStart + 1),  // Yahoo は 1-based
-      sort: "score",
+      // far bias 時は距離ソート（遠い順に並べ替えるため一旦取得）。通常は score 順
+      sort: wantFarBias ? "dist" : "score",
       output: "json",
       query: keyword,
     });
@@ -3843,10 +3880,43 @@ async function fetchYahooSupplement(
     const data = await res.json();
     const features: Record<string, unknown>[] = data.Feature ?? [];
 
+    // Yahoo Geometry.Coordinates ("経度,緯度") から距離(km)を計算
+    const distOf = (f: Record<string, unknown>): number => {
+      const geo = (f.Geometry ?? {}) as Record<string, unknown>;
+      const coords = String(geo.Coordinates ?? "");
+      const [lonStr, latStr] = coords.split(",");
+      const flon = parseFloat(lonStr), flat = parseFloat(latStr);
+      if (!isFinite(flon) || !isFinite(flat)) return -1;
+      return haversineMeters(lat, lng, flat, flon) / 1000;
+    };
+
+    // 名前重複・除外を済ませた候補リスト（距離付き）
+    const candidates = features
+      .filter(f => {
+        const name = String(f.Name ?? "");
+        return name && !existingNames.includes(name);
+      })
+      .map(f => ({ f, distKm: distOf(f) }));
+
+    // 遠端バイアス: minRadiusKm 以上を優先（Yahoo の 20km 上限内で最も遠い側）
+    // far 群が空なら全候補を距離降順にして外側を優先
+    let orderedFeatures: Record<string, unknown>[];
+    if (wantFarBias) {
+      const effMin = Math.min(minRadiusKm, yahooDistKm);
+      const far  = candidates.filter(c => c.distKm >= effMin);
+      const near = candidates.filter(c => c.distKm < effMin && c.distKm >= 0);
+      // far: 距離降順 + ランダムノイズ（遠いほど上位、毎回少し変わる）
+      far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 1);
+      // near: 距離降順（外側優先）で補完
+      near.sort((a, b) => b.distKm - a.distKm);
+      orderedFeatures = (far.length > 0 ? [...far, ...near] : near).map(c => c.f);
+    } else {
+      orderedFeatures = candidates.map(c => c.f);
+    }
+
     const results: Array<Record<string, unknown>> = [];
-    for (const f of features) {
+    for (const f of orderedFeatures) {
       const name = String(f.Name ?? "");
-      if (!name || existingNames.includes(name)) continue;
 
       const prop = (f.Property ?? {}) as Record<string, unknown>;
       const address = String(prop.Address ?? "");
@@ -3890,7 +3960,7 @@ async function fetchYahooSupplement(
       if (results.length >= limit) break;
     }
 
-    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件`);
+    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km)`);
     return results;
   } catch (e) {
     console.warn("[recommend] Yahoo supplement search failed:", e);
@@ -4174,24 +4244,25 @@ export async function POST(request: Request) {
         ? answers.radiusKm!
         : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
 
-      // 遠端バイアス: distanceFeeling ラベルごとに固定値で定義
-      // すぐそこ(1km)→0  近場でいい(3km)→0  少し歩ける(5km)→3.5
-      // 近めにお出かけ(10km)→7  今日は出かけたい(20km)→14
-      // ちょっと遠くてもOK(40km)→28  県またぎもあり(70km)→49
-      // 小旅行気分(120km)→84  どこでも行きたい(200km)→140
+      // 遠端バイアス: distanceFeeling ラベルごとに固定値で定義（外縁80%帯を優先）
+      // 「40km以内」なら 1km の近場ではなく 32〜40km の外側を優先して提案する
+      // すぐそこ(1km)→0  近場でいい(3km)→0  少し歩ける(5km)→4
+      // 近めにお出かけ(10km)→8  今日は出かけたい(20km)→16
+      // ちょっと遠くてもOK(40km)→32  県またぎもあり(70km)→56
+      // 小旅行気分(120km)→96  どこでも行きたい(200km)→160
       const DISTANCE_MIN_KM: Record<string, number> = {
         "すぐそこ":           0,
         "近場でいい":          0,
-        "少し歩ける":          3.5,
-        "近めにお出かけ":      7,
-        "今日は出かけたい":    14,
-        "ちょっと遠くてもOK":  28,
-        "県またぎもあり":      49,
-        "小旅行気分":          84,
-        "どこでも行きたい":    140,
+        "少し歩ける":          4,
+        "近めにお出かけ":      8,
+        "今日は出かけたい":    16,
+        "ちょっと遠くてもOK":  32,
+        "県またぎもあり":      56,
+        "小旅行気分":          96,
+        "どこでも行きたい":    160,
       };
       const minRadiusKm = useQuizRadius
-        ? (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.7))
+        ? (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8))
         : 0;
 
       const sbResults = await spatialSearch({
@@ -4252,7 +4323,7 @@ export async function POST(request: Request) {
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 5,
-                answers.budget, effectiveDeepDive
+                answers.budget, effectiveDeepDive, minRadiusKm
               )
             : Promise.resolve([]),
           // Yahoo!ローカルサーチ 補足検索（最大5件）
@@ -4262,7 +4333,7 @@ export async function POST(request: Request) {
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 5
+                sbNames, 5, minRadiusKm
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
