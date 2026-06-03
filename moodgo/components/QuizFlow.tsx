@@ -554,15 +554,17 @@ const rsl = StyleSheet.create({
 // ─── Marquee Label ────────────────────────────────────────────────────────────
 // 枠に収まらない（…で省略される）テキストのみ、永遠に流れ続けるアニメーションを付ける。
 // 収まるテキストは静止表示のまま。
-const MQ_GAP = 28;   // 2つのコピーの間隔(px)
-const MQ_SPEED = 45; // スクロール速度(px/秒)
+const MQ_GAP = 30;     // 2つのコピーの間隔(px)
+const MQ_SPEED = 22;   // スクロール速度(px/秒) ← ゆっくり
+const MQ_PAUSE = 900;  // 1周ごとに先頭で止まる時間(ms)
 
 function MarqueeLabel({ text, style, maxWidth }: {
   text: string; style: any; maxWidth: number;
 }) {
   const [textW, setTextW] = useState(0);
   const tx = useRef(new Animated.Value(0)).current;
-  const needsScroll = textW > 0 && textW > maxWidth + 0.5;
+  // 自然幅が枠を1pxでも超えたらスクロール。収まるなら静止（…を出さない）。
+  const needsScroll = textW > 0 && textW > maxWidth;
 
   useEffect(() => {
     tx.stopAnimation();
@@ -574,12 +576,15 @@ function MarqueeLabel({ text, style, maxWidth }: {
     const loop = () => {
       if (cancelled) return;
       tx.setValue(0);
-      Animated.timing(tx, {
-        toValue: -distance,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => { if (finished && !cancelled) loop(); });
+      Animated.sequence([
+        Animated.delay(MQ_PAUSE),
+        Animated.timing(tx, {
+          toValue: -distance,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => { if (finished && !cancelled) loop(); });
     };
     loop();
     return () => { cancelled = true; tx.stopAnimation(); };
@@ -588,22 +593,26 @@ function MarqueeLabel({ text, style, maxWidth }: {
   return (
     <View style={{ width: maxWidth, overflow: 'hidden' }}>
       {needsScroll ? (
-        <Animated.View style={{ flexDirection: 'row', transform: [{ translateX: tx }] }}>
-          <Text style={style} numberOfLines={1}>{text}</Text>
+        <Animated.View style={{
+          flexDirection: 'row', alignSelf: 'flex-start',
+          width: textW * 2 + MQ_GAP, transform: [{ translateX: tx }],
+        }}>
+          <Text style={[style, { width: textW, textAlign: 'left' }]} numberOfLines={1}>{text}</Text>
           <View style={{ width: MQ_GAP }} />
-          <Text style={style} numberOfLines={1}>{text}</Text>
+          <Text style={[style, { width: textW, textAlign: 'left' }]} numberOfLines={1}>{text}</Text>
         </Animated.View>
       ) : (
         <Text style={[style, { width: maxWidth }]} numberOfLines={1}>{text}</Text>
       )}
-      {/* 幅計測用ゴースト（非表示・幅制約なしで自然幅を測る） */}
-      <View style={{ position: 'absolute', top: 0, left: 0, width: 1000, opacity: 0 }} pointerEvents="none">
+      {/* 幅計測用ゴースト（rowで自然幅を測る・非表示）
+          row 内の子は幅制約を受けず自然幅で測れるため、…で切られた幅にならない */}
+      <View style={{ position: 'absolute', top: 0, left: 0, opacity: 0, flexDirection: 'row' }} pointerEvents="none">
         <Text
-          style={[style, { alignSelf: 'flex-start' }]}
+          style={style}
           numberOfLines={1}
           onLayout={(e) => {
-            const w = e.nativeEvent.layout.width;
-            if (w > 0 && Math.abs(w - textW) > 0.5) setTextW(w);
+            const w = Math.ceil(e.nativeEvent.layout.width);
+            if (w > 0 && w !== textW) setTextW(w);
           }}
         >{text}</Text>
       </View>
