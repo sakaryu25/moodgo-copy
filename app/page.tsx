@@ -959,54 +959,6 @@ export default function Home() {
       ? data.recommendations
       : [];
 
-    // HotPepperの近場グルメを先頭に挿入（お腹すいた + 近場距離のみ）
-    const hotpepperRecs: Recommendation[] = Array.isArray(data?.hotpepperShops)
-      ? data.hotpepperShops.map((shop: any) => ({
-          title: shop.name ?? "店舗",
-          vibe: shop.shopCatch || shop.genreCatch || "",
-          budget: shop.budget ? `平均${shop.budget}` : "",
-          time: "",
-          address: shop.address ?? "",
-          // Google Maps URLで正確な位置を指す（HotPepperの緯度経度を使用）
-          mapUrl: shop.lat && shop.lng
-            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shop.name)}&query_place=lat+lng&center=${shop.lat},${shop.lng}`
-            : (shop.url ?? ""),
-          photoUrl: Array.isArray(shop.photoUrls) && shop.photoUrls.length > 0
-            ? shop.photoUrls[0]
-            : (shop.photoUrl ?? ""),
-          photoUrls: Array.isArray(shop.photoUrls) && shop.photoUrls.length > 0
-            ? shop.photoUrls
-            : (shop.photoUrl ? [shop.photoUrl] : []),
-          openingHoursText: shop.openText ? `営業時間: ${shop.openText}` : "",
-          distanceText: "",
-          durationText: "",
-          openNow: true, // open=1で取得済みなので営業中
-          rating: null,
-          userRatingCount: null,
-          reason: shop.genreCatch || shop.shopCatch || shop.genre || "",
-          features: [
-            shop.genre,
-            shop.wifi ? "WiFiあり" : null,
-            shop.privateRoom ? "個室あり" : null,
-            shop.lunch ? "ランチあり" : null,
-            shop.nonSmoking ? "禁煙" : null,
-            shop.midnight ? "深夜営業" : null,
-            shop.freeDrink ? "飲み放題" : null,
-            shop.freeFood ? "食べ放題" : null,
-          ].filter((f): f is string => !!f),
-          isUserSpot: false,
-          hasUserPhotos: false,
-          userPhotoCount: 0,
-          priceLevel: "",
-          stationText: shop.access ?? "",
-          source: "hotpepper" as const,
-          hotpepperUrl: shop.url ?? "",
-        }))
-      : [];
-
-    // HotPepperデータがあれば最優先で返す（お腹すいた専用: recommendationsが空でも動く）
-    if (hotpepperRecs.length > 0) return hotpepperRecs;
-
     if (recommendationList.length > 0) {
       return recommendationList.map((item: any) => ({
         title:
@@ -6446,7 +6398,7 @@ export default function Home() {
                   <div style={{ background: "linear-gradient(135deg, #fff0f8 0%, #ffe8f5 100%)", borderRadius: "24px", border: "1px solid #ffb3d9", padding: "32px 24px", marginBottom: "20px", textAlign: "center" }}>
                     <div style={{ width: "56px", height: "56px", borderRadius: "999px", border: "5px solid #ffb3d9", borderTopColor: "#ff4da6", margin: "0 auto 20px", animation: "moodgo-spin 0.9s linear infinite" }} />
                     <div style={{ fontWeight: 900, fontSize: "16px", color: "#4a0030", marginBottom: "8px" }}>わいわいスポットを探しています</div>
-                    <div style={{ fontSize: "13px", color: "#9a2060" }}>Yahoo・Google・HotPepperでリアルタイム検索中...</div>
+                    <div style={{ fontSize: "13px", color: "#9a2060" }}>Yahoo・Googleでリアルタイム検索中...</div>
                   </div>
                 )}
 

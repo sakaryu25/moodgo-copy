@@ -215,66 +215,6 @@ async function fetchApprovedSuggestions(): Promise<ApprovedSuggestion[]> {
   }
 }
 
-// ─── 食事遠出: 近隣都市部リスト ─────────────────────────────────────────────
-// tier: 3=大都市, 2=主要駅, 1=地方中心駅
-const URBAN_FOOD_CENTERS: { name: string; lat: number; lng: number; tier: number }[] = [
-  // ── 全国大都市 (tier3) ──
-  { name: "東京駅",      lat: 35.6812, lng: 139.7671, tier: 3 },
-  { name: "新宿",        lat: 35.6938, lng: 139.7034, tier: 3 },
-  { name: "渋谷",        lat: 35.6580, lng: 139.7016, tier: 3 },
-  { name: "大阪梅田",    lat: 34.7024, lng: 135.4959, tier: 3 },
-  { name: "名古屋",      lat: 35.1706, lng: 136.8814, tier: 3 },
-  { name: "福岡天神",    lat: 33.5897, lng: 130.3985, tier: 3 },
-  { name: "札幌",        lat: 43.0618, lng: 141.3545, tier: 3 },
-  { name: "仙台",        lat: 38.2682, lng: 140.8694, tier: 3 },
-  { name: "広島",        lat: 34.3963, lng: 132.4593, tier: 3 },
-  // ── 関東主要 (tier2) ──
-  { name: "横浜",        lat: 35.4437, lng: 139.6380, tier: 2 },
-  { name: "みなとみらい",lat: 35.4579, lng: 139.6330, tier: 2 },
-  { name: "池袋",        lat: 35.7295, lng: 139.7109, tier: 3 }, // 主要ターミナル
-  { name: "上野",        lat: 35.7141, lng: 139.7774, tier: 2 },
-  { name: "品川",        lat: 35.6284, lng: 139.7387, tier: 2 }, // 乗換ターミナル（食の目的地としては渋谷優先）
-  { name: "川崎",        lat: 35.5308, lng: 139.7030, tier: 2 },
-  { name: "大宮",        lat: 35.9063, lng: 139.6234, tier: 3 }, // 関東北部ターミナル
-  { name: "千葉",        lat: 35.6074, lng: 140.1065, tier: 2 },
-  { name: "立川",        lat: 35.6978, lng: 139.4130, tier: 2 },
-  { name: "町田",        lat: 35.5448, lng: 139.4457, tier: 2 },
-  { name: "横須賀",      lat: 35.2810, lng: 139.6704, tier: 1 },
-  { name: "鎌倉",        lat: 35.3192, lng: 139.5467, tier: 1 },
-  { name: "藤沢",        lat: 35.3395, lng: 139.4924, tier: 1 },
-  { name: "武蔵小杉",    lat: 35.5748, lng: 139.6576, tier: 2 },
-  { name: "溝の口",      lat: 35.5828, lng: 139.6109, tier: 1 },
-  { name: "二俣川",      lat: 35.4736, lng: 139.5462, tier: 1 },
-  { name: "戸塚",        lat: 35.3991, lng: 139.5354, tier: 1 },
-  { name: "大船",        lat: 35.3446, lng: 139.5326, tier: 1 },
-  // ── 関西主要 (tier2) ──
-  { name: "神戸三宮",    lat: 34.6937, lng: 135.1956, tier: 2 },
-  { name: "京都",        lat: 35.0116, lng: 135.7681, tier: 2 },
-  { name: "難波",        lat: 34.6647, lng: 135.5022, tier: 2 },
-  { name: "天王寺",      lat: 34.6473, lng: 135.5161, tier: 2 },
-  { name: "堺",          lat: 34.5733, lng: 135.4830, tier: 2 },
-  // ── 九州・東北・中国 (tier2) ──
-  { name: "北九州",      lat: 33.8834, lng: 130.8751, tier: 2 },
-  { name: "熊本",        lat: 32.8032, lng: 130.7079, tier: 2 },
-  { name: "松山",        lat: 33.8392, lng: 132.7657, tier: 2 },
-];
-
-/**
- * ユーザー位置から距離ティアに合った最寄り都市部を返す
- * tier="train" → 電車30分圏（8〜32km）例: 富岡西→横浜(11km)
- * tier="far"   → ガッツリ遠く・県外レベル（32〜200km）例: 富岡西→渋谷(35km)
- */
-function findUrbanCenterForFood(
-  lat: number, lng: number,
-  tier: "train" | "far",
-): { name: string; lat: number; lng: number } | null {
-  const [minKm, maxKm] = tier === "train" ? [8, 32] : [32, 200];
-  const candidates = URBAN_FOOD_CENTERS
-    .map(c => ({ ...c, distKm: haversineMeters(lat, lng, c.lat, c.lng) / 1000 }))
-    .filter(c => c.distKm >= minKm && c.distKm <= maxKm)
-    .sort((a, b) => b.tier - a.tier || a.distKm - b.distKm); // tier高 → 近い順
-  return candidates[0] ?? null;
-}
 
 // Haversine距離(m)
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -4937,52 +4877,17 @@ export async function POST(request: Request) {
       if (s.google_place_name) userPhotosMap.set(s.google_place_name, imgs);
     }
 
-    // ── お腹すいた: HotPepperのみで完結（Google Places検索をスキップ） ────────
+    // ── お腹すいた 専用処理 ───────────────────────────────────────────────────
     const isFoodMood = answers.mood === "お腹すいた";
-    const hasHotPepperKey = !!process.env.HOTPEPPER_API_KEY;
 
-    // 高層ビル料理が選択されているかチェック（HotPepperにはジャンルなし → Google Places専用）
+    // 高層ビル料理が選択されているかチェック（Google Places専用）
     const isHighriseFood = isFoodMood &&
       getDynamicQs(answers).some(dq => dq.answer.includes("高層ビル料理"));
 
-    // GPS未使用の場合、エリア名をジオコードして座標を補完
-    let resolvedLat = answers.originLat;
-    let resolvedLng = answers.originLng;
-    if (isFoodMood && hasHotPepperKey && (!resolvedLat || !resolvedLng) && answers.area) {
-      try {
-        const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
-        const geoRes = await fetch(`${base}/api/geocode?area=${encodeURIComponent(answers.area)}`, { cache: "no-store" });
-        if (geoRes.ok) {
-          const geoData = await geoRes.json();
-          if (geoData.ok) {
-            resolvedLat = geoData.lat;
-            resolvedLng = geoData.lng;
-            console.log(`[recommend] エリア「${answers.area}」→ geocode: ${resolvedLat}, ${resolvedLng}`);
-          }
-        }
-      } catch (e) {
-        console.warn("[recommend] geocode エラー:", e);
-      }
-    }
+    const resolvedLat = answers.originLat;
+    const resolvedLng = answers.originLng;
 
-    const hasLocation = !!(resolvedLat && resolvedLng);
-
-    // 距離感の分類（お腹すいた専用）
-    const foodDistanceTier = (() => {
-      const dqs = getDynamicQs(answers);
-      for (const dq of dqs) {
-        const a = dq.answer;
-        if (a.includes("ガッツリ遠く") || a.includes("県外") || a.includes("Far is fine")) return "far" as const;
-        if (a.includes("ほどほど遠く") || a.includes("電車使う") || a.includes("電車30分") || a.includes("電車で") || a.includes("Take a train") || a.includes("Moderate")) return "train" as const;
-      }
-      if (answers.time) {
-        if (answers.time.includes("4〜6時間") || answers.time.includes("2〜4時間")) return "far" as const;
-        if (answers.time.includes("1〜2時間")) return "train" as const;
-      }
-      return "near" as const; // 近場 or デフォルト
-    })();
-
-    // ── 高層ビル料理: HotPepperをスキップしてGoogle Placesで専用クエリ実行 ─────
+    // ── 高層ビル料理: Google Placesで専用クエリ実行 ────────────────────────────
     if (isHighriseFood && apiKey) {
       let searchLat = resolvedLat ?? 0;
       let searchLng = resolvedLng ?? 0;
@@ -5155,100 +5060,12 @@ export async function POST(request: Request) {
             })),
             "#高層ビル料理"
           );
-          return json({ recommendations: [], hotpepperShops: hiShops, usedAI: true, warning: "" });
+          return json({ recommendations: hiShops, hotpepperShops: [], usedAI: true, warning: "" });
         }
       }
     }
 
-    if (isFoodMood && hasHotPepperKey && hasLocation && !isHighriseFood) {
-      // 電車・遠距離の場合は都市部の座標に差し替える
-      let searchLat = resolvedLat!;
-      let searchLng = resolvedLng!;
-      let searchAreaLabel = answers.area ?? "";
-      let urbanWarning = "";
-
-      if (foodDistanceTier === "train" || foodDistanceTier === "far") {
-        const urban = findUrbanCenterForFood(resolvedLat!, resolvedLng!, foodDistanceTier);
-        if (urban) {
-          searchLat = urban.lat;
-          searchLng = urban.lng;
-          searchAreaLabel = urban.name;
-          urbanWarning = `${foodDistanceTier === "far" ? "遠出モード" : "電車圏内モード"}：${urban.name}周辺で検索しています。`;
-          console.log(`[recommend] お腹すいた 遠距離: ${urban.name} (${Math.round(haversineMeters(resolvedLat!, resolvedLng!, urban.lat, urban.lng) / 1000)}km) で検索`);
-        }
-      }
-
-      try {
-        const hpRes = await fetch(
-          `${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/api/hotpepper`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              mood: answers.mood,
-              companion: answers.companion ?? "一人",
-              transport: answers.transport,
-              budget: answers.budget,
-              budgetMin: answers.budgetMin,
-              time: answers.time,
-              freeWord: answers.freeWord,
-              originLat: searchLat,
-              originLng: searchLng,
-              area: searchAreaLabel,
-              dynamicQs: getDynamicQs(answers),
-            }),
-            cache: "no-store",
-          }
-        );
-        if (hpRes.ok) {
-          const hpData = await hpRes.json();
-          if (hpData.ok && hpData.shops && hpData.shops.length > 0) {
-            console.log(`[recommend] お腹すいた: HotPepper ${hpData.shops.length}件`);
-            // HotPepper ライブ結果を Supabase に自動保存（fire-and-forget）
-            const { scheduleHotPepperAutoSave, detectFoodGenreTag } = await import("@/lib/google-places-auto-save");
-            const dqText = getDynamicQs(answers).map(q => q.answer).join(" ");
-            const detectedTag = detectFoodGenreTag(dqText);
-            if (detectedTag && !hpData.isFallback) {
-              scheduleHotPepperAutoSave(hpData.shops, detectedTag);
-            }
-            const warning = urbanWarning || (hpData.isFallback
-              ? "ご指定のジャンルが近くに見つからなかったため、条件を緩めて周辺の飲食店を表示しています。"
-              : "");
-            return json({
-              recommendations: [],
-              hotpepperShops: hpData.shops,
-              usedAI: true,
-              warning,
-            });
-          }
-          // HotPepper 0件 → Google Placesには流さず専用メッセージで終了
-          console.log("[recommend] お腹すいた: HotPepper 0件 → 終了（Google Placesフォールバックなし）");
-          return json({
-            recommendations: [],
-            hotpepperShops: [],
-            usedAI: true,
-            warning: "noResultsFood",
-          });
-        }
-        // HotPepper API自体がエラーの場合も同様に終了
-        console.warn("[recommend] お腹すいた: HotPepper APIエラー → 終了");
-        return json({
-          recommendations: [],
-          hotpepperShops: [],
-          usedAI: true,
-          warning: "noResultsFood",
-        });
-      } catch (e) {
-        console.warn("[recommend] お腹すいた HotPepper エラー:", e);
-        return json({
-          recommendations: [],
-          hotpepperShops: [],
-          usedAI: true,
-          warning: "noResultsFood",
-        });
-      }
-    }
-    // ── ここより下はお腹すいた以外、またはHotPepper失敗時のGoogle Places検索 ──
+    // ── ここより下はお腹すいた以外のGoogle Places検索 ──────────────────────────
 
     // ── まったりしたい: 単一textQuery → Places 1回 → シャッフル3件 ───────────────
     if (answers.mood === "まったりしたい" && apiKey) {
