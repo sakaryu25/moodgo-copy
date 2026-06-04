@@ -261,11 +261,11 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
   '運動': {
     title: 'どんな風に体を動かしたい？',
     options: [
-      { key: 'がっつり汗を流してトレーニング', label: 'がっつり運動',       sub: 'ジム・プール系',              Icon: Dumbbell },
-      { key: '打って投げてストレス発散',       label: '打ってスカッと',     sub: 'バット・ゴルフ',                Icon: Trophy },
-      { key: '遊び感覚でわいわい',             label: 'わいわいゲーム',     sub: 'ボウリング系',                  Icon: Gamepad2 },
-      { key: '外で風を感じながらスポーツ',     label: '外でのびのび',       sub: '公園・屋外',                    Icon: Activity },
-      { key: 'こだわらない',                   label: 'こだわらない',         sub: 'なんでもOK',                    Icon: Shuffle },
+      { key: 'がっつり運動',   label: 'がっつり運動',   sub: 'ジム・プール系',   Icon: Dumbbell },
+      { key: '外でひろびろ',   label: '外でひろびろ',   sub: '公園・屋外',       Icon: Activity },
+      { key: '室内でのんびり', label: '室内でのんびり', sub: 'ヨガ・ストレッチ', Icon: Leaf },
+      { key: 'ゲーム感覚で',   label: 'ゲーム感覚で',   sub: 'ボウリング系',     Icon: Gamepad2 },
+      { key: 'こだわらない',   label: 'こだわらない',   sub: 'なんでもOK',       Icon: Shuffle },
     ],
   },
 
