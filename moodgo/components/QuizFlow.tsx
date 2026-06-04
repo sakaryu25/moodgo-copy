@@ -71,6 +71,7 @@ const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
   { key: '集中',       label: '集中',       sub: '作業・勉強',  Icon: BookOpen },
   { key: '運動',       label: '運動',       sub: 'スポーツ',    Icon: Activity },
   { key: '旅行',       label: '旅行・観光', sub: '小旅行',      Icon: Plane },
+  { key: 'ショッピング', label: 'ショッピング', sub: 'お買い物', Icon: ShoppingBag },
   { key: '時間潰し',   label: '時間潰し',   sub: 'のんびり',    Icon: Shuffle },
 ];
 
@@ -278,6 +279,17 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: 'こだわらない',         label: 'こだわらない',       sub: 'なんでもOK',           Icon: Shuffle },
     ],
   },
+
+  'ショッピング': {
+    title: '何を買いに行く？',
+    options: [
+      { key: '服・アクセサリー', label: '服・アクセサリ', sub: '洋服・靴ほか',   Icon: ShoppingBag },
+      { key: '雑貨・インテリア', label: '雑貨インテリア', sub: '暮らし用品',     Icon: Home },
+      { key: 'コスメ・美容',     label: 'コスメ・美容',   sub: 'スキンケア系',   Icon: Sparkles },
+      { key: 'ガジェット・家電', label: 'ガジェット家電', sub: '電化製品ほか',   Icon: Laptop },
+      { key: 'お土産・ギフト',   label: 'お土産・ギフト', sub: '贈り物探し',     Icon: Star },
+    ],
+  },
 };
 
 // ─── 気分別ヒントタグ ─────────────────────────────────────────────────────────
@@ -310,6 +322,10 @@ const FREE_WORD_HINTS: Record<string, string[]> = {
   '旅行': [
     '日帰りできる', '温泉あり', '体験・アクティビティ', '歴史・文化スポット', '絶景あり', '宿泊も可',
     '食事も楽しめる', '子連れOK', 'ペット可', 'インスタ映え', '公共交通アクセス可', '駐車場あり',
+  ],
+  'ショッピング': [
+    'セール中', '駐車場あり', 'アウトレット', 'カード払いOK', '試着できる', '子連れOK',
+    '免税対応', '駅チカ', '混みにくい', '休憩スペースあり', '大型商業施設', '最新商品あり',
   ],
   '時間潰し': [
     '無料で楽しめる', '屋内', '一人でも入りやすい', '何時間でもOK', '雨でもOK', '駅チカ',
