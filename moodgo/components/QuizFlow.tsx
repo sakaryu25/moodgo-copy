@@ -66,12 +66,11 @@ type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWid
 const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
   { key: 'お腹すいた', label: 'お腹すいた', sub: '絶品グルメ',  Icon: UtensilsCrossed },
   { key: 'まったり',   label: 'まったり',   sub: '癒やし',      Icon: Coffee },
-  { key: 'わいわい',   label: 'わいわい',   sub: 'エンタメ',    Icon: Sparkles },
   { key: '自然',       label: '自然',       sub: '絶景',        Icon: Leaf },
   { key: 'ドライブ',   label: 'ドライブ',   sub: 'ツーリング',  Icon: Car },
   { key: '集中',       label: '集中',       sub: '作業・勉強',  Icon: BookOpen },
   { key: '運動',       label: '運動',       sub: 'スポーツ',    Icon: Activity },
-  { key: '旅行',       label: '旅行',       sub: '小旅行',      Icon: Plane },
+  { key: '旅行',       label: '旅行・観光', sub: '小旅行',      Icon: Plane },
   { key: '時間潰し',   label: '時間潰し',   sub: 'のんびり',    Icon: Shuffle },
 ];
 
@@ -227,16 +226,6 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
     ],
   },
 
-  'わいわい': {
-    title: '何をして楽しみたい？',
-    options: [
-      { key: '体を動かして遊びたい',         label: '体を動かして遊びたい', sub: 'スポーツ・アクティブ', Icon: Activity },
-      { key: '歌って飲んで騒ぎたい',         label: '歌って飲んで騒ぎたい', sub: 'カラオケ・ダーツ',     Icon: Zap },
-      { key: '非日常の体験で盛り上がりたい', label: '非日常の体験',         sub: '謎解き・VRなど',       Icon: Gamepad2 },
-      { key: 'こだわらない',                 label: 'こだわらない',         sub: 'なんでもOK',           Icon: Shuffle },
-    ],
-  },
-
   '自然': {
     title: 'どんな自然を感じたい？',
     options: [
@@ -301,10 +290,6 @@ const FREE_WORD_HINTS: Record<string, string[]> = {
   'まったり': [
     '長居OK', '静かな雰囲気', '景色が良い', '隠れ家的', 'ペット可', '屋外席あり',
     '読書できる', '混みにくい', '個室あり', '駅チカ', '駐車場あり', '一人でもOK',
-  ],
-  'わいわい': [
-    '大人数OK', '貸し切り可', '夜も楽しめる', '予約できる', '駐車場あり', '雨でもOK',
-    '屋内施設', '子連れOK', '駅チカ', '体を動かせる', '飲食できる', '初回でもOK',
   ],
   '自然': [
     '海が見える', '山・森の中', '川・湖沿い', '展望台あり', '夕日が綺麗', '無料で入れる',
