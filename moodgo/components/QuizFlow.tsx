@@ -444,6 +444,7 @@ function BudgetRangeSlider({
   const panMin = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder:  () => true,
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => { sMin.current = minXRef.current; },
     onPanResponderMove: (_, g) => {
       const nx = Math.max(0, Math.min(sMin.current + g.dx, maxXRef.current - THUMB_D * 1.5));
@@ -461,6 +462,7 @@ function BudgetRangeSlider({
   const panMax = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder:  () => true,
+    onPanResponderTerminationRequest: () => false,
     onPanResponderGrant: () => { sMax.current = maxXRef.current; },
     onPanResponderMove: (_, g) => {
       const nx = Math.min(SLIDER_W - THUMB_D, Math.max(sMax.current + g.dx, minXRef.current + THUMB_D * 1.5));
@@ -896,6 +898,21 @@ export default function QuizFlow(props: Props) {
     onBack();
   };
 
+  // ── 右スワイプで前ページへ戻る ─────────────────────────────────────────────
+  const _swipeBackRef = useRef(handleBack);
+  _swipeBackRef.current = handleBack; // 毎レンダーで最新クロージャーに更新
+
+  const swipePan = useRef(PanResponder.create({
+    // 明確な右方向スワイプのみ受け取る（縦スクロール・スライダーとの競合を避ける）
+    onMoveShouldSetPanResponder: (_, g) =>
+      g.dx > 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2.5,
+    onPanResponderRelease: (_, g) => {
+      if (g.dx > 80 && Math.abs(g.dy) < 120) {
+        _swipeBackRef.current();
+      }
+    },
+  })).current;
+
   const handleNext = () => {
     if (step === 1)  { onSetStep(2);  return; }
     if (step === 2)  { onSetStep(3);  return; }
@@ -1139,7 +1156,7 @@ export default function QuizFlow(props: Props) {
   };
 
   return (
-    <View style={[s.root, { paddingTop: insets.top }]}>
+    <View style={[s.root, { paddingTop: insets.top }]} {...swipePan.panHandlers}>
       {/* Nav row */}
       <View style={s.topBar}>
         <TouchableOpacity onPress={handleBack} style={s.backCircle} activeOpacity={0.7}
