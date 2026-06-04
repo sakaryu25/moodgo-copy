@@ -283,11 +283,16 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
   'ショッピング': {
     title: '何を買いに行く？',
     options: [
-      { key: '服・アクセサリー', label: '服・アクセサリ', sub: '洋服・靴ほか',   Icon: ShoppingBag },
-      { key: '雑貨・インテリア', label: '雑貨インテリア', sub: '暮らし用品',     Icon: Home },
-      { key: 'コスメ・美容',     label: 'コスメ・美容',   sub: 'スキンケア系',   Icon: Sparkles },
-      { key: 'ガジェット・家電', label: 'ガジェット家電', sub: '電化製品ほか',   Icon: Laptop },
-      { key: 'お土産・ギフト',   label: 'お土産・ギフト', sub: '贈り物探し',     Icon: Star },
+      { key: '服・アクセサリー', label: '服・アクセサリ', sub: '洋服・靴ほか',    Icon: ShoppingBag,
+        subs: [
+          { key: '新品・現行',         label: '新品・現行',    Icon: ShoppingBag },
+          { key: '古着・ヴィンテージ', label: '古着・vintage', Icon: Sparkles },
+        ],
+      },
+      { key: '雑貨・インテリア',       label: '雑貨インテリア', sub: '暮らし用品',     Icon: Home },
+      { key: 'コスメ・美容',           label: 'コスメ・美容',   sub: 'スキンケア系',   Icon: Sparkles },
+      { key: '大型ショッピングモール', label: '大型モール',     sub: 'SC・アウトレット', Icon: Building2 },
+      { key: 'お土産・ギフト',         label: 'お土産・ギフト', sub: '贈り物探し',     Icon: Star },
     ],
   },
 };
