@@ -177,9 +177,11 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
 
   // ── PostGIS RPC を試みる ──────────────────────────────────────────────────
   if (hasLocation) {
-    // 遠端バイアスがある場合は取得数を大きめに（遠方スポットを取りこぼさないよう広く取得）
-    // RPC は近い順に limit 件返すため、遠端優先時は母数を増やして遠いスポットを捕捉する
-    const fetchLimit = minRadiusKm > 0 ? Math.max(limit * 12, 60) : limit * 3;
+    // 検索半径に応じて取得数を増やす（大きな半径ほど多様性を確保するため母数を増やす）
+    // RPC は近い順に返すため、遠方まで広げた場合は多めに取得してシャッフルで多様性を出す
+    const fetchLimit = radiusKm > 100 ? Math.max(limit * 20, 100)
+      : radiusKm > 20  ? Math.max(limit * 10, 50)
+      : limit * 4;
 
     // ── OR semantics: mustTags が複数の場合、各タグで個別に検索して union ──
     // find_nearby_places RPC は AND 検索のため、複数タグ（わいわい系・運動系など）は

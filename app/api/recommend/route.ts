@@ -4481,20 +4481,32 @@ export async function POST(request: Request) {
         : allMustTags;                                          // 気分タグのみ（深掘りなし）
       const sbFallbackTags = moodBaseTag ? [moodBaseTag] : [];  // 気分タグはフォールバックへ
 
-      // クイズ Step4 で選んだ距離感を優先使用（GPS座標がある場合は常に有効）
-      // areaMode チェックを外すことで、GPS座標さえあれば distanceFeeling が確実に適用される
-      const hasLocation = !!(answers.originLat && answers.originLng);
-      const useQuizRadius = hasLocation && !!answers.radiusKm;
-      const radiusKm = useQuizRadius
-        ? answers.radiusKm!
-        : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
+      // ── 距離感 → 検索半径マッピング（ユーザー選択を厳密な上限として使用）──────
+      // distanceFeeling の選択値を radiusKm に変換
+      // answers.radiusKm が設定されている場合は常にそれを使用（GPS未使用時も同様）
+      const DISTANCE_RADIUS_KM: Record<string, number> = {
+        "すぐそこ":           1,
+        "近場でいい":          3,
+        "少し歩ける":          5,
+        "近めにお出かけ":      10,
+        "今日は出かけたい":    20,
+        "ちょっと遠くてもOK":  40,
+        "県またぎもあり":      70,
+        "小旅行気分":          120,
+        "どこでも行きたい":    200,
+      };
 
-      // 遠端バイアス: distanceFeeling ラベルごとに固定値で定義（外縁80%帯を優先）
-      // 「40km以内」なら 1km の近場ではなく 32〜40km の外側を優先して提案する
-      // すぐそこ(1km)→0  近場でいい(3km)→0  少し歩ける(5km)→4
-      // 近めにお出かけ(10km)→8  今日は出かけたい(20km)→16
-      // ちょっと遠くてもOK(40km)→32  県またぎもあり(70km)→56
-      // 小旅行気分(120km)→96  どこでも行きたい(200km)→160
+      const hasLocation = !!(answers.originLat && answers.originLng);
+
+      // radiusKm: クイズで選んだ値を最優先。未設定時は交通手段/時間から推定
+      const radiusKm = answers.radiusKm
+        ? answers.radiusKm
+        : answers.distanceFeeling
+          ? (DISTANCE_RADIUS_KM[answers.distanceFeeling] ?? getRadiusKmFromTransportAndTime(answers.transport, answers.time))
+          : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
+
+      // Google/Yahoo 補足検索用の遠端バイアス（Supabase には適用しない）
+      // 手動エリア入力時はバイアスなし
       const DISTANCE_MIN_KM: Record<string, number> = {
         "すぐそこ":           0,
         "近場でいい":          0,
@@ -4506,18 +4518,20 @@ export async function POST(request: Request) {
         "小旅行気分":          96,
         "どこでも行きたい":    160,
       };
-      // 手動エリア入力時は距離バイアスなし（2km固定半径で近場を返す）
+      const useQuizRadius = !!(answers.radiusKm || answers.distanceFeeling);
       const minRadiusKm = (answers.areaMode === 'manual' || !useQuizRadius)
         ? 0
         : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
+      // Supabase 検索: 選択した距離を厳密な上限として使用（遠端バイアスなし）
+      // → "近場でいい(3km)" なら 3km 以内のみ、"どこでも行きたい(200km)" なら 200km 以内
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbFallbackTags,  // 気分タグにフォールバック（深掘りタグが0件の場合）
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm,
-        minRadiusKm,
+        minRadiusKm: 0,  // Supabaseは厳密な上限のみ（遠端バイアスなし）
         transport: answers.transport,
         limit: 5,  // Supabaseから最大5件
         googleApiKey: apiKey,
