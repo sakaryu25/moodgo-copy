@@ -5196,12 +5196,23 @@ export async function POST(request: Request) {
           // を MOOD_SHORT_KEY_TO_TAG で解決済み。MOOD_TAG_MAP.find だと短縮キーで未解決になるため使わない）
           const moodTag = userTags.mustTags[0];
           const subTags = userTags.mustTags.slice(1);  // 深掘り/サブタグ
+
+          // 深掘りが指定されている場合の追加フィルター:
+          // DRILL_ANSWER_TO_MUST でキー不一致（例:「食べ放題」→「焼肉食べ放題」）により
+          // subTags が空でも、sbMustTags（Supabase検索用の実タグ）でフィルタする。
+          // これにより「焼肉食べ放題」選択時に横浜中華街が混入しなくなる。
+          const adminSubFilter = sbMustTags.filter(t => t !== moodTag);
           const ADMIN_MAX_KM = 40;
           const matchingAdmin = adminSpots
             .map(s => {
               const tags = new Set(s.auto_tags ?? []);
               if (!moodTag || !tags.has(moodTag)) return null;                          // ① 気分タグ一致(必須)
-              if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return null;   // ② サブタグ一致
+              if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return null;   // ② mustTagsサブタグ一致
+              // ③ sbMustTags（Supabase検索用タグ）での補完フィルタ:
+              //   「食べ放題」→mustTagsキー不一致でsubTagsが空の場合も、
+              //   sbMustTags（例:#焼肉食べ放題）との一致を確認する
+              if (adminSubFilter.length > 0 && subTags.length === 0
+                && !adminSubFilter.some(t => tags.has(t))) return null;
               // 既出スポット除外（再検索時の重複防止）
               if (showUnseenOnly && seenLower.has((s.google_place_name ?? s.spot_name).toLowerCase())) return null;
               const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
