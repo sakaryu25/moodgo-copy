@@ -3508,6 +3508,7 @@ async function fetchGooglePlacesSupplement(
   budget?: number,
   deepDiveL1: string = "",
   minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
+  deepDiveL2: string = "",   // L2詳細カテゴリ（Text Search精度向上に使用）
 ): Promise<Array<Record<string, unknown>>> {
   try {
     // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
@@ -4873,7 +4874,7 @@ export async function POST(request: Request) {
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
-                answers.budget, effectiveDeepDive, minRadiusKm
+                answers.budget, effectiveDeepDive, minRadiusKm, deepDiveL2
               )
             : Promise.resolve([]),
           // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
