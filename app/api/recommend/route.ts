@@ -3912,6 +3912,9 @@ async function fetchGooglePlacesSupplement(
   }
 }
 
+// 一時デバッグ: fetchYahooSupplement の内部件数を記録（切り分け後に削除）
+let __ydbgLast: Record<string, unknown> = {};
+
 // ─── Yahoo!ローカルサーチ 補足検索 ───────────────────────────────────────────
 // Supabase + Google 結果を補うために Yahoo!ローカルサーチで最大 limit 件追加取得
 async function fetchYahooSupplement(
@@ -4379,9 +4382,10 @@ async function fetchYahooSupplement(
       }));
     }
 
-    console.log(`[recommend] Yahoo supplement "${keywordList.join("/")}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km, centers=${centers.length}, pool=${features.length})`);
+    __ydbgLast = { kw: keywordList, rawPerTask: rawFeatures.map(a => a.length), features: features.length, candidates: candidates.length, results: results.length, radiusKm, minRadiusKm };
     return results;
   } catch (e) {
+    __ydbgLast = { error: String(e), kw: keywordList };
     console.warn("[recommend] Yahoo supplement search failed:", e);
     return [];
   }
@@ -5163,6 +5167,7 @@ export async function POST(request: Request) {
             rawSb: mergedSb.length,
             sbTaken: sbTaken.length, gTaken: gTaken.length, yTaken: yTaken.length,
             backfill: backfill.length,
+            yahooInternal: __ydbgLast,
           },
         });
       }
