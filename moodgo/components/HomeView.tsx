@@ -266,24 +266,31 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
 
           {/* ── START button ── */}
           <Animated.View style={[s.startWrap, { transform: [{ scale: startScale }] }]}>
-            {/* 要件①: グロー影レイヤー（ボタン下に同系色のぼかし）*/}
-            <View style={s.startGlow} />
-            <TouchableOpacity
-              onPress={handleStart}
-              onPressIn={pressIn}
-              onPressOut={pressOut}
-              activeOpacity={1}
-              style={s.startTouchable}
-            >
-              <LinearGradient
-                colors={GRAD}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={s.startBtn}
+            {/*
+              ポイント: iOS では overflow:'hidden' があると shadow が外にはみ出せずクリップされる。
+              → 3層に分離する
+                1. startShadow  … shadow のみ担当（overflow なし・backgroundColor 必須）
+                2. TouchableOpacity … overflow:'hidden' でグラデをクリップ
+                3. LinearGradient … 実際のグラデーション
+            */}
+            <View style={s.startShadow}>
+              <TouchableOpacity
+                onPress={handleStart}
+                onPressIn={pressIn}
+                onPressOut={pressOut}
+                activeOpacity={1}
+                style={s.startTouchable}
               >
-                <Text style={s.startText}>✦  START  →</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={GRAD}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={s.startBtn}
+                >
+                  <Text style={s.startText}>✦  START  →</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
 
           {/* ── Featured card ── */}
@@ -438,30 +445,31 @@ const s = StyleSheet.create({
   },
 
   // START
-  // 要件①②: ボタン外側に同系色グロー用ラッパー（marginなし＝scrollContentのpaddingに統一）
-  startWrap: { marginBottom: 24 },
-  // グロー効果レイヤー（ボタンの後ろに敷く疑似グラデーション影）
-  startGlow: {
-    position: 'absolute', bottom: -14, left: 20, right: 20, height: 40,
+  startWrap: { marginBottom: 32 },
+
+  // ── シャドウ専用レイヤー ──
+  // iOS: shadow は overflow:'hidden' があるとクリップされるため、
+  //      このラッパーには overflow を設定しない。
+  //      backgroundColor が必須（透明だと iOS shadow が描画されない）ため
+  //      グラデーション末尾と同じ BLUE を設定し、内側のグラデで完全に覆われる。
+  startShadow: {
     borderRadius: 99,
-    backgroundColor: 'transparent',
-    // iOS: ピンク〜パープル系の淡いシャドウ（グラデーションと同系色・不透明度低め）
+    backgroundColor: BLUE,              // iOS shadow 描画のために必要
+    // グラデーションと同系色のカラー影 → 「押せる」感のあるグロー
     shadowColor: PURPLE,
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    // Android: elevation で代用
-    elevation: 0,
+    shadowOffset: { width: 0, height: 12 },  // 下方向に深く
+    shadowOpacity: 0.55,                      // やや濃いめで存在感
+    shadowRadius: 24,                         // 大きくぼかす
+    elevation: 18,                            // Android
   },
+
+  // ── overflow:hidden 担当 ──
+  // グラデーションを borderRadius でクリップするだけ。shadow はここに書かない。
   startTouchable: {
-    borderRadius: 99, overflow: 'hidden',
-    // iOS: ボタン自体は軽いシャドウ（グロー層と組み合わせで奥行き感）
-    shadowColor: PINK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 12,  // Android
+    borderRadius: 99,
+    overflow: 'hidden',
   },
+
   startBtn: { height: 60, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   startText: { fontSize: 19, fontWeight: '900', color: '#fff', letterSpacing: 2 },
 
