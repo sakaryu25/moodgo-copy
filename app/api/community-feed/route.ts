@@ -3,13 +3,53 @@ export const dynamic = "force-dynamic";
 /**
  * 全国みんなの穴場フィード（公開）
  * GET /api/community-feed
- * 管理者承認済みのユーザー投稿スポットを新着順で返す
+ * 管理者承認済みのユーザー投稿スポットを新着順で返す。
+ * 旧形式の画像URL（maps.googleapis.com/.../photo?photo_reference=AU_...）は
+ * Expoから直接表示できないため、Google Places Text Searchで写真を再取得し
+ * photo-proxy 経由URLに変換して返す。
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+
+// 旧形式 Google Maps Photo URL か判定
+function isLegacyPhotoUrl(url: string): boolean {
+  return url.includes("maps.googleapis.com/maps/api/place/photo");
+}
+
+// photoName → photo-proxy 経由URL
+function buildProxyUrl(origin: string, photoName: string): string {
+  const mediaUrl = `https://places.googleapis.com/v1/${photoName}/media`;
+  return `${origin}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
+}
+
+// Google Places Text Search でスポットの写真名を取得
+async function fetchGooglePhotos(query: string): Promise<string[]> {
+  if (!GOOGLE_API_KEY) return [];
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": "places.photos",
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: "ja", pageSize: 1 }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => null);
+    const photos = (data?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+    return photos.slice(0, 3).map((p) => p.name).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+  const { searchParams, origin } = new URL(request.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 40);
   const offset = Number(searchParams.get("offset") ?? "0");
 
@@ -29,24 +69,44 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
-    // address から都道府県を抽出
-    const items = (data ?? []).map((s) => {
-      const name = (s.google_place_name ?? s.spot_name ?? "").trim();
-      // "日本、" "〒XXX-XXXX" を順に除去してクリーンな住所に
-      const addr = (s.address ?? "")
-        .replace(/^日本[、,]\s*/, "")
-        .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
-        .trim();
-      // 都道府県名を正確に抽出（東京都/北海道/大阪府/京都府/○○県）
-      const prefMatch = addr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-      let prefecture = "";
-      if (prefMatch) {
-        prefecture = prefMatch[1]
-          .replace(/[都道府県]$/, "")     // 東京都→東京、神奈川県→神奈川
-          .replace(/^東京$/, "東京");
-      }
-      return { ...s, spot_name: name, prefecture };
-    });
+    // 各アイテムを整形＋画像URLを補正（並列）
+    const items = await Promise.all(
+      (data ?? []).map(async (s) => {
+        const name = (s.google_place_name ?? s.spot_name ?? "").trim();
+        // address から都道府県を抽出
+        const cleanAddr = (s.address ?? "")
+          .replace(/^日本[、,]\s*/, "")
+          .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
+          .trim();
+        const prefMatch = cleanAddr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+        const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
+
+        // 画像URL補正
+        const rawImgs = (s.image_urls ?? []).filter(Boolean);
+        const hasUsable = rawImgs.some((u: string) => !isLegacyPhotoUrl(u));
+        let image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
+
+        // 使える画像が無い（=旧形式のみ or 空）→ Google Places で再取得
+        if (!hasUsable && name) {
+          const q = cleanAddr ? `${name} ${cleanAddr}` : name;
+          const photoNames = await fetchGooglePhotos(q);
+          image_urls = photoNames.map((pn) => buildProxyUrl(origin, pn));
+        }
+
+        return {
+          id: s.id,
+          spot_name: name,
+          prefecture,
+          description: s.description,
+          address: s.address,
+          image_urls,
+          auto_tags: s.auto_tags,
+          lat: s.lat,
+          lng: s.lng,
+          created_at: s.created_at,
+        };
+      })
+    );
 
     return NextResponse.json({ ok: true, items });
   } catch (e) {
