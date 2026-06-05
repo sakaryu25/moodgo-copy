@@ -3754,8 +3754,11 @@ async function fetchGooglePlacesSupplement(
     // 非モール検索でも深掘りキーワードで Text Search を行う（要件: Google もフリーワード検索）。
     //   深掘り名(例「個室居酒屋」「高級焼肉」「天ぷら」)は Google のテキストクエリとして精度が高い。
     //   タイプ検索(restaurant)だけだと人気のラーメン店等に偏り、カテゴリがずれる問題を補正する。
+    // Google Text Search 用クエリ: L2 が具体的なカテゴリ名なら L2 を優先（例「うどん・そば」「ハンバーグ」）。
+    // L2 が未指定 or こだわらない の場合は L1（例「居酒屋」「和食」）を使用。
+    const dvTextBase = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : deepDiveL1;
     const dvTextQueries: string[] =
-      (!isMallSearch && deepDiveL1 && deepDiveL1 !== "こだわらない") ? [deepDiveL1] : [];
+      (!isMallSearch && dvTextBase && dvTextBase !== "こだわらない") ? [dvTextBase] : [];
     const [nearbyResults, ...textResults] = await Promise.all([
       isMallSearch
         ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)  // モール検索時は Nearby 不要
