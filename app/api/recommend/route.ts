@@ -4379,7 +4379,7 @@ async function fetchYahooSupplement(
       }));
     }
 
-    console.log(`[recommend] Yahoo supplement "${keyword}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km, centers=${centers.length}, pool=${features.length})`);
+    console.log(`[recommend] Yahoo supplement "${keywordList.join("/")}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km, centers=${centers.length}, pool=${features.length})`);
     return results;
   } catch (e) {
     console.warn("[recommend] Yahoo supplement search failed:", e);
