@@ -227,16 +227,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 円の右上の外側に配置するスパークル
+  // 円の右上の「すぐ外側」に配置するスパークル
   sparkle: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    // 白い星を背景から少し浮かせる
+    top: -6,
+    right: -6,
+    // 白い星を背景から少し浮かせる（off-white背景でも読める）
     shadowColor: '#9B6BFF',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.35,
-    shadowRadius: 2,
-    elevation: 6,
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 8,
   },
 });
