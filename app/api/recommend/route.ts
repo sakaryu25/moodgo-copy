@@ -5171,17 +5171,26 @@ export async function POST(request: Request) {
           const moodTag = userTags.mustTags[0];
           const subTags = userTags.mustTags.slice(1);  // 深掘り/サブタグ
           const ADMIN_MAX_KM = 40;
-          const matchingAdmin = adminSpots.filter(s => {
-            const tags = new Set(s.auto_tags ?? []);
-            if (!moodTag || !tags.has(moodTag)) return false;                          // ① 気分タグ一致(必須)
-            if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return false;   // ② サブタグ一致
-            // 40km以内チェック（距離ロジックは無効。位置不明なら通す）
-            if (hasLocation && typeof s.lat === "number" && typeof s.lng === "number") {
-              const dkm = haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000;
-              if (dkm > ADMIN_MAX_KM) return false;
-            }
-            return true;
-          }).slice(0, 5);
+          const matchingAdmin = adminSpots
+            .map(s => {
+              const tags = new Set(s.auto_tags ?? []);
+              if (!moodTag || !tags.has(moodTag)) return null;                          // ① 気分タグ一致(必須)
+              if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return null;   // ② サブタグ一致
+              const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
+              let dkm = Infinity;
+              if (hasLocation) {
+                // 距離ロジック(半径/遠端バイアス)は無効化するが、40km以内は厳守する。
+                // 座標不明スポットは40km判定ができないため除外（遠方の誤掲載を防ぐ）。
+                if (!hasCoord) return null;
+                dkm = haversineMeters(answers.originLat!, answers.originLng!, s.lat as number, s.lng as number) / 1000;
+                if (dkm > ADMIN_MAX_KM) return null;
+              }
+              return { s, dkm };
+            })
+            .filter((x): x is { s: (typeof adminSpots)[number]; dkm: number } => x !== null)
+            .sort((a, b) => a.dkm - b.dkm)   // 近い順
+            .slice(0, 3)                      // 積極的に表示しつつ他ソースの多様性も残す（最大3件）
+            .map(x => x.s);
 
           if (matchingAdmin.length > 0) {
             const adminRecs = await Promise.all(matchingAdmin.map(async (s) => {
