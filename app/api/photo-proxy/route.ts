@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
   }
 
   // 旧 Maps API 写真（photo_reference）
+  // DBに保存された旧形式URL(maps.googleapis.com/maps/api/place/photo)を処理する。
+  // photo_reference が新形式（AU_ZVEF... 等の長い文字列）の場合、旧APIに渡すと400になるため
+  // Places API v1 の /v1/{photoRef}/media エンドポイントを経由して画像を取得する。
   if (targetUrl.includes("maps.googleapis.com/maps/api/place/photo")) {
     if (!GOOGLE_API_KEY) return new NextResponse("API key not configured", { status: 503 });
     try {
@@ -64,15 +67,35 @@ export async function GET(req: NextRequest) {
       const photoRef = urlObj.searchParams.get("photo_reference") ?? urlObj.searchParams.get("photoreference");
       const maxWidth = urlObj.searchParams.get("maxwidth") ?? urlObj.searchParams.get("maxWidth") ?? "800";
       if (photoRef) {
-        const freshUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`;
-        const res = await fetch(freshUrl, { cache: "no-store", redirect: "follow" });
-        if (res.ok) {
-          const contentType = res.headers.get("content-type") ?? "image/jpeg";
-          const buf = await res.arrayBuffer();
-          return new NextResponse(buf, {
-            status: 200,
-            headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400", ...CORS_HEADERS },
+        // photoRef が "AU_" や "Ae" 等の新形式(Places API v1)かどうか判定
+        // 旧形式は "CnR", "Cj" 等の短い文字列で始まる
+        const isNewFormat = !photoRef.startsWith("C") && photoRef.length > 100;
+        if (isNewFormat) {
+          // Places API v1 経由: /v1/{photoRef}/media?skipHttpRedirect=true でCDN URLを取得
+          const resolveUrl = `https://places.googleapis.com/v1/${photoRef}/media?maxWidthPx=${maxWidth}&skipHttpRedirect=true`;
+          const res = await fetch(resolveUrl, {
+            headers: { "X-Goog-Api-Key": GOOGLE_API_KEY },
+            cache: "no-store",
           });
+          if (res.ok) {
+            const data = await res.json().catch(() => null);
+            const cdnUrl = data?.photoUri as string | undefined;
+            if (cdnUrl?.startsWith("https://")) {
+              return NextResponse.redirect(cdnUrl, { status: 302, headers: CORS_HEADERS });
+            }
+          }
+        } else {
+          // 旧形式photo_reference: 旧APIに渡す
+          const freshUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`;
+          const res = await fetch(freshUrl, { cache: "no-store", redirect: "follow" });
+          if (res.ok) {
+            const contentType = res.headers.get("content-type") ?? "image/jpeg";
+            const buf = await res.arrayBuffer();
+            return new NextResponse(buf, {
+              status: 200,
+              headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400", ...CORS_HEADERS },
+            });
+          }
         }
       }
     } catch { /* fallthrough */ }
