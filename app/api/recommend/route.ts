@@ -3751,17 +3751,25 @@ async function fetchGooglePlacesSupplement(
 
     // ── 全中心点 Nearby Search ＋ モール系 Text Search を並列実行して union ────
     // モール検索は Text Search 専用（Nearby Search はスキップ）
+    // 非モール検索でも深掘りキーワードで Text Search を行う（要件: Google もフリーワード検索）。
+    //   深掘り名(例「個室居酒屋」「高級焼肉」「天ぷら」)は Google のテキストクエリとして精度が高い。
+    //   タイプ検索(restaurant)だけだと人気のラーメン店等に偏り、カテゴリがずれる問題を補正する。
+    const dvTextQueries: string[] =
+      (!isMallSearch && deepDiveL1 && deepDiveL1 !== "こだわらない") ? [deepDiveL1] : [];
     const [nearbyResults, ...textResults] = await Promise.all([
       isMallSearch
         ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)  // モール検索時は Nearby 不要
         : Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM))),
-      ...(isMallSearch ? MALL_TEXT_QUERIES.map(q => searchTextQuery(q)) : []),
+      ...(isMallSearch
+        ? MALL_TEXT_QUERIES.map(q => searchTextQuery(q))
+        : dvTextQueries.map(q => searchTextQuery(q))),
     ]);
 
     const seenIds = new Set<string>();
     const places: Array<Record<string, unknown>> = [];
+    const textKeys = new Set<string>();  // Text Search(深掘りキーワード)由来のキー＝カテゴリ精度が高く優先する
 
-    // Text Search 結果を先に追加（モール名マッチなので精度高い）
+    // Text Search 結果を先に追加（キーワード名前マッチなので精度高い）
     for (const arr of textResults) {
       for (const p of arr) {
         const pid = (p.id as string | undefined) ?? "";
@@ -3769,7 +3777,7 @@ async function fetchGooglePlacesSupplement(
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
         // モール検索時は名前にモール系キーワードを含むものだけ通す
         if (isMallSearch && !isMallName(name)) continue;
-        if (key && !seenIds.has(key)) { seenIds.add(key); places.push(p); }
+        if (key && !seenIds.has(key)) { seenIds.add(key); places.push(p); textKeys.add(key); }
       }
     }
     // Nearby Search 結果を後から追加（非モール検索時の補完）
@@ -3823,13 +3831,15 @@ async function fetchGooglePlacesSupplement(
     // 含まれうる。要求半径の約1.15倍を上限に、行き過ぎたスポットを除外する。
     // (座標不明 distKm<0 は判定不能なので残す)
     const maxDistKm = radiusKm > 0 ? radiusKm * 1.15 : Infinity;
+    const keyOf = (p: Record<string, unknown>) =>
+      ((p.id as string | undefined) ?? "") || ((p.displayName as { text?: string } | undefined)?.text ?? "");
     const withDist = filteredAll
       .map((p) => {
         const loc = p.location as { latitude?: number; longitude?: number } | undefined;
         const distKm = (typeof loc?.latitude === "number" && typeof loc?.longitude === "number")
           ? haversineMeters(lat, lng, loc.latitude, loc.longitude) / 1000
           : -1;  // 座標不明
-        return { p, distKm };
+        return { p, distKm, isText: textKeys.has(keyOf(p)) };
       })
       .filter((d) => d.distKm < 0 || d.distKm <= maxDistKm);
 
@@ -3842,20 +3852,23 @@ async function fetchGooglePlacesSupplement(
       return arr;
     };
 
-    let ordered: typeof withDist;
-    if (minRadiusKm > 0) {
-      // ── 遠端バイアス ───────────────────────────────────────────────────────
-      // minRadiusKm 以上の遠いスポットを優先（40km選択なら40km側を優先）
-      // far: 距離降順 + ランダムノイズ（遠いほど上位、毎回少し変わる）
-      // 座標不明(distKm<0)は near 扱いで後ろに回す
-      const far  = withDist.filter(d => d.distKm >= minRadiusKm);
-      const near = withDist.filter(d => d.distKm < minRadiusKm);
-      far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 2);
-      ordered = [...far, ...shuffleArr(near)];
-    } else {
-      // 距離指定なし: 全件シャッフル
-      ordered = shuffleArr(withDist);
-    }
+    // グループ内の並び順（遠端バイアス時は遠い順、通常はシャッフル）
+    const orderGroup = (group: typeof withDist): typeof withDist => {
+      if (minRadiusKm > 0) {
+        const far  = group.filter(d => d.distKm >= minRadiusKm);
+        const near = group.filter(d => d.distKm < minRadiusKm);
+        far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 2);
+        return [...far, ...shuffleArr(near)];
+      }
+      return shuffleArr(group);
+    };
+
+    // キーワード(深掘り)一致の Text Search 結果を最優先。タイプ検索(Nearby)結果は補填。
+    //   これにより「個室居酒屋」検索で人気ラーメン店ではなく個室居酒屋が上位に来る。
+    const ordered = [
+      ...orderGroup(withDist.filter(d => d.isText)),
+      ...orderGroup(withDist.filter(d => !d.isText)),
+    ];
 
     const filtered = ordered.slice(0, limit);
 
