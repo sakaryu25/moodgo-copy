@@ -10,7 +10,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, Car, ChevronDown, Cloud, Flame, Footprints, Leaf, Map, MapPin,
+  Activity, Car, ChevronDown, Cloud, Flame, Leaf, Map, MapPin,
   MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -110,14 +110,10 @@ function UserRow({ item }: { item: FeedItem }) {
   );
 }
 
-// ─── StatusRow ───────────────────────────────────────────────────────────────
+// ─── StatusRow（星評価のみ）─────────────────────────────────────────────────
 function StatusRow() {
   return (
     <View style={s.statusRow}>
-      <View style={s.statusBadge}>
-        <Footprints size={12} color="#D97706" strokeWidth={2.2} />
-        <Text style={s.statusText}>行った</Text>
-      </View>
       <Stars n={5} />
     </View>
   );
@@ -419,10 +415,8 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // ── Status row ──
+  // ── Status row（星評価）──
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 9 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  statusText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
 
   // ── User row ──
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

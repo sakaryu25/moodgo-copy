@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, Check, ChevronLeft, MapPin, Send, Tag, X } from 'lucide-react-native';
+import { Camera, Check, ChevronLeft, MapPin, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Linking } from 'react-native';
 import {
@@ -209,6 +209,8 @@ export default function SuggestScreen() {
   // 価格帯
   const [priceChip, setPriceChip]       = useState<string>('');   // 選択済みチップ
   const [priceNote, setPriceNote]       = useState('');            // 自由記入
+  // 星評価（おすすめ度）
+  const [rating, setRating]             = useState(0);             // 1〜5、0=未評価
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [isLocating, setIsLocating]     = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -282,16 +284,18 @@ export default function SuggestScreen() {
       // サーバーAPIは multipart/form-data のみ受け付けるため FormData を使用
       const fd = new FormData();
       fd.append('spotName', spotName.trim());
-      // 説明に価格帯を付記して送信
+      // 説明に価格帯・おすすめ度を付記して送信
       const descWithPrice = [
         description,
         priceChip ? `【目安価格】${priceChip}${priceNote ? `（${priceNote}）` : ''}` : priceNote ? `【目安価格】${priceNote}` : '',
+        rating > 0 ? `【おすすめ度】★${rating}` : '',
       ].filter(Boolean).join('\n');
       if (descWithPrice) fd.append('description', descWithPrice);
       if (address)       fd.append('address', address);
       if (contact)     fd.append('contact', contact);
       if (lat !== null) fd.append('lat', String(lat));
       if (lng !== null) fd.append('lng', String(lng));
+      if (rating > 0)  fd.append('rating', String(rating));
       if (selectedTags.length > 0) fd.append('autoTags', JSON.stringify(selectedTags));
 
       // 画像: base64 → Blob → File として添付（React Native FormData 形式）
@@ -418,6 +422,41 @@ export default function SuggestScreen() {
               placeholderTextColor="#C4B5FD"
               style={[s.input, { marginTop: 10, height: 46, fontSize: 13 }]}
             />
+
+            {/* ── おすすめ度（星評価）── */}
+            <Text style={[s.label, { marginTop: 18 }]}>
+              おすすめ度 <Text style={s.optional}>（任意）</Text>
+            </Text>
+            <Text style={s.hint}>この場所はどれくらい良かった？</Text>
+            <View style={s.ratingWrap}>
+              <View style={s.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => {
+                  const active = n <= rating;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      onPress={() => setRating(rating === n ? 0 : n)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                    >
+                      <Star
+                        size={34}
+                        color={active ? '#F59E0B' : '#E5E7EB'}
+                        fill={active ? '#F59E0B' : 'transparent'}
+                        strokeWidth={active ? 0 : 1.8}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {rating > 0 && (
+                <View style={s.ratingLabelChip}>
+                  <Text style={s.ratingLabelText}>
+                    {['', 'いまいち', 'まあまあ', 'よかった', 'すごく良い', '最高！'][rating]}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             {/* 位置情報 */}
             <Text style={[s.label, { marginTop: 18 }]}>{t.labelLocation}</Text>
@@ -658,6 +697,20 @@ const s = StyleSheet.create({
   priceChipTextActive: {
     fontSize: 13, fontWeight: '800', color: '#fff',
   },
+
+  // Rating (star)
+  ratingWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#FAFAFF', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+    paddingVertical: 12, paddingHorizontal: 16,
+  },
+  starsRow: { flexDirection: 'row', gap: 6 },
+  ratingLabelChip: {
+    backgroundColor: '#FEF3C7', borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  ratingLabelText: { fontSize: 12, fontWeight: '800', color: '#D97706' },
 
   // Location
   locWrap: { marginBottom: 4, borderRadius: 14, overflow: 'hidden' },
