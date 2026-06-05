@@ -5195,11 +5195,15 @@ export async function POST(request: Request) {
         }
 
         // ── 期間限定転載（管理者追加スポット）の優先注入 ───────────────────────────
+        // 高層ビル料理は専用ロジック(isHighriseFood経路)で精度高く処理するため、
+        // Supabase-first経路でのadmin注入は行わない（高層と無関係なspotが混入するため）
         // suggestions テーブルの source="admin" スポット（公開期間内のみ。日付フィルタは取得時に適用済）を
         // # タグ（気分タグ＋サブタグ）一致で抽出し、検索結果の先頭に積極的に表示する。
         // これらだけは通常の距離ロジック（半径・遠端バイアス）を無効化し、現在地から40km以内なら
         // 近場でも必ず掲載する（要件: 期間限定転載は距離ロジック無し・40km以内表示・# は遵守）。
-        if (adminSpots.length > 0) {
+        // 高層ビル料理は専用経路(isHighriseFood)で高精度に処理するためadmin注入不要
+        const isHighrisePath = effectiveDeepDive === "高層ビル料理";
+        if (adminSpots.length > 0 && !isHighrisePath) {
           // 気分タグ = mustTags の先頭（extractUserTagsFromAnswers が短縮キー"まったり"→"#まったりしたい"
           // を MOOD_SHORT_KEY_TO_TAG で解決済み。MOOD_TAG_MAP.find だと短縮キーで未解決になるため使わない）
           const moodTag = userTags.mustTags[0];
