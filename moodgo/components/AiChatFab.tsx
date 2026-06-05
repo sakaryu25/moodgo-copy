@@ -179,9 +179,9 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
         >
           <AiBubbleIcon size={30} />
         </LinearGradient>
-        {/* 円の右上の外側にスパークル装飾 */}
+        {/* 円の右上の内側にスパークル装飾 */}
         <View style={styles.sparkle} pointerEvents="none">
-          <SparkleStar size={18} />
+          <SparkleStar size={14} />
         </View>
       </View>
     </Animated.View>
@@ -227,16 +227,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 円の右上の「すぐ外側」に配置するスパークル
+  // 円の右上の「内側」に配置するスパークル
   sparkle: {
     position: 'absolute',
-    top: -6,
-    right: -6,
-    // 白い星を背景から少し浮かせる（off-white背景でも読める）
-    shadowColor: '#9B6BFF',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 8,
+    top: 7,
+    right: 7,
   },
 });
