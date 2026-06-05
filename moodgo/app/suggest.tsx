@@ -54,7 +54,7 @@ const TAG_DRILL: Record<string, string[]> = {
 };
 
 // 補足タグ
-const EXTRA_TAGS = ['#無料駐車場', '#有料駐車場', '#カラオケ', '#ダーツ', '#ビリヤード', '#ボウリング', '#おすすめ'];
+const EXTRA_TAGS = ['#穴場スポット', '#無料駐車場', '#有料駐車場', '#カラオケ', '#ダーツ', '#ビリヤード', '#ボウリング', '#おすすめ'];
 
 // ─── Design tokens (MoodGo統一) ──────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -204,7 +204,8 @@ export default function SuggestScreen() {
   const [lng, setLng]                   = useState<number | null>(null);
   const [contact, setContact]           = useState('');
   const [images, setImages]             = useState<{ uri: string; base64?: string }[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // 穴場を教えてフォームでは #穴場スポット を常に自動付与
+  const [selectedTags, setSelectedTags] = useState<string[]>(['#穴場スポット']);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [isLocating, setIsLocating]     = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -28,55 +28,121 @@ export async function POST(request: Request) {
   }
 
   try {
-    const formData = await request.formData();
-    const spotName = formData.get("spotName") as string;
-    const description = formData.get("description") as string | null;
-    const address = formData.get("address") as string | null;
-    const lat = formData.get("lat") ? Number(formData.get("lat")) : null;
-    const lng = formData.get("lng") ? Number(formData.get("lng")) : null;
-    const contact = formData.get("contact") as string | null;
+    // Content-Type に応じて JSON / multipart 両対応
+    // ExpoアプリはJSON送信、Web版はFormData送信のため両方受け付ける
+    const contentType = request.headers.get("content-type") ?? "";
+    const isJson = contentType.includes("application/json");
+
+    // フィールド取得ヘルパー（JSON/FormData 両対応）
+    let spotName: string;
+    let description: string | null;
+    let address: string | null;
+    let lat: number | null;
+    let lng: number | null;
+    let contact: string | null;
+    let stationInfo: string | null;
+    let manualMapUrl: string | null;
+    let source: string | null;
+    let secret: string | null;
+    let autoTagsRaw: string | null;
+    let placeTypesRaw: string | null;
+    let isChain: boolean;
+    let chainSearchQuery: string | null;
+    let availableFrom: string | null;
+    let availableUntil: string | null;
+    let preloadedUrls: string[] = [];
+    const imageUrls: string[] = [];
+    let imageUploadFailed = 0;
+
+    if (isJson) {
+      // ── JSON ──────────────────────────────────────────────────────────────
+      const body = await request.json() as Record<string, unknown>;
+      spotName        = (body.spotName as string) ?? "";
+      description     = (body.description as string | null) ?? null;
+      address         = (body.address as string | null) ?? null;
+      lat             = body.lat != null ? Number(body.lat) : null;
+      lng             = body.lng != null ? Number(body.lng) : null;
+      contact         = (body.contact as string | null) ?? null;
+      stationInfo     = null;
+      manualMapUrl    = null;
+      source          = (body.source as string | null) ?? null;
+      secret          = (body.secret as string | null) ?? null;
+      autoTagsRaw     = body.autoTags ? JSON.stringify(body.autoTags) : null;
+      placeTypesRaw   = null;
+      isChain         = false;
+      chainSearchQuery = null;
+      availableFrom   = null;
+      availableUntil  = null;
+      // JSON の images: base64 data-URL → Supabase Storage にアップロード
+      const imgs = (body.images as string[] | undefined) ?? [];
+      for (const img of imgs.slice(0, 3)) {
+        try {
+          const [meta, b64] = img.split(",");
+          if (!b64) continue;
+          const mimeMatch = meta.match(/data:([^;]+);/);
+          const mimeType = mimeMatch?.[1] ?? "image/jpeg";
+          const ext = mimeType.split("/")[1] ?? "jpg";
+          const buf = Buffer.from(b64, "base64");
+          const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          const { error: uploadError } = await supabase!.storage
+            .from("suggestion-images")
+            .upload(fileName, buf, { contentType: mimeType, upsert: false });
+          if (uploadError) { imageUploadFailed++; }
+          else {
+            const { data: urlData } = supabase!.storage.from("suggestion-images").getPublicUrl(fileName);
+            imageUrls.push(urlData.publicUrl);
+          }
+        } catch { imageUploadFailed++; }
+      }
+    } else {
+      // ── multipart/form-data（既存の Web 版） ────────────────────────────
+      const formData = await request.formData() as unknown as {
+        get: (k: string) => string | File | null;
+        getAll: (k: string) => (string | File)[];
+      };
+      spotName        = (formData.get("spotName") as string) ?? "";
+      description     = formData.get("description") as string | null;
+      address         = formData.get("address") as string | null;
+      lat             = formData.get("lat") ? Number(formData.get("lat")) : null;
+      lng             = formData.get("lng") ? Number(formData.get("lng")) : null;
+      contact         = formData.get("contact") as string | null;
+      stationInfo     = formData.get("stationInfo") as string | null;
+      manualMapUrl    = formData.get("manualMapUrl") as string | null;
+      source          = formData.get("source") as string | null;
+      secret          = formData.get("secret") as string | null;
+      autoTagsRaw     = formData.get("autoTags") as string | null;
+      placeTypesRaw   = formData.get("placeTypes") as string | null;
+      isChain         = formData.get("isChain") === "true";
+      chainSearchQuery = formData.get("chainSearchQuery") as string | null;
+      availableFrom   = formData.get("availableFrom") as string | null;
+      availableUntil  = formData.get("availableUntil") as string | null;
+      const preloadedRaw = formData.get("preloadedImageUrls") as string | null;
+      preloadedUrls   = preloadedRaw ? (JSON.parse(preloadedRaw) as string[]) : [];
+      imageUrls.push(...preloadedUrls);
+      const imageFiles = formData.getAll("images") as File[];
+      const validImageFiles = imageFiles.filter((f) => f instanceof File && f.size > 0).slice(0, 5);
+      for (const file of validImageFiles) {
+        const ext = file.name.split(".").pop() ?? "jpg";
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const { error: uploadError } = await supabase!.storage
+          .from("suggestion-images")
+          .upload(fileName, buffer, { contentType: file.type, upsert: false });
+        if (uploadError) {
+          console.error("画像アップロードエラー:", uploadError.message, uploadError);
+          imageUploadFailed++;
+        } else {
+          const { data: urlData } = supabase!.storage.from("suggestion-images").getPublicUrl(fileName);
+          imageUrls.push(urlData.publicUrl);
+        }
+      }
+    }
 
     if (!spotName?.trim()) {
       return NextResponse.json({ ok: false, error: "スポット名は必須です" }, { status: 400 });
     }
 
-    // 事前取得済みURL（クイック投稿で使用）
-    const preloadedRaw = formData.get("preloadedImageUrls") as string | null;
-    const preloadedUrls: string[] = preloadedRaw ? (JSON.parse(preloadedRaw) as string[]) : [];
-
-    // 画像アップロード
-    const imageUrls: string[] = [...preloadedUrls];
-    const imageFiles = formData.getAll("images") as File[];
-    const validImageFiles = imageFiles.filter((f) => f instanceof File && f.size > 0).slice(0, 5);
-    let imageUploadFailed = 0;
-
-    for (const file of validImageFiles) {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      const { error: uploadError } = await supabase.storage
-        .from("suggestion-images")
-        .upload(fileName, buffer, { contentType: file.type, upsert: false });
-
-      if (uploadError) {
-        console.error("画像アップロードエラー:", uploadError.message, uploadError);
-        imageUploadFailed++;
-      } else {
-        const { data: urlData } = supabase.storage
-          .from("suggestion-images")
-          .getPublicUrl(fileName);
-        imageUrls.push(urlData.publicUrl);
-      }
-    }
-
-    const stationInfo = formData.get("stationInfo") as string | null;
-    const manualMapUrl = formData.get("manualMapUrl") as string | null;
-    const source = formData.get("source") as string | null;
-    const secret = formData.get("secret") as string | null;
-    const autoTagsRaw = formData.get("autoTags") as string | null;
-    const placeTypesRaw = formData.get("placeTypes") as string | null;
     const placeTypeHints: string[] = placeTypesRaw ? JSON.parse(placeTypesRaw) : [];
 
     // クライアントから送られてきたタグがあればそれを使用、なければ自動生成
@@ -86,10 +152,14 @@ export async function POST(request: Request) {
       autoTags = await autoTagFacility(spotName.trim(), description, placeTypeHints);
       console.log(`[suggestions POST] 自動タグ付け: ${spotName} → [${autoTags.join(", ")}]`);
     }
-    const isChain = formData.get("isChain") === "true";
-    const chainSearchQuery = formData.get("chainSearchQuery") as string | null;
-    const availableFrom = formData.get("availableFrom") as string | null;
-    const availableUntil = formData.get("availableUntil") as string | null;
+    if (!isJson) {
+      // FormData の isChain はすでに上で設定済み
+    } else {
+      isChain = false;
+      chainSearchQuery = null;
+      availableFrom = null;
+      availableUntil = null;
+    }
 
     // 管理者からの直接投稿は即承認
     const isAdmin = secret === "moodgoadmin123";
