@@ -129,6 +129,7 @@ export async function GET(request: Request) {
             includedTypes: ["train_station", "subway_station", "light_rail_station"],
             maxResultCount: 1,
             rankPreference: "DISTANCE",
+            languageCode: "ja",
             locationRestriction: { circle: { center: { latitude: placeLat, longitude: placeLng }, radius: 2000 } },
           }),
           cache: "no-store",
@@ -140,7 +141,10 @@ export async function GET(request: Request) {
           if (st?.location) {
             const distM = haversineM(placeLat, placeLng, st.location.latitude, st.location.longitude);
             const walkMin = Math.max(1, Math.round(distM / 80)); // 80m/分
-            const stName = (st.displayName?.text ?? "").replace(/駅$/, "");
+            const stName = (st.displayName?.text ?? "")
+              .replace(/\s*Station$/i, "")   // 英語表記の Station を除去
+              .replace(/駅$/, "")
+              .trim();
             stationText = `${stName}駅から徒歩約${walkMin}分`;
           }
         }
