@@ -5275,7 +5275,11 @@ export async function POST(request: Request) {
               const name = s.google_place_name ?? s.spot_name;
               const adkm = (hasLocation && typeof s.lat === "number" && typeof s.lng === "number")
                 ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000 : undefined;
-              let imgs = (s.image_urls ?? []).filter(Boolean).map(wrapWithPhotoProxy);
+              const rawImgs = (s.image_urls ?? []).filter(Boolean);
+              // 旧形式URL(AU_ZVEF...等)はv1 API非対応で表示不可 → Google Text Searchで再取得する
+              const isLegacyUrl = (u: string) => u.includes("maps.googleapis.com/maps/api/place/photo");
+              const hasLegacyOnly = rawImgs.length > 0 && rawImgs.every(isLegacyUrl);
+              let imgs = hasLegacyOnly ? [] : rawImgs.map(wrapWithPhotoProxy);
               if (imgs.length === 0 && apiKey) {
                 try {
                   const pr = await fetch("https://places.googleapis.com/v1/places:searchText", {
