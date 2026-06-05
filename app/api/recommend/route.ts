@@ -5083,17 +5083,23 @@ export async function POST(request: Request) {
         if (recommendations.length < 15 && hasLocation) {
           const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
           const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
+          const isFoodMoodTopUp = (answers.mood ?? "") === "お腹すいた";
           const [gWide, yWide] = await Promise.all([
+            // Google: deepDive="" → 気分ベースの広いtypes（お腹すいたは["restaurant"]＝飲食店のみ）
             fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, wideRadiusKm,
               answers.mood ?? "", excludeNames, apiKey, 20,
-              answers.budget, "", minRadiusKm,   // deepDive="" → 気分ベースの広いtypes
+              answers.budget, "", minRadiusKm,
             ),
-            fetchYahooSupplement(
-              answers.originLat!, answers.originLng!, wideRadiusKm,
-              answers.mood ?? "", "",            // deepDive="" → 気分ベースの広いkeyword
-              excludeNames, 20, minRadiusKm, apiKey,
-            ),
+            // Yahoo: お腹すいた時は広域キーワード検索が温泉/スパ等の非飲食店を拾うため除外。
+            //   Google の restaurant 型検索のみで飲食店を維持しつつ15件を確保する（要件③厳守）。
+            isFoodMoodTopUp
+              ? Promise.resolve([] as Record<string, unknown>[])
+              : fetchYahooSupplement(
+                  answers.originLat!, answers.originLng!, wideRadiusKm,
+                  answers.mood ?? "", "",
+                  excludeNames, 20, minRadiusKm, apiKey,
+                ),
           ]);
           const widePool = sortOrShuffle(applyMallFilter([...gWide, ...yWide] as Rec[]));
           const stillNeed = 15 - recommendations.length;
