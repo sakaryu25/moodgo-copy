@@ -29,6 +29,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CommunityFeed from './CommunityFeed';
 import Svg, {
   Defs,
   G,
@@ -328,7 +329,7 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
           <View style={s.moodSection}>
             <View style={s.moodSectionHeader}>
               <Text style={s.moodSectionTitle}>
-                {lang === 'en' ? 'Recommended moods ✦' : '今日のおすすめ気分 ✦'}
+                {lang === 'en' ? 'Which vibe fits? ✦' : '今の気分はどれに近い？'}
               </Text>
               <TouchableOpacity onPress={handleStart} activeOpacity={0.7}>
                 <Text style={s.moodSectionMore}>
@@ -393,6 +394,12 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
               })}
             </ScrollView>
           </View>
+
+          {/* ── 区切り ── */}
+          <View style={s.feedDivider} />
+
+          {/* ── 全国のみんなの穴場（Masonryタイムライン）── */}
+          <CommunityFeed />
 
         </ScrollView>
       </Animated.View>
@@ -506,6 +513,10 @@ const s = StyleSheet.create({
 
   // Mood section
   moodSection: { marginBottom: 12 },
+  feedDivider: {
+    height: 1, backgroundColor: 'rgba(155,107,255,0.10)',
+    marginTop: 8, marginBottom: 20,
+  },
   moodSectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 14,
