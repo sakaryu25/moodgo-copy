@@ -3660,6 +3660,36 @@ async function fetchGooglePlacesSupplement(
       } catch { return []; }
     };
 
+    // ── Text Search ヘルパー（キーワード名前検索。shopping_mall系で使用）────────
+    const searchTextQuery = async (textQuery: string): Promise<Array<Record<string, unknown>>> => {
+      try {
+        const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": FIELD_MASK,
+          },
+          body: JSON.stringify({
+            textQuery,
+            languageCode: "ja",
+            pageSize: 20,
+            locationBias: {
+              circle: {
+                center: { latitude: lat, longitude: lng },
+                radius: Math.min(radiusKm * 1000, 50000),
+              },
+            },
+          }),
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) return [];
+        const data = await res.json().catch(() => null);
+        return (data?.places ?? []) as Array<Record<string, unknown>>;
+      } catch { return []; }
+    };
+
     // ── 検索中心点リストを構築 ────────────────────────────────────────────────
     // ① 現在地中心（最大50km）。毎回異なる結果のため小さなジッターを加える。
     const jitterLat = lat + (Math.random() - 0.5) * 0.006;
@@ -3683,11 +3713,37 @@ async function fetchGooglePlacesSupplement(
       }
     }
 
-    // ── 全中心点を並列検索して union（place id で重複排除）────────────────────
-    const rawResults = await Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM)));
+    // ── 大型ショッピングモール系は Text Search を優先追加 ────────────────────
+    // Nearby Search の shopping_mall タイプは商店街・市場も拾うため、
+    // 「イオンモール」「アウトレット」「ショッピングモール」のキーワード検索で
+    // 実際のモール施設を直接取得する。
+    const isMallSearch =
+      deepDiveL1 === "大型ショッピングモール" || deepDiveL1 === "郊外の大型施設に行きたい";
+    const MALL_TEXT_QUERIES = [
+      "イオンモール",
+      "アウトレットモール",
+      "ショッピングモール",
+    ];
+
+    // ── 全中心点 Nearby Search ＋ モール系 Text Search を並列実行して union ────
+    const [nearbyResults, ...textResults] = await Promise.all([
+      Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM))),
+      ...(isMallSearch ? MALL_TEXT_QUERIES.map(q => searchTextQuery(q)) : []),
+    ]);
+
     const seenIds = new Set<string>();
     const places: Array<Record<string, unknown>> = [];
-    for (const arr of rawResults) {
+
+    // Text Search 結果を先に追加（モール名マッチなので精度高い → 優先表示）
+    for (const arr of textResults) {
+      for (const p of arr) {
+        const pid = (p.id as string | undefined) ?? "";
+        const key = pid || ((p.displayName as { text?: string } | undefined)?.text ?? "");
+        if (key && !seenIds.has(key)) { seenIds.add(key); places.push(p); }
+      }
+    }
+    // Nearby Search 結果を後から追加（補完）
+    for (const arr of nearbyResults) {
       for (const p of arr) {
         const pid = (p.id as string | undefined) ?? "";
         const key = pid || ((p.displayName as { text?: string } | undefined)?.text ?? "");
