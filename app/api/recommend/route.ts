@@ -4505,12 +4505,55 @@ async function buildFreeWordRecommendations(
       ? `- ユーザー属性: ${[answers.age, answers.gender].filter(Boolean).join("・")}`
       : "";
 
-    const prompt = `あなたはお出かけプランナーAIです。
+    // 検索の地理的中心（クエリに必ず付けて Google 解決精度を上げる）
+    const geoAnchor = (answers.area && answers.area !== "現在地" && answers.area !== "現在地周辺")
+      ? answers.area
+      : (area || "現在地周辺");
+
+    let systemContent: string;
+    let prompt: string;
+
+    if (isAiChat) {
+      // ── AI相談専用プロンプト（自由入力から的確に提案）──────────────────────────
+      systemContent =
+        "あなたは日本中のスポットに精通したプロのお出かけコンシェルジュです。" +
+        "ユーザーが自由に書いた要望文を深く読み取り、その意図に的確に合致する『実在し、現在も営業している』具体的なスポットだけを提案します。" +
+        "架空の店・閉店した店・チェーン名だけ・駅名や地名だけの回答は絶対に禁止です。" +
+        "必ず指定エリアの範囲内のスポットのみを選びます。";
+
+      prompt = `# ユーザーの要望（自由入力）
+「${answers.freeWord}」
+
+# 検索エリア（厳守）
+${areaDesc}
+- この範囲（${geoAnchor} 周辺）に実在するスポットのみ。範囲外は絶対に含めない。
+
+# ユーザー情報
+${profileLine ? profileLine + "\n" : ""}- 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "指定なし"}
+${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}
+# 手順（必ず守る）
+1. まず要望文「${answers.freeWord}」を分解し、(a)ジャンル・カテゴリ (b)雰囲気/シーン (c)条件(価格帯・人数・時間帯など) を読み取る。
+2. その全てを満たす ${geoAnchor} 周辺の実在スポットを${wantCount}件、具体的な正式店名で挙げる。
+3. なるべく多様に（同じチェーンの連発を避け、特徴の異なる店をバランス良く）。
+4. 要望と無関係なスポットは1件も入れない。
+
+# 各スポットの出力ルール
+- name: 検索でヒットする正式な店舗・施設名（支店名まで。例「スターバックス 横浜マリンタワー店」）
+- query: Google Mapsで一意に特定できる検索語（必ず「${geoAnchor} 」＋正式店名 の形）
+- reason: 「要望のどこに、なぜ合うのか」を具体的に40〜70字で。ユーザー属性や要望のキーワードに触れる。アプリ名や「AI相談」等のメタ表現は書かない。実際の特徴（料理・雰囲気・立地・価格など）を述べる。
+
+# 出力（このJSONのみ。前後に文章を付けない）
+{"places": [{"name": "正式店名", "query": "${geoAnchor} 正式店名", "reason": "要望に合う具体的な理由(40〜70字)"}]}`;
+    } else {
+      // ── 通常 freeWord プロンプト（クイズ経由）────────────────────────────────
+      systemContent = "あなたはお出かけプランナーAIです。ユーザーの条件に厳密に合致したリアルな施設のみを提案してください。条件に合わないスポットは絶対に含めないこと。";
+      prompt = `あなたはお出かけプランナーAIです。
 ユーザーの希望に厳密に合致する実在スポットを${wantCount}件提案してください。
 
 【最重要条件（必ず全て満たすこと）】
 1. エリア: ${areaDesc}
-${isAiChat ? "" : `2. カテゴリ: ${deepDiveDesc}\n`}3. 希望キーワード（最優先）: ${answers.freeWord}
+2. カテゴリ: ${deepDiveDesc}
+3. 希望キーワード（最優先）: ${answers.freeWord}
 
 【参考条件】
 ${profileLine ? profileLine + "\n" : ""}- 気分: ${answers.mood ?? "未設定"}
@@ -4522,21 +4565,21 @@ ${extraQs ? extraQs : ""}
 - 「${answers.freeWord}」の条件に合う施設のみ（関係ないスポットは除外）
 - ${area} エリアに今も実在する具体的な店舗・施設名（チェーン店名だけでなく支店名まで）
 - 駅名・地名・エリア名だけのNG。実際の店名を出すこと
-- 予算内に収まるスポット優先${isAiChat ? `
-- reason には「なぜこのユーザーにこの場所をおすすめするのか」を40〜70字で具体的に書く（ユーザー属性・キーワードに言及）` : ""}
+- 予算内に収まるスポット優先
 
 出力は必ず以下のJSON形式のみ（説明文は不要）:
-{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"${isAiChat ? ', "reason": "なぜこの人におすすめか(40〜70字)"' : ""}}]}`;
+{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"}]}`;
+    }
 
     const resp = await openaiClient.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.7,
+      model: isAiChat ? "gpt-4o" : "gpt-4o-mini",
+      temperature: isAiChat ? 0.5 : 0.7,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "あなたはお出かけプランナーAIです。ユーザーの条件に厳密に合致したリアルな施設のみを提案してください。条件に合わないスポットは絶対に含めないこと。" },
+        { role: "system", content: systemContent },
         { role: "user", content: prompt },
       ],
-      max_tokens: isAiChat ? 2000 : 800,
+      max_tokens: isAiChat ? 2200 : 800,
     });
 
     const text = resp.choices[0]?.message?.content ?? "{}";
