@@ -12,7 +12,6 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Sparkles } from 'lucide-react-native';
 import React, { useRef } from 'react';
 import {
   Animated,
@@ -23,6 +22,39 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path, Text as SvgText } from 'react-native-svg';
+
+// ─── 吹き出し＋AI＋スパークル アイコン（白の線画）──────────────────────────────
+function AiBubbleIcon({ size = 30 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 30">
+      {/* 吹き出し本体（角丸＋左下のしっぽ）。白ストローク・中は透明 */}
+      <Path
+        d="M8 4 H24 a5 5 0 0 1 5 5 V16 a5 5 0 0 1 -5 5 H15 l-5 5 v-5 H8 a5 5 0 0 1 -5 -5 V9 a5 5 0 0 1 5 -5 Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth={2.2}
+        strokeLinejoin="round"
+      />
+      {/* AI テキスト（吹き出し内・白） */}
+      <SvgText
+        x="16"
+        y="17"
+        fill="#fff"
+        fontSize="11"
+        fontWeight="900"
+        textAnchor="middle"
+      >
+        AI
+      </SvgText>
+      {/* 右上のスパークル（4方向の星）白塗り */}
+      <Path
+        d="M27 2 C27 4.2 27.3 4.5 29.5 4.5 C27.3 4.5 27 4.8 27 7 C27 4.8 26.7 4.5 24.5 4.5 C26.7 4.5 27 4.2 27 2 Z"
+        fill="#fff"
+      />
+    </Svg>
+  );
+}
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -133,8 +165,7 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
           end={{ x: 1, y: 1 }}
           style={styles.fab}
         >
-          <Sparkles size={18} color="#fff" strokeWidth={2.2} fill="#fff" />
-          <Text style={styles.aiText}>AI</Text>
+          <AiBubbleIcon size={30} />
         </LinearGradient>
       </View>
     </Animated.View>
@@ -179,13 +210,5 @@ const styles = StyleSheet.create({
     borderRadius: FAB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
-  },
-  aiText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-    marginTop: -2,
   },
 });
