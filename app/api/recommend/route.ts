@@ -5160,6 +5160,89 @@ export async function POST(request: Request) {
           recommendations = [...recommendations, ...topUp];
         }
 
+        // ── 期間限定転載（管理者追加スポット）の優先注入 ───────────────────────────
+        // suggestions テーブルの source="admin" スポット（公開期間内のみ。日付フィルタは取得時に適用済）を
+        // # タグ（気分タグ＋サブタグ）一致で抽出し、検索結果の先頭に積極的に表示する。
+        // これらだけは通常の距離ロジック（半径・遠端バイアス）を無効化し、現在地から40km以内なら
+        // 近場でも必ず掲載する（要件: 期間限定転載は距離ロジック無し・40km以内表示・# は遵守）。
+        if (adminSpots.length > 0) {
+          // 気分タグ（legacy経路と同一の算出: MOOD_TAG_MAP から answers.mood に対応するタグ）
+          const moodTag = answers.mood
+            ? Object.entries(MOOD_TAG_MAP).find(([, v]) => v === answers.mood)?.[0]
+            : undefined;
+          const subTags = userTags.mustTags.filter(t => t !== moodTag);  // 深掘り/サブタグ
+          const ADMIN_MAX_KM = 40;
+          const matchingAdmin = adminSpots.filter(s => {
+            const tags = new Set(s.auto_tags ?? []);
+            if (!moodTag || !tags.has(moodTag)) return false;                          // ① 気分タグ一致(必須)
+            if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return false;   // ② サブタグ一致
+            // 40km以内チェック（距離ロジックは無効。位置不明なら通す）
+            if (hasLocation && typeof s.lat === "number" && typeof s.lng === "number") {
+              const dkm = haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000;
+              if (dkm > ADMIN_MAX_KM) return false;
+            }
+            return true;
+          }).slice(0, 5);
+
+          if (matchingAdmin.length > 0) {
+            const adminRecs = await Promise.all(matchingAdmin.map(async (s) => {
+              const name = s.google_place_name ?? s.spot_name;
+              const adkm = (hasLocation && typeof s.lat === "number" && typeof s.lng === "number")
+                ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000 : undefined;
+              let imgs = (s.image_urls ?? []).filter(Boolean);
+              if (imgs.length === 0 && apiKey) {
+                try {
+                  const pr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.photos" },
+                    body: JSON.stringify({ textQuery: s.address ? `${name} ${s.address}` : name, languageCode: "ja", pageSize: 1 }),
+                    cache: "no-store", signal: AbortSignal.timeout(6000),
+                  });
+                  if (pr.ok) {
+                    const pd = await pr.json().catch(() => null);
+                    const photos = (pd?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+                    imgs = photos.slice(0, 10).map(p => buildPhotoProxyUrl(p.name)).filter(Boolean);
+                  }
+                } catch { /* 写真補完失敗は無視 */ }
+              }
+              return {
+                title: name,
+                address: s.address ?? "",
+                photoUrl: imgs[0] ?? "",
+                photoUrls: imgs,
+                rating: null,
+                userRatingCount: null,
+                openNow: undefined,
+                openingHoursText: undefined,
+                mapUrl: s.google_maps_uri ?? "",
+                googleMapsUrl: s.google_maps_uri ?? "",
+                reason: s.description ?? "",
+                features: (s.auto_tags ?? []).filter(t => allUserTags.has(t)).slice(0, 5),
+                distanceText: adkm != null ? formatDistTextFromKm(adkm) : "",
+                distanceKm: adkm,
+                lat: typeof s.lat === "number" ? s.lat : undefined,
+                lng: typeof s.lng === "number" ? s.lng : undefined,
+                durationText: "",
+                stationText: s.station_info ?? "",
+                vibe: "", budget: "", time: "",
+                priceLevel: undefined,
+                placeId: undefined,
+                supabaseId: undefined,
+                source: "admin",
+                isUserSpot: false,
+                hasUserPhotos: imgs.length > 0,
+                userPhotoCount: imgs.length,
+                routesByMode: undefined,
+              } as Rec;
+            }));
+            // 先頭に注入。既存結果との名前重複を除き、admin優先で15件にトリム。
+            const adminNameKeys = new Set(adminRecs.map(a => normalizeName(a.title ?? "")));
+            const rest = recommendations.filter(r => !adminNameKeys.has(normalizeName(r.title ?? "")));
+            recommendations = [...adminRecs, ...rest].slice(0, Math.max(15, adminRecs.length));
+            console.log(`[recommend] 期間限定転載(admin)注入: ${adminRecs.length}件 (mood=${answers.mood})`);
+          }
+        }
+
         return json({
           recommendations,
           source: "supabase",
