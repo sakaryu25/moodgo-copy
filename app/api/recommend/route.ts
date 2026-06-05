@@ -4885,7 +4885,13 @@ export async function POST(request: Request) {
 
         const sbNames = scored.map(r => r.name);
         // 写真がないSupabase結果の名前リスト（Google写真補完対象）
-        const noPhotoNames = scored.filter(r => !r.imageUrl).map(r => r.name);
+        // 写真なし or 旧形式URL（AU_ZVEF...等）を持つスポットは補完対象とする
+        // 旧形式URL: maps.googleapis.com/maps/api/place/photo → v1 API非対応で表示できないため
+        const isLegacyPhotoUrl = (url: string | undefined) =>
+          !!url && url.includes("maps.googleapis.com/maps/api/place/photo");
+        const noPhotoNames = scored
+          .filter(r => !r.imageUrl || isLegacyPhotoUrl(r.imageUrl))
+          .map(r => r.name);
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
@@ -4988,13 +4994,16 @@ export async function POST(request: Request) {
           return {
             title: r.name,
             address: r.address,
-            photoUrl: wrapWithPhotoProxy(r.imageUrl || (sbPhotoMap.get(r.name) ?? [])[0] || ""),
-            photoUrls: (r.imageUrl
-              ? (r.photoUrls ?? [])
-              : (sbPhotoMap.get(r.name) ?? []).length > 0
-                ? sbPhotoMap.get(r.name)!
-                : []
-            ).map(wrapWithPhotoProxy),
+            // 旧形式の photo_reference (AU_ZVEF...) はv1 API非対応 → sbPhotoMap で上書きを優先。
+            // sbPhotoMap はすでに buildPhotoProxyUrl 経由の正常URLを持つため。
+            photoUrl: (sbPhotoMap.get(r.name) ?? [])[0]
+              || wrapWithPhotoProxy(r.imageUrl || ""),
+            photoUrls: (sbPhotoMap.get(r.name) ?? []).length > 0
+              ? sbPhotoMap.get(r.name)!
+              : (r.imageUrl
+                  ? (r.photoUrls ?? [])
+                  : []
+                ).map(wrapWithPhotoProxy),
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,
