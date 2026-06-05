@@ -24,13 +24,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 
-// ─── 吹き出し＋AI＋スパークル アイコン（白の線画）──────────────────────────────
+// ─── 吹き出し＋AI アイコン（白の線画）──────────────────────────────────────────
 function AiBubbleIcon({ size = 30 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 32 30">
+    <Svg width={size} height={size} viewBox="0 0 30 30">
       {/* 吹き出し本体（角丸＋左下のしっぽ）。白ストローク・中は透明 */}
       <Path
-        d="M8 4 H24 a5 5 0 0 1 5 5 V16 a5 5 0 0 1 -5 5 H15 l-5 5 v-5 H8 a5 5 0 0 1 -5 -5 V9 a5 5 0 0 1 5 -5 Z"
+        d="M7 4 H23 a5 5 0 0 1 5 5 V16 a5 5 0 0 1 -5 5 H14 l-5 5 v-5 H7 a5 5 0 0 1 -5 -5 V9 a5 5 0 0 1 5 -5 Z"
         fill="none"
         stroke="#fff"
         strokeWidth={2.2}
@@ -38,8 +38,8 @@ function AiBubbleIcon({ size = 30 }: { size?: number }) {
       />
       {/* AI テキスト（吹き出し内・白） */}
       <SvgText
-        x="16"
-        y="17"
+        x="15"
+        y="16.5"
         fill="#fff"
         fontSize="11"
         fontWeight="900"
@@ -47,9 +47,21 @@ function AiBubbleIcon({ size = 30 }: { size?: number }) {
       >
         AI
       </SvgText>
-      {/* 右上のスパークル（4方向の星）白塗り */}
+    </Svg>
+  );
+}
+
+// ─── 4方向スパークル（白塗り・円の右上外側に配置）──────────────────────────────
+function SparkleStar({ size = 18 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {/* 4方向の星（凹カーブで✦らしく）白塗り */}
       <Path
-        d="M27 2 C27 4.2 27.3 4.5 29.5 4.5 C27.3 4.5 27 4.8 27 7 C27 4.8 26.7 4.5 24.5 4.5 C26.7 4.5 27 4.2 27 2 Z"
+        d="M12 1.5
+           C12.6 7.4 16.6 11.4 22.5 12
+           C16.6 12.6 12.6 16.6 12 22.5
+           C11.4 16.6 7.4 12.6 1.5 12
+           C7.4 11.4 11.4 7.4 12 1.5 Z"
         fill="#fff"
       />
     </Svg>
@@ -167,6 +179,10 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
         >
           <AiBubbleIcon size={30} />
         </LinearGradient>
+        {/* 円の右上の外側にスパークル装飾 */}
+        <View style={styles.sparkle} pointerEvents="none">
+          <SparkleStar size={18} />
+        </View>
       </View>
     </Animated.View>
   );
@@ -210,5 +226,17 @@ const styles = StyleSheet.create({
     borderRadius: FAB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // 円の右上の外側に配置するスパークル
+  sparkle: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    // 白い星を背景から少し浮かせる
+    shadowColor: '#9B6BFF',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.35,
+    shadowRadius: 2,
+    elevation: 6,
   },
 });
