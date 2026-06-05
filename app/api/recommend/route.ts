@@ -5166,11 +5166,10 @@ export async function POST(request: Request) {
         // これらだけは通常の距離ロジック（半径・遠端バイアス）を無効化し、現在地から40km以内なら
         // 近場でも必ず掲載する（要件: 期間限定転載は距離ロジック無し・40km以内表示・# は遵守）。
         if (adminSpots.length > 0) {
-          // 気分タグ（legacy経路と同一の算出: MOOD_TAG_MAP から answers.mood に対応するタグ）
-          const moodTag = answers.mood
-            ? Object.entries(MOOD_TAG_MAP).find(([, v]) => v === answers.mood)?.[0]
-            : undefined;
-          const subTags = userTags.mustTags.filter(t => t !== moodTag);  // 深掘り/サブタグ
+          // 気分タグ = mustTags の先頭（extractUserTagsFromAnswers が短縮キー"まったり"→"#まったりしたい"
+          // を MOOD_SHORT_KEY_TO_TAG で解決済み。MOOD_TAG_MAP.find だと短縮キーで未解決になるため使わない）
+          const moodTag = userTags.mustTags[0];
+          const subTags = userTags.mustTags.slice(1);  // 深掘り/サブタグ
           const ADMIN_MAX_KM = 40;
           const matchingAdmin = adminSpots.filter(s => {
             const tags = new Set(s.auto_tags ?? []);
