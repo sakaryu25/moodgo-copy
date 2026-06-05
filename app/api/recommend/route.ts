@@ -3993,7 +3993,7 @@ async function fetchYahooSupplement(
     "各国料理":                     "各国料理 レストラン",
     "ラーメン":                     "ラーメン こってりラーメン 家系ラーメン 豚骨ラーメン あっさりラーメン 塩ラーメン つけ麺 まぜそば 味噌ラーメン",
     "お好み焼き":                   "お好み焼き もんじゃ もんじゃ焼き",
-    "カフェスイーツ":                "カフェ スイーツ",
+    "カフェスイーツ":                "カフェスイーツ フルーツカフェ 果物カフェ アサイーボウル 喫茶店 レトロ喫茶 流行りカフェ 無機質カフェ 韓国カフェ 淡色カフェ レコードカフェ 推し活カフェ 映えスイーツ",
     "高層ビル料理":                  "高層ビル レストラン 展望レストラン",
     // ── お腹すいた L2 ──────────────────────────────────────────────────────
     "個室居酒屋":                   "個室居酒屋 居酒屋完全個室",
@@ -5118,8 +5118,11 @@ export async function POST(request: Request) {
         // 誤除外を避けるため「スパ/湯/サウナ」単独などの曖昧語は使わず明確な語に限定。
         const isFoodMoodReq = (answers.mood ?? "") === "お腹すいた";
         const NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
-        const foodSanitize = <T extends { title?: string }>(arr: T[]): T[] =>
-          isFoodMoodReq ? arr.filter(r => !NON_FOOD_NAME_RE.test(r.title ?? "")) : arr;
+        // 住所にも非飲食施設名が入るケースを除外（例: カワスイ川崎水族館内のカフェ）
+        const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] =>
+          isFoodMoodReq
+            ? arr.filter(r => !NON_FOOD_NAME_RE.test(r.title ?? "") && !NON_FOOD_NAME_RE.test(r.address ?? ""))
+            : arr;
 
         // 既出スポット除外（再検索時の重複防止）: showUnseenOnly のとき seenPlaces のタイトルを全ソースから除外。
         // 従来は Supabase 結果のみに適用され、Google/Yahoo/admin が再検索で同じ場所を返していた（「同じ場所が提案される」の主因）。
@@ -5218,6 +5221,11 @@ export async function POST(request: Request) {
               //   sbMustTags（例:#焼肉食べ放題）との一致を確認する
               if (adminSubFilter.length > 0 && subTags.length === 0
                 && !adminSubFilter.some(t => tags.has(t))) return null;
+              // ④ お腹すいた時: 住所に水族館/動物園等が含まれるテナントも除外
+              if (isFoodMoodReq) {
+                const addr = s.address ?? "";
+                if (NON_FOOD_NAME_RE.test(addr)) return null;
+              }
               // 既出スポット除外（再検索時の重複防止）
               if (showUnseenOnly && seenLower.has((s.google_place_name ?? s.spot_name).toLowerCase())) return null;
               const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
