@@ -206,6 +206,9 @@ export default function SuggestScreen() {
   const [images, setImages]             = useState<{ uri: string; base64?: string }[]>([]);
   // 穴場を教えてフォームでは #穴場スポット を常に自動付与
   const [selectedTags, setSelectedTags] = useState<string[]>(['#穴場スポット']);
+  // 価格帯
+  const [priceChip, setPriceChip]       = useState<string>('');   // 選択済みチップ
+  const [priceNote, setPriceNote]       = useState('');            // 自由記入
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [isLocating, setIsLocating]     = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -279,8 +282,13 @@ export default function SuggestScreen() {
       // サーバーAPIは multipart/form-data のみ受け付けるため FormData を使用
       const fd = new FormData();
       fd.append('spotName', spotName.trim());
-      if (description) fd.append('description', description);
-      if (address)     fd.append('address', address);
+      // 説明に価格帯を付記して送信
+      const descWithPrice = [
+        description,
+        priceChip ? `【目安価格】${priceChip}${priceNote ? `（${priceNote}）` : ''}` : priceNote ? `【目安価格】${priceNote}` : '',
+      ].filter(Boolean).join('\n');
+      if (descWithPrice) fd.append('description', descWithPrice);
+      if (address)       fd.append('address', address);
       if (contact)     fd.append('contact', contact);
       if (lat !== null) fd.append('lat', String(lat));
       if (lng !== null) fd.append('lng', String(lng));
@@ -368,6 +376,47 @@ export default function SuggestScreen() {
               placeholder={t.placeholderDesc} placeholderTextColor="#C4B5FD"
               multiline numberOfLines={4} textAlignVertical="top"
               style={s.textarea}
+            />
+
+            {/* ── 価格帯 ── */}
+            <Text style={[s.label, { marginTop: 18 }]}>
+              目安の値段 <Text style={s.optional}>（任意）</Text>
+            </Text>
+            <Text style={s.hint}>1人あたりの大体の金額を教えてください</Text>
+
+            {/* チップ選択 */}
+            <View style={s.priceChipRow}>
+              {['無料', '〜¥500', '〜¥1,000', '〜¥3,000', '¥3,000〜'].map((chip) => {
+                const active = priceChip === chip;
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    onPress={() => setPriceChip(active ? '' : chip)}
+                    activeOpacity={0.75}
+                    style={[s.priceChip, active && s.priceChipActive]}
+                  >
+                    {active ? (
+                      <LinearGradient
+                        colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={s.priceChipGrad}
+                      >
+                        <Text style={s.priceChipTextActive}>{chip}</Text>
+                      </LinearGradient>
+                    ) : (
+                      <Text style={s.priceChipText}>{chip}</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 自由記入（オプション） */}
+            <TextInput
+              value={priceNote}
+              onChangeText={setPriceNote}
+              placeholder="詳細があれば（例：ランチ800円、ディナー2,000円〜）"
+              placeholderTextColor="#C4B5FD"
+              style={[s.input, { marginTop: 10, height: 46, fontSize: 13 }]}
             />
 
             {/* 位置情報 */}
@@ -581,6 +630,33 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#DDD6FE',
     padding: 14, fontSize: 15, color: '#1E0753',
     minHeight: 100, lineHeight: 22,
+  },
+
+  // Price chips
+  priceChipRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2,
+  },
+  priceChip: {
+    borderRadius: 999,
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+    backgroundColor: '#FAFAFF',
+    overflow: 'hidden',
+  },
+  priceChipActive: {
+    borderColor: 'transparent',
+    shadowColor: PURPLE, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22, shadowRadius: 6, elevation: 4,
+  },
+  priceChipGrad: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 999,
+  },
+  priceChipText: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    fontSize: 13, fontWeight: '600', color: '#7C3AED',
+  },
+  priceChipTextActive: {
+    fontSize: 13, fontWeight: '800', color: '#fff',
   },
 
   // Location
