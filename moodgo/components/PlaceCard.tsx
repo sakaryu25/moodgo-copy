@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Clock, Flame, Heart, Map, MapPin, Navigation, Share2, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import { Check, Clock, Flame, Heart, Map, MapPin, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
@@ -357,6 +357,17 @@ export default function PlaceCard({
           </View>
         ) : null}
 
+        {/* ── AI相談時のみ: なぜおすすめか ── */}
+        {item.aiReason ? (
+          <View style={s.aiReasonBox}>
+            <View style={s.aiReasonHead}>
+              <Sparkles size={13} color="#9B6BFF" fill="#9B6BFF" strokeWidth={0} />
+              <Text style={s.aiReasonLabel}>AIのおすすめ理由</Text>
+            </View>
+            <Text style={s.aiReasonText}>{item.aiReason}</Text>
+          </View>
+        ) : null}
+
         {/* ── アクションボタン: Googleマップ + 行った！ ── */}
         <View style={s.actions}>
           {item.mapUrl ? (
@@ -530,6 +541,19 @@ const s = StyleSheet.create({
   title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
   titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
+
+  // AI相談のおすすめ理由ブロック
+  aiReasonBox: {
+    marginTop: 12,
+    backgroundColor: '#F5F0FF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(155,107,255,0.18)',
+    padding: 12,
+  },
+  aiReasonHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
+  aiReasonLabel: { fontSize: 11, fontWeight: '800', color: '#9B6BFF', letterSpacing: 0.3 },
+  aiReasonText: { fontSize: 13, color: '#4B3B6B', lineHeight: 20, fontWeight: '500' },
   address:     { fontSize: 13, color: '#6B7280', lineHeight: 18 },
 
   // 評価 + 営業ピル row

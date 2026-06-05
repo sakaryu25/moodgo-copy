@@ -20,6 +20,8 @@ export type Recommendation = {
   durationText?: string;
   openNow?: boolean;
   reason?: string;
+  /** AI相談フロー専用: なぜこの場所をおすすめするのか（結果画面で表示） */
+  aiReason?: string;
   features?: string[];
   isUserSpot?: boolean;
   hasUserPhotos?: boolean;
@@ -109,6 +111,8 @@ export type Answers = {
   distanceFeeling?: string;
   originLat?: number;
   originLng?: number;
+  /** AI相談フロー（自由入力→OpenAI提案）の場合 true */
+  aiChat?: boolean;
 };
 
 export type DynamicQuestion = {

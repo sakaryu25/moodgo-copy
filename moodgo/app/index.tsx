@@ -56,6 +56,7 @@ function fixRec(rec: Recommendation): Recommendation {
 import { router } from 'expo-router';
 
 import AppBackground    from '@/components/AppBackground';
+import AiChatInput      from '@/components/AiChatInput';
 import HomeView         from '@/components/HomeView';
 import TabBar           from '@/components/TabBar';
 import HistoryView      from '@/components/HistoryView';
@@ -161,6 +162,10 @@ export default function Home() {
   const [isLocating,    setIsLocating]    = useState(false);
   const [locationError, setLocationError] = useState('');
 
+  // ── AI相談 ───────────────────────────────────────────────────────────────
+  const [aiChatOpen,    setAiChatOpen]    = useState(false);
+  const [aiHasLocation, setAiHasLocation] = useState(false);
+
   // ── Report modal ─────────────────────────────────────────────────────────
   const [reportingSpot,    setReportingSpot]    = useState<{ title: string; address: string; supabaseId?: string } | null>(null);
   const [reportReason,     setReportReason]     = useState('');
@@ -234,6 +239,45 @@ export default function Home() {
     setIsLocating(false);
   };
 
+  // ── AI相談を開く（押した瞬間に位置情報を自動取得）──────────────────────────
+  const handleOpenAiChat = async () => {
+    setAiChatOpen(true);
+    setAiHasLocation(false);
+    setIsLocating(true);
+    try {
+      const Location = await import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const { latitude, longitude } = pos.coords;
+        setOriginLat(latitude);
+        setOriginLng(longitude);
+        setAreaMode('current_location');
+        setAiHasLocation(true);
+        try {
+          const res = await apiFetch('/api/location-to-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude, longitude }),
+          });
+          const d = await res.json();
+          setSelectedArea(d.area ?? '現在地');
+          setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
+        } catch {
+          setSelectedArea('現在地');
+        }
+      }
+    } catch { /* 位置取得失敗は無視（入力は継続可能）*/ }
+    finally { setIsLocating(false); }
+  };
+
+  // ── AI相談の送信（自由ワード → OpenAI提案 → 結果画面）──────────────────────
+  const handleAiSubmit = (text: string) => {
+    setAiChatOpen(false);
+    setStarted(true);   // 結果画面（started && step===11）を表示するため
+    openResults('', false, undefined, false, text);
+  };
+
   // エリア名を手入力したら手動モードに切り替え、前回取得した現在地座標をクリアする。
   // （クリアしないと現在地の座標が検索の起点に残り、入力したエリアが無視されてしまう）
   const handleSelectArea = (v: string) => {
@@ -256,7 +300,7 @@ export default function Home() {
   //   5. setApiRecommendations → 履歴保存 → setStep(11)
   // ─────────────────────────────────────────────────────────────────────────
 
-  const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number, excludeShown = false) => {
+  const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number, excludeShown = false, aiChatText?: string) => {
     // 新規検索時: 前回結果・評価をクリアしてから結果画面へ
     if (!isRefinement) {
       setApiRecommendations([]);
@@ -295,22 +339,24 @@ export default function Home() {
 
       // ── answers オブジェクト（Web版と同じキー構成）──────────────────────────
       // ※ transport / time は省略（クイズに存在しないため）
+      const isAiChat = !!aiChatText;
       const answers: Partial<Answers> = {
-        mood:            selectedMood,
+        mood:            isAiChat ? 'AI相談' : selectedMood,
         area:            selectedArea,
         age:             profileAge,
         gender:          profileGender,
-        companion:       selectedCompanion,
+        companion:       isAiChat ? '' : selectedCompanion,
         budget,
         budgetMin,
-        freeWord,
+        freeWord:        isAiChat ? aiChatText! : freeWord,
+        aiChat:          isAiChat || undefined,
         radiusKm: radiusOverride ?? radiusKm,
         areaMode,
         distanceFeeling,
         originLat,
         originLng,
-        // 深掘り質問を dynamicQs 配列に統合
-        dynamicQs: [
+        // 深掘り質問を dynamicQs 配列に統合（AI相談時は無し）
+        dynamicQs: isAiChat ? [] : [
           ...Object.entries(dynamicAnswers).map(([key, answer]) => ({
             question: dynamicQuestions.find(q => q.key === key)?.question ?? key,
             answer,
@@ -350,13 +396,13 @@ export default function Home() {
       if (recs.length > 0 && !isRefinement) {
         const newItem: HistoryItem = {
           id:               Date.now().toString(),
-          mood:             selectedMood,
+          mood:             isAiChat ? 'AI相談' : selectedMood,
           area:             selectedArea,
-          companion:        selectedCompanion,
+          companion:        isAiChat ? '' : selectedCompanion,
           transport:        [],
           budget:           budget ?? 10000,
           time:             '',
-          freeWord,
+          freeWord:         isAiChat ? aiChatText! : freeWord,
           topRecommendation: recs[0]?.title ?? '',
           createdAt:        new Date().toISOString(),
           recommendations:  recs,
@@ -879,6 +925,7 @@ export default function Home() {
             }}
             onShowSettings={() => setShowSettings(true)}
             onShowFeatured={() => setHomeView('featured')}
+            onOpenAiChat={handleOpenAiChat}
           />
         );
     }
@@ -922,6 +969,19 @@ export default function Home() {
         onUnblockPlace={(title) => setBlockedPlaces(prev => prev.filter(t => t !== title))}
         onClearBlocked={() => setBlockedPlaces([])}
       />
+
+      {/* AI相談 入力画面（最前面オーバーレイ）*/}
+      {aiChatOpen && (
+        <View style={StyleSheet.absoluteFill}>
+          <AiChatInput
+            locating={isLocating}
+            hasLocation={aiHasLocation}
+            locationLabel={locationDisplayArea}
+            onBack={() => setAiChatOpen(false)}
+            onSubmit={handleAiSubmit}
+          />
+        </View>
+      )}
     </View>
   );
 }

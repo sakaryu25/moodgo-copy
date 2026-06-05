@@ -134,11 +134,12 @@ type Props = {
   onStartWithMood?: (moodKey: string) => void;  // （旧）気分ショートカット用・現在未使用
   onShowSettings: () => void;
   onShowFeatured: () => void;
+  onOpenAiChat: () => void;  // AI相談を開く（位置情報自動取得）
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured }: Props) {
+export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured, onOpenAiChat }: Props) {
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
@@ -170,12 +171,6 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onStart();
-  };
-
-  // AI自由入力モーダルを開く（OpenAI直接相談）
-  const openAIChatModal = () => {
-    // TODO: OpenAI 自由入力チャット画面を実装
-    router.push({ pathname: '/ai-chat', params: { lang } });
   };
 
   return (
@@ -291,7 +286,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
       </Animated.View>
 
       {/* ── ドラッグ可能なAI相談FAB（最前面・絶対配置）── */}
-      <AiChatFab onPress={openAIChatModal} bottomNavHeight={insets.bottom + 70} />
+      <AiChatFab onPress={onOpenAiChat} bottomNavHeight={insets.bottom + 70} />
     </View>
   );
 }

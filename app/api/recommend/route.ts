@@ -40,6 +40,8 @@ type Answers = {
   dynamicQ4?: { question: string; answer: string } | string;
   /** 全動的質問回答の配列（dynamicQ1-4の拡張版）。存在する場合はこちらを優先使用 */
   dynamicQs?: { question: string; answer: string }[];
+  /** AI相談（自由入力→OpenAI提案）フローの場合 true */
+  aiChat?: boolean;
 };
 
 /** 全動的質問回答を統一して取得するヘルパー（dynamicQs優先、なければdynamicQ1-4にフォールバック） */
@@ -4463,6 +4465,7 @@ async function buildFreeWordRecommendations(
     mood?: string; companion?: string; budget?: number; freeWord?: string;
     distanceFeeling?: string; radiusKm?: number; originLat?: number; originLng?: number;
     area?: string; areaMode?: string;
+    age?: string; gender?: string; aiChat?: boolean;
     dynamicQs?: { question: string; answer: string }[];
   },
   apiKey: string,
@@ -4495,16 +4498,22 @@ async function buildFreeWordRecommendations(
       .map(q => `${q.question}: ${q.answer}`)
       .join("\n");
 
+    const isAiChat = !!answers.aiChat;
+    const wantCount = isAiChat ? 15 : 10;
+    // 年齢・性別（AI相談時はプロンプトに反映して提案精度を上げる）
+    const profileLine = (answers.age || answers.gender)
+      ? `- ユーザー属性: ${[answers.age, answers.gender].filter(Boolean).join("・")}`
+      : "";
+
     const prompt = `あなたはお出かけプランナーAIです。
-ユーザーの希望に厳密に合致する実在スポットを10件提案してください。
+ユーザーの希望に厳密に合致する実在スポットを${wantCount}件提案してください。
 
 【最重要条件（必ず全て満たすこと）】
 1. エリア: ${areaDesc}
-2. カテゴリ: ${deepDiveDesc}
-3. 希望キーワード（最優先）: ${answers.freeWord}
+${isAiChat ? "" : `2. カテゴリ: ${deepDiveDesc}\n`}3. 希望キーワード（最優先）: ${answers.freeWord}
 
 【参考条件】
-- 気分: ${answers.mood ?? "未設定"}
+${profileLine ? profileLine + "\n" : ""}- 気分: ${answers.mood ?? "未設定"}
 - 同行者: ${answers.companion ?? "未設定"}
 - 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "未設定"}
 ${extraQs ? extraQs : ""}
@@ -4513,10 +4522,11 @@ ${extraQs ? extraQs : ""}
 - 「${answers.freeWord}」の条件に合う施設のみ（関係ないスポットは除外）
 - ${area} エリアに今も実在する具体的な店舗・施設名（チェーン店名だけでなく支店名まで）
 - 駅名・地名・エリア名だけのNG。実際の店名を出すこと
-- 予算内に収まるスポット優先
+- 予算内に収まるスポット優先${isAiChat ? `
+- reason には「なぜこのユーザーにこの場所をおすすめするのか」を40〜70字で具体的に書く（ユーザー属性・キーワードに言及）` : ""}
 
 出力は必ず以下のJSON形式のみ（説明文は不要）:
-{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"}]}`;
+{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"${isAiChat ? ', "reason": "なぜこの人におすすめか(40〜70字)"' : ""}}]}`;
 
     const resp = await openaiClient.chat.completions.create({
       model: "gpt-4o-mini",
@@ -4526,13 +4536,18 @@ ${extraQs ? extraQs : ""}
         { role: "system", content: "あなたはお出かけプランナーAIです。ユーザーの条件に厳密に合致したリアルな施設のみを提案してください。条件に合わないスポットは絶対に含めないこと。" },
         { role: "user", content: prompt },
       ],
-      max_tokens: 800,
+      max_tokens: isAiChat ? 2000 : 800,
     });
 
     const text = resp.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as { places?: Array<{ name: string; query: string }> };
+    const parsed = JSON.parse(text) as { places?: Array<{ name: string; query: string; reason?: string }> };
     const suggestions = parsed.places ?? [];
     if (suggestions.length === 0) return [];
+    // スポット名→AI理由のマップ
+    const aiReasonMap = new Map<string, string>();
+    for (const sg of suggestions) {
+      if (sg.reason) aiReasonMap.set(sg.name, String(sg.reason).trim());
+    }
 
     const PRICE_MAP: Record<string, string> = {
       PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥",
@@ -4618,6 +4633,8 @@ ${extraQs ? extraQs : ""}
             mapUrl: (place.googleMapsUri as string | undefined) ?? "",
             googleMapsUrl: (place.googleMapsUri as string | undefined) ?? "",
             reason: `「${answers.freeWord}」のイメージにぴったりなスポットです`,
+            // AI相談時: スポットごとの「なぜおすすめか」を付与（結果画面で表示）
+            aiReason: isAiChat ? (aiReasonMap.get(p.name) ?? aiReasonMap.get(name) ?? "") : undefined,
             features: [],
             distanceText,
             distanceKm: (lat && lng && typeof placeLat === "number" && typeof placeLng === "number")
@@ -4643,7 +4660,7 @@ ${extraQs ? extraQs : ""}
         }
       })
     );
-    return results.filter((r): r is Record<string, unknown> => r !== null);
+    return results.filter((r) => r !== null) as Record<string, unknown>[];
   } catch (e) {
     console.error("[recommend] freeWord OpenAI flow failed:", e);
     return [];
@@ -4781,7 +4798,7 @@ export async function POST(request: Request) {
         if (fwRecs.length > 0) {
           return json({
             recommendations: fwRecs,
-            source: "ai_freeword",
+            source: answers.aiChat ? "ai_chat" : "ai_freeword",
             usedAI: true,
             warning: "",
           });
