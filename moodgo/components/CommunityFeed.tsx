@@ -4,10 +4,15 @@
  *
  * ホーム画面の気分セクション直下に組み込む。
  * 独自の ScrollView を持たず、HomeView の ScrollView 内に配置される。
+ * アイコンはすべて lucide-react-native（ベクター生成）で統一。
  */
 
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  Activity, Car, ChevronDown, Cloud, Flame, Footprints, Leaf, Map, MapPin,
+  MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
+} from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,7 +26,6 @@ import { apiFetch } from '@/lib/api';
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
 const PURPLE = '#9B6BFF';
-const BLUE   = '#4FA3FF';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type FeedItem = {
@@ -34,6 +38,8 @@ type FeedItem = {
   auto_tags: string[] | null;
   created_at: string;
 };
+
+type IconComp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -55,27 +61,34 @@ function avatarBg(name: string): string {
   return AVATAR_BG[(name.charCodeAt(0) ?? 0) % AVATAR_BG.length];
 }
 
-// auto_tags から代表的な絵文字を取得
-function tagEmoji(tags: string[] | null): string {
-  if (!tags) return '📍';
-  if (tags.includes('#お腹すいた'))         return '🍽️';
-  if (tags.includes('#まったりしたい'))      return '☁️';
-  if (tags.includes('#自然感じたい'))        return '🍃';
-  if (tags.includes('#わいわい楽しみたい'))  return '🎉';
-  if (tags.includes('#ドライブしたい'))      return '🚗';
-  if (tags.includes('#体動かしたい'))        return '🏃';
-  if (tags.includes('#遠くに行きたい'))      return '✈️';
-  if (tags.includes('#ショッピング'))        return '🛍️';
-  if (tags.includes('#穴場スポット'))        return '🗺️';
-  return '📍';
+// auto_tags から代表アイコン（lucide）と色を取得
+function tagIcon(tags: string[] | null): { Icon: IconComp; color: string } {
+  if (tags) {
+    if (tags.includes('#お腹すいた'))         return { Icon: UtensilsCrossed, color: '#E67E22' };
+    if (tags.includes('#まったりしたい'))      return { Icon: Cloud,          color: '#6BA3BE' };
+    if (tags.includes('#自然感じたい'))        return { Icon: Leaf,           color: '#27AE60' };
+    if (tags.includes('#わいわい楽しみたい'))  return { Icon: Sparkles,       color: '#E91E8C' };
+    if (tags.includes('#ドライブしたい'))      return { Icon: Car,            color: '#2980B9' };
+    if (tags.includes('#体動かしたい'))        return { Icon: Activity,       color: '#16A085' };
+    if (tags.includes('#遠くに行きたい'))      return { Icon: Plane,          color: '#7B68EE' };
+    if (tags.includes('#ショッピング'))        return { Icon: ShoppingBag,    color: '#E91E8C' };
+    if (tags.includes('#穴場スポット'))        return { Icon: Map,            color: PURPLE };
+  }
+  return { Icon: MapPin, color: PURPLE };
 }
 
-// ─── Stars ───────────────────────────────────────────────────────────────────
+// ─── Stars（lucide Star を5つ）─────────────────────────────────────────────────
 function Stars({ n = 5 }: { n?: number }) {
   return (
     <View style={{ flexDirection: 'row', gap: 1 }}>
       {[1,2,3,4,5].map(i => (
-        <Text key={i} style={{ fontSize: 10, color: i <= n ? '#F59E0B' : '#E5E7EB' }}>★</Text>
+        <Star
+          key={i}
+          size={11}
+          color={i <= n ? '#F59E0B' : '#E5E7EB'}
+          fill={i <= n ? '#F59E0B' : '#E5E7EB'}
+          strokeWidth={0}
+        />
       ))}
     </View>
   );
@@ -84,15 +97,15 @@ function Stars({ n = 5 }: { n?: number }) {
 // ─── UserRow ─────────────────────────────────────────────────────────────────
 function UserRow({ item }: { item: FeedItem }) {
   const bg = avatarBg(item.spot_name);
-  const emoji = tagEmoji(item.auto_tags);
+  const { Icon, color } = tagIcon(item.auto_tags);
   return (
     <View style={s.userRow}>
       <View style={[s.avatar, { backgroundColor: bg }]}>
-        <Text style={{ fontSize: 13 }}>{emoji}</Text>
+        <Icon size={13} color={color} strokeWidth={2} />
       </View>
       <Text style={s.userName}>MoodGoユーザー</Text>
       <Text style={s.timestamp}>{relativeTime(item.created_at)}</Text>
-      <Text style={s.kebab}>⋯</Text>
+      <MoreHorizontal size={16} color="#9CA3AF" strokeWidth={2} />
     </View>
   );
 }
@@ -101,7 +114,10 @@ function UserRow({ item }: { item: FeedItem }) {
 function StatusRow() {
   return (
     <View style={s.statusRow}>
-      <Text style={s.statusText}>👣 行った</Text>
+      <View style={s.statusBadge}>
+        <Footprints size={12} color="#D97706" strokeWidth={2.2} />
+        <Text style={s.statusText}>行った</Text>
+      </View>
       <Stars n={5} />
     </View>
   );
@@ -112,7 +128,8 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
   const label = prefecture ? `${prefecture} / ${spotName}` : spotName;
   return (
     <View style={s.badge}>
-      <Text style={s.badgeText} numberOfLines={1}>📍 {label}</Text>
+      <MapPin size={10} color="#fff" strokeWidth={2.2} />
+      <Text style={s.badgeText} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -121,6 +138,7 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
 function PhotoCard({ item }: { item: FeedItem }) {
   const imgUri = item.image_urls?.[0];
   const hasReview = item.description && item.description.length > 5;
+  const { Icon, color } = tagIcon(item.auto_tags);
 
   return (
     <View style={s.card}>
@@ -134,14 +152,14 @@ function PhotoCard({ item }: { item: FeedItem }) {
             transition={300}
           />
         ) : (
-          // 画像なし → グラデーションプレースホルダー
+          // 画像なし → グラデーションプレースホルダー（タグアイコン）
           <LinearGradient
             colors={['#C5D8F0', '#A8C8E8']}
             style={s.img}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <Text style={{ fontSize: 32 }}>{tagEmoji(item.auto_tags)}</Text>
+            <Icon size={34} color={color} strokeWidth={1.6} />
           </LinearGradient>
         )}
         {/* 右下ロケーションバッジ */}
@@ -164,7 +182,7 @@ function PhotoCard({ item }: { item: FeedItem }) {
 
 // ─── TextCard ────────────────────────────────────────────────────────────────
 function TextCard({ item }: { item: FeedItem }) {
-  const emoji = tagEmoji(item.auto_tags);
+  const { Icon, color } = tagIcon(item.auto_tags);
   const hasReview = item.description && item.description.length > 5;
   const bg = avatarBg(item.spot_name);
 
@@ -174,10 +192,13 @@ function TextCard({ item }: { item: FeedItem }) {
         {/* ヘッダー: サムネ + スポット名 */}
         <View style={s.textCardHeader}>
           <View style={[s.thumb, { backgroundColor: bg }]}>
-            <Text style={{ fontSize: 22 }}>{emoji}</Text>
+            <Icon size={22} color={color} strokeWidth={1.8} />
           </View>
           <View style={s.thumbRight}>
-            <Text style={s.prefLabel}>📍 {item.prefecture || item.address?.slice(0, 6)}</Text>
+            <View style={s.prefRow}>
+              <MapPin size={10} color="#9CA3AF" strokeWidth={2} />
+              <Text style={s.prefLabel}>{item.prefecture || item.address?.slice(0, 6)}</Text>
+            </View>
             <Text style={s.spotName} numberOfLines={2}>{item.spot_name}</Text>
           </View>
         </View>
@@ -289,10 +310,14 @@ export default function CommunityFeed() {
       <View style={s.sectionHeader}>
         <View>
           <Text style={s.sectionSub}>COMMUNITY PICKS</Text>
-          <Text style={s.sectionTitle}>全国のみんなの穴場 🗺️</Text>
+          <View style={s.titleRow}>
+            <Text style={s.sectionTitle}>全国のみんなの穴場</Text>
+            <Map size={16} color={PURPLE} strokeWidth={2.2} />
+          </View>
         </View>
         <View style={s.newBadge}>
-          <Text style={s.newBadgeText}>🔥 新着</Text>
+          <Flame size={11} color={PINK} strokeWidth={2.4} />
+          <Text style={s.newBadgeText}>新着</Text>
         </View>
       </View>
 
@@ -314,7 +339,8 @@ export default function CommunityFeed() {
       {/* もっと見るボタン */}
       {!loading && items.length > 0 && (
         <TouchableOpacity style={s.moreBtn} activeOpacity={0.7}>
-          <Text style={s.moreBtnText}>もっと見る ↓</Text>
+          <Text style={s.moreBtnText}>もっと見る</Text>
+          <ChevronDown size={15} color={PURPLE} strokeWidth={2.4} />
         </TouchableOpacity>
       )}
     </View>
@@ -333,8 +359,10 @@ const s = StyleSheet.create({
   sectionSub: {
     fontSize: 10, color: PINK, fontWeight: '700', letterSpacing: 0.4, marginBottom: 3,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionTitle: { fontSize: 17, fontWeight: '900', color: '#1A0A2E' },
   newBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(155,107,255,0.10)', borderRadius: 99,
     paddingHorizontal: 10, paddingVertical: 4,
   },
@@ -366,6 +394,7 @@ const s = StyleSheet.create({
   },
   badge: {
     position: 'absolute', bottom: 8, right: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: 'rgba(0,0,0,0.62)',
     borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3,
     maxWidth: '85%',
@@ -379,7 +408,8 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   thumbRight: { flex: 1, minWidth: 0 },
-  prefLabel: { fontSize: 10, color: '#9CA3AF', marginBottom: 3 },
+  prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 3 },
+  prefLabel: { fontSize: 10, color: '#9CA3AF' },
   spotName: { fontSize: 13, fontWeight: '800', color: '#1F2937', lineHeight: 18 },
 
   // ── Shared body ──
@@ -391,6 +421,7 @@ const s = StyleSheet.create({
 
   // ── Status row ──
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 9 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   statusText: { fontSize: 11, fontWeight: '700', color: '#D97706' },
 
   // ── User row ──
@@ -401,11 +432,11 @@ const s = StyleSheet.create({
   },
   userName: { flex: 1, fontSize: 11, color: '#374151', fontWeight: '600' },
   timestamp: { fontSize: 10, color: '#9CA3AF' },
-  kebab: { color: '#9CA3AF', fontSize: 16, lineHeight: 18 },
 
   // ── More button ──
   moreBtn: {
-    alignItems: 'center', paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 14,
   },
   moreBtnText: { fontSize: 13, fontWeight: '700', color: PURPLE },
 });
