@@ -4174,7 +4174,7 @@ async function fetchYahooSupplement(
         // far bias 時は距離ソート（遠い順）。通常は score 順
         sort: wantFarBias ? "dist" : "score",
         output: "json",
-        query,
+        ...(query ? { query } : {}),
         ...(gcCode ? { gc: gcCode } : {}),
       });
       try {
@@ -4213,16 +4213,22 @@ async function fetchYahooSupplement(
     const yahooGcList = yahooGc
       ? yahooGc.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
-    const gcOptions: (string | undefined)[] = yahooGcList.length > 0 ? yahooGcList : [undefined];
-    // キーワード×中心点×業種コードで検索タスクを構築。
-    //   ・複数キーワードは1語ずつ個別検索してマージ（Yahoo の AND 検索による0件化を回避）
-    //   ・API呼び出し抑制のため、リング中心点(遠距離設定)では先頭キーワードのみ使用
+    // 検索タスクを構築。
+    //   ・キーワード検索は gc を付けない。Yahoo は keyword と gc を併用すると AND 絞り込みで
+    //     結果が激減する（例「個室居酒屋」単独=20件 / +gc0105001=1件）ため。
+    //   ・業種コード(gc)は「キーワード無し」の別検索として実施（正確なカテゴリ指定・要件①）。
+    //   ・複数キーワードは1語ずつ個別検索しマージ（要件②）。リング中心点は先頭1語のみ。
     const tasks: Promise<Record<string, unknown>[]>[] = [];
     centers.forEach((c, ci) => {
       const kws = ci === 0 ? keywordList : keywordList.slice(0, 1);
+      // ① キーワード検索（gc無し）
       for (const kw of kws) {
-        for (const gcCode of gcOptions) {
-          tasks.push(searchYahooAt(c.lat, c.lng, c.distKm, c.start1, gcCode, kw));
+        tasks.push(searchYahooAt(c.lat, c.lng, c.distKm, c.start1, undefined, kw));
+      }
+      // ② 業種コード検索（キーワード無し）— primary中心点のみ
+      if (ci === 0) {
+        for (const gcCode of yahooGcList) {
+          tasks.push(searchYahooAt(c.lat, c.lng, c.distKm, c.start1, gcCode, ""));
         }
       }
     });
