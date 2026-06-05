@@ -5052,10 +5052,19 @@ export async function POST(request: Request) {
           return shuffleArr([...arr]);
         };
 
-        // 各ソースにモールフィルター適用 → ソート
-        const sbSorted = sortOrShuffle(applyMallFilter(mergedSb));
-        const gSorted  = sortOrShuffle(applyMallFilter(googleSupplements) as Rec[]);
-        const ySorted  = sortOrShuffle(applyMallFilter(yahooSupplements) as Rec[]);
+        // ── お腹すいた 飲食店のみ強制フィルター（要件③・最優先）─────────────────────
+        // 温泉/銭湯/岩盤浴等は館内に飲食店を持つため Yahoo業種コードや Supabase に
+        // 紛れ込むことがある。施設名が温浴・観光施設を示す場合は飲食結果から除外する。
+        // 誤除外を避けるため「スパ/湯/サウナ」単独などの曖昧語は使わず明確な語に限定。
+        const isFoodMoodReq = (answers.mood ?? "") === "お腹すいた";
+        const NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
+        const foodSanitize = <T extends { title?: string }>(arr: T[]): T[] =>
+          isFoodMoodReq ? arr.filter(r => !NON_FOOD_NAME_RE.test(r.title ?? "")) : arr;
+
+        // 各ソースにモールフィルター＋お腹すいた飲食店フィルター適用 → ソート
+        const sbSorted = sortOrShuffle(foodSanitize(applyMallFilter(mergedSb)));
+        const gSorted  = sortOrShuffle(foodSanitize(applyMallFilter(googleSupplements) as Rec[]));
+        const ySorted  = sortOrShuffle(foodSanitize(applyMallFilter(yahooSupplements) as Rec[]));
 
         // 各ソースから最大5件を重複排除しながら取得
         const seen: DedupeKey[] = [];
@@ -5101,7 +5110,7 @@ export async function POST(request: Request) {
                   excludeNames, 20, minRadiusKm, apiKey,
                 ),
           ]);
-          const widePool = sortOrShuffle(applyMallFilter([...gWide, ...yWide] as Rec[]));
+          const widePool = sortOrShuffle(foodSanitize(applyMallFilter([...gWide, ...yWide] as Rec[])));
           const stillNeed = 15 - recommendations.length;
           const { taken: topUp } = pickUnique(widePool, stillNeed, seen);
           recommendations = [...recommendations, ...topUp];
