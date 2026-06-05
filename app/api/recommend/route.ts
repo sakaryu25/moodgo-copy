@@ -4971,8 +4971,11 @@ export async function POST(request: Request) {
 
         // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
         // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う
+        // ただし「大型ショッピングモール」系は deepDiveTag が mood タグと同一で空になるため
+        // isApiOnlyDeepDive が誤って true になる。このケースは Supabase も使う。
         const hasApiResults = googleSupplements.length > 0 || yahooSupplements.length > 0;
-        const mergedSb = (isApiOnlyDeepDive && hasApiResults) ? [] : supabaseRecs;
+        const skipSupabase = isApiOnlyDeepDive && hasApiResults && !isLargeMallSearch(effectiveDeepDive);
+        const mergedSb = skipSupabase ? [] : supabaseRecs;
 
         // ── 大型ショッピングモール検索の最終セーフティフィルター ─────────────────
         // 全ソース（Supabase/Google/Yahoo）横断で、モール／百貨店として妥当でない
