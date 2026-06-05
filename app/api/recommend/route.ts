@@ -3438,7 +3438,7 @@ function chooseFinalResults(items: ScoredItem[], mood?: string) {
   const prioritized = [...openItems, ...closedItems];
 
   for (const item of prioritized) {
-    if (final.length >= 12) break;
+    if (final.length >= 15) break;   // 15件を目標（旧: 12件上限）
     if (isDuplicate(item.title)) continue;
     used.add(item.title);
 
@@ -3447,6 +3447,8 @@ function chooseFinalResults(items: ScoredItem[], mood?: string) {
 
     if (mood === "お腹すいた") {
       if (item.bucket !== "food" && item.bucket !== "indoor") continue;
+      // 館内にお食事処を持つ温泉/銭湯等は bucket=food でも飲食目的に不適切 → 名前で除外（要件③）
+      if (/(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/.test(item.title)) continue;
     }
 
     if (item.bucket === "scenic" && !scenicAllowedMoods.has(mood ?? "")) {
