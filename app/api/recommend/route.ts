@@ -4235,6 +4235,7 @@ async function fetchYahooSupplement(
         if (nm && !seenNames.has(nm)) { seenNames.add(nm); features.push(f); }
       }
     }
+    console.error(`[YDBG] kw=${JSON.stringify(keywordList)} gc=${JSON.stringify(gcOptions)} tasks=${tasks.length} rawPerTask=${JSON.stringify(rawFeatures.map(a=>a.length))} features=${features.length} apikeyLen=${apiKey.length}`);
     if (features.length === 0) return [];
 
     // Yahoo Geometry.Coordinates ("経度,緯度") から距離(km)を計算
