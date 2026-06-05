@@ -5143,6 +5143,14 @@ export async function POST(request: Request) {
           source: "supabase",
           usedAI: !!process.env.OPENAI_API_KEY,
           warning: hasLocation ? "" : "現在地未使用のため、距離順ではない場合があります。",
+          _debug: {
+            effectiveDeepDive,
+            rawGoogle: googleSupplements.length,
+            rawYahoo: yahooSupplements.length,
+            rawSb: mergedSb.length,
+            sbTaken: sbTaken.length, gTaken: gTaken.length, yTaken: yTaken.length,
+            backfill: backfill.length,
+          },
         });
       }
     } catch (err) {
