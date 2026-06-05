@@ -848,6 +848,12 @@ export default function Home() {
             profileGender={profileGender}
             lang={lang}
             onStart={() => setStarted(true)}
+            onStartWithMood={(moodKey: string) => {
+              // 気分を選択済み状態にしてstep=2（同行者選択）から開始
+              setSelectedMood(moodKey);
+              setStep(2);
+              setStarted(true);
+            }}
             onShowSettings={() => setShowSettings(true)}
             onShowFeatured={() => setHomeView('featured')}
           />

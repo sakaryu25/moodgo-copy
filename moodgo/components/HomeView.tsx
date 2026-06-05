@@ -158,6 +158,7 @@ type Props = {
   profileGender: string;
   lang: 'ja' | 'en';
   onStart: () => void;
+  onStartWithMood: (moodKey: string) => void;  // 気分を選択済みで次の質問へ
   onShowSettings: () => void;
   onShowFeatured: () => void;
 };
@@ -177,7 +178,7 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return a;
 }
 
-export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured }: Props) {
+export default function HomeView({ lang, onStart, onStartWithMood, onShowSettings, onShowFeatured }: Props) {
   const insets = useSafeAreaInsets();
 
   // 一日おき（2日ごと）にシード更新 → ランダム順をリセット
@@ -346,8 +347,8 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                     style={[s.moodCardWrap, { width: cardWidth }]}
                     activeOpacity={0.80}
                     onPress={() => {
-                      Haptics.selectionAsync();
-                      onStart();
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onStartWithMood(m.key);
                     }}
                   >
                     <LinearGradient
