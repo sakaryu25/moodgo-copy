@@ -12,3 +12,6 @@ moodgo/dist/
 moodgo/expo-env.d.ts
 moodgo/.env
 .vercel
+
+# トークンを含むローカル専用スクリプト（コミット禁止）
+scripts/github-edit.sh
