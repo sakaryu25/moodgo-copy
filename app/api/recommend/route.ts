@@ -3717,32 +3717,48 @@ async function fetchGooglePlacesSupplement(
     // Nearby Search の shopping_mall タイプは商店街・市場も拾うため、
     // 「イオンモール」「アウトレット」「ショッピングモール」のキーワード検索で
     // 実際のモール施設を直接取得する。
+    // Nearby Search の shopping_mall タイプは公園・レジャー施設も拾うため、
+    // モール検索では Nearby Search を使わず Text Search 専用にする。
     const isMallSearch =
       deepDiveL1 === "大型ショッピングモール" || deepDiveL1 === "郊外の大型施設に行きたい";
     const MALL_TEXT_QUERIES = [
       "イオンモール",
       "アウトレットモール",
       "ショッピングモール",
+      "ららぽーと",
+      "三井アウトレットパーク",
     ];
 
+    // ── 大型ショッピングモールの結果名前フィルター ───────────────────────────
+    // Text Search 結果でもレジャー施設・公園が混入する場合があるため、
+    // 名前にモール系キーワードを含むものだけを通す。
+    const MALL_NAME_KEYWORDS = /モール|アウトレット|ショッピング|ビナウォーク|ららぽーと|イオン|SC|マークイズ|複合商業|ルミネ|ショッパーズ|ラゾーナ|港北|ポーターズ/i;
+    const isMallName = (name: string) => MALL_NAME_KEYWORDS.test(name);
+
     // ── 全中心点 Nearby Search ＋ モール系 Text Search を並列実行して union ────
+    // モール検索は Text Search 専用（Nearby Search はスキップ）
     const [nearbyResults, ...textResults] = await Promise.all([
-      Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM))),
+      isMallSearch
+        ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)  // モール検索時は Nearby 不要
+        : Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM))),
       ...(isMallSearch ? MALL_TEXT_QUERIES.map(q => searchTextQuery(q)) : []),
     ]);
 
     const seenIds = new Set<string>();
     const places: Array<Record<string, unknown>> = [];
 
-    // Text Search 結果を先に追加（モール名マッチなので精度高い → 優先表示）
+    // Text Search 結果を先に追加（モール名マッチなので精度高い）
     for (const arr of textResults) {
       for (const p of arr) {
         const pid = (p.id as string | undefined) ?? "";
         const key = pid || ((p.displayName as { text?: string } | undefined)?.text ?? "");
+        const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
+        // モール検索時は名前にモール系キーワードを含むものだけ通す
+        if (isMallSearch && !isMallName(name)) continue;
         if (key && !seenIds.has(key)) { seenIds.add(key); places.push(p); }
       }
     }
-    // Nearby Search 結果を後から追加（補完）
+    // Nearby Search 結果を後から追加（非モール検索時の補完）
     for (const arr of nearbyResults) {
       for (const p of arr) {
         const pid = (p.id as string | undefined) ?? "";
