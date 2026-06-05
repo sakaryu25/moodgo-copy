@@ -4140,7 +4140,11 @@ async function fetchYahooSupplement(
     "非日常の体験で盛り上がりたい": "0302001",
   };
 
-  const keyword = (DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット").slice(0, 60);
+  // Yahooはスペース連結の複数語を AND 検索として扱い 0件になる（例「個室居酒屋 居酒屋完全個室」→0件）。
+  // そのため単語ごとに分割し、1語ずつ個別検索して結果をマージする（要件②: 複数キーワードの順次検索）。
+  const keywordRaw = DIVE_KW[deepDiveL1] ?? MOOD_KW[mood] ?? "観光スポット";
+  const keywordList = keywordRaw.split(/[\s　]+/).map(s => s.trim().slice(0, 30)).filter(Boolean).slice(0, 3);
+  if (keywordList.length === 0) keywordList.push("観光スポット");
   const yahooGc  = DIVE_YAHOO_GC[deepDiveL1] ?? "";
 
   try {
@@ -4155,7 +4159,7 @@ async function fetchYahooSupplement(
     // 1地点で Yahoo ローカルサーチを実行するヘルパー（dist は最大20km）
     const searchYahooAt = async (
       cLat: number, cLng: number, distKm: number, start1: number,
-      gcCode?: string,
+      gcCode: string | undefined, query: string,
     ): Promise<Record<string, unknown>[]> => {
       const params = new URLSearchParams({
         appid: apiKey,
@@ -4167,7 +4171,7 @@ async function fetchYahooSupplement(
         // far bias 時は距離ソート（遠い順）。通常は score 順
         sort: wantFarBias ? "dist" : "score",
         output: "json",
-        query: keyword,
+        query,
         ...(gcCode ? { gc: gcCode } : {}),
       });
       try {
@@ -4206,13 +4210,20 @@ async function fetchYahooSupplement(
     const yahooGcList = yahooGc
       ? yahooGc.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
-    const rawFeatures = await Promise.all(
-      yahooGcList.length > 0
-        ? yahooGcList.flatMap(gcCode =>
-            centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1, gcCode))
-          )
-        : centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1)),
-    );
+    const gcOptions: (string | undefined)[] = yahooGcList.length > 0 ? yahooGcList : [undefined];
+    // キーワード×中心点×業種コードで検索タスクを構築。
+    //   ・複数キーワードは1語ずつ個別検索してマージ（Yahoo の AND 検索による0件化を回避）
+    //   ・API呼び出し抑制のため、リング中心点(遠距離設定)では先頭キーワードのみ使用
+    const tasks: Promise<Record<string, unknown>[]>[] = [];
+    centers.forEach((c, ci) => {
+      const kws = ci === 0 ? keywordList : keywordList.slice(0, 1);
+      for (const kw of kws) {
+        for (const gcCode of gcOptions) {
+          tasks.push(searchYahooAt(c.lat, c.lng, c.distKm, c.start1, gcCode, kw));
+        }
+      }
+    });
+    const rawFeatures = await Promise.all(tasks);
     const seenNames = new Set<string>();
     const features: Record<string, unknown>[] = [];
     for (const arr of rawFeatures) {
