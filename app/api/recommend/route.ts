@@ -4817,22 +4817,23 @@ export async function POST(request: Request) {
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
-          // Google Places 補足検索（最大5件、予算フィルター付き）
+          // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
+          //   1ソースが不足してもGoogle/Yahooの余りで15件まで補填できるよう余裕を持たせる
           hasLocation
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
-                answers.mood ?? "", sbNames, apiKey, 8,
+                answers.mood ?? "", sbNames, apiKey, 15,
                 answers.budget, effectiveDeepDive, minRadiusKm
               )
             : Promise.resolve([]),
-          // Yahoo!ローカルサーチ 補足検索（dedup後5件確保のため8件取得）
+          // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
           // ※ Google と並列実行するため Google 名の除外は行わず sbPool 名のみ除外
           //   最終マージ時にタイトル重複を除去する
           hasLocation
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 8, minRadiusKm, apiKey
+                sbNames, 15, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
