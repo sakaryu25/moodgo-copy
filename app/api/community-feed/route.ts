@@ -32,9 +32,19 @@ export async function GET(request: Request) {
     // address から都道府県を抽出
     const items = (data ?? []).map((s) => {
       const name = (s.google_place_name ?? s.spot_name ?? "").trim();
-      const addr = (s.address ?? "").replace(/^日本、〒[\d-]+\s*/, "").trim();
-      const prefMatch = addr.match(/^([^都道府県]+[都道府県])/);
-      const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
+      // "日本、" "〒XXX-XXXX" を順に除去してクリーンな住所に
+      const addr = (s.address ?? "")
+        .replace(/^日本[、,]\s*/, "")
+        .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
+        .trim();
+      // 都道府県名を正確に抽出（東京都/北海道/大阪府/京都府/○○県）
+      const prefMatch = addr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+      let prefecture = "";
+      if (prefMatch) {
+        prefecture = prefMatch[1]
+          .replace(/[都道府県]$/, "")     // 東京都→東京、神奈川県→神奈川
+          .replace(/^東京$/, "東京");
+      }
       return { ...s, spot_name: name, prefecture };
     });
 
