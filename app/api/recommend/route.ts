@@ -5149,6 +5149,9 @@ export async function POST(request: Request) {
           warning: hasLocation ? "" : "現在地未使用のため、距離順ではない場合があります。",
           _debug: {
             effectiveDeepDive,
+            usedRadiusKm: radiusKm,
+            minRadiusKm,
+            originLat: answers.originLat, originLng: answers.originLng,
             rawGoogle: googleSupplements.length,
             rawYahoo: yahooSupplements.length,
             rawSb: mergedSb.length,
