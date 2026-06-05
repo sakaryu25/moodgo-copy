@@ -1716,19 +1716,33 @@ function isLodgingName(name: string): boolean {
   return /(ホテル|旅館|HOTEL|Hotel|ゲストハウス|民宿|ペンション|オーベルジュ|リゾートイン)/.test(name);
 }
 
-/** 大型ショッピングモール検索時に除外すべき「商店街・市場・露店系」の名前パターン */
-const SHOPPING_STREET_PATTERN = /商店街|市場|朝市|屋台|露店|縁日|アーケード商店|仲見世/;
+/** deepDiveL1 が大型ショッピングモール系の検索か判定 */
+function isLargeMallSearch(deepDiveL1: string): boolean {
+  return deepDiveL1 === "大型ショッピングモール" || deepDiveL1 === "郊外の大型施設に行きたい";
+}
 
 /**
- * deepDiveL1 が大型ショッピングモール系のとき、商店街・市場など不一致な施設を除外する。
- * Google Places が shopping_mall タイプに商店街を含めてしまうのを防ぐ。
+ * 大型ショッピングモール／百貨店として認められる施設名のキーワード。
+ * 実在する大型モール・百貨店・ファッションビルのチェーン名/業態名を網羅。
+ */
+const LARGE_MALL_NAME_KEYWORDS =
+  /モール|アウトレット|ショッピングセンター|ショッピングパーク|ショッピングプラザ|ショッピングタウン|ショッピングモール|ビナウォーク|ららぽーと|ラゾーナ|マークイズ|マルイ|丸井|MARUI|0101|パルコ|PARCO|ルミネ|LUMINE|ルクア|アトレ|エキュート|セレオ|グランデュオ|テラスモール|グランベリー|コレットマーレ|アリオ|ゆめタウン|イオン|ヴィーナスフォート|アクアシティ|ダイバーシティ|ソラマチ|ヒカリエ|高島屋|タカシマヤ|そごう|西武|東急百貨店|小田急百貨店|京王百貨店|三越|伊勢丹|大丸|松坂屋|百貨店|デパート|アウトレットパーク|プレミアム・アウトレット|プレミアムアウトレット|トレッサ|ノースポート|モザイク|MOSAIC|クイーンズスクエア|ランドマークプラザ|ワールドポーターズ|赤レンガ|キュービックプラザ|ジョイナス|ポルタ|モアーズ|MORE|ビブレ|VIVRE|オーロラモール|セレオ|グランツリー|ラスカ|ペリエ|シャル|セルバ|フォレオ|イーアス|プレナ|ピオレ|なんばパークス|ヒルズ|ガーデン|スクエア|プラザ|タウン|アネックス|EXPOCITY|エキスポシティ|キャナルシティ|マリノア|リバーウォーク|チャチャタウン/i;
+
+/** 施設名が大型モール／百貨店として妥当か */
+function isLargeMallName(name: string): boolean {
+  return LARGE_MALL_NAME_KEYWORDS.test(name);
+}
+
+/**
+ * deepDiveL1 が大型ショッピングモール系のとき、モール／百貨店として妥当でない施設を除外する。
+ * Google Places の shopping_mall タイプや Yahoo のジャンル検索は、
+ * 商店街・市場・公園・レジャー施設・観光地まで拾ってしまうため、
+ * 名前にモール系キーワードを含まないものは全て不一致として除外する。
  */
 function isShoppingMallMismatch(name: string, deepDiveL1: string): boolean {
-  const isMallSearch =
-    deepDiveL1 === "大型ショッピングモール" ||
-    deepDiveL1 === "郊外の大型施設に行きたい";
-  if (!isMallSearch) return false;
-  return SHOPPING_STREET_PATTERN.test(name);
+  if (!isLargeMallSearch(deepDiveL1)) return false;
+  // モール／百貨店として妥当な名前でなければ除外
+  return !isLargeMallName(name);
 }
 
 async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherContext> {
@@ -3719,8 +3733,7 @@ async function fetchGooglePlacesSupplement(
     // 実際のモール施設を直接取得する。
     // Nearby Search の shopping_mall タイプは公園・レジャー施設も拾うため、
     // モール検索では Nearby Search を使わず Text Search 専用にする。
-    const isMallSearch =
-      deepDiveL1 === "大型ショッピングモール" || deepDiveL1 === "郊外の大型施設に行きたい";
+    const isMallSearch = isLargeMallSearch(deepDiveL1);
     const MALL_TEXT_QUERIES = [
       "イオンモール",
       "アウトレットモール",
@@ -3731,9 +3744,8 @@ async function fetchGooglePlacesSupplement(
 
     // ── 大型ショッピングモールの結果名前フィルター ───────────────────────────
     // Text Search 結果でもレジャー施設・公園が混入する場合があるため、
-    // 名前にモール系キーワードを含むものだけを通す。
-    const MALL_NAME_KEYWORDS = /モール|アウトレット|ショッピング|ビナウォーク|ららぽーと|イオン|SC|マークイズ|複合商業|ルミネ|ショッパーズ|ラゾーナ|港北|ポーターズ/i;
-    const isMallName = (name: string) => MALL_NAME_KEYWORDS.test(name);
+    // 名前にモール系キーワードを含むものだけを通す（共通関数を使用）。
+    const isMallName = (name: string) => isLargeMallName(name);
 
     // ── 全中心点 Nearby Search ＋ モール系 Text Search を並列実行して union ────
     // モール検索は Text Search 専用（Nearby Search はスキップ）
@@ -4962,6 +4974,14 @@ export async function POST(request: Request) {
         const hasApiResults = googleSupplements.length > 0 || yahooSupplements.length > 0;
         const mergedSb = (isApiOnlyDeepDive && hasApiResults) ? [] : supabaseRecs;
 
+        // ── 大型ショッピングモール検索の最終セーフティフィルター ─────────────────
+        // 全ソース（Supabase/Google/Yahoo）横断で、モール／百貨店として妥当でない
+        // スポット（公園・レジャー施設・商店街・観光地）を最終的に除外する。
+        const applyMallFilter = <T extends { title?: string }>(arr: T[]): T[] =>
+          isLargeMallSearch(effectiveDeepDive)
+            ? arr.filter(r => isLargeMallName(r.title ?? ""))
+            : arr;
+
         let recommendations: typeof supabaseRecs;
         if (minRadiusKm > 0) {
           // 遠端バイアス有効（例：「どこでも行きたい」「ちょっと遠くてもOK」）:
@@ -4970,7 +4990,7 @@ export async function POST(request: Request) {
           //   同距離帯はランダムノイズで毎回少し変化させる。距離不明(=0)は末尾へ。
           //   ※ Google(最大50km)・Yahoo(最大20km)は API 仕様上それ以上遠くを返せないため、
           //     選択距離に届くスポットが無い場合は「利用可能な中で最も遠い」候補が先頭になる。
-          recommendations = [...mergedSb, ...googleSupplements, ...yahooSupplements]
+          recommendations = applyMallFilter([...mergedSb, ...googleSupplements, ...yahooSupplements])
             .map(r => ({
               r,
               // 数値の distanceKm を優先使用。無い場合のみ表示文字列からパース（後方互換フォールバック）
@@ -4982,11 +5002,11 @@ export async function POST(request: Request) {
             .map(x => x.r) as typeof supabaseRecs;
         } else {
           // 遠端バイアスなし(すぐそこ・近場): 3ソースをまとめてランダムに混ぜる
-          recommendations = shuffleArr([
+          recommendations = shuffleArr(applyMallFilter([
             ...mergedSb,
             ...googleSupplements,
             ...yahooSupplements,
-          ]) as typeof supabaseRecs;
+          ])) as typeof supabaseRecs;
         }
 
         // ── 重複排除：表記ゆれ（全角半角・空白・記号）＋座標近接に対応 ─────────────
