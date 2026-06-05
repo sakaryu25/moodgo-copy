@@ -33,8 +33,26 @@ import {
   BLOCKED_PLACES_KEY, PROFILE_KEY,
   loadJSON, saveJSON,
 } from '@/lib/storage';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_BASE } from '@/lib/api';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+
+// 旧形式の Google Maps Photos URL (maps.googleapis.com/maps/api/place/photo) を
+// photo-proxy 経由に変換。すでにproxy経由 or 空の場合はそのまま返す。
+function fixPhotoUrl(url: string | undefined): string {
+  if (!url) return '';
+  if (url.includes('/api/photo-proxy')) return url;  // すでにproxy経由
+  if (url.includes('maps.googleapis.com') || url.startsWith('http')) {
+    return `${API_BASE}/api/photo-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+function fixRec(rec: Recommendation): Recommendation {
+  return {
+    ...rec,
+    photoUrl:  fixPhotoUrl(rec.photoUrl),
+    photoUrls: (rec.photoUrls ?? (rec.photoUrl ? [rec.photoUrl] : [])).map(fixPhotoUrl),
+  };
+}
 import { router } from 'expo-router';
 
 import AppBackground    from '@/components/AppBackground';
@@ -162,7 +180,12 @@ export default function Home() {
       const blocked = await loadJSON<string[]>(BLOCKED_PLACES_KEY, []);
       const profile = await loadJSON<{ age?: string; gender?: string; prefecture?: string }>(PROFILE_KEY, {});
       setFavorites(faves);
-      setHistory(hist);
+      // 履歴内の旧形式photoURLをphoto-proxy経由に変換（保存時の旧URL対策）
+      const fixedHist = hist.map(item => ({
+        ...item,
+        recommendations: (item.recommendations ?? []).map(fixRec),
+      }));
+      setHistory(fixedHist);
       setPastFeedback(feed);
       setBlockedPlaces(blocked);
       if (profile.age)        setProfileAge(profile.age);
