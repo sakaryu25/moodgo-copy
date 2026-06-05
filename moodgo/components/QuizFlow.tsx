@@ -903,18 +903,46 @@ export default function QuizFlow(props: Props) {
     onBack();
   };
 
-  // ── 右スワイプで前ページへ戻る ─────────────────────────────────────────────
+  // ── 右スワイプで前ページへ戻る（滑らかアニメーション付き） ─────────────────
   const _swipeBackRef = useRef(handleBack);
-  _swipeBackRef.current = handleBack; // 毎レンダーで最新クロージャーに更新
+  _swipeBackRef.current = handleBack;
+  const swipeDragX = useRef(new Animated.Value(0)).current;
 
   const swipePan = useRef(PanResponder.create({
     // 明確な右方向スワイプのみ受け取る（縦スクロール・スライダーとの競合を避ける）
     onMoveShouldSetPanResponder: (_, g) =>
       g.dx > 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2.5,
+    // ジェスチャー開始: 既存アニメを止めてドラッグ量を即反映
+    onPanResponderGrant: (_, g) => {
+      swipeDragX.stopAnimation();
+      swipeDragX.setValue(Math.max(0, g.dx) * 0.35);
+    },
+    // ドラッグ中: 実移動量の35%を画面に追従させて「重さ」を演出
+    onPanResponderMove: (_, g) => {
+      swipeDragX.setValue(Math.max(0, g.dx) * 0.35);
+    },
+    // 指を離した時: 閾値超えなら即リセット＋戻る、未満なら弾けて戻る
     onPanResponderRelease: (_, g) => {
       if (g.dx > 80 && Math.abs(g.dy) < 120) {
+        swipeDragX.setValue(0);          // ステップ遷移アニメに任せる
         _swipeBackRef.current();
+      } else {
+        Animated.spring(swipeDragX, {
+          toValue: 0,
+          tension: 180,
+          friction: 18,
+          useNativeDriver: true,
+        }).start();
       }
+    },
+    // 他の要素にジェスチャーを奪われた場合も元に戻す
+    onPanResponderTerminate: () => {
+      Animated.spring(swipeDragX, {
+        toValue: 0,
+        tension: 180,
+        friction: 18,
+        useNativeDriver: true,
+      }).start();
     },
   })).current;
 
@@ -1162,63 +1190,66 @@ export default function QuizFlow(props: Props) {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} {...swipePan.panHandlers}>
-      {/* Nav row */}
-      <View style={s.topBar}>
-        <TouchableOpacity onPress={handleBack} style={s.backCircle} activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
-        </TouchableOpacity>
-        <View style={s.dots}>
-          {STEP_SEQ.map((_, i) => {
-            const done = i < dotIdx; const cur = i === dotIdx;
-            return (
-              <View key={i} style={[s.dot, cur && s.dotCur]}>
-                {(done || cur) && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
+      {/* スワイプ追従ラッパー — 全コンテンツをまとめてスライド */}
+      <Animated.View style={[s.flex, { transform: [{ translateX: swipeDragX }] }]}>
+        {/* Nav row */}
+        <View style={s.topBar}>
+          <TouchableOpacity onPress={handleBack} style={s.backCircle} activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
+          </TouchableOpacity>
+          <View style={s.dots}>
+            {STEP_SEQ.map((_, i) => {
+              const done = i < dotIdx; const cur = i === dotIdx;
+              return (
+                <View key={i} style={[s.dot, cur && s.dotCur]}>
+                  {(done || cur) && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Animated title + scroll */}
+        <Animated.View style={[s.flex, { opacity: stepOp, transform: [{ translateX: stepSlX }] }]}>
+          <View style={s.titleBlock}>
+            <Text style={s.title}>{meta.title}</Text>
+            <Text style={s.sub}>{meta.sub}</Text>
+            {step === 4 && (selectedArea || locationDisplayArea) ? (
+              <View style={s.areaTag}>
+                <MapPin size={12} color="#7C3AED" strokeWidth={2} />
+                <Text style={s.areaTagTxt}>{selectedArea || locationDisplayArea} から検索</Text>
               </View>
-            );
-          })}
-        </View>
-      </View>
+            ) : null}
+          </View>
+          <ScrollView
+            style={s.flex}
+            contentContainerStyle={s.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={scrollEnabled}
+            onLayout={(e) => {
+              scrollContainerH.current = e.nativeEvent.layout.height;
+              checkScrollable();
+            }}
+            onContentSizeChange={(_, h) => {
+              scrollContentH.current = h;
+              checkScrollable();
+            }}
+          >
+            {renderContent()}
+          </ScrollView>
+        </Animated.View>
 
-      {/* Animated title + scroll */}
-      <Animated.View style={[s.flex, { opacity: stepOp, transform: [{ translateX: stepSlX }] }]}>
-        <View style={s.titleBlock}>
-          <Text style={s.title}>{meta.title}</Text>
-          <Text style={s.sub}>{meta.sub}</Text>
-          {step === 4 && (selectedArea || locationDisplayArea) ? (
-            <View style={s.areaTag}>
-              <MapPin size={12} color="#7C3AED" strokeWidth={2} />
-              <Text style={s.areaTagTxt}>{selectedArea || locationDisplayArea} から検索</Text>
-            </View>
-          ) : null}
+        {/* Fixed Next button */}
+        <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          <TouchableOpacity onPress={handleNext} activeOpacity={0.88} style={s.nextWrap}>
+            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.nextBtn}>
+              <Text style={s.nextTxt}>{nextLabel}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
-        <ScrollView
-          style={s.flex}
-          contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEnabled={scrollEnabled}
-          onLayout={(e) => {
-            scrollContainerH.current = e.nativeEvent.layout.height;
-            checkScrollable();
-          }}
-          onContentSizeChange={(_, h) => {
-            scrollContentH.current = h;
-            checkScrollable();
-          }}
-        >
-          {renderContent()}
-        </ScrollView>
       </Animated.View>
-
-      {/* Fixed Next button */}
-      <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <TouchableOpacity onPress={handleNext} activeOpacity={0.88} style={s.nextWrap}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.nextBtn}>
-            <Text style={s.nextTxt}>{nextLabel}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 }
