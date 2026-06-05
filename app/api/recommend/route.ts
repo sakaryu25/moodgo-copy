@@ -5075,6 +5075,32 @@ export async function POST(request: Request) {
           ...sbTaken, ...gTaken, ...yTaken, ...backfill,
         ];
 
+        // ── 最終セーフティ補填: それでも15件未満なら広域・広カテゴリで追加取得 ──────
+        // 「居酒屋」等の狭いカテゴリは指定半径内に該当スポットが15件存在しない場合がある。
+        // その時のみ、深掘りを外して気分ベースの広いカテゴリ＋拡大半径で追加検索し15件まで補う。
+        //   ・お腹すいた: MOOD_TYPES=["restaurant"] / MOOD_KW="レストラン グルメ" のため飲食店のまま維持
+        //   ・拡大半径は Google 50km / Yahoo 20km の各API上限内にクランプされる
+        if (recommendations.length < 15 && hasLocation) {
+          const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
+          const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
+          const [gWide, yWide] = await Promise.all([
+            fetchGooglePlacesSupplement(
+              answers.originLat!, answers.originLng!, wideRadiusKm,
+              answers.mood ?? "", excludeNames, apiKey, 20,
+              answers.budget, "", minRadiusKm,   // deepDive="" → 気分ベースの広いtypes
+            ),
+            fetchYahooSupplement(
+              answers.originLat!, answers.originLng!, wideRadiusKm,
+              answers.mood ?? "", "",            // deepDive="" → 気分ベースの広いkeyword
+              excludeNames, 20, minRadiusKm, apiKey,
+            ),
+          ]);
+          const widePool = sortOrShuffle(applyMallFilter([...gWide, ...yWide] as Rec[]));
+          const stillNeed = 15 - recommendations.length;
+          const { taken: topUp } = pickUnique(widePool, stillNeed, seen);
+          recommendations = [...recommendations, ...topUp];
+        }
+
         return json({
           recommendations,
           source: "supabase",
