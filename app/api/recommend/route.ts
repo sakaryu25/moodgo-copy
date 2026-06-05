@@ -3756,9 +3756,21 @@ async function fetchGooglePlacesSupplement(
     //   タイプ検索(restaurant)だけだと人気のラーメン店等に偏り、カテゴリがずれる問題を補正する。
     // Google Text Search 用クエリ: L2 が具体的なカテゴリ名なら L2 を優先（例「うどん・そば」「ハンバーグ」）。
     // L2 が未指定 or こだわらない の場合は L1（例「居酒屋」「和食」）を使用。
+    // DIVE_KW の先頭キーワードを優先して使う（例「うどん・そば」→「うどんそば屋」で高精度検索）。
+    const DIVE_KW_FOR_SEARCH: Record<string, string> = {
+      "うどん・そば": "うどんそば屋", "懐石料理": "懐石料理",
+      "ハンバーグ": "ハンバーグ専門店", "オムライス": "オムライス",
+      "ステーキ": "ステーキ", "レトロ洋食": "昔ながら洋食屋",
+      "個室居酒屋": "個室居酒屋", "大衆酒場": "大衆居酒屋",
+      "こってりラーメン": "家系ラーメン", "あっさりラーメン": "塩ラーメン",
+      "味噌ラーメン": "味噌ラーメン", "つけ麺・まぜそば": "つけ麺",
+      "フルーツ": "フルーツカフェ", "喫茶店": "喫茶店", "流行りカフェ": "韓国カフェ",
+      "焼肉食べ放題": "焼肉食べ放題", "高級焼肉": "高級焼肉",
+    };
     const dvTextBase = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : deepDiveL1;
+    const dvTextKey = DIVE_KW_FOR_SEARCH[dvTextBase] ?? dvTextBase;
     const dvTextQueries: string[] =
-      (!isMallSearch && dvTextBase && dvTextBase !== "こだわらない") ? [dvTextBase] : [];
+      (!isMallSearch && dvTextKey && dvTextKey !== "こだわらない") ? [dvTextKey] : [];
     const [nearbyResults, ...textResults] = await Promise.all([
       isMallSearch
         ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)  // モール検索時は Nearby 不要
