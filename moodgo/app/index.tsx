@@ -350,7 +350,8 @@ export default function Home() {
         budgetMin,
         freeWord:        isAiChat ? aiChatText! : freeWord,
         aiChat:          isAiChat || undefined,
-        radiusKm: radiusOverride ?? radiusKm,
+        // AI相談は指示が無いため8km圏内で探す
+        radiusKm: radiusOverride ?? (isAiChat ? 8 : radiusKm),
         areaMode,
         distanceFeeling,
         originLat,
@@ -970,13 +971,10 @@ export default function Home() {
         onClearBlocked={() => setBlockedPlaces([])}
       />
 
-      {/* AI相談 入力画面（最前面オーバーレイ）*/}
+      {/* AI相談 入力画面（最前面オーバーレイ・TabBarより上に重ねて下部バーを隠す）*/}
       {aiChatOpen && (
-        <View style={StyleSheet.absoluteFill}>
+        <View style={[StyleSheet.absoluteFill, { zIndex: 300, elevation: 300 }]}>
           <AiChatInput
-            locating={isLocating}
-            hasLocation={aiHasLocation}
-            locationLabel={locationDisplayArea}
             onBack={() => setAiChatOpen(false)}
             onSubmit={handleAiSubmit}
           />

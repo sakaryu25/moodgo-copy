@@ -8,7 +8,7 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, MapPin, Send } from 'lucide-react-native';
+import { ChevronLeft, Send } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -51,17 +51,13 @@ function AiBubbleIcon({ size = 44 }: { size?: number }) {
 }
 
 type Props = {
-  /** 位置情報の状態 */
-  locating: boolean;
-  hasLocation: boolean;
-  locationLabel?: string;
   /** 戻る */
   onBack: () => void;
   /** 送信（自由ワード） */
   onSubmit: (text: string) => void;
 };
 
-export default function AiChatInput({ locating, hasLocation, locationLabel, onBack, onSubmit }: Props) {
+export default function AiChatInput({ onBack, onSubmit }: Props) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const canSubmit = text.trim().length > 0;
@@ -97,14 +93,6 @@ export default function AiChatInput({ locating, hasLocation, locationLabel, onBa
             <Text style={s.heroTitle}>どんな場所を探していますか？</Text>
             <Text style={s.heroSub}>
               気分やシーンを自由に入力するだけ。{'\n'}AIがあなたにぴったりの場所を提案します。
-            </Text>
-          </View>
-
-          {/* 位置情報ステータス */}
-          <View style={[s.locChip, hasLocation && s.locChipDone]}>
-            <MapPin size={15} color={hasLocation ? '#059669' : '#A78BFA'} strokeWidth={2.2} />
-            <Text style={[s.locChipText, hasLocation && { color: '#059669' }]}>
-              {locating ? '現在地を取得中…' : hasLocation ? `現在地を取得済み${locationLabel ? `（${locationLabel}）` : ''}` : '現在地は取得できませんでした'}
             </Text>
           </View>
 
@@ -174,15 +162,6 @@ const s = StyleSheet.create({
   },
   heroTitle: { fontSize: 20, fontWeight: '900', color: '#1A0A2E', textAlign: 'center' },
   heroSub: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 20 },
-
-  locChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: '#EDE9FE', borderRadius: 999,
-    paddingHorizontal: 12, paddingVertical: 7, marginBottom: 14,
-  },
-  locChipDone: { backgroundColor: '#D1FAE5' },
-  locChipText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
 
   input: {
     minHeight: 110, borderRadius: 16, backgroundColor: '#fff',
