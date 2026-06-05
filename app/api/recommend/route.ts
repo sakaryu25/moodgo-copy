@@ -1700,6 +1700,18 @@ function buildPhotoProxyUrl(photoName: string): string {
   return `${PHOTO_PROXY_BASE}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
 }
 
+// 任意の画像URLをphoto-proxy経由のURLに変換する。
+// Supabase DBに保存されている旧形式（maps.googleapis.com/maps/api/place/photo?photo_reference=...）や
+// 直接CDN URL（lh3.googleusercontent.com等）は、Expoアプリが直接リクエストするとAPIキー不足/
+// CORS/Referer制限で表示できない場合があるため、すべてphoto-proxy経由に統一する。
+function wrapWithPhotoProxy(url: string): string {
+  if (!url) return "";
+  // すでにphoto-proxy経由なら変換不要
+  if (url.includes("/api/photo-proxy")) return url;
+  // 外部URLはプロキシ経由に変換
+  return `${PHOTO_PROXY_BASE}/api/photo-proxy?url=${encodeURIComponent(url)}`;
+}
+
 // ─── 宿泊施設（日帰り不可）の除外 ─────────────────────────────────────────────
 // ホテル・旅館など宿泊メインの施設は「日帰りで遊びに行く」用途に合わないため推薦から除外。
 // Google Places の primaryType で判定（hotel-restaurant のように primaryType が
@@ -4976,12 +4988,13 @@ export async function POST(request: Request) {
           return {
             title: r.name,
             address: r.address,
-            photoUrl: r.imageUrl || (sbPhotoMap.get(r.name) ?? [])[0] || "",
-            photoUrls: r.imageUrl
-              ? r.photoUrls
+            photoUrl: wrapWithPhotoProxy(r.imageUrl || (sbPhotoMap.get(r.name) ?? [])[0] || ""),
+            photoUrls: (r.imageUrl
+              ? (r.photoUrls ?? [])
               : (sbPhotoMap.get(r.name) ?? []).length > 0
                 ? sbPhotoMap.get(r.name)!
-                : [],
+                : []
+            ).map(wrapWithPhotoProxy),
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,
@@ -5253,7 +5266,7 @@ export async function POST(request: Request) {
               const name = s.google_place_name ?? s.spot_name;
               const adkm = (hasLocation && typeof s.lat === "number" && typeof s.lng === "number")
                 ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000 : undefined;
-              let imgs = (s.image_urls ?? []).filter(Boolean);
+              let imgs = (s.image_urls ?? []).filter(Boolean).map(wrapWithPhotoProxy);
               if (imgs.length === 0 && apiKey) {
                 try {
                   const pr = await fetch("https://places.googleapis.com/v1/places:searchText", {
