@@ -5093,15 +5093,24 @@ export async function POST(request: Request) {
           const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
           const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
           const isFoodMoodTopUp = (answers.mood ?? "") === "お腹すいた";
-          const [gWide, yWide] = await Promise.all([
+          const [gWide, gCafe, yWide] = await Promise.all([
             // Google: deepDive="" → 気分ベースの広いtypes（お腹すいたは["restaurant"]＝飲食店のみ）
             fetchGooglePlacesSupplement(
               answers.originLat!, answers.originLng!, wideRadiusKm,
               answers.mood ?? "", excludeNames, apiKey, 20,
               answers.budget, "", minRadiusKm,
             ),
+            // お腹すいた時はカフェ型(cafe/dessert_shop)も併用し、フルーツ等カフェ系ジャンルの
+            //   不足を埋める（restaurant型だけだとカフェが拾えず15件に届かないため）
+            isFoodMoodTopUp
+              ? fetchGooglePlacesSupplement(
+                  answers.originLat!, answers.originLng!, wideRadiusKm,
+                  answers.mood ?? "", excludeNames, apiKey, 20,
+                  answers.budget, "カフェスイーツ", minRadiusKm,
+                )
+              : Promise.resolve([] as Record<string, unknown>[]),
             // Yahoo: お腹すいた時は広域キーワード検索が温泉/スパ等の非飲食店を拾うため除外。
-            //   Google の restaurant 型検索のみで飲食店を維持しつつ15件を確保する（要件③厳守）。
+            //   Google の飲食店型検索のみで飲食店を維持しつつ15件を確保する（要件③厳守）。
             isFoodMoodTopUp
               ? Promise.resolve([] as Record<string, unknown>[])
               : fetchYahooSupplement(
@@ -5110,7 +5119,7 @@ export async function POST(request: Request) {
                   excludeNames, 20, minRadiusKm, apiKey,
                 ),
           ]);
-          const widePool = sortOrShuffle(foodSanitize(applyMallFilter([...gWide, ...yWide] as Rec[])));
+          const widePool = sortOrShuffle(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[])));
           const stillNeed = 15 - recommendations.length;
           const { taken: topUp } = pickUnique(widePool, stillNeed, seen);
           recommendations = [...recommendations, ...topUp];
