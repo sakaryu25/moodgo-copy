@@ -5096,10 +5096,16 @@ export async function POST(request: Request) {
         const foodSanitize = <T extends { title?: string }>(arr: T[]): T[] =>
           isFoodMoodReq ? arr.filter(r => !NON_FOOD_NAME_RE.test(r.title ?? "")) : arr;
 
-        // 各ソースにモールフィルター＋お腹すいた飲食店フィルター適用 → ソート
-        const sbSorted = sortOrShuffle(foodSanitize(applyMallFilter(mergedSb)));
-        const gSorted  = sortOrShuffle(foodSanitize(applyMallFilter(googleSupplements) as Rec[]));
-        const ySorted  = sortOrShuffle(foodSanitize(applyMallFilter(yahooSupplements) as Rec[]));
+        // 既出スポット除外（再検索時の重複防止）: showUnseenOnly のとき seenPlaces のタイトルを全ソースから除外。
+        // 従来は Supabase 結果のみに適用され、Google/Yahoo/admin が再検索で同じ場所を返していた（「同じ場所が提案される」の主因）。
+        const seenLower = new Set(seenPlaces.map(s => s.toLowerCase()));
+        const seenFilter = <T extends { title?: string }>(arr: T[]): T[] =>
+          showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
+
+        // 各ソースにモールフィルター＋お腹すいた飲食店フィルター＋既出除外を適用 → ソート
+        const sbSorted = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(mergedSb))));
+        const gSorted  = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[])));
+        const ySorted  = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[])));
 
         // 各ソースから最大5件を重複排除しながら取得
         const seen: DedupeKey[] = [];
@@ -5154,7 +5160,7 @@ export async function POST(request: Request) {
                   excludeNames, 20, minRadiusKm, apiKey,
                 ),
           ]);
-          const widePool = sortOrShuffle(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[])));
+          const widePool = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[]))));
           const stillNeed = 15 - recommendations.length;
           const { taken: topUp } = pickUnique(widePool, stillNeed, seen);
           recommendations = [...recommendations, ...topUp];
@@ -5176,6 +5182,8 @@ export async function POST(request: Request) {
               const tags = new Set(s.auto_tags ?? []);
               if (!moodTag || !tags.has(moodTag)) return null;                          // ① 気分タグ一致(必須)
               if (subTags.length > 0 && !subTags.some(t => tags.has(t))) return null;   // ② サブタグ一致
+              // 既出スポット除外（再検索時の重複防止）
+              if (showUnseenOnly && seenLower.has((s.google_place_name ?? s.spot_name).toLowerCase())) return null;
               const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
               let dkm = Infinity;
               if (hasLocation) {
