@@ -184,10 +184,17 @@ const s = StyleSheet.create({
     zIndex: 200,
     overflow: 'hidden',
     backgroundColor: COLORS.tabBg,
+    // 要件③: コンテンツエリアとの区切り（上方向への薄いシャドウ）
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 12,
   },
   topBorder: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
+    // 要件③: 1px ボーダーを明確化（tabBorder を 0.10 に濃くした）
     height: 1,
     backgroundColor: COLORS.tabBorder,
   },

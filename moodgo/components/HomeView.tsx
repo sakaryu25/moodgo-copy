@@ -266,6 +266,8 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
 
           {/* ── START button ── */}
           <Animated.View style={[s.startWrap, { transform: [{ scale: startScale }] }]}>
+            {/* 要件①: グロー影レイヤー（ボタン下に同系色のぼかし）*/}
+            <View style={s.startGlow} />
             <TouchableOpacity
               onPress={handleStart}
               onPressIn={pressIn}
@@ -430,25 +432,49 @@ const s = StyleSheet.create({
     fontSize: 28, fontWeight: '900', color: '#1A0A2E',
     textAlign: 'center', lineHeight: 38, letterSpacing: -0.6,
   },
+  // 要件④: 読みやすさ・信頼感向上 → fontSize 13→15, color #888→#555
   heroSub: {
-    fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 20,
+    fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, fontWeight: '500',
   },
 
   // START
+  // 要件①②: ボタン外側に同系色グロー用ラッパー（marginなし＝scrollContentのpaddingに統一）
   startWrap: { marginBottom: 24 },
+  // グロー効果レイヤー（ボタンの後ろに敷く疑似グラデーション影）
+  startGlow: {
+    position: 'absolute', bottom: -14, left: 20, right: 20, height: 40,
+    borderRadius: 99,
+    backgroundColor: 'transparent',
+    // iOS: ピンク〜パープル系の淡いシャドウ（グラデーションと同系色・不透明度低め）
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.45,
+    shadowRadius: 22,
+    // Android: elevation で代用
+    elevation: 0,
+  },
   startTouchable: {
     borderRadius: 99, overflow: 'hidden',
-    shadowColor: PURPLE, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.38, shadowRadius: 20, elevation: 10,
+    // iOS: ボタン自体は軽いシャドウ（グロー層と組み合わせで奥行き感）
+    shadowColor: PINK,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 12,  // Android
   },
   startBtn: { height: 60, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   startText: { fontSize: 19, fontWeight: '900', color: '#fff', letterSpacing: 2 },
 
   // Featured
+  // 要件①②: 背景から薄く浮かせる。marginは scrollContent の paddingHorizontal に統一
   featuredCard: {
     borderRadius: 20, overflow: 'hidden', marginBottom: 28,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16, shadowRadius: 16, elevation: 8,
+    // 要件①: 薄くふわっと浮く shadow（backgroundと同化しない程度）
+    shadowColor: '#1A0A2E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    elevation: 5,
   },
   featuredBg: { width: '100%', height: 200 },
   featuredOverlay: {
