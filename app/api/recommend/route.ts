@@ -4016,9 +4016,9 @@ async function fetchYahooSupplement(
     "海沿いを爽快に走りたい":       "0413",
     "綺麗な景色や夜景を見に行きたい": "0304",
     "道の駅でご当地グルメ":         "302506",
-    "郊外の大型施設に行きたい":     "0203003",
+    "郊外の大型施設に行きたい":     "0203003,0203004",
     // ショッピング
-    "大型ショッピングモール":       "0203003",
+    "大型ショッピングモール":       "0203003,0203004",
     // 集中
     "静かな専用スペースで集中したい": "0414002",
     // 運動 v2
@@ -4052,6 +4052,7 @@ async function fetchYahooSupplement(
     // 1地点で Yahoo ローカルサーチを実行するヘルパー（dist は最大20km）
     const searchYahooAt = async (
       cLat: number, cLng: number, distKm: number, start1: number,
+      gcCode?: string,
     ): Promise<Record<string, unknown>[]> => {
       const params = new URLSearchParams({
         appid: apiKey,
@@ -4064,7 +4065,7 @@ async function fetchYahooSupplement(
         sort: wantFarBias ? "dist" : "score",
         output: "json",
         query: keyword,
-        ...(yahooGc ? { gc: yahooGc } : {}),
+        ...(gcCode ? { gc: gcCode } : {}),
       });
       try {
         const r = await fetch(
@@ -4098,8 +4099,16 @@ async function fetchYahooSupplement(
     }
 
     // ── 全中心点を並列検索して union（施設名で重複排除）────────────────────────
+    // yahooGc が "0203003,0203004" のように複数コードの場合は各gcコードで検索してマージ
+    const yahooGcList = yahooGc
+      ? yahooGc.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
     const rawFeatures = await Promise.all(
-      centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1)),
+      yahooGcList.length > 0
+        ? yahooGcList.flatMap(gcCode =>
+            centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1, gcCode))
+          )
+        : centers.map(c => searchYahooAt(c.lat, c.lng, c.distKm, c.start1)),
     );
     const seenNames = new Set<string>();
     const features: Record<string, unknown>[] = [];
