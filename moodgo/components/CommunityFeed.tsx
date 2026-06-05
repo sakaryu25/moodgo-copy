@@ -9,6 +9,7 @@
 
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import {
   Activity, Car, ChevronDown, Cloud, Flame, Leaf, Map, MapPin,
   MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
@@ -21,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -130,6 +132,12 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
   );
 }
 
+// カードタップ → 詳細ページへ
+function openSpot(id: string) {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  router.push({ pathname: '/community-spot', params: { id } });
+}
+
 // ─── PhotoCard ───────────────────────────────────────────────────────────────
 function PhotoCard({ item }: { item: FeedItem }) {
   const imgUri = item.image_urls?.[0];
@@ -137,7 +145,7 @@ function PhotoCard({ item }: { item: FeedItem }) {
   const { Icon, color } = tagIcon(item.auto_tags);
 
   return (
-    <View style={s.card}>
+    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item.id)}>
       {/* Image area */}
       <View style={s.imgWrap}>
         {imgUri ? (
@@ -172,7 +180,7 @@ function PhotoCard({ item }: { item: FeedItem }) {
         <StatusRow />
         <UserRow item={item} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -183,7 +191,7 @@ function TextCard({ item }: { item: FeedItem }) {
   const bg = avatarBg(item.spot_name);
 
   return (
-    <View style={s.card}>
+    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item.id)}>
       <View style={s.cardBody}>
         {/* ヘッダー: サムネ + スポット名 */}
         <View style={s.textCardHeader}>
@@ -208,7 +216,7 @@ function TextCard({ item }: { item: FeedItem }) {
         )}
         <UserRow item={item} />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
