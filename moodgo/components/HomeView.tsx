@@ -16,7 +16,7 @@ import {
   Leaf, MapPin, Moon, Plane, Settings, Shuffle,
   Sparkles, UtensilsCrossed, CloudRain,
 } from 'lucide-react-native';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -162,8 +162,30 @@ type Props = {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+// ── 一日おきのシード（今日の日付を2で割った商）でシャッフル ──────────────────
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const a = [...arr];
+  // シンプルな線形合同法乱数
+  let s = seed;
+  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0x100000000; };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured }: Props) {
   const insets = useSafeAreaInsets();
+
+  // 一日おき（2日ごと）にシード更新 → ランダム順をリセット
+  const orderedMoods = useMemo(() => {
+    const today = new Date();
+    // 2日ごとにシードを変える（Math.floor(通算日 / 2)）
+    const daysSinceEpoch = Math.floor(today.getTime() / 86400000);
+    const seed = Math.floor(daysSinceEpoch / 2);
+    return seededShuffle(MOOD_CARDS, seed);
+  }, []);
 
   // START ボタンのプレスアニメ
   const startScale = useRef(new Animated.Value(1)).current;
@@ -308,27 +330,52 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={s.moodScroll}
             >
-              {MOOD_CARDS.map((m) => (
-                <TouchableOpacity
-                  key={m.key}
-                  style={s.moodCardWrap}
-                  activeOpacity={0.80}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    onStart();
-                  }}
-                >
-                  <LinearGradient
-                    colors={[m.bgStart, m.bgEnd]}
-                    style={s.moodCircle}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+              {orderedMoods.map((m, idx) => {
+                // 1番目: 一番大きく・主張、2番目: やや大きい、3番目以降: 通常
+                const isFirst  = idx === 0;
+                const isSecond = idx === 1;
+                const circleSize = isFirst ? 84 : isSecond ? 76 : 68;
+                const iconSize   = isFirst ? 34 : isSecond ? 30 : 26;
+                const fontSize   = isFirst ? 13 : isSecond ? 12 : 11;
+                const cardWidth  = isFirst ? 90 : isSecond ? 82 : 72;
+                return (
+                  <TouchableOpacity
+                    key={m.key}
+                    style={[s.moodCardWrap, { width: cardWidth }]}
+                    activeOpacity={0.80}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      onStart();
+                    }}
                   >
-                    <m.Icon size={28} color={m.iconColor} strokeWidth={1.8} />
-                  </LinearGradient>
-                  <Text style={s.moodCardLabel}>{m.label}</Text>
-                </TouchableOpacity>
-              ))}
+                    <LinearGradient
+                      colors={[m.bgStart, m.bgEnd]}
+                      style={[
+                        s.moodCircle,
+                        { width: circleSize, height: circleSize, borderRadius: circleSize / 2 },
+                        // 1番目は影を強めて主張させる
+                        isFirst && {
+                          shadowOpacity: 0.18, shadowRadius: 10, elevation: 6,
+                          borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
+                        },
+                        isSecond && { shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
+                      ]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <m.Icon size={iconSize} color={m.iconColor} strokeWidth={1.8} />
+                    </LinearGradient>
+                    <Text style={[
+                      s.moodCardLabel,
+                      { fontSize },
+                      isFirst  && { fontWeight: '900', color: '#222' },
+                      isSecond && { fontWeight: '800', color: '#333' },
+                    ]}>
+                      {m.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
 
