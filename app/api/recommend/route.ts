@@ -4821,18 +4821,18 @@ export async function POST(request: Request) {
           hasLocation
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
-                answers.mood ?? "", sbNames, apiKey, 7,
+                answers.mood ?? "", sbNames, apiKey, 8,
                 answers.budget, effectiveDeepDive, minRadiusKm
               )
             : Promise.resolve([]),
-          // Yahoo!ローカルサーチ 補足検索（最大5件）
+          // Yahoo!ローカルサーチ 補足検索（dedup後5件確保のため8件取得）
           // ※ Google と並列実行するため Google 名の除外は行わず sbPool 名のみ除外
           //   最終マージ時にタイトル重複を除去する
           hasLocation
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 7, minRadiusKm, apiKey
+                sbNames, 8, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
@@ -4985,38 +4985,10 @@ export async function POST(request: Request) {
             ? arr.filter(r => isLargeMallName(r.title ?? ""))
             : arr;
 
-        let recommendations: typeof supabaseRecs;
-        if (minRadiusKm > 0) {
-          // 遠端バイアス有効（例：「どこでも行きたい」「ちょっと遠くてもOK」）:
-          //   選択した距離感に対して「できるだけ遠い場所」を上位に出す。
-          //   ソースは区別せず、全件(Supabase+Google+Yahoo)を距離降順（遠い順）で整列。
-          //   同距離帯はランダムノイズで毎回少し変化させる。距離不明(=0)は末尾へ。
-          //   ※ Google(最大50km)・Yahoo(最大20km)は API 仕様上それ以上遠くを返せないため、
-          //     選択距離に届くスポットが無い場合は「利用可能な中で最も遠い」候補が先頭になる。
-          recommendations = applyMallFilter([...mergedSb, ...googleSupplements, ...yahooSupplements])
-            .map(r => ({
-              r,
-              // 数値の distanceKm を優先使用。無い場合のみ表示文字列からパース（後方互換フォールバック）
-              km: typeof r.distanceKm === "number"
-                ? r.distanceKm
-                : parseKmFromDistText(r.distanceText as string | undefined),
-            }))
-            .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
-            .map(x => x.r) as typeof supabaseRecs;
-        } else {
-          // 遠端バイアスなし(すぐそこ・近場): 3ソースをまとめてランダムに混ぜる
-          recommendations = shuffleArr(applyMallFilter([
-            ...mergedSb,
-            ...googleSupplements,
-            ...yahooSupplements,
-          ])) as typeof supabaseRecs;
-        }
+        // ── 3ソース均等マージ: Supabase 5 + Google 5 + Yahoo 5 = 最大15件 ───────
+        // いずれかのソースが不足する場合は他ソースの余りで補填する。
+        // 重複排除（表記ゆれ・座標近接）も pickUnique 内で一括処理。
 
-        // ── 重複排除：表記ゆれ（全角半角・空白・記号）＋座標近接に対応 ─────────────
-        // 同一スポットが Supabase / Google / Yahoo から別表記（例「スターバックス」と
-        // 「スターバックスコーヒー」）で返ることがある。
-        //   1) 名前を NFKC 正規化し英数字＋かな漢字のみ残して比較（完全一致は重複）
-        //   2) 座標が両方にあり 80m 以内 かつ 名前が部分一致 → 同一スポットの表記ゆれとみなす
         const normalizeName = (str: string): string =>
           (str ?? "")
             .normalize("NFKC")
@@ -5028,22 +5000,79 @@ export async function POST(request: Request) {
           if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) return true;
           return a.slice(0, 4) === b.slice(0, 4);
         };
-        const kept: { key: string; lat?: number; lng?: number }[] = [];
-        recommendations = recommendations.filter(r => {
-          const key = normalizeName(r.title ?? "");
-          if (!key) return false;
-          const rl = typeof r.lat === "number" ? r.lat : undefined;
-          const rg = typeof r.lng === "number" ? r.lng : undefined;
-          for (const k of kept) {
-            if (k.key === key) return false;  // 正規化名が完全一致 → 重複
-            if (rl !== undefined && rg !== undefined && k.lat !== undefined && k.lng !== undefined
-                && haversineMeters(rl, rg, k.lat, k.lng) <= 80 && namesOverlap(key, k.key)) {
-              return false;  // 近接 + 名前部分一致 → 同一スポットの表記ゆれ
+
+        type DedupeKey = { key: string; lat?: number; lng?: number };
+        type Rec = (typeof supabaseRecs)[number];
+
+        // クロスソース重複排除しながら pool から最大 max 件取得。
+        // 重複でなく max 超過でスキップされた件は skipped に積む（補填用）。
+        const pickUnique = (
+          pool: Rec[], max: number, seen: DedupeKey[],
+        ): { taken: Rec[]; skipped: Rec[] } => {
+          const taken: Rec[] = [];
+          const skipped: Rec[] = [];
+          for (const r of pool) {
+            const key = normalizeName(r.title ?? "");
+            if (!key) continue;
+            const rl = typeof r.lat === "number" ? r.lat : undefined;
+            const rg = typeof r.lng === "number" ? r.lng : undefined;
+            let isDup = false;
+            for (const e of seen) {
+              if (e.key === key) { isDup = true; break; }
+              if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined
+                  && haversineMeters(rl, rg, e.lat, e.lng) <= 80 && namesOverlap(key, e.key)) {
+                isDup = true; break;
+              }
+            }
+            if (isDup) continue;
+            if (taken.length < max) {
+              seen.push({ key, lat: rl, lng: rg });
+              taken.push(r);
+            } else {
+              skipped.push(r);  // dedup OK だが max 超過 → 補填プールへ
             }
           }
-          kept.push({ key, lat: rl, lng: rg });
-          return true;
-        });
+          return { taken, skipped };
+        };
+
+        // 距離バイアスに応じてソース内ソート/シャッフル
+        const sortOrShuffle = (arr: Rec[]): Rec[] => {
+          if (minRadiusKm > 0) {
+            return [...arr]
+              .map(r => ({
+                r,
+                km: typeof r.distanceKm === "number"
+                  ? r.distanceKm
+                  : parseKmFromDistText(r.distanceText as string | undefined),
+              }))
+              .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
+              .map(x => x.r);
+          }
+          return shuffleArr([...arr]);
+        };
+
+        // 各ソースにモールフィルター適用 → ソート
+        const sbSorted = sortOrShuffle(applyMallFilter(mergedSb));
+        const gSorted  = sortOrShuffle(applyMallFilter(googleSupplements) as Rec[]);
+        const ySorted  = sortOrShuffle(applyMallFilter(yahooSupplements) as Rec[]);
+
+        // 各ソースから最大5件を重複排除しながら取得
+        const seen: DedupeKey[] = [];
+        const { taken: sbTaken, skipped: sbExtra } = pickUnique(sbSorted, 5, seen);
+        const { taken: gTaken,  skipped: gExtra  } = pickUnique(gSorted,  5, seen);
+        const { taken: yTaken,  skipped: yExtra  } = pickUnique(ySorted,  5, seen);
+
+        // ショートフォール補填:
+        // 合計15件に足りない分を、他ソースの余り（skipped）から順次補充する。
+        // 優先順: Supabase余り → Google余り → Yahoo余り
+        const totalTaken = sbTaken.length + gTaken.length + yTaken.length;
+        const backfillNeed = Math.max(0, 15 - totalTaken);
+        const backfillPool = sortOrShuffle([...sbExtra, ...gExtra, ...yExtra]);
+        const { taken: backfill } = pickUnique(backfillPool, backfillNeed, seen);
+
+        let recommendations: typeof supabaseRecs = [
+          ...sbTaken, ...gTaken, ...yTaken, ...backfill,
+        ];
 
         return json({
           recommendations,
