@@ -445,32 +445,37 @@ const s = StyleSheet.create({
   },
 
   // START
-  startWrap: { marginBottom: 32 },
+  startWrap: { marginBottom: 36 },
 
   // ── シャドウ専用レイヤー ──
-  // iOS: shadow は overflow:'hidden' があるとクリップされるため、
-  //      このラッパーには overflow を設定しない。
-  //      backgroundColor が必須（透明だと iOS shadow が描画されない）ため
-  //      グラデーション末尾と同じ BLUE を設定し、内側のグラデで完全に覆われる。
+  // iOS では shadow + overflow:hidden を同じViewに書けないため分離。
+  // backgroundColor: '#fff' はグラデで完全に覆われるため見えない。
+  // borderRadius: 99 がそのままピル形の shadow 輪郭になる。
   startShadow: {
     borderRadius: 99,
-    backgroundColor: BLUE,              // iOS shadow 描画のために必要
-    // グラデーションと同系色のカラー影 → 「押せる」感のあるグロー
-    shadowColor: PURPLE,
-    shadowOffset: { width: 0, height: 12 },  // 下方向に深く
-    shadowOpacity: 0.55,                      // やや濃いめで存在感
-    shadowRadius: 24,                         // 大きくぼかす
-    elevation: 18,                            // Android
+    backgroundColor: '#ffffff',   // iOS shadow に必須（透明では shadow が出ない）
+                                   // ← グラデーションで全面覆われるので見えない
+    // ボタンのグラデと同系色（ピンク→パープル）のカラーシャドウ
+    shadowColor: '#C060FF',        // パープル寄りのミックス色
+    shadowOffset: { width: 0, height: 10 }, // 真下に落とす
+    shadowOpacity: 0.42,           // 淡め（濃すぎず、でも存在感あり）
+    shadowRadius: 18,              // ふわっと広がるぼかし
+    // Android
+    elevation: 14,
   },
 
-  // ── overflow:hidden 担当 ──
-  // グラデーションを borderRadius でクリップするだけ。shadow はここに書かない。
+  // ── overflow:hidden 担当 ── グラデをピル形にクリップするだけ
   startTouchable: {
     borderRadius: 99,
     overflow: 'hidden',
   },
 
-  startBtn: { height: 60, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  startBtn: {
+    height: 60,
+    borderRadius: 99,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   startText: { fontSize: 19, fontWeight: '900', color: '#fff', letterSpacing: 2 },
 
   // Featured
