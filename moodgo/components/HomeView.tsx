@@ -29,6 +29,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AiChatFab from './AiChatFab';
 import CommunityFeed from './CommunityFeed';
 import Svg, {
   Defs,
@@ -222,6 +223,12 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
     onStart();
   };
 
+  // AI自由入力モーダルを開く（OpenAI直接相談）
+  const openAIChatModal = () => {
+    // TODO: OpenAI 自由入力チャット画面を実装
+    router.push({ pathname: '/ai-chat', params: { lang } });
+  };
+
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
 
@@ -403,6 +410,9 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
 
         </ScrollView>
       </Animated.View>
+
+      {/* ── ドラッグ可能なAI相談FAB（最前面・絶対配置）── */}
+      <AiChatFab onPress={openAIChatModal} bottomNavHeight={insets.bottom + 70} />
     </View>
   );
 }
