@@ -11,12 +11,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import {
-  Activity, BookOpen, Car, Coffee,
-  Leaf, MapPin, Plane, Settings, Shuffle,
-  ShoppingBag, UtensilsCrossed,
-} from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef } from 'react';
+import { MapPin, Settings } from 'lucide-react-native';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -128,31 +124,6 @@ function GradientLogo() {
   );
 }
 
-// ─── Mood data ────────────────────────────────────────────────────────────────
-
-type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-
-// QuizFlow の MOODS と完全一致させる（key/label/Icon/色）
-const MOOD_CARDS: {
-  key: string;
-  label: string;
-  sub: string;
-  Icon: LucideIcon;
-  iconColor: string;
-  bgStart: string;
-  bgEnd: string;
-}[] = [
-  { key: 'お腹すいた',   label: 'お腹すいた',   sub: '絶品グルメ',  Icon: UtensilsCrossed, iconColor: '#E67E22', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
-  { key: 'まったり',     label: 'まったり',     sub: '癒やし',      Icon: Coffee,          iconColor: '#6BA3BE', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
-  { key: '自然',         label: '自然',         sub: '絶景',        Icon: Leaf,            iconColor: '#27AE60', bgStart: '#D5F5E3', bgEnd: '#EAFAF1' },
-  { key: 'ドライブ',     label: 'ドライブ',     sub: 'ツーリング',  Icon: Car,             iconColor: '#2980B9', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
-  { key: '集中',         label: '集中',         sub: '作業・勉強',  Icon: BookOpen,        iconColor: '#8E44AD', bgStart: '#E8DAEF', bgEnd: '#F5EEF8' },
-  { key: '運動',         label: '運動',         sub: 'スポーツ',    Icon: Activity,        iconColor: '#16A085', bgStart: '#D1F2EB', bgEnd: '#E8FAF5' },
-  { key: '旅行',         label: '旅行・観光',   sub: '小旅行',      Icon: Plane,           iconColor: '#7B68EE', bgStart: '#E8E0FF', bgEnd: '#F0EDFF' },
-  { key: 'ショッピング', label: 'ショッピング', sub: 'お買い物',    Icon: ShoppingBag,     iconColor: '#E91E8C', bgStart: '#FDCEDF', bgEnd: '#FEF0F5' },
-  { key: '時間潰し',     label: '時間潰し',     sub: 'のんびり',    Icon: Shuffle,         iconColor: '#F39C12', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
-];
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -160,37 +131,15 @@ type Props = {
   profileGender: string;
   lang: 'ja' | 'en';
   onStart: () => void;
-  onStartWithMood: (moodKey: string) => void;  // 気分を選択済みで次の質問へ
+  onStartWithMood?: (moodKey: string) => void;  // （旧）気分ショートカット用・現在未使用
   onShowSettings: () => void;
   onShowFeatured: () => void;
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-// ── 一日おきのシード（今日の日付を2で割った商）でシャッフル ──────────────────
-function seededShuffle<T>(arr: T[], seed: number): T[] {
-  const a = [...arr];
-  // シンプルな線形合同法乱数
-  let s = seed;
-  const rand = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0x100000000; };
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-export default function HomeView({ lang, onStart, onStartWithMood, onShowSettings, onShowFeatured }: Props) {
+export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured }: Props) {
   const insets = useSafeAreaInsets();
-
-  // 一日おき（2日ごと）にシード更新 → ランダム順をリセット
-  const orderedMoods = useMemo(() => {
-    const today = new Date();
-    // 2日ごとにシードを変える（Math.floor(通算日 / 2)）
-    const daysSinceEpoch = Math.floor(today.getTime() / 86400000);
-    const seed = Math.floor(daysSinceEpoch / 2);
-    return seededShuffle(MOOD_CARDS, seed);
-  }, []);
 
   // START ボタンのプレスアニメ
   const startScale = useRef(new Animated.Value(1)).current;
@@ -332,76 +281,6 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowSetting
             </ImageBackground>
           </View>
 
-          {/* ── Today's mood suggestions ── */}
-          <View style={s.moodSection}>
-            <View style={s.moodSectionHeader}>
-              <Text style={s.moodSectionTitle}>
-                {lang === 'en' ? 'Which vibe fits? ✦' : '今の気分はどれに近い？'}
-              </Text>
-              <TouchableOpacity onPress={handleStart} activeOpacity={0.7}>
-                <Text style={s.moodSectionMore}>
-                  {lang === 'en' ? 'See all →' : 'すべてを見る　→'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.moodScroll}
-            >
-              {orderedMoods.map((m, idx) => {
-                // 1番目: 一番大きく・主張、2番目: やや大きい、3番目以降: 通常
-                const isFirst  = idx === 0;
-                const isSecond = idx === 1;
-                const circleSize = isFirst ? 84 : isSecond ? 76 : 68;
-                const iconSize   = isFirst ? 34 : isSecond ? 30 : 26;
-                const fontSize   = isFirst ? 13 : isSecond ? 12 : 11;
-                const cardWidth  = isFirst ? 90 : isSecond ? 82 : 72;
-                return (
-                  <TouchableOpacity
-                    key={m.key}
-                    style={[s.moodCardWrap, { width: cardWidth }]}
-                    activeOpacity={0.80}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onStartWithMood(m.key);
-                    }}
-                  >
-                    <LinearGradient
-                      colors={[m.bgStart, m.bgEnd]}
-                      style={[
-                        s.moodCircle,
-                        { width: circleSize, height: circleSize, borderRadius: circleSize / 2 },
-                        // 1番目は影を強めて主張させる
-                        isFirst && {
-                          shadowOpacity: 0.18, shadowRadius: 10, elevation: 6,
-                          borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
-                        },
-                        isSecond && { shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
-                      ]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <m.Icon size={iconSize} color={m.iconColor} strokeWidth={1.8} />
-                    </LinearGradient>
-                    <Text style={[
-                      s.moodCardLabel,
-                      { fontSize },
-                      isFirst  && { fontWeight: '900', color: '#222' },
-                      isSecond && { fontWeight: '800', color: '#333' },
-                    ]}>
-                      {m.label}
-                    </Text>
-                    <Text style={[s.moodCardSub, isFirst && { fontSize: 10 }]}>
-                      {m.sub}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
           {/* ── 区切り ── */}
           <View style={s.feedDivider} />
 
@@ -521,27 +400,9 @@ const s = StyleSheet.create({
   },
   featuredBtnText: { fontSize: 13, fontWeight: '700', color: '#1A0A2E' },
 
-  // Mood section
-  moodSection: { marginBottom: 12 },
+  // 特集カードと穴場フィードの区切り
   feedDivider: {
     height: 1, backgroundColor: 'rgba(155,107,255,0.10)',
-    marginTop: 8, marginBottom: 20,
+    marginTop: 4, marginBottom: 20,
   },
-  moodSectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 14,
-  },
-  moodSectionTitle: { fontSize: 17, fontWeight: '800', color: '#1A0A2E' },
-  moodSectionMore: { fontSize: 13, fontWeight: '600', color: PURPLE },
-
-  moodScroll: { paddingRight: PAD, gap: 12 },
-  moodCardWrap: { alignItems: 'center', gap: 8, width: 72 },
-  moodCircle: {
-    width: 68, height: 68, borderRadius: 34,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
-  },
-  moodCardLabel: { fontSize: 11, fontWeight: '700', color: '#444', textAlign: 'center' },
-  moodCardSub:   { fontSize: 9,  fontWeight: '500', color: '#999', textAlign: 'center', marginTop: -2 },
 });
