@@ -4153,8 +4153,11 @@ async function fetchYahooSupplement(
     // 遠端バイアス時は候補を多く取り、距離でソートしてから絞る
     const wantFarBias = minRadiusKm > 0;
     const fetchCount = wantFarBias ? 50 : Math.min(limit * 2, 30);
-    // far bias 時は start を先頭固定で候補プールを最大化（ランダムページは多様性用）
-    const randomStart = wantFarBias ? 0 : Math.floor(Math.random() * 5) * limit;
+    // start は常に先頭(1)から取得する。
+    //   以前は Math.floor(random*5)*limit でランダムページングしていたが、limit が大きいと
+    //   start が Total件数(例:51)を超えてYahooが0件を返す不具合があった（Yahoo結果が出ない主因）。
+    //   多様性は最終マージ側のシャッフル/スコアジッターで担保する。
+    const randomStart = 0;
 
     // 1地点で Yahoo ローカルサーチを実行するヘルパー（dist は最大20km）
     const searchYahooAt = async (
