@@ -1716,6 +1716,21 @@ function isLodgingName(name: string): boolean {
   return /(ホテル|旅館|HOTEL|Hotel|ゲストハウス|民宿|ペンション|オーベルジュ|リゾートイン)/.test(name);
 }
 
+/** 大型ショッピングモール検索時に除外すべき「商店街・市場・露店系」の名前パターン */
+const SHOPPING_STREET_PATTERN = /商店街|市場|朝市|屋台|露店|縁日|アーケード商店|仲見世/;
+
+/**
+ * deepDiveL1 が大型ショッピングモール系のとき、商店街・市場など不一致な施設を除外する。
+ * Google Places が shopping_mall タイプに商店街を含めてしまうのを防ぐ。
+ */
+function isShoppingMallMismatch(name: string, deepDiveL1: string): boolean {
+  const isMallSearch =
+    deepDiveL1 === "大型ショッピングモール" ||
+    deepDiveL1 === "郊外の大型施設に行きたい";
+  if (!isMallSearch) return false;
+  return SHOPPING_STREET_PATTERN.test(name);
+}
+
 async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherContext> {
   if (typeof lat !== "number" || typeof lng !== "number") return {};
 
@@ -3712,6 +3727,8 @@ async function fetchGooglePlacesSupplement(
         if (LODGING_PRIMARY_SET.has((p.primaryType as string) ?? "")) return false;
         // 名前ベースの宿泊施設除外（食事系以外）。ホテル内レストランは食事用途で残す
         if (!isFoodMoodGoogle && isLodgingName(name)) return false;
+        // 大型ショッピングモール検索時に商店街・市場系を除外（Google が shopping_mall タイプに含めてしまうため）
+        if (isShoppingMallMismatch(name, deepDiveL1)) return false;
         return true;
       });
 
@@ -4142,6 +4159,8 @@ async function fetchYahooSupplement(
         if (!name || existingNames.includes(name)) return false;
         // 宿泊施設の除外（Yahooはtype情報がないため名前ベースのみ。食事系以外で適用）
         if (!isFoodMoodYahoo && isLodgingName(name)) return false;
+        // 大型ショッピングモール検索時に商店街・市場系を除外
+        if (isShoppingMallMismatch(name, deepDiveL1)) return false;
         return true;
       })
       .map(f => ({ f, distKm: distOf(f) }))
