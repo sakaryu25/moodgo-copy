@@ -12,9 +12,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  Activity, Bike, BookOpen, Car, Coffee,
-  Leaf, MapPin, Moon, Plane, Settings, Shuffle,
-  Sparkles, UtensilsCrossed, CloudRain,
+  Activity, BookOpen, Car, Coffee,
+  Leaf, MapPin, Plane, Settings, Shuffle,
+  ShoppingBag, UtensilsCrossed,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
@@ -130,23 +130,25 @@ function GradientLogo() {
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
+// QuizFlow の MOODS と完全一致させる（key/label/Icon/色）
 const MOOD_CARDS: {
   key: string;
   label: string;
+  sub: string;
   Icon: LucideIcon;
   iconColor: string;
   bgStart: string;
   bgEnd: string;
 }[] = [
-  { key: 'まったりしたい',     label: 'まったり',     Icon: CloudRain,       iconColor: '#6BA3BE', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
-  { key: '遠くに行きたい',     label: '小旅行',       Icon: Moon,            iconColor: '#7B68EE', bgStart: '#E8E0FF', bgEnd: '#F0EDFF' },
-  { key: '自然感じたい',       label: '自然',         Icon: Leaf,            iconColor: '#27AE60', bgStart: '#D5F5E3', bgEnd: '#EAFAF1' },
-  { key: 'お腹すいた',         label: 'グルメ',       Icon: UtensilsCrossed, iconColor: '#E67E22', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
-  { key: 'わいわい楽しみたい', label: 'わいわい',     Icon: Sparkles,        iconColor: '#E91E8C', bgStart: '#FDCEDF', bgEnd: '#FEF0F5' },
-  { key: '体を動かしたい',     label: 'スポーツ',     Icon: Activity,        iconColor: '#16A085', bgStart: '#D1F2EB', bgEnd: '#E8FAF5' },
-  { key: 'ドライブしたい',     label: 'ドライブ',     Icon: Car,             iconColor: '#2980B9', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
-  { key: '集中したい',         label: '集中',         Icon: BookOpen,        iconColor: '#8E44AD', bgStart: '#E8DAEF', bgEnd: '#F5EEF8' },
-  { key: '時間潰したい',       label: 'ランダム',     Icon: Shuffle,         iconColor: '#F39C12', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
+  { key: 'お腹すいた',   label: 'お腹すいた',   sub: '絶品グルメ',  Icon: UtensilsCrossed, iconColor: '#E67E22', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
+  { key: 'まったり',     label: 'まったり',     sub: '癒やし',      Icon: Coffee,          iconColor: '#6BA3BE', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
+  { key: '自然',         label: '自然',         sub: '絶景',        Icon: Leaf,            iconColor: '#27AE60', bgStart: '#D5F5E3', bgEnd: '#EAFAF1' },
+  { key: 'ドライブ',     label: 'ドライブ',     sub: 'ツーリング',  Icon: Car,             iconColor: '#2980B9', bgStart: '#D6EAF8', bgEnd: '#EBF5FB' },
+  { key: '集中',         label: '集中',         sub: '作業・勉強',  Icon: BookOpen,        iconColor: '#8E44AD', bgStart: '#E8DAEF', bgEnd: '#F5EEF8' },
+  { key: '運動',         label: '運動',         sub: 'スポーツ',    Icon: Activity,        iconColor: '#16A085', bgStart: '#D1F2EB', bgEnd: '#E8FAF5' },
+  { key: '旅行',         label: '旅行・観光',   sub: '小旅行',      Icon: Plane,           iconColor: '#7B68EE', bgStart: '#E8E0FF', bgEnd: '#F0EDFF' },
+  { key: 'ショッピング', label: 'ショッピング', sub: 'お買い物',    Icon: ShoppingBag,     iconColor: '#E91E8C', bgStart: '#FDCEDF', bgEnd: '#FEF0F5' },
+  { key: '時間潰し',     label: '時間潰し',     sub: 'のんびり',    Icon: Shuffle,         iconColor: '#F39C12', bgStart: '#FDEBD0', bgEnd: '#FEF9F0' },
 ];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -373,6 +375,9 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                     ]}>
                       {m.label}
                     </Text>
+                    <Text style={[s.moodCardSub, isFirst && { fontSize: 10 }]}>
+                      {m.sub}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -477,4 +482,5 @@ const s = StyleSheet.create({
     shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
   },
   moodCardLabel: { fontSize: 11, fontWeight: '700', color: '#444', textAlign: 'center' },
+  moodCardSub:   { fontSize: 9,  fontWeight: '500', color: '#999', textAlign: 'center', marginTop: -2 },
 });
