@@ -233,7 +233,7 @@ export default function Home() {
   //   5. setApiRecommendations → 履歴保存 → setStep(11)
   // ─────────────────────────────────────────────────────────────────────────
 
-  const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number) => {
+  const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number, excludeShown = false) => {
     // 新規検索時: 前回結果・評価をクリアしてから結果画面へ
     if (!isRefinement) {
       setApiRecommendations([]);
@@ -264,6 +264,10 @@ export default function Home() {
         for (const f of pastFeedback) {
           if (f.visitedPlace) seenSet.add(f.visitedPlace);
         }
+      }
+      // シャッフル時は現在表示中のスポットも除外し、毎回異なる場所を出す（同じ場所の再提案防止）
+      if (excludeShown) {
+        for (const r of apiRecommendations) seenSet.add(r.title);
       }
 
       // ── answers オブジェクト（Web版と同じキー構成）──────────────────────────
@@ -307,7 +311,7 @@ export default function Home() {
           answers:            refinedAnswers,
           pastFeedback:       pastFeedback.slice(0, 5),  // 直近5件のフィードバックを渡す
           seenPlaces:         [...seenSet],
-          showUnseenOnly,
+          showUnseenOnly:     showUnseenOnly || excludeShown,
           refinementText:     refineText ?? '',
           userPreferenceHints: [],
         }),
@@ -350,7 +354,8 @@ export default function Home() {
   // ─── Shuffle: API を再呼び出し（Web版 reshuffleFacilities 相当）──────────
 
   const handleShuffle = () => {
-    openResults(refinementText || '', true);
+    // シャッフル: 現在表示中のスポットを除外して再検索 → 毎回異なる場所を出す
+    openResults(refinementText || '', true, undefined, true);
   };
 
   // ─── Place rating (👍/👎) ─────────────────────────────────────────────────
