@@ -4110,7 +4110,7 @@ async function fetchYahooSupplement(
     "和食":                         "0102",
     "海鮮・お寿司":                 "0102005",
     "天ぷら":                       "0102008",
-    "うどん・そば":                 "0102001",
+    // "うどん・そば": "0102001",  // gc=0102001はうどん・そばに精度が低い（ステーキ店等が混入）→ keyword検索のみに統一
     "懐石料理":                     "0102004",
     // 洋食
     "洋食":                         "0103",
@@ -4317,6 +4317,18 @@ async function fetchYahooSupplement(
         if (!isFoodMoodYahoo && isLodgingName(name)) return false;
         // 大型ショッピングモール検索時に商店街・市場系を除外
         if (isShoppingMallMismatch(name, deepDiveL1)) return false;
+        // カテゴリ精度フィルタ: keyword検索のみだとカテゴリ外の店が混入する。
+        // 特定カテゴリでは店名に関連語が含まれるものに絞る（Yahoo typeがないため名前で代替）
+        // ※ 除外しすぎを避けるため、ポジティブワード1つでも含まれれば通過とする
+        if (deepDiveL1 === "うどん・そば" || deepDiveL1 === "うどんそば") {
+          const hasNoodle = /(うどん|そば|蕎麦|ラーメン|麺|noodle)/i.test(name);
+          if (!hasNoodle) return false;
+        }
+        if (deepDiveL1 === "ラーメン" || deepDiveL1 === "こってりラーメン" || deepDiveL1 === "あっさりラーメン"
+            || deepDiveL1 === "味噌ラーメン" || deepDiveL1 === "つけ麺・まぜそば") {
+          const hasRamen = /(ラーメン|らーめん|拉麺|つけ麺|まぜそば|麺)/i.test(name);
+          if (!hasRamen) return false;
+        }
         return true;
       })
       .map(f => ({ f, distKm: distOf(f) }))
@@ -4405,7 +4417,9 @@ async function fetchYahooSupplement(
             headers: {
               "Content-Type": "application/json",
               "X-Goog-Api-Key": googleApiKey,
-              "X-Goog-FieldMask": "places.photos",
+              // 写真に加えて評価(rating/userRatingCount)もここで補完する
+            // YahooはratingAPIを持たないため、GooglePlaces検索で評価を取得してYahoo結果に付与
+            "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount",
             },
             body: JSON.stringify({
               textQuery: `${r.title} ${r.address ?? ""}`.trim(),
@@ -4418,10 +4432,15 @@ async function fetchYahooSupplement(
           });
           if (!sres.ok) return;
           const sdata = await sres.json().catch(() => null);
-          const photoObjs = (sdata?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
-          const photoNamesArr = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
+          const place = sdata?.places?.[0];
+          if (!place) return;
+          // 評価を補完（Yahooは評価情報を持たないため）
+          if (typeof place.rating === "number") r.rating = place.rating;
+          if (typeof place.userRatingCount === "number") r.userRatingCount = place.userRatingCount;
+          const photoObjs = (place.photos ?? []) as Array<{ name: string }>;
+          const photoNamesArr = photoObjs.slice(0, 10).map((ph: { name: string }) => ph.name).filter(Boolean);
           if (photoNamesArr.length === 0) return;
-          const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
+          const urls = photoNamesArr.map((n: string) => buildPhotoProxyUrl(n));
           r.photoUrls = urls;
           r.photoUrl = urls[0];
         } catch { /* 写真取得失敗は無視（プレースホルダー表示） */ }
