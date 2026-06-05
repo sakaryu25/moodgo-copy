@@ -5140,11 +5140,18 @@ export async function POST(request: Request) {
         // 誤除外を避けるため「スパ/湯/サウナ」単独などの曖昧語は使わず明確な語に限定。
         const isFoodMoodReq = (answers.mood ?? "") === "お腹すいた";
         const NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
+        // お腹すいたの検索結果から老舗・地元食堂系を除外（ローカルな場所が多く提案される問題の対策）
+        // 「老舗」「創業」「〇年創業」等の名前は観光客向けではなく、若者向けアプリでは不適切なケースが多い
+        const OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正|昭和[0-9０-９]+年創|食堂|大衆食堂)/;
         // 住所にも非飲食施設名が入るケースを除外（例: カワスイ川崎水族館内のカフェ）
-        const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] =>
-          isFoodMoodReq
-            ? arr.filter(r => !NON_FOOD_NAME_RE.test(r.title ?? "") && !NON_FOOD_NAME_RE.test(r.address ?? ""))
-            : arr;
+        const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] => {
+          if (!isFoodMoodReq) return arr;
+          return arr.filter(r =>
+            !NON_FOOD_NAME_RE.test(r.title ?? "") &&
+            !NON_FOOD_NAME_RE.test(r.address ?? "") &&
+            !OLD_STORE_NAME_RE.test(r.title ?? "")
+          );
+        };
 
         // 既出スポット除外（再検索時の重複防止）: showUnseenOnly のとき seenPlaces のタイトルを全ソースから除外。
         // 従来は Supabase 結果のみに適用され、Google/Yahoo/admin が再検索で同じ場所を返していた（「同じ場所が提案される」の主因）。

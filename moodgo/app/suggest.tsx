@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, Check, ChevronLeft, MapPin, Send, Tag, X } from 'lucide-react-native';
 import React, { useState } from 'react';
+import { Linking } from 'react-native';
 import {
   Alert,
   Image,
@@ -217,8 +218,19 @@ export default function SuggestScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') { setError(t.errLocation); return; }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setLat(pos.coords.latitude);
-      setLng(pos.coords.longitude);
+      const la = pos.coords.latitude;
+      const lo = pos.coords.longitude;
+      setLat(la);
+      setLng(lo);
+      // 逆ジオコーディング: 座標 → 住所（神奈川県横浜市金沢区富岡西１−５５−１１ 形式）
+      try {
+        const { apiFetch } = await import('@/lib/api');
+        const res = await apiFetch(`/api/reverse-geocode?lat=${la}&lng=${lo}`);
+        const data = await res.json();
+        if (data.ok && data.address) {
+          setAddress(data.address);  // 住所入力欄に自動入力
+        }
+      } catch { /* 逆ジオコード失敗は無視 */ }
     } catch { setError(t.errLocationFail); }
     finally { setIsLocating(false); }
   };
@@ -227,15 +239,33 @@ export default function SuggestScreen() {
     try {
       const ImagePicker = await import('expo-image-picker');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') { Alert.alert(t.errPhoto); return; }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], allowsMultipleSelection: true,
-        selectionLimit: 3, quality: 0.7, base64: true,
-      });
-      if (!result.canceled) {
-        setImages(result.assets.slice(0, 3).map(a => ({ uri: a.uri, base64: a.base64 ?? undefined })));
+      if (status !== 'granted') {
+        // 権限拒否時: 設定アプリへ誘導するアラート
+        Alert.alert(
+          '写真へのアクセスが必要です',
+          '設定 → MoodGo → 写真 でアクセスを許可してください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: '設定を開く', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
       }
-    } catch { Alert.alert(t.errPhotoFail); }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: 3,
+        quality: 0.7,
+        base64: true,
+        exif: false,  // exif不要・軽量化
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        // 既存の画像に追加（合計3枚まで）
+        const newImgs = result.assets.slice(0, 3 - images.length)
+          .map(a => ({ uri: a.uri, base64: a.base64 ?? undefined }));
+        setImages(prev => [...prev, ...newImgs].slice(0, 3));
+      }
+    } catch { Alert.alert('エラー', '写真の選択中にエラーが発生しました。'); }
   };
 
   const toggleTag = (tag: string) =>
@@ -245,16 +275,36 @@ export default function SuggestScreen() {
     if (!spotName.trim()) { setError(t.errName); return; }
     setIsSubmitting(true); setError('');
     try {
-      const body: Record<string, unknown> = {
-        spotName: spotName.trim(), description, address, contact, autoTags: selectedTags,
-      };
-      if (lat !== null) body.lat = lat;
-      if (lng !== null) body.lng = lng;
-      if (images.length > 0)
-        body.images = images.map(img => img.base64 ? `data:image/jpeg;base64,${img.base64}` : img.uri);
-      const res = await apiFetch('/api/suggestions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
+      // サーバーAPIは multipart/form-data のみ受け付けるため FormData を使用
+      const fd = new FormData();
+      fd.append('spotName', spotName.trim());
+      if (description) fd.append('description', description);
+      if (address)     fd.append('address', address);
+      if (contact)     fd.append('contact', contact);
+      if (lat !== null) fd.append('lat', String(lat));
+      if (lng !== null) fd.append('lng', String(lng));
+      if (selectedTags.length > 0) fd.append('autoTags', JSON.stringify(selectedTags));
+
+      // 画像: base64 → Blob → File として添付（React Native FormData 形式）
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        if (img.base64) {
+          // React Native の FormData は { uri, name, type } オブジェクトを直接受け付ける
+          fd.append('images', {
+            uri: img.uri,
+            name: `photo_${i}.jpg`,
+            type: 'image/jpeg',
+          } as unknown as Blob);
+        } else if (img.uri) {
+          fd.append('images', {
+            uri: img.uri,
+            name: `photo_${i}.jpg`,
+            type: 'image/jpeg',
+          } as unknown as Blob);
+        }
+      }
+
+      const res = await apiFetch('/api/suggestions', { method: 'POST', body: fd });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? '送信失敗');
       setSubmitted(true);
@@ -338,19 +388,43 @@ export default function SuggestScreen() {
               placeholder={t.placeholderAddr} placeholderTextColor="#C4B5FD"
               style={[s.input, { marginTop: 10 }]}
             />
-            {lat ? <Text style={s.latText}>{lat.toFixed(5)}, {lng?.toFixed(5)}</Text> : null}
+            {/* 逆ジオコード結果の住所、または座標をサブテキストで表示 */}
+            {lat ? (
+              <Text style={s.latText}>
+                {address
+                  ? `📍 ${address}`
+                  : `${lat.toFixed(5)}, ${lng?.toFixed(5)}`}
+              </Text>
+            ) : null}
 
             {/* 写真 */}
             <Text style={[s.label, { marginTop: 18 }]}>{t.labelPhotos}</Text>
             <Text style={s.hint}>{t.hintPhotos}</Text>
-            <TouchableOpacity onPress={handlePickImages} activeOpacity={0.85} style={s.imagePicker}>
-              <Camera size={20} color="#A78BFA" strokeWidth={1.8} />
-              <Text style={s.imagePickerText}>{t.photoBtn}</Text>
-            </TouchableOpacity>
+            {/* 写真選択ボタン（3枚未満のときのみ表示）*/}
+            {images.length < 3 && (
+              <TouchableOpacity onPress={handlePickImages} activeOpacity={0.85} style={s.imagePicker}>
+                <Camera size={20} color="#A78BFA" strokeWidth={1.8} />
+                <Text style={s.imagePickerText}>
+                  {images.length === 0 ? t.photoBtn : `写真を追加（あと${3 - images.length}枚）`}
+                </Text>
+              </TouchableOpacity>
+            )}
             {images.length > 0 && (
               <View style={s.imageRow}>
                 {images.map((img, i) => (
-                  <Image key={i} source={{ uri: img.uri }} style={s.imageThumb} />
+                  <View key={i} style={s.imageThumbWrap}>
+                    <Image source={{ uri: img.uri }} style={s.imageThumb} />
+                    {/* ×ボタンで個別削除 */}
+                    <TouchableOpacity
+                      onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}
+                      style={s.imageRemoveBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <View style={s.imageRemoveBg}>
+                        <X size={10} color="#fff" strokeWidth={3} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             )}
@@ -522,7 +596,10 @@ const s = StyleSheet.create({
   },
   imagePickerText: { fontSize: 14, fontWeight: '700', color: '#A78BFA' },
   imageRow:  { flexDirection: 'row', gap: 10, marginTop: 12, flexWrap: 'wrap' },
+  imageThumbWrap: { position: 'relative' },
   imageThumb: { width: 90, height: 90, borderRadius: 14, borderWidth: 1.5, borderColor: '#DDD6FE' },
+  imageRemoveBtn: { position: 'absolute', top: -6, right: -6 },
+  imageRemoveBg: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' },
 
   // Tags
   tagToggle: {
