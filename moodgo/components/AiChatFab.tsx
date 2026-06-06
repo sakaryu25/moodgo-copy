@@ -12,7 +12,7 @@
 
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -107,10 +107,11 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
   // 現在の絶対座標を保持（リリース時のスナップ計算に使用）
   const posRef = useRef({ x: startX, y: startY });
 
-  // pan の値変化を posRef に同期
-  useRef(
-    pan.addListener((v) => { posRef.current = v; })
-  ).current;
+  // pan の値変化を posRef に同期（リスナーは一度だけ登録し、アンマウント時に解除）
+  useEffect(() => {
+    const id = pan.addListener((v) => { posRef.current = v; });
+    return () => pan.removeListener(id);
+  }, [pan]);
 
   const panResponder = useRef(
     PanResponder.create({

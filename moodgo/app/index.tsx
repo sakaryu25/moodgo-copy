@@ -221,34 +221,51 @@ export default function Home() {
   // ─── Location ──────────────────────────────────────────────────────────
 
   const handleUseCurrentLocation = async () => {
-    const Location = await import('expo-location');
     setIsLocating(true);
     setLocationError('');
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setLocationError('位置情報の権限が必要です');
-      setIsLocating(false);
-      return;
-    }
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const { latitude, longitude } = pos.coords;
-    setOriginLat(latitude);
-    setOriginLng(longitude);
     try {
-      const res = await apiFetch('/api/location-to-area', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude, longitude }),
-      });
-      const d = await res.json();
-      setSelectedArea(d.area ?? '現在地');
-      setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
-    } catch {
-      setSelectedArea('現在地');
-      setLocationDisplayArea('現在地');
+      const Location = await import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationError('位置情報の権限が必要です');
+        return;
+      }
+      // getCurrentPositionAsync がハングしてアプリが固まる/落ちるのを防ぐためタイムアウト付き
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+      ]);
+      if (!pos) {
+        // 取得できない時は最後の既知位置でフォールバック
+        const last = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (!last) { setLocationError('位置情報を取得できませんでした'); return; }
+        setOriginLat(last.coords.latitude); setOriginLng(last.coords.longitude);
+        setAreaMode('current_location');
+        return;
+      }
+      const { latitude, longitude } = pos.coords;
+      setOriginLat(latitude);
+      setOriginLng(longitude);
+      setAreaMode('current_location');
+      try {
+        const res = await apiFetch('/api/location-to-area', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude, longitude }),
+        });
+        const d = await res.json();
+        setSelectedArea(d.area ?? '現在地');
+        setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
+      } catch {
+        setSelectedArea('現在地');
+        setLocationDisplayArea('現在地');
+      }
+    } catch (e) {
+      console.warn('[location]', e);
+      setLocationError('位置情報の取得に失敗しました');
+    } finally {
+      setIsLocating(false);
     }
-    setAreaMode('current_location');
-    setIsLocating(false);
   };
 
   // ── AI相談を開く（押した瞬間に位置情報を自動取得）──────────────────────────
@@ -260,12 +277,17 @@ export default function Home() {
       const Location = await import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const { latitude, longitude } = pos.coords;
-        setOriginLat(latitude);
-        setOriginLng(longitude);
-        setAreaMode('current_location');
-        setAiHasLocation(true);
+        // ハング防止のタイムアウト付き
+        const pos = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+        ]) ?? await Location.getLastKnownPositionAsync().catch(() => null);
+        if (pos) {
+          const { latitude, longitude } = pos.coords;
+          setOriginLat(latitude);
+          setOriginLng(longitude);
+          setAreaMode('current_location');
+          setAiHasLocation(true);
         try {
           const res = await apiFetch('/api/location-to-area', {
             method: 'POST',
@@ -277,6 +299,7 @@ export default function Home() {
           setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
         } catch {
           setSelectedArea('現在地');
+        }
         }
       }
     } catch { /* 位置取得失敗は無視（入力は継続可能）*/ }
