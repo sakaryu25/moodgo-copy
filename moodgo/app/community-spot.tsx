@@ -199,20 +199,25 @@ export default function CommunitySpotScreen() {
             </View>
           ) : null}
 
-          {/* ── 大目玉: 利用者コメント ── */}
-          {spot.description ? (
+          {/* ── 大目玉: 利用者コメント＋投稿者のおすすめ度 ── */}
+          {(spot.description || spot.rating > 0) ? (
             <View style={s.commentCard}>
-              <View style={s.commentLabelRow}>
-                <MessageCircle size={14} color={PURPLE} fill={PURPLE} strokeWidth={0} />
-                <Text style={s.commentLabel}>どんな場所？</Text>
-              </View>
-              <Text style={s.commentText}>{spot.description}</Text>
-              {spot.rating > 0 && (
-                <View style={s.posterRate}>
+              {spot.description ? (
+                <>
+                  <View style={s.commentLabelRow}>
+                    <MessageCircle size={14} color={PURPLE} fill={PURPLE} strokeWidth={0} />
+                    <Text style={s.commentLabel}>どんな場所？</Text>
+                  </View>
+                  <Text style={s.commentText}>{spot.description}</Text>
+                </>
+              ) : null}
+              {spot.rating > 0 ? (
+                <View style={[s.posterRate, !spot.description && s.posterRateTop]}>
                   <Text style={s.posterRateLabel}>投稿者のおすすめ度</Text>
-                  <Stars n={spot.rating} size={15} />
+                  <Stars n={spot.rating} size={16} />
+                  <Text style={s.posterRateNum}>{spot.rating}.0</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           ) : null}
 
@@ -333,16 +338,16 @@ const s = StyleSheet.create({
   body: { backgroundColor: '#F3F1F7', borderTopLeftRadius: 26, borderTopRightRadius: 26, marginTop: -22, paddingHorizontal: 18, paddingTop: 22 },
 
   // タイトルとマップピルを縦中央で揃える
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   pref: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  title: { flex: 1, fontSize: 25, fontWeight: '900', color: '#1A0A2E', lineHeight: 32 },
-  placeName: { fontSize: 14, color: '#6B7280', marginTop: -4, marginBottom: 12, fontWeight: '600' },
+  title: { flex: 1, fontSize: 21, fontWeight: '800', color: '#1A0A2E', lineHeight: 28, letterSpacing: -0.3 },
+  placeName: { fontSize: 13, color: '#6B7280', marginTop: -2, marginBottom: 12, fontWeight: '600' },
   mapPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999,
+    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
     shadowColor: PURPLE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
-  mapPillText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  mapPillText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   areaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -357,11 +362,13 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(155,107,255,0.14)',
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3,
   },
-  commentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  commentLabel: { fontSize: 13, fontWeight: '900', color: PURPLE },
-  commentText: { fontSize: 16, color: '#2D2240', lineHeight: 26, fontWeight: '500' },
-  posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
+  commentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  commentLabel: { fontSize: 12.5, fontWeight: '900', color: PURPLE },
+  commentText: { fontSize: 14, color: '#2D2240', lineHeight: 22, fontWeight: '500' },
+  posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
+  posterRateTop: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },
+  posterRateNum: { fontSize: 13, fontWeight: '800', color: '#D97706' },
 
   // Rating card
   ratingCard: {
@@ -369,8 +376,8 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 16,
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2,
   },
-  ratingBig: { fontSize: 40, fontWeight: '900', color: '#1A0A2E', letterSpacing: -1 },
-  reviewCount: { fontSize: 13, color: '#9CA3AF', marginTop: 4, fontWeight: '600' },
+  ratingBig: { fontSize: 32, fontWeight: '800', color: '#1A0A2E', letterSpacing: -1 },
+  reviewCount: { fontSize: 12, color: '#9CA3AF', marginTop: 4, fontWeight: '600' },
 
   // Info card
   infoCard: {
@@ -383,8 +390,8 @@ const s = StyleSheet.create({
   igOuter: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.8, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   igLens: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.8, borderColor: '#fff' },
   igDot: { position: 'absolute', top: 1.5, right: 1.5, width: 2.6, height: 2.6, borderRadius: 1.3, backgroundColor: '#fff' },
-  infoLabel: { fontSize: 11.5, color: '#9CA3AF', fontWeight: '700', marginBottom: 2 },
-  infoValue: { fontSize: 14.5, color: '#1F2937', lineHeight: 20, fontWeight: '600' },
+  infoLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '700', marginBottom: 2 },
+  infoValue: { fontSize: 14, color: '#1F2937', lineHeight: 21, fontWeight: '600' },
   divider: { height: 1, backgroundColor: '#F2EFF7' },
 
   // Hours card
@@ -393,15 +400,15 @@ const s = StyleSheet.create({
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2,
   },
   hoursHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  hoursTitle: { fontSize: 16, fontWeight: '900', color: '#1A0A2E' },
+  hoursTitle: { fontSize: 15, fontWeight: '800', color: '#1A0A2E' },
   openBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#D1FAE5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   closedBadge: { backgroundColor: '#FEE2E2' },
   openDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#10B981' },
   openText: { fontSize: 12, fontWeight: '800', color: '#059669' },
   hoursLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
   hoursBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: PURPLE, marginRight: 10 },
-  hoursDay: { fontSize: 14, color: '#4B3B6B', fontWeight: '700', width: 64 },
-  hoursTime: { fontSize: 14, color: '#1F2937', fontWeight: '500', flex: 1 },
+  hoursDay: { fontSize: 13, color: '#4B3B6B', fontWeight: '700', width: 60 },
+  hoursTime: { fontSize: 13, color: '#1F2937', fontWeight: '500', flex: 1 },
 
   // Fav FAB
   favFab: {
