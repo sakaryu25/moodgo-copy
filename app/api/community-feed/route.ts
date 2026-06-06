@@ -69,40 +69,57 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
-    // 各アイテムを整形＋画像URLを補正（並列）
-    const items = await Promise.all(
-      (data ?? []).map(async (s) => {
-        const name = (s.google_place_name ?? s.spot_name ?? "").trim();
-        // address から都道府県を抽出
-        const cleanAddr = (s.address ?? "")
-          .replace(/^日本[、,]\s*/, "")
-          .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
-          .trim();
-        const prefMatch = cleanAddr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-        const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
+    // 各アイテムを整形（まずは投稿画像のみ）
+    const items = (data ?? []).map((s) => {
+      const name = (s.google_place_name ?? s.spot_name ?? "").trim();
+      // address から都道府県を抽出
+      const cleanAddr = (s.address ?? "")
+        .replace(/^日本[、,]\s*/, "")
+        .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
+        .trim();
+      const prefMatch = cleanAddr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+      const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
 
-        // 画像URL補正（フィードでは Google 補強しない）
-        // 投稿者が画像を添付していなければ画像なしで返す → カード側で枠を小さく表示。
-        // ※ 詳細ページ(/api/community-spot)では住所からGoogle写真を補強する。
-        const rawImgs = (s.image_urls ?? []).filter(Boolean);
-        const image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
+      const rawImgs = (s.image_urls ?? []).filter(Boolean);
+      const image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
 
-        return {
-          id: s.id,
-          spot_name: name,
-          prefecture,
-          description: s.description,
-          address: s.address,
-          image_urls,
-          auto_tags: s.auto_tags,
-          lat: s.lat,
-          lng: s.lng,
-          created_at: s.created_at,
-        };
+      return {
+        id: s.id,
+        spot_name: name,
+        prefecture,
+        description: s.description,
+        address: s.address as string | null,
+        cleanAddr,
+        image_urls,
+        auto_tags: s.auto_tags,
+        lat: s.lat,
+        lng: s.lng,
+        created_at: s.created_at,
+      };
+    });
+
+    // ── ところどころ Google 画像を補強 ────────────────────────────────────────
+    // 画像なし & 住所ありの投稿のうち「1つおき・最大10件」だけ Google 写真で補強。
+    // （全部だと重い／全部なしだと寂しい のバランス。テキストカードと写真カードが混在する）
+    const enrichTargets = items
+      .map((it, i) => ({ it, i }))
+      .filter(({ it }) => it.image_urls.length === 0 && it.spot_name && it.cleanAddr)
+      .filter((_, k) => k % 2 === 0)
+      .slice(0, 10);
+
+    await Promise.all(
+      enrichTargets.map(async ({ it }) => {
+        try {
+          const photoNames = await fetchGooglePhotos(`${it.cleanAddr} ${it.spot_name}`);
+          if (photoNames.length) it.image_urls = photoNames.slice(0, 1).map((pn) => buildProxyUrl(origin, pn));
+        } catch { /* 補強失敗は無視 */ }
       })
     );
 
-    return NextResponse.json({ ok: true, items });
+    // cleanAddr は内部用なので返却から除外
+    const out = items.map(({ cleanAddr, ...rest }) => rest);
+
+    return NextResponse.json({ ok: true, items: out });
   } catch (e) {
     console.error("[community-feed]", e);
     return NextResponse.json({ ok: false, items: [], error: String(e) });

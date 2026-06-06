@@ -335,8 +335,8 @@ const s = StyleSheet.create({
     fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, fontWeight: '500',
   },
 
-  // START
-  startWrap: { marginBottom: 18 },
+  // START（上下の余白を少し広めにして窮屈さを解消）
+  startWrap: { marginTop: 10, marginBottom: 28 },
 
   // ── シャドウ専用レイヤー ──
   // iOS では shadow + overflow:hidden を同じViewに書けないため分離。
