@@ -30,8 +30,29 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image as ExpoImage } from "expo-image";
+import { Asset } from "expo-asset";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
+
+// ── 地図画像（assets/images）。アプリ全体で事前読み込みして遅延表示を防ぐ ──────
+const JAPAN_MAP = require("../assets/images/japan-map.png");
+export const MAP_ASSETS = [
+  JAPAN_MAP,
+  require("../assets/images/region-hokkaido-tohoku.png"),
+  require("../assets/images/region-kanto.png"),
+  require("../assets/images/region-chubu.png"),
+  require("../assets/images/region-kinki.png"),
+  require("../assets/images/region-chugoku.png"),
+  require("../assets/images/region-shikoku.png"),
+  require("../assets/images/region-kyushu.png"),
+];
+// 一度だけ事前読み込み（デコード）するためのキャッシュ済みPromise
+let _mapPreload: Promise<unknown> | null = null;
+export function preloadMaps() {
+  if (!_mapPreload) _mapPreload = Asset.loadAsync(MAP_ASSETS).catch(() => {});
+  return _mapPreload;
+}
 import {
   Bookmark,
   Building2,
@@ -650,10 +671,11 @@ function RegionPrefSelectView({ region, onSelectPref }: {
       {/* silhouette なし → japan-map を背景に */}
       {!bgImage && (
         <>
-          <Image
-            source={require("../assets/images/japan-map.png")}
+          <ExpoImage
+            source={JAPAN_MAP}
             style={{ position: "absolute", width: W, height: W * (813 / 632), left: 0, top: 10, opacity: 0.85 }}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
           />
           <LinearGradient
             colors={["rgba(250,247,244,0.35)", "rgba(250,247,244,0.15)", "rgba(250,247,244,0.45)"]}
@@ -680,10 +702,11 @@ function RegionPrefSelectView({ region, onSelectPref }: {
         >
           {/* シルエット画像 — 中央配置 */}
           {imgW > 0 && (
-            <Image
+            <ExpoImage
               source={bgImage}
               style={{ position: "absolute", left: imgLeft, top: imgTop, width: imgW, height: imgH }}
-              resizeMode="contain"
+              contentFit="contain"
+              cachePolicy="memory-disk"
             />
           )}
           {/* 都道府県ボタン — 地理的位置に配置 */}
@@ -724,6 +747,9 @@ function RegionPrefSelectView({ region, onSelectPref }: {
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {
   const [cW, setCW] = useState(0);
   const [cH, setCH] = useState(0);
+  // 地図画像の事前読み込み（デコード）完了を待ってから表示 → ボタンと地図を同時に出す
+  const [mapReady, setMapReady] = useState(false);
+  useEffect(() => { let m = true; preloadMaps().then(() => { if (m) setMapReady(true); }); return () => { m = false; }; }, []);
 
   // コンテナ内で "contain" したときの実際の画像描画サイズとオフセットを計算
   const scale   = cW > 0 && cH > 0 ? Math.min(cW / 632, cH / 813) : 0;
@@ -740,13 +766,21 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
         setCH(e.nativeEvent.layout.height);
       }}
     >
-      {scale > 0 && (
+      {/* 読込中スケルトン（地図デコード前の空白を防ぐ）*/}
+      {scale > 0 && !mapReady && (
+        <View style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH, borderRadius: 16, backgroundColor: "rgba(155,107,255,0.06)", alignItems: "center", justifyContent: "center" }}>
+          <ExpoImage source={JAPAN_MAP} style={{ width: imgW * 0.7, height: imgH * 0.7, opacity: 0.15 }} contentFit="contain" />
+        </View>
+      )}
+      {scale > 0 && mapReady && (
         <>
-          {/* 日本地図メイン */}
-          <Image
-            source={require("../assets/images/japan-map.png")}
+          {/* 日本地図メイン（expo-image: 事前読込済みキャッシュから即表示）*/}
+          <ExpoImage
+            source={JAPAN_MAP}
             style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH }}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            transition={150}
           />
 
           {/* エリアボタン — 画像座標系で配置 */}
@@ -1031,10 +1065,11 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
       {/* 見出し */}
       <View style={s.contentHeader}>
         {regionImg && (
-          <Image
+          <ExpoImage
             source={regionImg}
             style={s.contentHeaderBgImg}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="memory-disk"
           />
         )}
         <Text style={s.contentTitle}>{data.title}</Text>
@@ -1131,6 +1166,9 @@ export default function FeatureScreen() {
   const [selectedRegion, setSelectedRegion] = useState<Tab>("全国");
   const [selectedTab, setSelectedTab] = useState<Tab>("全国");
   const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, TabContentData>>>({});
+
+  // 地図画像を先読み（マウント時点でデコード済みにしてラグを防ぐ）
+  useEffect(() => { preloadMaps(); }, []);
 
   useEffect(() => {
     apiFetch("/api/featured")
