@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
+import AppBackground, { APP_BG } from './AppBackground';
 
 const PINK = '#F56CB3';
 const PURPLE = '#9B6BFF';
@@ -69,19 +70,27 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.root, { paddingTop: insets.top }]}>
-        {/* ヘッダー */}
-        <View style={s.header}>
-          <TouchableOpacity onPress={onBack} style={s.backCircle} activeOpacity={0.7}>
-            <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
-          </TouchableOpacity>
-          <Text style={s.headerTitle}>AI相談</Text>
-          <View style={{ width: 40 }} />
-        </View>
+    <View style={[s.root, { paddingTop: insets.top }]}>
+      {/* 共通背景（ホーム等と同じM柄）*/}
+      <AppBackground />
 
+      {/* ヘッダー */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={onBack} style={s.backCircle} activeOpacity={0.7}>
+          <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>AI相談</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + 4}
+      >
         <ScrollView
-          contentContainerStyle={[s.scroll, { paddingBottom: insets.bottom + 120 }]}
+          style={{ flex: 1 }}
+          contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -119,7 +128,7 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
           </View>
         </ScrollView>
 
-        {/* 送信ボタン（下部固定） */}
+        {/* 送信ボタン（キーボード上のフッター・不透明）*/}
         <View style={[s.submitWrap, { paddingBottom: insets.bottom + 14 }]}>
           <TouchableOpacity onPress={submit} disabled={!canSubmit} activeOpacity={0.85}>
             <LinearGradient
@@ -132,13 +141,13 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F5F0FF' },
+  root: { flex: 1, backgroundColor: APP_BG },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 10,
@@ -151,7 +160,7 @@ const s = StyleSheet.create({
   },
   headerTitle: { fontSize: 17, fontWeight: '900', color: '#1A0A2E' },
 
-  scroll: { paddingHorizontal: 20, paddingTop: 8 },
+  scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
 
   hero: { alignItems: 'center', gap: 12, marginBottom: 22 },
   heroIcon: {
@@ -180,10 +189,10 @@ const s = StyleSheet.create({
   },
   exampleText: { fontSize: 13, fontWeight: '600', color: '#6D28D9' },
 
+  // キーボード上のフッター（flexレイアウト・不透明で背後が透けない）
   submitWrap: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 20, paddingTop: 10,
-    backgroundColor: 'rgba(245,240,255,0.94)',
+    paddingHorizontal: 20, paddingTop: 12,
+    backgroundColor: APP_BG,
     borderTopWidth: 1, borderTopColor: 'rgba(155,107,255,0.12)',
   },
   submitBtn: {
