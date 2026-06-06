@@ -64,6 +64,10 @@ export type FavoriteItem = {
   priceLevel?: string;
   phone?: string;
   website?: string;
+  /** 'place'=検索結果の場所 / 'post'=みんなの穴場の投稿 */
+  kind?: 'place' | 'post';
+  /** 投稿(post)の場合の suggestions.id（詳細ページを開くのに使用） */
+  spotId?: string;
 };
 
 export type FeedbackItem = {
