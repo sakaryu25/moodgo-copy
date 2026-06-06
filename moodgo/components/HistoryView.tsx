@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
+import ReportModal from './ReportModal';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 
@@ -220,6 +221,7 @@ function DetailView({
   const recCount = item.recommendations?.length ?? 0;
   const sa = item.savedAnswers ?? {};
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
+  const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
   // ResultsView と同じスタイルの条件チップ
   type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -237,6 +239,7 @@ function DetailView({
   if (item.freeWord)                          condChips.push({ Icon: MessageSquare, label: t.freeWordLabel,  value: item.freeWord });
 
   return (
+    <>
     <ScrollView
       style={s.root}
       contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -310,12 +313,7 @@ function DetailView({
               lang={lang}
               isVisited={visitedSet.has(rec.title)}
               onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
-              onReport={() =>
-                Alert.alert(t.reportTitle, t.reportMsg, [
-                  { text: t.reportCancel, style: 'cancel' },
-                  { text: t.reportSend, style: 'destructive' },
-                ])
-              }
+              onReport={() => setReportRec(rec)}
               onPressDetail={onPressDetail ? () => onPressDetail(rec) : undefined}
             />
           ))
@@ -327,6 +325,14 @@ function DetailView({
         }
       </View>
     </ScrollView>
+    <ReportModal
+      visible={!!reportRec}
+      spotName={reportRec?.title ?? ''}
+      spotAddress={reportRec?.address ?? ''}
+      suggestionId={reportRec?.supabaseId}
+      onClose={() => setReportRec(null)}
+    />
+    </>
   );
 }
 

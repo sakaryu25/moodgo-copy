@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
+import ReportModal from './ReportModal';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -97,7 +98,7 @@ function Stars({ n = 5 }: { n?: number }) {
 }
 
 // ─── UserRow ─────────────────────────────────────────────────────────────────
-function UserRow({ item }: { item: FeedItem }) {
+function UserRow({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) => void }) {
   const bg = avatarBg(item.spot_name);
   const { Icon, color } = tagIcon(item.auto_tags);
   return (
@@ -107,7 +108,13 @@ function UserRow({ item }: { item: FeedItem }) {
       </View>
       <Text style={s.userName}>MoodGoユーザー</Text>
       <Text style={s.timestamp}>{relativeTime(item.created_at)}</Text>
-      <MoreHorizontal size={16} color="#9CA3AF" strokeWidth={2} />
+      {/* ⋯ → 報告（adminへ） */}
+      <TouchableOpacity
+        onPress={(e) => { e.stopPropagation?.(); onReport(item); }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <MoreHorizontal size={18} color="#9CA3AF" strokeWidth={2} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -139,7 +146,7 @@ function openSpot(id: string) {
 }
 
 // ─── PhotoCard ───────────────────────────────────────────────────────────────
-function PhotoCard({ item }: { item: FeedItem }) {
+function PhotoCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) => void }) {
   const imgUri = item.image_urls?.[0];
   const hasReview = item.description && item.description.length > 5;
   const { Icon, color } = tagIcon(item.auto_tags);
@@ -178,14 +185,14 @@ function PhotoCard({ item }: { item: FeedItem }) {
           </Text>
         )}
         <StatusRow />
-        <UserRow item={item} />
+        <UserRow item={item} onReport={onReport} />
       </View>
     </TouchableOpacity>
   );
 }
 
 // ─── TextCard ────────────────────────────────────────────────────────────────
-function TextCard({ item }: { item: FeedItem }) {
+function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) => void }) {
   const { Icon, color } = tagIcon(item.auto_tags);
   const hasReview = item.description && item.description.length > 5;
   const bg = avatarBg(item.spot_name);
@@ -214,7 +221,7 @@ function TextCard({ item }: { item: FeedItem }) {
             {item.description}
           </Text>
         )}
-        <UserRow item={item} />
+        <UserRow item={item} onReport={onReport} />
       </View>
     </TouchableOpacity>
   );
@@ -297,6 +304,10 @@ export default function CommunityFeed() {
     return () => { isMounted.current = false; };
   }, []);
 
+  // 報告モーダル
+  const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
+  const openReport = (i: FeedItem) => setReportTarget(i);
+
   // 2カラムに分割（交互に振り分け）
   const leftItems  = items.filter((_, i) => i % 2 === 0);
   const rightItems = items.filter((_, i) => i % 2 !== 0);
@@ -304,8 +315,8 @@ export default function CommunityFeed() {
   const renderItem = (item: FeedItem) => {
     const hasImg = Array.isArray(item.image_urls) && item.image_urls.length > 0;
     return hasImg
-      ? <PhotoCard key={item.id} item={item} />
-      : <TextCard  key={item.id} item={item} />;
+      ? <PhotoCard key={item.id} item={item} onReport={openReport} />
+      : <TextCard  key={item.id} item={item} onReport={openReport} />;
   };
 
   return (
@@ -315,7 +326,7 @@ export default function CommunityFeed() {
         <View>
           <Text style={s.sectionSub}>COMMUNITY PICKS</Text>
           <View style={s.titleRow}>
-            <Text style={s.sectionTitle}>全国のみんなの穴場</Text>
+            <Text style={s.sectionTitle}>全国みんなの穴場</Text>
             <Map size={16} color={PURPLE} strokeWidth={2.2} />
           </View>
         </View>
@@ -343,6 +354,15 @@ export default function CommunityFeed() {
           <ChevronDown size={15} color={PURPLE} strokeWidth={2.4} />
         </TouchableOpacity>
       )}
+
+      {/* 報告モーダル（⋯から） */}
+      <ReportModal
+        visible={!!reportTarget}
+        spotName={reportTarget?.spot_name ?? ''}
+        spotAddress={reportTarget?.address ?? ''}
+        suggestionId={reportTarget?.id}
+        onClose={() => setReportTarget(null)}
+      />
     </View>
   );
 }
