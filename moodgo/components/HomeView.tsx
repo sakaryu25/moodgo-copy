@@ -286,7 +286,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
       </Animated.View>
 
       {/* ── ドラッグ可能なAI相談FAB（最前面・絶対配置）── */}
-      <AiChatFab onPress={onOpenAiChat} bottomNavHeight={insets.bottom + 46} />
+      <AiChatFab onPress={onOpenAiChat} bottomNavHeight={insets.bottom + 18} />
     </View>
   );
 }
