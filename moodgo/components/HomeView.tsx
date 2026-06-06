@@ -99,7 +99,7 @@ const LOGO_SIZE_RATIO = 0.145;
 function GradientLogo() {
   const fontSize = Math.round(W * LOGO_SIZE_RATIO);
   const svgW = W * 0.80;
-  const svgH = fontSize * 1.5;
+  const svgH = fontSize * 1.2;
   return (
     <Svg width={svgW} height={svgH}>
       <Defs>
@@ -322,10 +322,10 @@ const s = StyleSheet.create({
   },
 
   // Scroll
-  scrollContent: { paddingHorizontal: PAD, paddingTop: 8 },
+  scrollContent: { paddingHorizontal: PAD, paddingTop: 2 },
 
-  // Hero
-  hero: { alignItems: 'center', paddingVertical: 20, gap: 12 },
+  // Hero（全体を少し上に詰める）
+  hero: { alignItems: 'center', paddingTop: 4, paddingBottom: 14, gap: 8 },
   tagline: {
     fontSize: 28, fontWeight: '900', color: '#1A0A2E',
     textAlign: 'center', lineHeight: 38, letterSpacing: -0.6,
@@ -336,7 +336,7 @@ const s = StyleSheet.create({
   },
 
   // START
-  startWrap: { marginBottom: 36 },
+  startWrap: { marginBottom: 18 },
 
   // ── シャドウ専用レイヤー ──
   // iOS では shadow + overflow:hidden を同じViewに書けないため分離。
@@ -372,7 +372,7 @@ const s = StyleSheet.create({
   // Featured
   // 要件①②: 背景から薄く浮かせる。marginは scrollContent の paddingHorizontal に統一
   featuredCard: {
-    borderRadius: 20, overflow: 'hidden', marginBottom: 28,
+    borderRadius: 20, overflow: 'hidden', marginBottom: 16,
     // 要件①: 薄くふわっと浮く shadow（backgroundと同化しない程度）
     shadowColor: '#1A0A2E',
     shadowOffset: { width: 0, height: 4 },
@@ -398,6 +398,6 @@ const s = StyleSheet.create({
   // 特集カードと穴場フィードの区切り
   feedDivider: {
     height: 1, backgroundColor: 'rgba(155,107,255,0.10)',
-    marginTop: 4, marginBottom: 20,
+    marginTop: 2, marginBottom: 10,
   },
 });

@@ -56,15 +56,25 @@ export function preloadMaps() {
 import {
   Bookmark,
   Building2,
+  Camera,
   ChevronLeft,
   ChevronRight,
+  Coffee,
+  Droplets,
+  Footprints,
   Landmark,
   Leaf,
   MapPin,
+  Moon,
   Mountain,
+  Palette,
   Search,
   Snowflake,
+  Sparkles,
   Sun,
+  Ticket,
+  Umbrella,
+  Utensils,
   Waves,
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
@@ -954,8 +964,39 @@ function HeroFeatureCard({ data }: { data: HeroData }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CategoryChips
+// CategoryChips（絵文字は使わず lucide アイコンで描画）
 // ─────────────────────────────────────────────────────────────────────────────
+// カテゴリ名キーワード → アイコン
+const CAT_ICON_MAP: { kw: string; Icon: LucideIcon }[] = [
+  { kw: "絶景", Icon: Mountain },
+  { kw: "カフェ", Icon: Coffee },
+  { kw: "おでかけ", Icon: Footprints },
+  { kw: "散歩", Icon: Footprints },
+  { kw: "街歩き", Icon: Building2 },
+  { kw: "街", Icon: Building2 },
+  { kw: "グルメ", Icon: Utensils },
+  { kw: "雨", Icon: Umbrella },
+  { kw: "温泉", Icon: Droplets },
+  { kw: "海", Icon: Waves },
+  { kw: "歴史", Icon: Landmark },
+  { kw: "夜景", Icon: Moon },
+  { kw: "アート", Icon: Palette },
+  { kw: "レジャー", Icon: Ticket },
+  { kw: "自然", Icon: Leaf },
+  { kw: "花火", Icon: Sparkles },
+  { kw: "雪", Icon: Snowflake },
+  { kw: "写真", Icon: Camera },
+];
+
+// 絵文字・変異セレクタを除去してラベルを取り出す
+function parseCategory(c: string): { label: string; Icon: LucideIcon } {
+  const label = c
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}\u{2600}-\u{26FF}]/gu, "")
+    .trim();
+  const found = CAT_ICON_MAP.find((m) => label.includes(m.kw));
+  return { label, Icon: found?.Icon ?? MapPin };
+}
+
 function CategoryChips({ categories }: { categories: string[] }) {
   const [active, setActive] = useState<string | null>(null);
   return (
@@ -967,6 +1008,7 @@ function CategoryChips({ categories }: { categories: string[] }) {
     >
       {categories.map((c) => {
         const on = active === c;
+        const { label, Icon } = parseCategory(c);
         return (
           <TouchableOpacity
             key={c}
@@ -974,7 +1016,8 @@ function CategoryChips({ categories }: { categories: string[] }) {
             onPress={() => setActive(on ? null : c)}
             activeOpacity={0.72}
           >
-            <Text style={[s.chipText, on && s.chipTextActive]}>{c}</Text>
+            <Icon size={14} color={on ? C.accent : C.subText} strokeWidth={2.2} />
+            <Text style={[s.chipText, on && s.chipTextActive]}>{label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -1738,6 +1781,9 @@ const s = StyleSheet.create({
     paddingVertical: 8,
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     backgroundColor: C.white,
     borderRadius: 20,
     paddingVertical: 8,
