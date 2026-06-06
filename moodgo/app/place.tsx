@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import {
-  ArrowLeft, ChevronDown, ChevronUp, Clock, Globe,
+  ArrowLeft, ChevronDown, ChevronUp, Clock, Globe, Heart,
   MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,7 +30,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace } from '@/lib/selectedPlace';
 import { API_BASE } from '@/lib/api';
-import type { Recommendation } from '@/types/app';
+import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const GRAD_DARK: [string, string] = ['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)'];
@@ -300,6 +301,38 @@ export default function PlaceDetailPage() {
   });
   const [fetchError, setFetchError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [faved, setFaved] = useState(false);
+
+  // お気に入り状態を読み込み
+  useEffect(() => {
+    (async () => {
+      if (!place?.title) return;
+      const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
+      setFaved(faves.some((f) => f.title === place.title));
+    })();
+  }, [place?.title]);
+
+  const toggleFav = async () => {
+    if (!rec) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
+    let next: FavoriteItem[];
+    if (faves.some((f) => f.title === rec.title)) {
+      next = faves.filter((f) => f.title !== rec.title);
+      setFaved(false);
+    } else {
+      next = [{
+        title: rec.title, area: '', vibe: rec.vibe ?? '',
+        photoUrl: rec.photoUrl ?? '', photoUrls: rec.photoUrls,
+        mapUrl: rec.mapUrl, createdAt: new Date().toISOString(),
+        placeId: rec.placeId, address: rec.address, rating: rec.rating ?? null,
+        stationText: rec.stationText, distanceText: rec.distanceText,
+        priceLevel: rec.priceLevel, kind: 'place',
+      }, ...faves];
+      setFaved(true);
+    }
+    await saveJSON(FAVORITES_KEY, next);
+  };
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoWidth, setPhotoWidth] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
@@ -783,6 +816,11 @@ export default function PlaceDetailPage() {
 
         </View>
       </Animated.ScrollView>
+
+      {/* お気に入りハート（右下フローティング・投稿詳細と同様）*/}
+      <TouchableOpacity onPress={toggleFav} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
+        <Heart size={24} color="#F56CB3" fill={faved ? '#F56CB3' : 'transparent'} strokeWidth={2.4} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -1001,4 +1039,12 @@ const s = StyleSheet.create({
   },
   tagText: { fontSize: 12, fontWeight: '600', color: '#7C3AED' },
 
+  // お気に入りハート（右下フローティング）
+  favFab: {
+    position: 'absolute', right: 18, width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#FCE7F3',
+    shadowColor: '#F56CB3', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+  },
 });
