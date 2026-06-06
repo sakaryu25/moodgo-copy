@@ -308,9 +308,21 @@ export default function CommunityFeed() {
   const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
   const openReport = (i: FeedItem) => setReportTarget(i);
 
-  // 2カラムに分割（交互に振り分け）
-  const leftItems  = items.filter((_, i) => i % 2 === 0);
-  const rightItems = items.filter((_, i) => i % 2 !== 0);
+  // 2カラムに分割。
+  // ・画像なし（テキスト）カードは左右交互に振り分け → 片側だけ画像/テキストに偏らない
+  // ・画像ありカードは枚数の少ない列に入れて左右をバランス
+  const hasImg = (it: FeedItem) => Array.isArray(it.image_urls) && it.image_urls.length > 0;
+  const leftItems: FeedItem[] = [];
+  const rightItems: FeedItem[] = [];
+  let textToggle = 0;
+  for (const it of items) {
+    if (!hasImg(it)) {
+      (textToggle === 0 ? leftItems : rightItems).push(it);
+      textToggle ^= 1;
+    } else {
+      (leftItems.length <= rightItems.length ? leftItems : rightItems).push(it);
+    }
+  }
 
   const renderItem = (item: FeedItem) => {
     const hasImg = Array.isArray(item.image_urls) && item.image_urls.length > 0;
