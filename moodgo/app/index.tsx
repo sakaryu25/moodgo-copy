@@ -230,11 +230,15 @@ export default function Home() {
         setLocationError('位置情報の権限が必要です');
         return;
       }
-      // getCurrentPositionAsync がハングしてアプリが固まる/落ちるのを防ぐためタイムアウト付き
-      const pos = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      // 位置サービスが無効ならクラッシュ前に既知位置でフォールバック
+      const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
+      // getCurrentPositionAsync がハングしてアプリが固まる/落ちるのを防ぐためタイムアウト付き。
+      // ★レース内のPromiseには必ず .catch を付ける（タイムアウト後の遅延rejectで
+      //   未処理Promise拒否→クラッシュするのを防ぐ）
+      const pos = servicesOn ? await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
-      ]);
+      ]) : null;
       if (!pos) {
         // 取得できない時は最後の既知位置でフォールバック
         const last = await Location.getLastKnownPositionAsync().catch(() => null);
@@ -277,9 +281,9 @@ export default function Home() {
       const Location = await import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        // ハング防止のタイムアウト付き
+        // ハング防止のタイムアウト付き（レース内に必ず.catch→遅延rejectでのクラッシュ防止）
         const pos = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
         ]) ?? await Location.getLastKnownPositionAsync().catch(() => null);
         if (pos) {

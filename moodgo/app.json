@@ -11,7 +11,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.moodgo.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "現在地周辺のおすすめスポットを探すために位置情報を使用します。"
+      }
     },
     "web": {
       "output": "single",
