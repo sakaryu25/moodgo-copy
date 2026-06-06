@@ -327,6 +327,11 @@ export default function PlaceCard({
               <Text style={[s.openText, { color: openNowColor }]}>{openNowLabel}</Text>
             </View>
           ) : null}
+          {item.priceLevel ? (
+            <View style={s.pricePill}>
+              <Text style={s.priceText}>{item.priceLevel}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* 住所 */}
@@ -565,6 +570,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#FDE68A',
   },
   ratingNum:  { fontSize: 13, fontWeight: '700', color: '#92400E' },
+  pricePill:  { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: '#EDE9FE', borderWidth: 1, borderColor: '#DDD6FE' },
+  priceText:  { fontSize: 12, fontWeight: '800', color: '#7C3AED' },
   ratingCount:{ fontSize: 12, color: '#B45309' },
   openPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

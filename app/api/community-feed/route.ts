@@ -86,10 +86,10 @@ export async function GET(request: Request) {
         const hasUsable = rawImgs.some((u: string) => !isLegacyPhotoUrl(u));
         let image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
 
-        // 使える画像が無い（=旧形式のみ or 空）→ Google Places で再取得
-        if (!hasUsable && name) {
-          const q = cleanAddr ? `${name} ${cleanAddr}` : name;
-          const photoNames = await fetchGooglePhotos(q);
+        // 使える画像が無い → 住所がある場合のみ Google Places で補強（住所で位置特定）。
+        // 住所が分からなければ補強しない（名前だけだと別の似た店の写真が出るため）。
+        if (!hasUsable && name && cleanAddr) {
+          const photoNames = await fetchGooglePhotos(`${cleanAddr} ${name}`);
           image_urls = photoNames.map((pn) => buildProxyUrl(origin, pn));
         }
 

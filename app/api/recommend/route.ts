@@ -4421,7 +4421,7 @@ async function fetchYahooSupplement(
               "X-Goog-Api-Key": googleApiKey,
               // 写真に加えて評価(rating/userRatingCount)もここで補完する
             // YahooはratingAPIを持たないため、GooglePlaces検索で評価を取得してYahoo結果に付与
-            "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount",
+            "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount,places.currentOpeningHours,places.priceLevel",
             },
             body: JSON.stringify({
               textQuery: `${r.title} ${r.address ?? ""}`.trim(),
@@ -4436,9 +4436,14 @@ async function fetchYahooSupplement(
           const sdata = await sres.json().catch(() => null);
           const place = sdata?.places?.[0];
           if (!place) return;
-          // 評価を補完（Yahooは評価情報を持たないため）
+          // 評価・営業状態・価格を補完（YahooはこれらのAPIを持たないため）
           if (typeof place.rating === "number") r.rating = place.rating;
           if (typeof place.userRatingCount === "number") r.userRatingCount = place.userRatingCount;
+          if (typeof place.currentOpeningHours?.openNow === "boolean") r.openNow = place.currentOpeningHours.openNow;
+          if (place.priceLevel) {
+            const PMAP: Record<string, string> = { PRICE_LEVEL_FREE: "無料", PRICE_LEVEL_INEXPENSIVE: "￥", PRICE_LEVEL_MODERATE: "￥￥", PRICE_LEVEL_EXPENSIVE: "￥￥￥", PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥" };
+            r.priceLevel = PMAP[place.priceLevel] ?? r.priceLevel;
+          }
           const photoObjs = (place.photos ?? []) as Array<{ name: string }>;
           const photoNamesArr = photoObjs.slice(0, 10).map((ph: { name: string }) => ph.name).filter(Boolean);
           if (photoNamesArr.length === 0) return;
@@ -5283,10 +5288,24 @@ export async function POST(request: Request) {
         const seenFilter = <T extends { title?: string }>(arr: T[]): T[] =>
           showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
 
-        // 各ソースにモールフィルター＋お腹すいた飲食店フィルター＋既出除外を適用 → ソート
-        const sbSorted = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(mergedSb))));
-        const gSorted  = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[])));
-        const ySorted  = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[])));
+        // ── 品質フィルタ ──────────────────────────────────────────────────────
+        // ① 株式会社/有限会社/工場 等のB2B・施設は観光用途に合わないため除外
+        // ② 写真が無く かつ 評価件数も少ない（<5件）低品質スポットを除外
+        const NG_BIZ_RE = /(株式会社|有限会社|（株）|\(株\)|（有）|\(有\)|合同会社|工場|製作所|倉庫|営業所|事業所|本社)/;
+        const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null }>(arr: T[]): T[] =>
+          arr.filter(r => {
+            const name = r.title ?? "";
+            if (NG_BIZ_RE.test(name)) return false;
+            const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
+            const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
+            if (!hasPhoto && reviews < 5) return false;   // 写真なし＆評価少 → 除外
+            return true;
+          });
+
+        // 各ソースにモール/飲食/既出/品質フィルターを適用 → ソート
+        const sbSorted = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(mergedSb)))));
+        const gSorted  = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[]))));
+        const ySorted  = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[]))));
 
         // 各ソースから最大5件を重複排除しながら取得
         const seen: DedupeKey[] = [];

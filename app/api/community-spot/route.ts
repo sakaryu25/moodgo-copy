@@ -81,9 +81,11 @@ export async function GET(request: Request) {
     let reviewCount: number | null = null;
     let openNow: boolean | null = null;
 
-    if (GOOGLE_API_KEY && placeName) {
+    // 住所がある時のみ Google で位置特定して補強（写真・電話等）。
+    // 住所が無ければ名前だけの曖昧検索で別の似た店を拾うのを防ぐため補強しない。
+    if (GOOGLE_API_KEY && placeName && cleanAddr0) {
       try {
-        const q = cleanAddr0 ? `${placeName} ${cleanAddr0}` : placeName;
+        const q = `${cleanAddr0} ${placeName}`;
         const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
           method: "POST",
           headers: {
