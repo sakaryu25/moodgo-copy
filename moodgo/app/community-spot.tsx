@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  ChevronLeft, Clock, Globe, Heart, MapPin, Phone, Share2, Star, Train, Wallet,
+  Camera, ChevronLeft, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -154,7 +154,10 @@ export default function CommunitySpotScreen() {
           )}
           {/* 利用者写真バッジ */}
           {spot.hasUserPhotos && photos.length > 0 && (
-            <View style={s.userBadge}><Text style={s.userBadgeText}>📷 利用者の写真</Text></View>
+            <View style={s.userBadge}>
+              <Camera size={12} color="#fff" strokeWidth={2.2} />
+              <Text style={s.userBadgeText}>利用者の写真</Text>
+            </View>
           )}
           {/* ドット */}
           {photos.length > 1 && (
@@ -169,7 +172,12 @@ export default function CommunitySpotScreen() {
           {/* タイトル行 + マップピル */}
           <View style={s.titleRow}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              {spot.prefecture ? <Text style={s.pref}>📍 {spot.prefecture}</Text> : null}
+              {spot.prefecture ? (
+                <View style={s.prefRow}>
+                  <MapPin size={12} color="#9CA3AF" strokeWidth={2.2} />
+                  <Text style={s.pref}>{spot.prefecture}</Text>
+                </View>
+              ) : null}
               <Text style={s.title}>{spot.userTitle || spot.placeName}</Text>
               {spot.placeName && spot.placeName !== spot.userTitle ? <Text style={s.placeName}>{spot.placeName}</Text> : null}
             </View>
@@ -194,7 +202,10 @@ export default function CommunitySpotScreen() {
           {/* ── 大目玉: 利用者コメント ── */}
           {spot.description ? (
             <View style={s.commentCard}>
-              <Text style={s.commentLabel}>💬 どんな場所？</Text>
+              <View style={s.commentLabelRow}>
+                <MessageCircle size={14} color={PURPLE} fill={PURPLE} strokeWidth={0} />
+                <Text style={s.commentLabel}>どんな場所？</Text>
+              </View>
               <Text style={s.commentText}>{spot.description}</Text>
               {spot.rating > 0 && (
                 <View style={s.posterRate}>
@@ -322,7 +333,8 @@ const s = StyleSheet.create({
   body: { backgroundColor: '#F3F1F7', borderTopLeftRadius: 26, borderTopRightRadius: 26, marginTop: -22, paddingHorizontal: 18, paddingTop: 22 },
 
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
-  pref: { fontSize: 12, color: '#9CA3AF', marginBottom: 4, fontWeight: '600' },
+  prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
+  pref: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
   title: { fontSize: 25, fontWeight: '900', color: '#1A0A2E', lineHeight: 32 },
   placeName: { fontSize: 14, color: '#6B7280', marginTop: 3, fontWeight: '600' },
   mapPill: {
@@ -344,7 +356,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(155,107,255,0.14)',
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3,
   },
-  commentLabel: { fontSize: 13, fontWeight: '900', color: PURPLE, marginBottom: 10 },
+  commentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  commentLabel: { fontSize: 13, fontWeight: '900', color: PURPLE },
   commentText: { fontSize: 16, color: '#2D2240', lineHeight: 26, fontWeight: '500' },
   posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },
