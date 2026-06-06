@@ -9,10 +9,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Send } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
   ScrollView,
   StyleSheet,
   Text,
@@ -63,6 +62,18 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
   const [text, setText] = useState('');
   const canSubmit = text.trim().length > 0;
 
+  // キーボード高さを実測（フッターを正確にキーボード直上へ）
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKbHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKbHeight(0));
+    const showA = Keyboard.addListener('keyboardDidShow', (e) => setKbHeight(e.endCoordinates.height));
+    const hideA = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); showA.remove(); hideA.remove(); };
+  }, []);
+  // フッター下余白: キーボードがあればその高さ、無ければセーフエリア
+  const footerPad = (kbHeight > 0 ? kbHeight : insets.bottom) + 12;
+
   const submit = () => {
     if (!canSubmit) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -83,64 +94,58 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
-      <KeyboardAvoidingView
+      <ScrollView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + 56}
+        contentContainerStyle={[s.scroll, { paddingBottom: footerPad + 80 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={s.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ヒーロー */}
-          <View style={s.hero}>
-            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroIcon}>
-              <AiBubbleIcon size={44} />
-            </LinearGradient>
-            <Text style={s.heroTitle}>どんな場所を探していますか？</Text>
-            <Text style={s.heroSub}>
-              気分やシーンを自由に入力するだけ。{'\n'}AIがあなたにぴったりの場所を提案します。
-            </Text>
-          </View>
-
-          {/* 入力欄 */}
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="例：友達と行ける雰囲気のいい居酒屋"
-            placeholderTextColor="#C4B5FD"
-            multiline
-            textAlignVertical="top"
-            style={s.input}
-          />
-
-          {/* 例（タップで入力） */}
-          <Text style={s.examplesLabel}>こんな相談ができます</Text>
-          <View style={s.exampleWrap}>
-            {EXAMPLES.map((ex) => (
-              <TouchableOpacity key={ex} onPress={() => setText(ex)} activeOpacity={0.75} style={s.exampleChip}>
-                <Text style={s.exampleText}>{ex}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        {/* 送信ボタン（キーボード上のフッター・不透明）*/}
-        <View style={[s.submitWrap, { paddingBottom: insets.bottom + 14 }]}>
-          <TouchableOpacity onPress={submit} disabled={!canSubmit} activeOpacity={0.85}>
-            <LinearGradient
-              colors={GRAD}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={[s.submitBtn, !canSubmit && { opacity: 0.5 }]}
-            >
-              <Send size={18} color="#fff" strokeWidth={2.2} />
-              <Text style={s.submitText}>AIに提案してもらう</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+        {/* ヒーロー */}
+        <View style={s.hero}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroIcon}>
+            <AiBubbleIcon size={40} />
+          </LinearGradient>
+          <Text style={s.heroTitle}>どんな場所を探していますか？</Text>
+          <Text style={s.heroSub}>
+            気分やシーンを自由に入力するだけ。{'\n'}AIがあなたにぴったりの場所を提案します。
+          </Text>
         </View>
-      </KeyboardAvoidingView>
+
+        {/* 入力欄 */}
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          placeholder="例：友達と行ける雰囲気のいい居酒屋"
+          placeholderTextColor="#C4B5FD"
+          multiline
+          textAlignVertical="top"
+          style={s.input}
+        />
+
+        {/* 例（タップで入力） */}
+        <Text style={s.examplesLabel}>こんな相談ができます</Text>
+        <View style={s.exampleWrap}>
+          {EXAMPLES.map((ex) => (
+            <TouchableOpacity key={ex} onPress={() => setText(ex)} activeOpacity={0.75} style={s.exampleChip}>
+              <Text style={s.exampleText}>{ex}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* 送信ボタン（キーボード直上に固定・隙間なし）*/}
+      <View style={[s.submitWrap, { paddingBottom: footerPad }]}>
+        <TouchableOpacity onPress={submit} disabled={!canSubmit} activeOpacity={0.85}>
+          <LinearGradient
+            colors={GRAD}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={[s.submitBtn, !canSubmit && { opacity: 0.5 }]}
+          >
+            <Send size={18} color="#fff" strokeWidth={2.2} />
+            <Text style={s.submitText}>AIに提案してもらう</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -188,8 +193,9 @@ const s = StyleSheet.create({
   },
   exampleText: { fontSize: 13, fontWeight: '600', color: '#6D28D9' },
 
-  // キーボード上のフッター（flexレイアウト・不透明で背後が透けない）
+  // 画面下に固定。paddingBottom をキーボード高さに合わせて隙間なく直上へ
   submitWrap: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     paddingHorizontal: 20, paddingTop: 12,
     backgroundColor: APP_BG,
     borderTopWidth: 1, borderTopColor: 'rgba(155,107,255,0.12)',
