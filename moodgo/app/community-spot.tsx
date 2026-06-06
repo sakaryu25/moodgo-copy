@@ -169,18 +169,17 @@ export default function CommunitySpotScreen() {
 
         {/* ── 本文 ── */}
         <View style={s.body}>
-          {/* タイトル行 + マップピル */}
-          <View style={s.titleRow}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              {spot.prefecture ? (
-                <View style={s.prefRow}>
-                  <MapPin size={12} color="#9CA3AF" strokeWidth={2.2} />
-                  <Text style={s.pref}>{spot.prefecture}</Text>
-                </View>
-              ) : null}
-              <Text style={s.title}>{spot.userTitle || spot.placeName}</Text>
-              {spot.placeName && spot.placeName !== spot.userTitle ? <Text style={s.placeName}>{spot.placeName}</Text> : null}
+          {/* 都道府県（独立行）*/}
+          {spot.prefecture ? (
+            <View style={s.prefRow}>
+              <MapPin size={12} color="#9CA3AF" strokeWidth={2.2} />
+              <Text style={s.pref}>{spot.prefecture}</Text>
             </View>
+          ) : null}
+
+          {/* タイトル行 + マップピル（同じ高さで中央揃え）*/}
+          <View style={s.titleRow}>
+            <Text style={s.title}>{spot.userTitle || spot.placeName}</Text>
             <TouchableOpacity onPress={openMap} activeOpacity={0.85}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapPill}>
                 <MapPin size={15} color="#fff" strokeWidth={2.5} />
@@ -188,6 +187,7 @@ export default function CommunitySpotScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
+          {spot.placeName && spot.placeName !== spot.userTitle ? <Text style={s.placeName}>{spot.placeName}</Text> : null}
 
           {/* 場所エリアチップ */}
           {spot.address ? (
@@ -332,11 +332,12 @@ const s = StyleSheet.create({
   // Body
   body: { backgroundColor: '#F3F1F7', borderTopLeftRadius: 26, borderTopRightRadius: 26, marginTop: -22, paddingHorizontal: 18, paddingTop: 22 },
 
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
+  // タイトルとマップピルを縦中央で揃える
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   pref: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  title: { fontSize: 25, fontWeight: '900', color: '#1A0A2E', lineHeight: 32 },
-  placeName: { fontSize: 14, color: '#6B7280', marginTop: 3, fontWeight: '600' },
+  title: { flex: 1, fontSize: 25, fontWeight: '900', color: '#1A0A2E', lineHeight: 32 },
+  placeName: { fontSize: 14, color: '#6B7280', marginTop: -4, marginBottom: 12, fontWeight: '600' },
   mapPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999,
     shadowColor: PURPLE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
