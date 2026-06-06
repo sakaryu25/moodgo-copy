@@ -16,7 +16,7 @@
  *   - REGIONS       : 地方ボタンの追加・変更
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   Image,
@@ -924,10 +924,19 @@ function SegmentedTabs({ tabs, selected, onSelect }: SegmentedTabsProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HeroFeatureCard
 // ─────────────────────────────────────────────────────────────────────────────
-function HeroFeatureCard({ data }: { data: HeroData }) {
+function openSpot(router: ReturnType<typeof useRouter>, opts: { slug?: string; title: string; area?: string; desc?: string; image?: string }) {
+  if (opts.slug) { router.push(`/feature/${opts.slug}`); return; }
+  router.push({
+    pathname: "/feature-spot",
+    params: { name: opts.title, area: opts.area ?? "", desc: opts.desc ?? "", image: opts.image ?? "" },
+  });
+}
+
+function HeroFeatureCard({ data, area }: { data: HeroData; area?: string }) {
   const router = useRouter();
+  const go = () => openSpot(router, { slug: data.slug, title: data.title, area, desc: data.description, image: data.image });
   return (
-    <View style={s.heroWrap}>
+    <TouchableOpacity style={s.heroWrap} activeOpacity={0.9} onPress={go}>
       <ImageBackground
         source={{ uri: data.image }}
         style={s.heroBg}
@@ -945,21 +954,17 @@ function HeroFeatureCard({ data }: { data: HeroData }) {
           <Text style={s.heroTitle}>{data.title}</Text>
           <Text style={s.heroDesc}>{data.description}</Text>
           <View style={s.heroFooter}>
-            <TouchableOpacity
-              style={s.heroBtn}
-              activeOpacity={0.85}
-              onPress={() => data.slug && router.push(`/feature/${data.slug}`)}
-            >
+            <View style={s.heroBtn}>
               <Text style={s.heroBtnText}>{data.buttonLabel}</Text>
               <ChevronRight size={14} color={C.white} />
-            </TouchableOpacity>
+            </View>
             <TouchableOpacity style={s.heroBookmark} activeOpacity={0.75}>
               <Bookmark size={18} color={C.white} />
             </TouchableOpacity>
           </View>
         </LinearGradient>
       </ImageBackground>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -1028,7 +1033,7 @@ function CategoryChips({ categories }: { categories: string[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HorizontalFeatureCards
 // ─────────────────────────────────────────────────────────────────────────────
-function HorizontalFeatureCards({ title, cards }: { title: string; cards: CardItem[] }) {
+function HorizontalFeatureCards({ title, cards, area }: { title: string; cards: CardItem[]; area?: string }) {
   const router = useRouter();
   return (
     <View style={s.hSection}>
@@ -1052,7 +1057,7 @@ function HorizontalFeatureCards({ title, cards }: { title: string; cards: CardIt
             key={i}
             style={[s.hCard, i < cards.length - 1 && { marginRight: 12 }]}
             activeOpacity={0.84}
-            onPress={() => item.slug && router.push(`/feature/${item.slug}`)}
+            onPress={() => openSpot(router, { slug: item.slug, title: item.title, area, desc: item.desc, image: item.image })}
           >
             <ImageBackground
               source={{ uri: item.image }}
@@ -1124,6 +1129,7 @@ type FeatureContentViewProps = {
 };
 
 function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: FeatureContentViewProps) {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>(selectedTab);
 
   useEffect(() => { setActiveTab(selectedTab); }, [selectedTab]);
@@ -1134,10 +1140,45 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
   const data = apiTabData[activeTab] ?? getBaseTab(activeTab);
   const regionImg = REGION_BG_IMAGES[TAB_REGION_KEY[activeTab] ?? ""];
 
+  // ── スポットの実写真を Google から取得（名前→写真URL）──────────────────────
+  const [photoMap, setPhotoMap] = useState<Record<string, string>>({});
+  const photoMapRef = useRef<Record<string, string>>({});
+  useEffect(() => { photoMapRef.current = photoMap; }, [photoMap]);
+
+  useEffect(() => {
+    const d = apiTabData[activeTab] ?? getBaseTab(activeTab);
+    const names = new Set<string>();
+    if (d.hero.title) names.add(d.hero.title);
+    d.sections.forEach((sec) => sec.cards.forEach((c) => c.title && names.add(c.title)));
+    // admin投稿(slug付き)やすでに取得済みの名前は除外
+    const items = Array.from(names)
+      .filter((n) => !(n in photoMapRef.current))
+      .map((n) => ({ name: n, area: activeTab as string }));
+    if (!items.length) return;
+    apiFetch("/api/feature-photos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    })
+      .then((r) => r.json())
+      .then((j) => { if (j?.photos) setPhotoMap((prev) => ({ ...prev, ...j.photos })); })
+      .catch(() => {});
+  }, [activeTab, apiTabData]);
+
+  // 実写真があれば差し替えた表示用データ
+  const viewData: TabContentData = {
+    ...data,
+    hero: { ...data.hero, image: photoMap[data.hero.title] ?? data.hero.image },
+    sections: data.sections.map((sec) => ({
+      ...sec,
+      cards: sec.cards.map((c) => ({ ...c, image: photoMap[c.title] ?? c.image })),
+    })),
+  };
+
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={s.contentScroll}
+      contentContainerStyle={[s.contentScroll, { paddingBottom: insets.bottom + 110 }]}
     >
       {/* ── エリア切替タブ ── */}
       <SegmentedTabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
@@ -1152,30 +1193,28 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
             cachePolicy="memory-disk"
           />
         )}
-        <Text style={s.contentTitle}>{data.title}</Text>
-        <Text style={s.contentSubtitle}>{data.subtitle}</Text>
+        <Text style={s.contentTitle}>{viewData.title}</Text>
+        <Text style={s.contentSubtitle}>{viewData.subtitle}</Text>
       </View>
 
       {/* ヒーローカード */}
-      <HeroFeatureCard data={data.hero} />
+      <HeroFeatureCard data={viewData.hero} area={activeTab as string} />
 
       {/* カテゴリチップ */}
-      <CategoryChips categories={data.categories} />
+      <CategoryChips categories={viewData.categories} />
 
       {/* セクション（横スクロールカード群） */}
-      {data.sections.map((sec, i) => (
-        <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} />
+      {viewData.sections.map((sec, i) => (
+        <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} area={activeTab as string} />
       ))}
 
       {/* 都県グリッド */}
-      {data.prefectures && (
+      {viewData.prefectures && (
         <PrefectureGrid
-          prefectures={data.prefectures}
+          prefectures={viewData.prefectures}
           onSelectPref={(p) => setActiveTab(p as Tab)}
         />
       )}
-
-      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
