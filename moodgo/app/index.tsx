@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -53,7 +53,7 @@ function fixRec(rec: Recommendation): Recommendation {
     photoUrls: (rec.photoUrls ?? (rec.photoUrl ? [rec.photoUrl] : [])).map(fixPhotoUrl),
   };
 }
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import AppBackground    from '@/components/AppBackground';
 import AiChatInput      from '@/components/AiChatInput';
@@ -202,6 +202,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,     favorites);    }, [favorites,    profileLoaded]);
+
+  // 詳細ページ等(別ルート)で♡された内容をストレージから再読込して同期
+  // → 穴場詳細でいいねした投稿が、戻った瞬間にお気に入りへリアルタイム反映される
+  useFocusEffect(
+    useCallback(() => {
+      if (!profileLoaded) return;
+      (async () => {
+        const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
+        setFavorites(faves);
+      })();
+    }, [profileLoaded])
+  );
   useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY,       history);      }, [history,      profileLoaded]);
   useEffect(() => { if (profileLoaded) saveJSON(FEEDBACK_KEY,      pastFeedback); }, [pastFeedback, profileLoaded]);
   useEffect(() => { if (profileLoaded) saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces, profileLoaded]);
