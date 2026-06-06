@@ -86,7 +86,7 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + 4}
+        keyboardVerticalOffset={insets.top + 56}
       >
         <ScrollView
           style={{ flex: 1 }}
@@ -114,7 +114,6 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
             multiline
             textAlignVertical="top"
             style={s.input}
-            autoFocus
           />
 
           {/* 例（タップで入力） */}
@@ -162,14 +161,14 @@ const s = StyleSheet.create({
 
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
 
-  hero: { alignItems: 'center', gap: 12, marginBottom: 22 },
+  hero: { alignItems: 'center', gap: 10, marginBottom: 18, marginTop: 4 },
   heroIcon: {
-    width: 80, height: 80, borderRadius: 40,
+    width: 68, height: 68, borderRadius: 34,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: PURPLE, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4, shadowRadius: 16, elevation: 8,
+    shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.38, shadowRadius: 14, elevation: 8,
   },
-  heroTitle: { fontSize: 20, fontWeight: '900', color: '#1A0A2E', textAlign: 'center' },
+  heroTitle: { fontSize: 19, fontWeight: '900', color: '#1A0A2E', textAlign: 'center' },
   heroSub: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 20 },
 
   input: {

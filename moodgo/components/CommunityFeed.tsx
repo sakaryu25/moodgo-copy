@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
-  Activity, Car, ChevronDown, Cloud, Flame, Leaf, Map, MapPin,
+  Activity, Car, ChevronDown, Cloud, Leaf, Map, MapPin,
   MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -318,10 +318,6 @@ export default function CommunityFeed() {
             <Text style={s.sectionTitle}>全国のみんなの穴場</Text>
             <Map size={16} color={PURPLE} strokeWidth={2.2} />
           </View>
-        </View>
-        <View style={s.newBadge}>
-          <Flame size={11} color={PINK} strokeWidth={2.4} />
-          <Text style={s.newBadgeText}>新着</Text>
         </View>
       </View>
 
