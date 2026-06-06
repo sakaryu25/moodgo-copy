@@ -1702,6 +1702,75 @@ function buildPhotoProxyUrl(photoName: string): string {
   return `${PHOTO_PROXY_BASE}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
 }
 
+// ── 検索結果の「営業中/目安価格/評価」をGoogleで補完 ────────────────────────────
+// admin/Supabase由来のスポット（金沢動物園等）はこれらをDBに持たないため、
+// 検索時に未取得のものだけGoogle Places(Text Search)で照会して足す。
+// 既に値がある項目（Google/Yahoo由来で補完済み）はそのまま。API負荷を抑えるため
+// 不足項目があるものだけ・最大18件・各6秒timeout・並列で実行する。
+const ENRICH_PRICE_MAP: Record<string, string> = {
+  PRICE_LEVEL_FREE: "無料",
+  PRICE_LEVEL_INEXPENSIVE: "￥",
+  PRICE_LEVEL_MODERATE: "￥￥",
+  PRICE_LEVEL_EXPENSIVE: "￥￥￥",
+  PRICE_LEVEL_VERY_EXPENSIVE: "￥￥￥￥",
+};
+
+async function enrichOpenPrice(
+  items: Array<Record<string, any>>,
+  googleApiKey: string,
+  lat?: number,
+  lng?: number,
+): Promise<void> {
+  if (!googleApiKey || !Array.isArray(items) || items.length === 0) return;
+
+  const needs = items.filter((r) => {
+    if (!r || !r.title) return false;
+    const missingOpen = r.openNow === undefined || r.openNow === null;
+    const missingPrice = !r.priceLevel;
+    const missingRating = r.rating === undefined || r.rating === null;
+    return missingOpen || missingPrice || missingRating;
+  }).slice(0, 18);
+  if (needs.length === 0) return;
+
+  const hasBias = typeof lat === "number" && typeof lng === "number";
+
+  await Promise.all(needs.map(async (r) => {
+    try {
+      const body: Record<string, unknown> = {
+        textQuery: `${r.title} ${r.address ?? ""}`.trim(),
+        maxResultCount: 1,
+        languageCode: "ja",
+        regionCode: "JP",
+      };
+      if (hasBias) body.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 50000 } };
+
+      const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleApiKey,
+          "X-Goog-FieldMask": "places.rating,places.userRatingCount,places.currentOpeningHours,places.priceLevel,places.regularOpeningHours",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      const p = data?.places?.[0];
+      if (!p) return;
+
+      if ((r.rating === undefined || r.rating === null) && typeof p.rating === "number") r.rating = p.rating;
+      if ((r.userRatingCount === undefined || r.userRatingCount === null) && typeof p.userRatingCount === "number") r.userRatingCount = p.userRatingCount;
+      if ((r.openNow === undefined || r.openNow === null) && typeof p.currentOpeningHours?.openNow === "boolean") r.openNow = p.currentOpeningHours.openNow;
+      if (!r.openingHoursText && Array.isArray(p.regularOpeningHours?.weekdayDescriptions)) {
+        r.openingHoursText = p.regularOpeningHours.weekdayDescriptions.join("\n");
+      }
+      if (!r.priceLevel && p.priceLevel) r.priceLevel = ENRICH_PRICE_MAP[p.priceLevel] ?? r.priceLevel;
+    } catch { /* 補完失敗は無視 */ }
+  }));
+}
+
 // 任意の画像URLをphoto-proxy経由のURLに変換する。
 // Supabase DBに保存されている旧形式（maps.googleapis.com/maps/api/place/photo?photo_reference=...）や
 // 直接CDN URL（lh3.googleusercontent.com等）は、Expoアプリが直接リクエストするとAPIキー不足/
@@ -5483,6 +5552,9 @@ export async function POST(request: Request) {
           }
         }
 
+        // admin/Supabase由来で営業中/価格/評価が未取得のものをGoogleで補完
+        if (apiKey) await enrichOpenPrice(recommendations as Array<Record<string, any>>, apiKey, lat, lng);
+
         return json({
           recommendations,
           source: "supabase",
@@ -6961,6 +7033,16 @@ export async function POST(request: Request) {
         routesByMode: routesByModePerItem[idx].length > 0 ? routesByModePerItem[idx] : undefined,
       };
     });
+
+    // admin/Supabase由来で営業中/価格/評価が未取得のものをGoogleで補完
+    if (apiKey) {
+      await enrichOpenPrice(
+        finalResults as Array<Record<string, any>>,
+        apiKey,
+        typeof answers.originLat === "number" ? answers.originLat : undefined,
+        typeof answers.originLng === "number" ? answers.originLng : undefined,
+      );
+    }
 
     const warningNotes: string[] = [];
     if (!aiPlans) {

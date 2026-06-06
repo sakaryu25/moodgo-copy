@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import { openInGoogleMaps } from '@/lib/openMaps';
 
 const { width: W } = Dimensions.get('window');
 const ACCENT = '#F26A3D';
@@ -117,11 +118,10 @@ export default function FeatureSpotScreen() {
               <TouchableOpacity
                 style={s.mapPill}
                 activeOpacity={0.8}
-                onPress={() => {
-                  const url = spot?.googleMapsUri
-                    || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${area} ${name}`)}`;
-                  Linking.openURL(url);
-                }}
+                onPress={() => openInGoogleMaps({
+                  query: [area, name].filter(Boolean).join(' '),
+                  lat: spot?.lat, lng: spot?.lng, mapsUri: spot?.googleMapsUri,
+                })}
               >
                 <MapPin size={13} color="#fff" />
                 <Text style={s.mapPillText}>マップ</Text>
@@ -190,11 +190,10 @@ export default function FeatureSpotScreen() {
           <TouchableOpacity
             style={s.mapBtn}
             activeOpacity={0.85}
-            onPress={() => {
-              const url = spot?.googleMapsUri
-                || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${area} ${name}`)}`;
-              Linking.openURL(url);
-            }}
+            onPress={() => openInGoogleMaps({
+              query: [area, name].filter(Boolean).join(' '),
+              lat: spot?.lat, lng: spot?.lng, mapsUri: spot?.googleMapsUri,
+            })}
           >
             <MapPin size={17} color="#fff" />
             <Text style={s.mapBtnText}>Googleマップで見る</Text>

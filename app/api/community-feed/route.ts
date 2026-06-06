@@ -81,17 +81,11 @@ export async function GET(request: Request) {
         const prefMatch = cleanAddr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
         const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
 
-        // 画像URL補正
+        // 画像URL補正（フィードでは Google 補強しない）
+        // 投稿者が画像を添付していなければ画像なしで返す → カード側で枠を小さく表示。
+        // ※ 詳細ページ(/api/community-spot)では住所からGoogle写真を補強する。
         const rawImgs = (s.image_urls ?? []).filter(Boolean);
-        const hasUsable = rawImgs.some((u: string) => !isLegacyPhotoUrl(u));
-        let image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
-
-        // 使える画像が無い → 住所がある場合のみ Google Places で補強（住所で位置特定）。
-        // 住所が分からなければ補強しない（名前だけだと別の似た店の写真が出るため）。
-        if (!hasUsable && name && cleanAddr) {
-          const photoNames = await fetchGooglePhotos(`${cleanAddr} ${name}`);
-          image_urls = photoNames.map((pn) => buildProxyUrl(origin, pn));
-        }
+        const image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
 
         return {
           id: s.id,

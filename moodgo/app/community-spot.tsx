@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import { openInGoogleMaps } from '@/lib/openMaps';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -93,8 +94,12 @@ export default function CommunitySpotScreen() {
   };
   const openMap = () => {
     if (!spot) return;
-    const url = spot.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(spot.placeName || spot.address)}`;
-    Linking.openURL(url);
+    openInGoogleMaps({
+      query: [spot.placeName, spot.address].filter(Boolean).join(' ') || spot.userTitle,
+      lat: spot.lat,
+      lng: spot.lng,
+      mapsUri: spot.googleMapsUri,
+    });
   };
   const openInstagram = () => {
     if (!spot) return;

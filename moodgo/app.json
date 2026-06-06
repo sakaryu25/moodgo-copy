@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.moodgo.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "現在地周辺のおすすめスポットを探すために位置情報を使用します。"
+        "NSLocationWhenInUseUsageDescription": "現在地周辺のおすすめスポットを探すために位置情報を使用します。",
+        "LSApplicationQueriesSchemes": ["comgooglemaps", "googlemaps"]
       }
     },
     "web": {
