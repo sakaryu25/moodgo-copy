@@ -4472,6 +4472,7 @@ async function buildFreeWordRecommendations(
   openaiClient: import("openai").default,
   seenPlaces: string[],
   showUnseenOnly: boolean,
+  pastFeedback: FeedbackItem[] = [],
 ): Promise<Array<Record<string, unknown>>> {
   try {
     const lat  = answers.originLat;
@@ -4514,12 +4515,51 @@ async function buildFreeWordRecommendations(
     let prompt: string;
 
     if (isAiChat) {
+      // ── ② RAG: Supabaseの近隣・承認済みスポット（みんなの穴場）を参考資料として取得 ──
+      let ragBlock = "";
+      try {
+        if (supabase && typeof answers.originLat === "number" && typeof answers.originLng === "number") {
+          const { data: sgs } = await supabase
+            .from("suggestions")
+            .select("spot_name, google_place_name, address, auto_tags, lat, lng")
+            .eq("status", "approved")
+            .not("lat", "is", null)
+            .limit(60);
+          const oLat = answers.originLat, oLng = answers.originLng;
+          const near = (sgs ?? [])
+            .map((g) => {
+              const dkm = (typeof g.lat === "number" && typeof g.lng === "number")
+                ? haversineMeters(oLat, oLng, g.lat, g.lng) / 1000 : 9999;
+              return { g, dkm };
+            })
+            .filter((x) => x.dkm <= Math.max(radiusKm, 15))
+            .sort((a, b) => a.dkm - b.dkm)
+            .slice(0, 10);
+          if (near.length > 0) {
+            ragBlock = `\n# 参考：近隣の実在スポット（MoodGo内の人気/穴場データ）\n`
+              + `※ 要望に合うものがあれば優先的に活用してよい。ただしこれ「だけ」に限定せず、他にも条件に合う実在店があれば自由に加えること。\n`
+              + near.map((x) => `- ${x.g.google_place_name ?? x.g.spot_name}（${(x.g.address ?? "").replace(/^日本[、,]\s*/, "").slice(0, 24)} / 約${x.dkm.toFixed(1)}km）`).join("\n")
+              + "\n";
+          }
+        }
+      } catch { /* RAG失敗は無視（通常提案にフォールバック）*/ }
+
+      // ── ③ フィードバック: 過去に高評価/低評価だった場所を反映 ──
+      const liked = pastFeedback.filter((f) => (f.rating ?? 0) >= 4 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
+      const disliked = pastFeedback.filter((f) => (f.rating ?? 0) > 0 && (f.rating ?? 0) <= 2 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
+      const fbBlock = (liked.length || disliked.length)
+        ? `\n# このユーザーの好み（過去の評価から）\n`
+          + (liked.length ? `- 気に入った傾向: ${liked.join("、")}（似た雰囲気を歓迎）\n` : "")
+          + (disliked.length ? `- 避けたい傾向: ${disliked.join("、")}（似たものは避ける）\n` : "")
+        : "";
+
       // ── AI相談専用プロンプト（自由入力から的確に提案）──────────────────────────
       systemContent =
         "あなたは日本中のスポットに精通したプロのお出かけコンシェルジュです。" +
         "ユーザーが自由に書いた要望文を深く読み取り、その意図に的確に合致する『実在し、現在も営業している』具体的なスポットだけを提案します。" +
         "架空の店・閉店した店・チェーン名だけ・駅名や地名だけの回答は絶対に禁止です。" +
-        "必ず指定エリアの範囲内のスポットのみを選びます。";
+        "必ず指定エリアの範囲内のスポットのみを選びます。" +
+        "提供される『参考スポット』は優先的に活用しますが、それだけに限定せず条件に合う他の実在店も加えます。";
 
       prompt = `# ユーザーの要望（自由入力）
 「${answers.freeWord}」
@@ -4530,12 +4570,17 @@ ${areaDesc}
 
 # ユーザー情報
 ${profileLine ? profileLine + "\n" : ""}- 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "指定なし"}
-${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}
+${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}${ragBlock}${fbBlock}
+# 良い回答例（Few-shot）
+- 要望「雨でも一日中遊べる屋内」→ 良い: 水族館・屋内型ミュージアム・大型ショッピングモール / 悪い: 屋外公園・展望台
+- 要望「一人で静かに作業できるカフェ」→ 良い: 電源/Wi-Fiのある落ち着いたカフェ / 悪い: 騒がしい居酒屋・チェーンの満席店
+- 要望「映えるスイーツ」→ 良い: 写真映えするパフェ/チョコ専門店 / 悪い: ファミレス
+
 # 手順（必ず守る）
 1. まず要望文「${answers.freeWord}」を分解し、(a)ジャンル・カテゴリ (b)雰囲気/シーン (c)条件(価格帯・人数・時間帯など) を読み取る。
-2. その全てを満たす ${geoAnchor} 周辺の実在スポットを${wantCount}件、具体的な正式店名で挙げる。
+2. その全てを満たす ${geoAnchor} 周辺の実在スポットを${wantCount}件、具体的な正式店名で挙げる（参考スポットを優先しつつ不足分は補う）。
 3. なるべく多様に（同じチェーンの連発を避け、特徴の異なる店をバランス良く）。
-4. 要望と無関係なスポットは1件も入れない。
+4. 要望と無関係なスポット・株式会社/有限会社/工場などは1件も入れない。
 
 # 各スポットの出力ルール
 - name: 検索でヒットする正式な店舗・施設名（支店名まで。例「スターバックス 横浜マリンタワー店」）
@@ -4836,7 +4881,7 @@ export async function POST(request: Request) {
       // 自由ワードがある場合は OpenAI にスポット提案を依頼し Google で実在確認して返す
       if (answers.freeWord && openai) {
         const fwRecs = await buildFreeWordRecommendations(
-          answers, apiKey, openai, seenPlaces, showUnseenOnly
+          answers, apiKey, openai, seenPlaces, showUnseenOnly, pastFeedback
         );
         if (fwRecs.length > 0) {
           return json({
