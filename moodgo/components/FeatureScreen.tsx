@@ -68,6 +68,7 @@ import {
   Waves,
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
+import { SAMPLE_FEATURE, type SampleTab } from "./featureSampleData";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
@@ -546,6 +547,39 @@ function defaultPrefTabData(pref: string): TabContentData {
   };
 }
 
+// ── タブのベースコンテンツ取得 ───────────────────────────────────────────────
+// 優先度: 仮サンプル(SAMPLE_FEATURE) → 手書きTAB_DATA → 県デフォルト
+// 全国/地方/各県すべてで「常に中身のある」特集ページを返す。
+const DEFAULT_CATS = ["🏔️ 絶景", "☕ カフェ", "🍽️ グルメ", "🚶 おでかけ", "🌿 自然"];
+
+function sampleTitle(tab: Tab): string {
+  if (tab === "全国") return `${CURRENT_MONTH}の全国特集`;
+  if (REGION_PREFS[tab]) return `${CURRENT_MONTH}の${tab}特集`;
+  return `${tab} ${CURRENT_MONTH}の特集`;
+}
+
+function getBaseTab(tab: Tab): TabContentData {
+  const smp: SampleTab | undefined = SAMPLE_FEATURE[tab];
+  const td = TAB_DATA[tab];
+  if (smp) {
+    return {
+      title: td?.title ?? sampleTitle(tab),
+      subtitle: smp.subtitle ?? td?.subtitle ?? smp.heroDesc,
+      hero: {
+        image: smp.heroImage,
+        label: smp.heroLabel ?? "今月のおすすめ",
+        title: smp.heroTitle,
+        description: smp.heroDesc,
+        buttonLabel: "特集を読む",
+      },
+      categories: td?.categories ?? DEFAULT_CATS,
+      sections: smp.sections,
+      prefectures: td?.prefectures ?? REGION_PREFS[tab],
+    };
+  }
+  return td ?? defaultPrefTabData(tab);
+}
+
 // ── 都道府県の地図上の位置 (画像の W×H に対する %) ──────────────────────────
 type PrefOverlayItem = { label: Tab; topPct: number; leftPct: number };
 
@@ -956,7 +990,10 @@ function HorizontalFeatureCards({ title, cards }: { title: string; cards: CardIt
   return (
     <View style={s.hSection}>
       <View style={s.hSectionHead}>
-        <Text style={s.hSectionTitle}>{title}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={s.hSectionAccent} />
+          <Text style={s.hSectionTitle}>{title}</Text>
+        </View>
         <TouchableOpacity style={s.seeAllRow} activeOpacity={0.72}>
           <Text style={s.seeAllText}>すべて見る</Text>
           <ChevronRight size={13} color={C.accent} />
@@ -1048,10 +1085,10 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
 
   useEffect(() => { setActiveTab(selectedTab); }, [selectedTab]);
 
-  // 全国 / 地方 / 都道府県 の3タブ（重複排除）
-  const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab]));
+  // 全国 / 地方 / 都道府県 の3タブ（重複排除）。県グリッドから選んだ県も追加。
+  const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab, activeTab]));
 
-  const data = apiTabData[activeTab] ?? TAB_DATA[activeTab] ?? defaultPrefTabData(activeTab);
+  const data = apiTabData[activeTab] ?? getBaseTab(activeTab);
   const regionImg = REGION_BG_IMAGES[TAB_REGION_KEY[activeTab] ?? ""];
 
   return (
@@ -1091,7 +1128,7 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
       {data.prefectures && (
         <PrefectureGrid
           prefectures={data.prefectures}
-          onSelectPref={() => {}}
+          onSelectPref={(p) => setActiveTab(p as Tab)}
         />
       )}
 
@@ -1131,28 +1168,34 @@ function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabCon
   for (const tab of TABS) {
     const recs = grouped[tab];
     if (!recs.length) continue;
+    // 仮サンプル/手書きのリッチなコンテンツをベースに、admin投稿を上に重ねる。
+    // → admin が1件だけ投稿しても下のおすすめが消えず、常に充実したページになる。
+    const base = getBaseTab(tab);
     const [first, ...rest] = recs;
     result[tab] = {
-      title: TAB_DATA[tab].title,
-      subtitle: TAB_DATA[tab].subtitle,
+      ...base,
       hero: {
-        image: first.cover_image_url ?? IMG.fuji,
+        image: first.cover_image_url ?? base.hero.image,
         label: first.partner_name || "今月のおすすめ",
         title: first.spot_name,
-        description: first.catch_copy ?? "",
+        description: first.catch_copy ?? base.hero.description,
         buttonLabel: "特集を読む",
         slug: first.slug,
       },
-      categories: TAB_DATA[tab].categories,
-      sections: rest.length
-        ? [{ title: "今月のおすすめ店舗", cards: rest.map((r) => ({
-            title: r.spot_name,
-            desc: r.catch_copy ?? "",
-            image: r.cover_image_url ?? IMG.cafe,
-            slug: r.slug,
-          })) }]
-        : [],
-      prefectures: TAB_DATA[tab].prefectures,
+      sections: [
+        ...(rest.length
+          ? [{
+              title: "提携・おすすめスポット",
+              cards: rest.map((r) => ({
+                title: r.spot_name,
+                desc: r.catch_copy ?? "",
+                image: r.cover_image_url ?? IMG.cafe,
+                slug: r.slug,
+              })),
+            }]
+          : []),
+        ...base.sections,
+      ],
     };
   }
   return result;
@@ -1727,6 +1770,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 12,
     marginTop: 6,
+  },
+  hSectionAccent: {
+    width: 4,
+    height: 17,
+    borderRadius: 2,
+    backgroundColor: C.accent,
+    marginRight: 8,
   },
   hSectionTitle: {
     fontSize: 17,

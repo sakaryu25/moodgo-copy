@@ -104,6 +104,18 @@ type ReportRecord = {
 
 const font = '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif';
 
+// ─── 特集タブ振り分け：地方→県 マッピング（アプリの Tab 名と一致させること） ───
+const FEATURE_REGIONS = ["北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄"] as const;
+const FEATURE_REGION_PREFS: Record<string, string[]> = {
+  "北海道・東北": ["北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島"],
+  "関東":         ["群馬", "栃木", "茨城", "埼玉", "東京", "千葉", "神奈川"],
+  "中部":         ["新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜", "静岡", "愛知"],
+  "近畿":         ["三重", "滋賀", "京都", "大阪", "兵庫", "奈良", "和歌山"],
+  "中国":         ["鳥取", "島根", "岡山", "広島", "山口"],
+  "四国":         ["徳島", "香川", "愛媛", "高知"],
+  "九州・沖縄":   ["福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄"],
+};
+
 // ─── 開発ログ用データ（モジュールレベル定数） ───────────────────────────────
 type TodoEntry = { id: string; text: string; done: boolean };
 
@@ -1140,6 +1152,7 @@ export default function AdminPage() {
   const [editingFeaturedId, setEditingFeaturedId] = useState<string | null>(null);
   const [deletingFeaturedId, setDeletingFeaturedId] = useState<string | null>(null);
   const [featuredTagInput, setFeaturedTagInput] = useState("");
+  const [featuredPrefRegionOpen, setFeaturedPrefRegionOpen] = useState<string | null>(null);
   const [featuredFeatureInput, setFeaturedFeatureInput] = useState("");
   const [featuredGalleryInput, setFeaturedGalleryInput] = useState("");
   const [featuredItemForm, setFeaturedItemForm] = useState({ name: "", description: "", price: "", image_url: "" });
@@ -6951,36 +6964,93 @@ export default function AdminPage() {
                 {/* タグ */}
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>タグ</label>
-                  {/* アプリタブ振り分けボタン */}
-                  <div style={{ background: "#fff8f0", border: "1px solid #ffd0a0", borderRadius: "10px", padding: "10px 12px", marginBottom: "8px" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#c06020", marginBottom: "6px" }}>アプリの表示タブ（1つ以上選択）</div>
-                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                      {["全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄"].map((tab) => {
-                        const active = featuredForm.tags.includes(tab);
-                        return (
-                          <button
-                            key={tab}
-                            onClick={() => setFeaturedForm(f => ({
-                              ...f,
-                              tags: active
-                                ? f.tags.filter(t => t !== tab)
-                                : [...f.tags, tab],
-                            }))}
-                            style={{
-                              padding: "6px 14px", borderRadius: "999px", fontSize: "13px", fontWeight: 700,
-                              border: active ? "2px solid #e87020" : "2px solid #ddd",
-                              background: active ? "#e87020" : "#fff",
-                              color: active ? "#fff" : "#888",
-                              cursor: "pointer",
-                            }}
-                          >
-                            {active ? "✓ " : ""}{tab}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#999", marginTop: "6px" }}>選択したタブにヒーローカード・カードとして表示されます</div>
-                  </div>
+                  {/* アプリタブ振り分けボタン（全国 / 地方 / 県） */}
+                  {(() => {
+                    const toggle = (tab: string) => setFeaturedForm(f => ({
+                      ...f,
+                      tags: f.tags.includes(tab) ? f.tags.filter(t => t !== tab) : [...f.tags, tab],
+                    }));
+                    const chip = (tab: string, opts?: { wide?: boolean; small?: boolean }) => {
+                      const active = featuredForm.tags.includes(tab);
+                      return (
+                        <button
+                          key={tab}
+                          onClick={() => toggle(tab)}
+                          style={{
+                            padding: opts?.small ? "5px 11px" : "7px 15px",
+                            borderRadius: "999px",
+                            fontSize: opts?.small ? "12px" : "13px",
+                            fontWeight: 700,
+                            border: active ? "2px solid #e87020" : "2px solid #e2e2e2",
+                            background: active ? "#e87020" : "#fff",
+                            color: active ? "#fff" : "#777",
+                            cursor: "pointer",
+                            flex: opts?.wide ? 1 : undefined,
+                            transition: "all 0.12s",
+                          }}
+                        >
+                          {active ? "✓ " : ""}{tab}
+                        </button>
+                      );
+                    };
+                    const selectedPrefs = featuredForm.tags.filter(t =>
+                      Object.values(FEATURE_REGION_PREFS).some(arr => arr.includes(t))
+                    );
+                    return (
+                      <div style={{ background: "#fff8f0", border: "1px solid #ffd0a0", borderRadius: "12px", padding: "14px", marginBottom: "8px" }}>
+                        <div style={{ fontSize: "12px", fontWeight: 900, color: "#c06020", marginBottom: "10px" }}>
+                          📌 どこに転載しますか？（複数選択可）
+                        </div>
+
+                        {/* 全国 */}
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>① 全国トップ</div>
+                        <div style={{ display: "flex", marginBottom: "12px" }}>
+                          {chip("全国", { wide: true })}
+                        </div>
+
+                        {/* 地方 */}
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>② 地方</div>
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
+                          {FEATURE_REGIONS.map((r) => chip(r))}
+                        </div>
+
+                        {/* 県 */}
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>
+                          ③ 都道府県{selectedPrefs.length > 0 && <span style={{ color: "#e87020" }}>（{selectedPrefs.length}件選択中）</span>}
+                        </div>
+                        {/* 地方タブ → 県を展開 */}
+                        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginBottom: "8px" }}>
+                          {FEATURE_REGIONS.map((r) => {
+                            const open = featuredPrefRegionOpen === r;
+                            const cntInRegion = FEATURE_REGION_PREFS[r].filter(p => featuredForm.tags.includes(p)).length;
+                            return (
+                              <button
+                                key={r}
+                                onClick={() => setFeaturedPrefRegionOpen(open ? null : r)}
+                                style={{
+                                  padding: "5px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 700,
+                                  border: open ? "2px solid #c06020" : "1px solid #e2c8a8",
+                                  background: open ? "#ffe9d4" : "#fff",
+                                  color: "#9a6a30", cursor: "pointer",
+                                }}
+                              >
+                                {r}{cntInRegion > 0 ? ` (${cntInRegion})` : ""} {open ? "▲" : "▾"}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {featuredPrefRegionOpen && (
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", background: "#fff", borderRadius: "10px", padding: "10px", border: "1px dashed #e2c8a8" }}>
+                            {FEATURE_REGION_PREFS[featuredPrefRegionOpen].map((p) => chip(p, { small: true }))}
+                          </div>
+                        )}
+
+                        <div style={{ fontSize: "11px", color: "#999", marginTop: "10px", lineHeight: 1.5 }}>
+                          選んだ場所のタブに、このスポットが「今月のおすすめ」ヒーローカードとして表示されます。
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input
                       value={featuredTagInput}
