@@ -14,20 +14,20 @@ export async function openInGoogleMaps(opts: {
   lng?: number;
   mapsUri?: string;
 }): Promise<void> {
-  const q = encodeURIComponent(opts.query.trim());
   const hasCoord = typeof opts.lat === 'number' && typeof opts.lng === 'number';
+  // 座標があれば座標を優先（名前検索だと別の同名スポットに飛ぶため、住所＝座標にピンを立てる）
+  const qRaw = hasCoord ? `${opts.lat},${opts.lng}` : opts.query.trim();
+  const q = encodeURIComponent(qRaw);
 
   // Google Maps アプリ用スキーム
   const appUrl = hasCoord
     ? `comgooglemaps://?q=${q}&center=${opts.lat},${opts.lng}&zoom=16`
     : `comgooglemaps://?q=${q}`;
 
-  // フォールバック（アプリ未インストール時）
-  const webUrl =
-    opts.mapsUri ||
-    (hasCoord
-      ? `https://www.google.com/maps/search/?api=1&query=${opts.lat},${opts.lng}`
-      : `https://www.google.com/maps/search/?api=1&query=${q}`);
+  // フォールバック（アプリ未インストール時）。座標があれば座標、無ければ mapsUri/名前。
+  const webUrl = hasCoord
+    ? `https://www.google.com/maps/search/?api=1&query=${q}`
+    : (opts.mapsUri || `https://www.google.com/maps/search/?api=1&query=${q}`);
 
   // Android は geo: でも Google Maps が開きやすいが、まず comgooglemaps を試す
   try {

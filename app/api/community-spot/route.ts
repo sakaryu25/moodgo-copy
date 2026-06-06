@@ -80,6 +80,7 @@ export async function GET(request: Request) {
     let googleRating: number | null = null;
     let reviewCount: number | null = null;
     let openNow: boolean | null = null;
+    let reviews: Array<{ rating: number | null; text: string; authorName: string; authorPhoto: string | null; relativeTime: string }> = [];
 
     // 住所がある時のみ Google で位置特定して補強（写真・電話等）。
     // 住所が無ければ名前だけの曖昧検索で別の似た店を拾うのを防ぐため補強しない。
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": GOOGLE_API_KEY,
             "X-Goog-FieldMask":
-              "places.id,places.formattedAddress,places.location,places.photos,places.googleMapsUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.currentOpeningHours,places.rating,places.userRatingCount",
+              "places.id,places.formattedAddress,places.location,places.photos,places.googleMapsUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.currentOpeningHours,places.rating,places.userRatingCount,places.reviews",
           },
           body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
           cache: "no-store",
@@ -114,6 +115,23 @@ export async function GET(request: Request) {
             if (typeof p.location?.latitude === "number") { placeLat = p.location.latitude; placeLng = p.location.longitude; }
             const photos = (p.photos ?? []) as Array<{ name: string }>;
             googlePhotos = photos.slice(0, 8).map((ph) => buildProxyUrl(origin, ph.name)).filter(Boolean);
+            // 口コミ（Google は relevance 順 = 「ためになった」順で返す）
+            type RawReview = {
+              rating?: number;
+              text?: { text?: string };
+              authorAttribution?: { displayName?: string; photoUri?: string };
+              relativePublishTimeDescription?: string;
+            };
+            reviews = ((p.reviews ?? []) as RawReview[])
+              .map((r) => ({
+                rating: typeof r.rating === "number" ? r.rating : null,
+                text: r.text?.text ?? "",
+                authorName: r.authorAttribution?.displayName ?? "Google ユーザー",
+                authorPhoto: r.authorAttribution?.photoUri ?? null,
+                relativeTime: r.relativePublishTimeDescription ?? "",
+              }))
+              .filter((r) => r.text.length > 5)
+              .slice(0, 6);
           }
         }
       } catch { /* 補強失敗は無視 */ }
@@ -171,6 +189,7 @@ export async function GET(request: Request) {
         googleRating,         // Google評価（平均）
         reviewCount,          // Google口コミ件数
         openNow,              // 営業中か
+        reviews,              // Googleの口コミ（ためになった順）
         imageUrls: userPhotos,
         hasUserPhotos,
         address,

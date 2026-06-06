@@ -29,12 +29,18 @@ const BLUE = '#4FA3FF';
 const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const IG_GRAD: [string, string, string] = ['#FCAF45', '#E1306C', '#833AB4'];
 
+type Review = {
+  rating: number | null; text: string; authorName: string;
+  authorPhoto: string | null; relativeTime: string;
+};
+
 type Spot = {
   id: string; userTitle: string; placeName: string; description: string;
   priceText: string; rating: number; googleRating: number | null; reviewCount: number | null;
   openNow: boolean | null; imageUrls: string[]; hasUserPhotos: boolean;
   address: string; phone: string; website: string; googleMapsUri: string;
   stationText: string; openingHoursText: string; prefecture: string;
+  reviews?: Review[];
   lat?: number; lng?: number; placeId?: string;
 };
 
@@ -94,8 +100,9 @@ export default function CommunitySpotScreen() {
   };
   const openMap = () => {
     if (!spot) return;
+    // 住所（座標）優先で開く。名前だと別の同名スポットに飛ぶため query は住所を使う。
     openInGoogleMaps({
-      query: [spot.placeName, spot.address].filter(Boolean).join(' ') || spot.userTitle,
+      query: spot.address || spot.placeName || spot.userTitle,
       lat: spot.lat,
       lng: spot.lng,
       mapsUri: spot.googleMapsUri,
@@ -288,6 +295,19 @@ export default function CommunitySpotScreen() {
               })}
             </View>
           ) : null}
+
+          {/* ── 口コミ（ためになった順）── */}
+          {spot.reviews && spot.reviews.length > 0 && (
+            <View style={s.reviewsCard}>
+              <View style={s.reviewsHead}>
+                <MessageCircle size={16} color={PURPLE} strokeWidth={2.2} />
+                <Text style={s.reviewsTitle}>ためになった口コミ</Text>
+              </View>
+              {spot.reviews.map((r, i) => (
+                <ReviewCard key={i} review={r} last={i === spot.reviews!.length - 1} />
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -300,6 +320,40 @@ export default function CommunitySpotScreen() {
 }
 
 function Divider() { return <View style={s.divider} />; }
+
+const REVIEW_AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF'];
+function ReviewCard({ review, last }: { review: Review; last?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const MAX = 100;
+  const needsExpand = review.text.length > MAX;
+  const shown = expanded || !needsExpand ? review.text : review.text.slice(0, MAX) + '…';
+  const initial = review.authorName.charAt(0).toUpperCase();
+  const bg = REVIEW_AVATAR_BG[(review.authorName.charCodeAt(0) ?? 0) % REVIEW_AVATAR_BG.length];
+  return (
+    <View style={[s.reviewItem, last && { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 }]}>
+      <View style={s.reviewHead}>
+        {review.authorPhoto ? (
+          <Image source={{ uri: review.authorPhoto }} style={s.reviewAvatar} contentFit="cover" />
+        ) : (
+          <View style={[s.reviewAvatar, { backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={s.reviewInitial}>{initial}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={s.reviewAuthor} numberOfLines={1}>{review.authorName}</Text>
+          {review.relativeTime ? <Text style={s.reviewTime}>{review.relativeTime}</Text> : null}
+        </View>
+        {review.rating != null && <Stars n={review.rating} size={12} />}
+      </View>
+      <Text style={s.reviewText}>{shown}</Text>
+      {needsExpand && (
+        <TouchableOpacity onPress={() => setExpanded((v) => !v)} activeOpacity={0.7}>
+          <Text style={s.reviewMore}>{expanded ? '閉じる' : 'もっと見る'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
 
 function InfoRow({ Icon, label, value, onPress, link }: {
   Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -415,6 +469,22 @@ const s = StyleSheet.create({
   hoursBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: PURPLE, marginRight: 10 },
   hoursDay: { fontSize: 13, color: '#4B3B6B', fontWeight: '700', width: 60 },
   hoursTime: { fontSize: 13, color: '#1F2937', fontWeight: '500', flex: 1 },
+
+  // Reviews
+  reviewsCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 14,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2,
+  },
+  reviewsHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 14 },
+  reviewsTitle: { fontSize: 15, fontWeight: '800', color: '#1A0A2E' },
+  reviewItem: { borderBottomWidth: 1, borderBottomColor: '#F0ECF7', paddingBottom: 14, marginBottom: 14 },
+  reviewHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  reviewAvatar: { width: 34, height: 34, borderRadius: 17 },
+  reviewInitial: { fontSize: 15, fontWeight: '800', color: '#6B4FA0' },
+  reviewAuthor: { fontSize: 13, fontWeight: '700', color: '#1F2937' },
+  reviewTime: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
+  reviewText: { fontSize: 13, color: '#4B5563', lineHeight: 21 },
+  reviewMore: { fontSize: 12, color: PURPLE, fontWeight: '700', marginTop: 6 },
 
   // Fav FAB
   favFab: {
