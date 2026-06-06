@@ -91,14 +91,17 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
   const insets = useSafeAreaInsets();
 
   // ── 移動可能範囲 ──
+  // ※ 親(HomeView root)が paddingTop:insets.top を持つため、
+  //   absolute子の top:0 は画面上端から insets.top の位置になる。
+  //   そのため transform 値からは insets.top を差し引いて画面座標に合わせる。
   const leftX = MARGIN;
   const rightX = SCREEN_W - FAB_SIZE - MARGIN;
-  const topY = insets.top + 64;                               // ヘッダー下
-  const bottomY = SCREEN_H - insets.bottom - bottomNavHeight - FAB_SIZE - 8;
+  const topY = 56;                                                          // ヘッダーのすぐ下
+  const bottomY = SCREEN_H - bottomNavHeight - FAB_SIZE - 14 - insets.top;  // タブバーのすぐ上
 
-  // ── 初期位置（右下） ──
+  // ── 初期位置（右下・タブバーのすぐ上） ──
   const startX = rightX;
-  const startY = bottomY - 10;
+  const startY = bottomY;
 
   const pan = useRef(new Animated.ValueXY({ x: startX, y: startY })).current;
   // 現在の絶対座標を保持（リリース時のスナップ計算に使用）
