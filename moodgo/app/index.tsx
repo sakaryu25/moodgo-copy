@@ -35,6 +35,7 @@ import {
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import * as Location from 'expo-location';
 
 // 旧形式の Google Maps Photos URL (maps.googleapis.com/maps/api/place/photo) を
 // photo-proxy 経由に変換。すでにproxy経由 or 空の場合はそのまま返す。
@@ -223,9 +224,7 @@ export default function Home() {
   const handleUseCurrentLocation = async () => {
     setIsLocating(true);
     setLocationError('');
-    try {
-      const Location = await import('expo-location');
-      const { status } = await Location.requestForegroundPermissionsAsync();
+    try {      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setLocationError('位置情報の権限が必要です');
         return;
@@ -277,9 +276,7 @@ export default function Home() {
     setAiChatOpen(true);
     setAiHasLocation(false);
     setIsLocating(true);
-    try {
-      const Location = await import('expo-location');
-      const { status } = await Location.requestForegroundPermissionsAsync();
+    try {      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         // ハング防止のタイムアウト付き（レース内に必ず.catch→遅延rejectでのクラッシュ防止）
         const pos = await Promise.race([

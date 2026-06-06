@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 // ─── Tag hierarchy ────────────────────────────────────────────────────────────
 const MOODS = [
   '#お腹すいた', '#まったりしたい', '#わいわい楽しみたい', '#自然感じたい',
@@ -220,17 +222,19 @@ export default function SuggestScreen() {
   const handleGetLocation = async () => {
     setIsLocating(true); setError('');
     try {
-      const Location = await import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') { setError(t.errLocation); return; }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
+      ]) ?? await Location.getLastKnownPositionAsync().catch(() => null);
+      if (!pos) { setError(t.errLocationFail); return; }
       const la = pos.coords.latitude;
       const lo = pos.coords.longitude;
       setLat(la);
       setLng(lo);
       // 逆ジオコーディング: 座標 → 住所（神奈川県横浜市金沢区富岡西１−５５−１１ 形式）
       try {
-        const { apiFetch } = await import('@/lib/api');
         const res = await apiFetch(`/api/reverse-geocode?lat=${la}&lng=${lo}`);
         const data = await res.json();
         if (data.ok && data.address) {
@@ -243,7 +247,6 @@ export default function SuggestScreen() {
 
   const handlePickImages = async () => {
     try {
-      const ImagePicker = await import('expo-image-picker');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         // 権限拒否時: 設定アプリへ誘導するアラート
