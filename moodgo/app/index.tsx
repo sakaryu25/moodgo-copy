@@ -643,6 +643,27 @@ export default function Home() {
     setHomeView('home');
   };
 
+  // 「条件を見直す」: 気分(とエリア)は保持し、その次の質問(step2=同行者)から再選択する。
+  // 気分より後の回答はクリアして選び直せるようにする。
+  const handleReviewConditions = () => {
+    setSelectedCompanion('');
+    setBudget(undefined); setBudgetMin(0); setFreeWord('');
+    setDynamicQuestions([]); setDynamicAnswers({});
+    setDistanceFeeling('今日は出かけたい'); setRadiusKm(20);
+    setDeepDiveL1(''); setDeepDiveL2('');
+    setOnsenCategory(null); setNatureSubGenre(null); setNatureDistancePref(null);
+    setCafeSubCategory(null); setCafeDetail(null); setCafeDetailMode(false);
+    setCafeDistancePref(null); setWaiWaiSubCategory(null);
+    setOnsenDistancePref(null); setScenerySubCategory(null);
+    setApiRecommendations([]); setApiWarning('');
+    setPlaceRatings({}); setLikedInSession([]); setMapClickedInSession([]);
+    setRefinementText(''); setSelectedPrefecture('');
+    // selectedMood / selectedArea は保持
+    setHomeView('home');
+    setStarted(true);
+    setStep(2);
+  };
+
   // ─── Toggle favorite ──────────────────────────────────────────────────────
 
   const toggleFavorite = (rec: Recommendation) => {
@@ -874,6 +895,7 @@ export default function Home() {
             onShuffle={handleShuffle}
             // ── その他 ───────────────────────────────────────────────────────
             onReset={resetQuiz}
+            onReviewConditions={handleReviewConditions}
             reportingSpot={reportingSpot}
             onSetReportingSpot={setReportingSpot}
             reportReason={reportReason}

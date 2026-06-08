@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Banknote, ChevronDown, ChevronLeft, ChevronUp,
   Eye, List, MapPin, MessageSquare, Navigation,
-  Search, Shuffle, Sparkles, Star, Tag, Users,
+  Search, Shuffle, Sparkles, Star, Tag, Users, X,
 } from 'lucide-react-native';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
@@ -60,7 +60,7 @@ const T = {
     searching: '検索中...',
     searchAgain: '再検索する',
     feedbackTitle: 'おすすめはいかがでしたか？',
-    feedbackThanks: 'ありがとうございました！🎉',
+    feedbackThanks: 'ありがとうございました！',
     reset: '最初からやり直す',
     reportTitle: '不適切な内容を報告',
     reportThanks: '報告ありがとうございました。',
@@ -77,7 +77,7 @@ const T = {
     filterOpenNow: '営業中',
     filterUnseen: '未見のみ',
     visited: '行った！',
-    visitedDone: '✓ 行った',
+    visitedDone: '行った',
     visitModalTitle: 'どうでしたか？',
     visitModalSub: '実際に訪れた感想を教えてください',
     visitModalSubmit: '送る',
@@ -101,7 +101,7 @@ const T = {
     searching: 'Searching...',
     searchAgain: 'Search again',
     feedbackTitle: 'How were the recommendations?',
-    feedbackThanks: 'Thank you! 🎉',
+    feedbackThanks: 'Thank you!',
     reset: 'Start over',
     reportTitle: 'Report inappropriate content',
     reportThanks: 'Thanks for your report.',
@@ -118,7 +118,7 @@ const T = {
     filterOpenNow: 'Open now',
     filterUnseen: 'New only',
     visited: 'Been there!',
-    visitedDone: '✓ Visited',
+    visitedDone: 'Visited',
     visitModalTitle: 'How was it?',
     visitModalSub: 'Share your experience',
     visitModalSubmit: 'Send',
@@ -187,6 +187,8 @@ type Props = {
   isRefining: boolean;
   onRefine: () => void;
   onReset: () => void;
+  /** 「条件を見直す」: 気分は保持して、その次の質問から再選択する */
+  onReviewConditions?: () => void;
   reportingSpot: { title: string; address: string; supabaseId?: string } | null;
   onSetReportingSpot: (v: { title: string; address: string; supabaseId?: string } | null) => void;
   reportReason: string;
@@ -263,7 +265,7 @@ export default function ResultsView(props: Props) {
     placeRatings, onSetPlaceRatings,
     feedbackRating, feedbackSubmitted, onSubmitFeedback,
     refinementText, onSetRefinementText, isRefining, onRefine,
-    onReset, onSetReportingSpot, reportingSpot,
+    onReset, onReviewConditions, onSetReportingSpot, reportingSpot,
     reportReason, onSetReportReason, reportNote, onSetReportNote,
     reportSubmitting, reportDone, onSubmitReport,
     onSubmitVisitedFeedback, onShuffle,
@@ -510,8 +512,9 @@ export default function ResultsView(props: Props) {
             contentContainerStyle={s.prefRowContent}
           >
             {selectedPrefecture ? (
-              <TouchableOpacity onPress={() => onSelectPrefecture?.('')} style={[s.prefChip, s.prefChipClear]} activeOpacity={0.7}>
-                <Text style={s.prefChipClearText}>✕ 解除</Text>
+              <TouchableOpacity onPress={() => onSelectPrefecture?.('')} style={[s.prefChip, s.prefChipClear, { flexDirection: 'row', alignItems: 'center', gap: 3 }]} activeOpacity={0.7}>
+                <X size={12} color="#9CA3AF" strokeWidth={2.4} />
+                <Text style={s.prefChipClearText}>解除</Text>
               </TouchableOpacity>
             ) : null}
             {prefectureButtons.map((pref) => (
@@ -593,7 +596,10 @@ export default function ResultsView(props: Props) {
         {/* Refinement */}
         {!isLoading && facilityItems.length > 0 && (
           <View style={s.refinementBox}>
-            <Text style={s.refinementTitle}>🔍 {t.refineTitle}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Search size={16} color="#111827" strokeWidth={2.2} />
+              <Text style={s.refinementTitle}>{t.refineTitle}</Text>
+            </View>
             <TextInput
               value={refinementText}
               onChangeText={onSetRefinementText}
@@ -622,10 +628,16 @@ export default function ResultsView(props: Props) {
         {!isLoading && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
           <View style={s.feedbackBox}>
             {feedbackSubmitted ? (
-              <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Sparkles size={16} color="#10B981" strokeWidth={2.2} />
+                <Text style={s.feedbackThanks}>{t.feedbackThanks}</Text>
+              </View>
             ) : (
               <>
-                <Text style={s.feedbackTitle}>💬 {t.feedbackTitle}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MessageSquare size={16} color="#111827" strokeWidth={2.2} />
+                  <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
+                </View>
                 <View style={s.stars}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
@@ -646,7 +658,7 @@ export default function ResultsView(props: Props) {
         {/* ── 条件を見直す / ホームに戻る ──────────── */}
         {!isLoading && (
           <View style={s.bottomBtns}>
-            <TouchableOpacity onPress={onReset} style={s.reviewBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={onReviewConditions ?? onReset} style={s.reviewBtn} activeOpacity={0.8}>
               <Text style={s.reviewBtnText}>条件を見直す</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onReset} style={s.homeBtn} activeOpacity={0.85}>

@@ -98,28 +98,9 @@ export async function GET(request: Request) {
       };
     });
 
-    // ── Google 画像を補強（画像あり : なし ≒ 8 : 2 を目標／ランダム）────────────
-    // ・投稿者が画像を添付済み → そのまま（補強しない）
-    // ・画像なし & 住所あり の投稿からランダムに選び、全体の約8割が画像ありになるよう補強
-    // ・住所が無い投稿は補強できないのでテキストのまま（＝残り2割側）
-    const total = items.length;
-    const userPhotoCount = items.filter((it) => it.image_urls.length > 0).length;
-    const targetImg = Math.round(total * 0.8);           // 8割を画像ありに
-    const need = Math.max(0, targetImg - userPhotoCount);
-
-    const candidates = items
-      .filter((it) => it.image_urls.length === 0 && it.spot_name && it.cleanAddr)
-      .sort(() => Math.random() - 0.5);                  // ランダム順
-    const toEnrich = candidates.slice(0, Math.min(need, candidates.length, 18));
-
-    await Promise.all(
-      toEnrich.map(async (it) => {
-        try {
-          const photoNames = await fetchGooglePhotos(`${it.cleanAddr} ${it.spot_name}`);
-          if (photoNames.length) it.image_urls = photoNames.slice(0, 1).map((pn) => buildProxyUrl(origin, pn));
-        } catch { /* 補強失敗は無視 */ }
-      })
-    );
+    // タイムラインでは Google 画像補強をしない。
+    // 投稿者が画像を添付していなければ画像なし（テキストカード）で表示する。
+    // ※ 場所をタップした詳細(/api/community-spot)では住所からGoogle写真を補強する。
 
     // cleanAddr は内部用なので返却から除外
     const out = items.map(({ cleanAddr, ...rest }) => rest);
