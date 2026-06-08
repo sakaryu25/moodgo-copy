@@ -52,7 +52,6 @@ export const TAG_CATEGORIES: TagCategory[] = [
       "#集中したい",
       "#体動かしたい",
       "#遠くに行きたい",
-      "#ショッピング",
     ],
   },
 
@@ -69,7 +68,7 @@ export const TAG_CATEGORIES: TagCategory[] = [
   {
     label: "#居酒屋 深掘り",
     key: "izakayaSub",
-    tags: ["#魚介", "#焼き鳥", "#居酒屋個室", "#大衆酒場"],
+    tags: ["#居酒屋個室", "#大衆酒場"],
   },
   {
     label: "#和食 深掘り",
@@ -81,16 +80,7 @@ export const TAG_CATEGORIES: TagCategory[] = [
     key: "yoshokuSub",
     tags: ["#ハンバーグ", "#オムライス", "#ステーキ", "#レトロ洋食"],
   },
-  {
-    label: "#イタリアン 深掘り",
-    key: "italianSub",
-    tags: ["#ピザ", "#パスタ", "#バル", "#イタリアン全般"],
-  },
-  {
-    label: "#中華 深掘り",
-    key: "chineseSub",
-    tags: ["#町中華", "#火鍋", "#本格四川料理", "#食べ放題"],
-  },
+  // #イタリアン・#中華 は深掘りなし
   {
     label: "#焼肉 深掘り",
     key: "yakinikuSub",
@@ -124,12 +114,12 @@ export const TAG_CATEGORIES: TagCategory[] = [
     tags: ["#自然感じたい", "#癒しカフェ", "#温泉", "#絶景スポット"],
   },
   {
-    label: "#自然感じたい（まったり）深掘り",
+    label: "#自然の中 深掘り",
     key: "natureSub",
     tags: ["#海辺", "#自然公園", "#大型公園", "#絶景スポット"],
   },
   {
-    label: "#癒しカフェ 深掘り",
+    label: "#カフェ 深掘り",
     key: "cafeDetailSub",
     tags: ["#ブックカフェ", "#動物カフェ", "#景色良いカフェ", "#カフェスイーツ"],
   },
@@ -141,7 +131,7 @@ export const TAG_CATEGORIES: TagCategory[] = [
   {
     label: "#景色良いカフェ 深掘り",
     key: "scenicCafeSub",
-    tags: ["#海辺カフェ", "#森林カフェ", "#高層ビル料理"],
+    tags: ["#海辺カフェ", "#森林カフェ", "#高層ビルカフェ"],
   },
   {
     label: "#温泉 深掘り",
@@ -205,7 +195,7 @@ export const TAG_CATEGORIES: TagCategory[] = [
   {
     label: "補足タグ",
     key: "supplement",
-    tags: ["#穴場スポット", "#無料駐車場", "#有料駐車場", "#カラオケ", "#ダーツ", "#ビリヤード", "#ボウリング", "#おすすめ"],
+    tags: ["#無料駐車場", "#有料駐車場", "#カラオケ", "#ダーツ", "#ビリヤード", "#ボウリング", "#おすすめ"],
   },
 ];
 
