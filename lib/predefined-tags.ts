@@ -52,6 +52,7 @@ export const TAG_CATEGORIES: TagCategory[] = [
       "#集中したい",
       "#体動かしたい",
       "#遠くに行きたい",
+      "#ショッピング",
     ],
   },
 
