@@ -7,16 +7,16 @@ import {
   Coffee, Music, Leaf, Plane, BookOpen, Zap, Droplets, Car,
   Laugh, Mountain, Wind,
 } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
@@ -225,21 +225,27 @@ function DetailView({
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
   // 左端からの横スワイプで前のページ（履歴一覧）に戻る。
-  // ネイティブのエッジスワイプと同じくらいの感度にする（エッジ幅を広め・しきい値を低め）。
-  const swipeBack = useRef(
-    PanResponder.create({
-      // 画面左端〜50px から始まる、横方向が支配的なスワイプを捕捉（縦スクロールは邪魔しない）
-      onMoveShouldSetPanResponder: (evt, g) =>
-        evt.nativeEvent.pageX < 50 && g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy),
-      onMoveShouldSetPanResponderCapture: (evt, g) =>
-        evt.nativeEvent.pageX < 50 && g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy),
-      // 少しの距離 or 軽いフリックで戻る（ネイティブ同等の軽さ）
-      onPanResponderRelease: (_evt, g) => {
-        if (g.dx > 38 || (g.dx > 14 && g.vx > 0.18)) onBack();
-      },
-      onPanResponderTerminationRequest: () => false,
-    })
-  ).current;
+  // react-native-gesture-handler を使い、縦スクロール(ScrollView)と両立しつつ
+  // ネイティブのエッジスワイプと同等の感度で動作させる。
+  // runOnJS(true) によりコールバックはJSスレッドで実行（worklet/babelプラグイン不要）。
+  const edgeRef = useRef(false);
+  const swipeBack = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetX(16)          // 横16pxでアクティブ化（縦より先に横が動いた時のみ）
+        .failOffsetY([-14, 14])     // 縦14px先行ならスクロール優先で失敗
+        .onBegin((e) => {
+          edgeRef.current = e.absoluteX < 56;  // 画面左端〜56pxから始まったか
+        })
+        .onEnd((e) => {
+          // 左端から始まり、少し動かす or 軽いフリックで戻る（ネイティブ同等の軽さ）
+          if (edgeRef.current && (e.translationX > 42 || (e.translationX > 16 && e.velocityX > 280))) {
+            onBack();
+          }
+        }),
+    [onBack],
+  );
 
   // ResultsView と同じスタイルの条件チップ
   type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -257,7 +263,8 @@ function DetailView({
   if (item.freeWord)                          condChips.push({ Icon: MessageSquare, label: t.freeWordLabel,  value: item.freeWord });
 
   return (
-    <View style={{ flex: 1 }} {...swipeBack.panHandlers}>
+    <GestureDetector gesture={swipeBack}>
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={s.root}
       contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -351,6 +358,7 @@ function DetailView({
       onClose={() => setReportRec(null)}
     />
     </View>
+    </GestureDetector>
   );
 }
 
