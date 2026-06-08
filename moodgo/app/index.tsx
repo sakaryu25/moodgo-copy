@@ -37,7 +37,6 @@ import { apiFetch, API_BASE } from '@/lib/api';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import * as Location from 'expo-location';
 import { Asset } from 'expo-asset';
-import { preloadMaps } from '@/components/FeatureScreen';
 
 // 旧形式の Google Maps Photos URL (maps.googleapis.com/maps/api/place/photo) を
 // photo-proxy 経由に変換。すでにproxy経由 or 空の場合はそのまま返す。
@@ -180,9 +179,8 @@ export default function Home() {
 
   // ─── Load from AsyncStorage ──────────────────────────────────────────────
 
-  // ── 地図画像・ホーム写真をアプリ起動時に先読み（特集/ホームのラグ防止）──
+  // ── ホーム写真をアプリ起動時に先読み（ホームのラグ防止）──
   useEffect(() => {
-    preloadMaps();
     Asset.loadAsync([require('../assets/images/home-featured.png')]).catch(() => {});
   }, []);
 
