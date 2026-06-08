@@ -4775,7 +4775,11 @@ export async function POST(request: Request) {
         "どこでも行きたい":    160,
       };
       const useQuizRadius = !!(answers.radiusKm || answers.distanceFeeling);
-      const minRadiusKm = (answers.areaMode === 'manual' || !useQuizRadius)
+      // 「お腹すいた」は“今すぐ近くで食べる”用途のため遠端バイアスを無効化（最寄り優先）。
+      // これがないと「今日は出かけたい(16km〜)」等で15〜18km先の店が優先され、
+      // 一番近いラーメン店（例: 用心棒 本号）が出てこなくなる。
+      const isFoodMood = answers.mood === "お腹すいた";
+      const minRadiusKm = (isFoodMood || answers.areaMode === 'manual' || !useQuizRadius)
         ? 0
         : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
@@ -5070,15 +5074,20 @@ export async function POST(request: Request) {
         };
 
         // 距離バイアスに応じてソース内ソート/シャッフル
+        const kmOf = (r: Rec): number => (
+          typeof r.distanceKm === "number"
+            ? r.distanceKm
+            : (parseKmFromDistText(r.distanceText as string | undefined) ?? 9999)
+        );
         const sortOrShuffle = (arr: Rec[]): Rec[] => {
+          // お腹すいた: “今すぐ近くで食べる”用途 → 最寄り優先（近い順）。
+          // これで各ソースの最寄り店が選ばれ、一番近い店（例: 用心棒 本号）が必ず候補に入る。
+          if (isFoodMood) {
+            return [...arr].sort((a, b) => kmOf(a) - kmOf(b));
+          }
           if (minRadiusKm > 0) {
             return [...arr]
-              .map(r => ({
-                r,
-                km: typeof r.distanceKm === "number"
-                  ? r.distanceKm
-                  : parseKmFromDistText(r.distanceText as string | undefined),
-              }))
+              .map(r => ({ r, km: kmOf(r) }))
               .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
               .map(x => x.r);
           }
