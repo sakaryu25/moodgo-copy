@@ -3483,7 +3483,10 @@ async function fetchGooglePlacesSupplement(
 
     // ── 1回分の Nearby Search を実行して places を返すヘルパー ──────────────────
     const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType";
-    const searchNearbyAt = async (cLat: number, cLng: number, rM: number): Promise<Array<Record<string, unknown>>> => {
+    const searchNearbyAt = async (
+      cLat: number, cLng: number, rM: number,
+      rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
+    ): Promise<Array<Record<string, unknown>>> => {
       try {
         const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
           method: "POST",
@@ -3498,7 +3501,7 @@ async function fetchGooglePlacesSupplement(
             // primaryType が restaurant 等の施設（ホテル内レストラン）は残る。
             excludedPrimaryTypes: LODGING_PRIMARY_TYPES,
             maxResultCount: 20,  // 多めに取得してシャッフルで多様化
-            rankPreference: "POPULARITY",  // 人気順の方が多様な結果を返す
+            rankPreference: rank,
             languageCode: "ja",
             locationRestriction: {
               circle: { center: { latitude: cLat, longitude: cLng }, radius: Math.min(rM, 50000) },
@@ -3512,6 +3515,10 @@ async function fetchGooglePlacesSupplement(
         return (data?.places ?? []) as Array<Record<string, unknown>>;
       } catch { return []; }
     };
+
+    // お腹すいた: 「最寄りの飲食店」を確実に拾うため、現在地中心の DISTANCE 順検索を追加する。
+    // POPULARITY 順だと一番近い店（例: 用心棒 本号）が人気上位20件から漏れることがあるため。
+    const isFoodNearest = mood === "お腹すいた";
 
     // ── Text Search ヘルパー（キーワード名前検索。shopping_mall系で使用）────────
     const searchTextQuery = async (textQuery: string): Promise<Array<Record<string, unknown>>> => {
@@ -3617,10 +3624,17 @@ async function fetchGooglePlacesSupplement(
     const dvTextKey = DIVE_KW_FOR_SEARCH[dvTextBase] ?? dvTextBase;
     const dvTextQueries: string[] =
       (!isMallSearch && dvTextKey && dvTextKey !== "こだわらない") ? [dvTextKey] : [];
+    // お腹すいた時は現在地中心の DISTANCE 順検索も中心点に加える（最寄り店の取りこぼし防止）
+    const nearbyCenterCalls = isMallSearch
+      ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)
+      : Promise.all([
+          ...centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM)),
+          ...(isFoodNearest
+            ? [searchNearbyAt(lat, lng, Math.min(radiusKm * 1000, 50000), "DISTANCE")]
+            : []),
+        ]);
     const [nearbyResults, ...textResults] = await Promise.all([
-      isMallSearch
-        ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)  // モール検索時は Nearby 不要
-        : Promise.all(centers.map(c => searchNearbyAt(c.lat, c.lng, c.radiusM))),
+      nearbyCenterCalls,
       ...(isMallSearch
         ? MALL_TEXT_QUERIES.map(q => searchTextQuery(q))
         : dvTextQueries.map(q => searchTextQuery(q))),
