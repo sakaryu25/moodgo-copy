@@ -224,15 +224,20 @@ function DetailView({
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
-  // 左端からの横スワイプで前のページ（履歴一覧）に戻る（ネイティブの戻る感度に近づける）
+  // 左端からの横スワイプで前のページ（履歴一覧）に戻る。
+  // ネイティブのエッジスワイプと同じくらいの感度にする（エッジ幅を広め・しきい値を低め）。
   const swipeBack = useRef(
     PanResponder.create({
-      // 左端30px付近から始まる、横方向が支配的なスワイプのみ捕捉（縦スクロールは邪魔しない）
+      // 画面左端〜50px から始まる、横方向が支配的なスワイプを捕捉（縦スクロールは邪魔しない）
       onMoveShouldSetPanResponder: (evt, g) =>
-        evt.nativeEvent.pageX < 30 && g.dx > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        evt.nativeEvent.pageX < 50 && g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy),
+      onMoveShouldSetPanResponderCapture: (evt, g) =>
+        evt.nativeEvent.pageX < 50 && g.dx > 3 && Math.abs(g.dx) > Math.abs(g.dy),
+      // 少しの距離 or 軽いフリックで戻る（ネイティブ同等の軽さ）
       onPanResponderRelease: (_evt, g) => {
-        if (g.dx > 55 || (g.dx > 30 && g.vx > 0.3)) onBack();
+        if (g.dx > 38 || (g.dx > 14 && g.vx > 0.18)) onBack();
       },
+      onPanResponderTerminationRequest: () => false,
     })
   ).current;
 
