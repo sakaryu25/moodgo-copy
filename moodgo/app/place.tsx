@@ -6,7 +6,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import {
   ArrowLeft, ChevronDown, ChevronUp, Clock, Globe, Heart,
   MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
@@ -507,6 +507,8 @@ export default function PlaceDetailPage() {
 
   return (
     <View style={s.root}>
+      {/* スワイプで前のページに戻る（画面全体でジェスチャー有効化）*/}
+      <Stack.Screen options={{ gestureEnabled: true, fullScreenGesture: true } as any} />
 
       {/* ── スティッキーヘッダー ── */}
       <Animated.View

@@ -335,8 +335,8 @@ const s = StyleSheet.create({
     fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, fontWeight: '500',
   },
 
-  // START（上下の余白を少し広めにして窮屈さを解消）
-  startWrap: { marginTop: 10, marginBottom: 28 },
+  // START（上下の余白を広めにして窮屈さを解消）
+  startWrap: { marginTop: 16, marginBottom: 44 },
 
   // ── シャドウ専用レイヤー ──
   // iOS では shadow + overflow:hidden を同じViewに書けないため分離。
@@ -372,7 +372,7 @@ const s = StyleSheet.create({
   // Featured
   // 要件①②: 背景から薄く浮かせる。marginは scrollContent の paddingHorizontal に統一
   featuredCard: {
-    borderRadius: 20, overflow: 'hidden', marginBottom: 16,
+    borderRadius: 20, overflow: 'hidden', marginBottom: 32,
     // 要件①: 薄くふわっと浮く shadow（backgroundと同化しない程度）
     shadowColor: '#1A0A2E',
     shadowOffset: { width: 0, height: 4 },
@@ -398,6 +398,6 @@ const s = StyleSheet.create({
   // 特集カードと穴場フィードの区切り
   feedDivider: {
     height: 1, backgroundColor: 'rgba(155,107,255,0.10)',
-    marginTop: 2, marginBottom: 10,
+    marginTop: 6, marginBottom: 18,
   },
 });
