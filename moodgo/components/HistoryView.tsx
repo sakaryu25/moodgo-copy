@@ -10,6 +10,7 @@ import {
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
@@ -223,6 +224,18 @@ function DetailView({
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
+  // 左端からの横スワイプで前のページ（履歴一覧）に戻る（ネイティブの戻る感度に近づける）
+  const swipeBack = useRef(
+    PanResponder.create({
+      // 左端30px付近から始まる、横方向が支配的なスワイプのみ捕捉（縦スクロールは邪魔しない）
+      onMoveShouldSetPanResponder: (evt, g) =>
+        evt.nativeEvent.pageX < 30 && g.dx > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderRelease: (_evt, g) => {
+        if (g.dx > 55 || (g.dx > 30 && g.vx > 0.3)) onBack();
+      },
+    })
+  ).current;
+
   // ResultsView と同じスタイルの条件チップ
   type LIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
   type CondChip = { Icon: LIcon; label: string; value: string };
@@ -239,7 +252,7 @@ function DetailView({
   if (item.freeWord)                          condChips.push({ Icon: MessageSquare, label: t.freeWordLabel,  value: item.freeWord });
 
   return (
-    <>
+    <View style={{ flex: 1 }} {...swipeBack.panHandlers}>
     <ScrollView
       style={s.root}
       contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -332,7 +345,7 @@ function DetailView({
       suggestionId={reportRec?.supabaseId}
       onClose={() => setReportRec(null)}
     />
-    </>
+    </View>
   );
 }
 
