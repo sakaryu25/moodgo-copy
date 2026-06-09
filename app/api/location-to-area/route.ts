@@ -88,9 +88,22 @@ function pickAreaFromResult(result?: GoogleGeocodeResult) {
     displayArea = searchArea;
   }
 
+  // フル住所（丁目-番地まで）: Google の formatted_address を整形して返す。
+  //   例 "日本、〒113-0023 東京都文京区向丘１丁目１８−４" → "東京都文京区向丘1丁目18-4"
+  //   「日本、」「〒郵便番号」を除去し、全角数字を半角に正規化する。
+  const cleanFullAddress = (() => {
+    let fa = result.formatted_address ?? "";
+    if (!fa) return displayArea;
+    fa = fa.replace(/^日本[、,\s]*/, "");           // 先頭「日本、」除去
+    fa = fa.replace(/〒\s*\d{3}-?\d{4}\s*/, "");      // 郵便番号除去
+    fa = fa.normalize("NFKC").trim();                 // 全角→半角正規化
+    return fa || displayArea;
+  })();
+
   return {
     area: searchArea,
     displayArea,
+    fullAddress: cleanFullAddress,   // 丁目-番地まで含むフル住所
     locality,
     ward: sublocality1,
     neighborhood: townName,
@@ -166,6 +179,7 @@ async function reverseGeocode(latitude: number, longitude: number) {
     ok: true,
     area: picked.area,
     displayArea: picked.displayArea,
+    fullAddress: picked.fullAddress,
     locality: picked.locality,
     ward: picked.ward,
     neighborhood: picked.neighborhood,

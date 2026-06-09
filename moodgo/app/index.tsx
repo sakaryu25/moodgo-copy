@@ -270,8 +270,11 @@ export default function Home() {
           body: JSON.stringify({ latitude, longitude }),
         });
         const d = await res.json();
-        setSelectedArea(d.area ?? '現在地');
-        setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
+        // 現在地はフル住所（丁目-番地まで）を入力欄・表示に使う。検索はGPS座標(originLat/Lng)を使うため
+        // 表示を精密にしても検索精度は変わらない（むしろ利用者が現在地を確認しやすくなる）。
+        const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
+        setSelectedArea(fullAddr);
+        setLocationDisplayArea(fullAddr);
       } catch {
         setSelectedArea('現在地');
         setLocationDisplayArea('現在地');
@@ -309,8 +312,9 @@ export default function Home() {
             body: JSON.stringify({ latitude, longitude }),
           });
           const d = await res.json();
-          setSelectedArea(d.area ?? '現在地');
-          setLocationDisplayArea(d.displayArea ?? d.area ?? '現在地');
+          const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
+          setSelectedArea(fullAddr);
+          setLocationDisplayArea(fullAddr);
         } catch {
           setSelectedArea('現在地');
         }
