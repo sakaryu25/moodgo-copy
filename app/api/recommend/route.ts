@@ -2847,70 +2847,6 @@ async function fetchOSMPlaces(
   }
 }
 
-// ─── ぐるなび / ホットペッパー 外部フードAPI統合 ────────────────────────────
-
-/** km → ぐるなび/ホットペッパー range パラメータ (1〜5, 最大3km) に変換 */
-function kmToRange(km: number): number {
-  if (km <= 0.3) return 1;
-  if (km <= 0.5) return 2;
-  if (km <= 1.0) return 3;
-  if (km <= 2.0) return 4;
-  return 5; // 3km (max)
-}
-
-/**
- * 外部フードAPI結果に対して質問回答を反映したスコアを計算する。
- * Google Placesほど情報が揃わないため、editorialSummaryとマッチ度で補正。
- */
-function scoreExternalFoodItem(
-  item: { editorialSummary: string; amenityTags: string[]; location?: { latitude: number; longitude: number } },
-  answers: Answers,
-  timeCtx: ReturnType<typeof getTimeContext>
-): number {
-  let score = 55;
-
-  // editorialSummaryに質問回答関連キーワードが含まれていれば加点
-  const text = item.editorialSummary.toLowerCase();
-
-  // 誰と
-  if (answers.companion === "一人" && (text.includes("一人") || text.includes("カウンター"))) score += 6;
-  if ((answers.companion === "恋人・パートナー") && (text.includes("デート") || text.includes("カップル") || text.includes("個室"))) score += 6;
-  if (answers.companion === "家族" && (text.includes("家族") || text.includes("子連れ") || text.includes("キッズ"))) score += 6;
-  if (answers.companion === "友達" && (text.includes("グループ") || text.includes("宴会") || text.includes("わいわい"))) score += 5;
-
-  // 雰囲気
-  if (answers.atmosphere === "静か" && (text.includes("静か") || text.includes("落ち着") || text.includes("隠れ家"))) score += 5;
-  if (answers.atmosphere === "賑やか" && (text.includes("にぎ") || text.includes("活気") || text.includes("大衆"))) score += 5;
-  if (answers.atmosphere === "おしゃれ" && (text.includes("おしゃれ") || text.includes("スタイリッシュ") || text.includes("インスタ"))) score += 5;
-
-  // 優先
-  if (answers.priority === "コスパ" && (text.includes("コスパ") || text.includes("お得") || text.includes("安い"))) score += 5;
-  if (answers.priority === "質の高さ" && (text.includes("本格") || text.includes("こだわり") || text.includes("名店"))) score += 6;
-  if (answers.priority === "映え" && (text.includes("映え") || text.includes("フォトジェニック"))) score += 5;
-
-  // 時間帯
-  if (timeCtx.isLateNight && (text.includes("深夜") || text.includes("24時"))) score += 8;
-  if (timeCtx.isEvening && (text.includes("ディナー") || text.includes("夜"))) score += 4;
-  if (timeCtx.isDaytime && (text.includes("ランチ") || text.includes("昼"))) score += 4;
-
-  // 写真・説明充実度ボーナス
-  if (item.amenityTags.length > 0) score += 3;
-
-  // 距離ペナルティ（originがある場合）
-  if (answers.originLat && answers.originLng && item.location) {
-    const dLat = (item.location.latitude - answers.originLat) * Math.PI / 180;
-    const dLng = (item.location.longitude - answers.originLng) * Math.PI / 180;
-    const a = Math.sin(dLat/2)**2 + Math.cos(answers.originLat * Math.PI/180) * Math.cos(item.location.latitude * Math.PI/180) * Math.sin(dLng/2)**2;
-    const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    if (distKm < 0.5) score += 8;
-    else if (distKm < 1.0) score += 4;
-    else if (distKm > 2.5) score -= 5;
-  }
-
-  return score;
-}
-
-
 // 移動手段と時間から推定半径（km）を計算する関数
 function estimateRadiusKm(
   transport: string | string[] | undefined,
@@ -5800,7 +5736,7 @@ export async function POST(request: Request) {
           "階", "タワー", "ビル", "Tower", "TOWER",
         ];
 
-        // dedup & フィルタ & build hotpepperShops format
+        // dedup & フィルタ & build result format
         const seen = new Set<string>();
         const hiShops = await Promise.all(
           hiResults
@@ -5872,7 +5808,7 @@ export async function POST(request: Request) {
             })),
             "#高層ビル料理"
           );
-          return json({ recommendations: hiShops, hotpepperShops: [], usedAI: true, warning: "" });
+          return json({ recommendations: hiShops, usedAI: true, warning: "" });
         }
       }
     }
