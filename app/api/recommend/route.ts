@@ -6845,7 +6845,33 @@ export async function POST(request: Request) {
       score: item.score * (0.90 + Math.random() * 0.20),
     }));
     const sorted = jittered.sort((a, b) => b.score - a.score);
-    const finalItems = chooseFinalResults(sorted, answers.mood);
+
+    // ── Step 2: 経路5(レガシー)にも経路2と共通の品質/飲食フィルタを適用 ────────────
+    //   createFinalizeHelpers を経路5でも呼び、品質フィルタ(B2B・写真なし低評価の除外)と
+    //   飲食フィルタ(温泉/水族館/老舗食堂の除外)を chooseFinalResults の前段に挟む。
+    //   これで「お腹すいた」以外も含め全moodで品質フィルタが効くようになる。
+    //   ※ admin注入スポット(score>=100)・AIピン留め(isPinned)は写真/評価が無くても
+    //     必ず残すよう保護する（誤除外防止）。
+    //   ※ 既出除外(seenPlaces)・閉店除外は既に mergedMap 段階で実施済みのため二重適用しない。
+    const legacyHelpers = createFinalizeHelpers({
+      isFoodMood: answers.mood === "お腹すいた",
+      minRadiusKm: 0,          // 経路5はバケット順序のため距離バイアス未使用
+      isBadWeather: false,     // 並び替えは chooseFinalResults に委ねる（天気再ソートしない）
+      goodVisitedPlaces,
+      seenPlaces,
+      showUnseenOnly: false,   // seen除外は mergedMap で実施済み → 二重適用回避
+      effectiveDeepDive: "",   // 経路5ではモールフィルタ未使用
+    });
+    const isProtectedLegacy = (i: ScoredItem) => i.isPinned === true || i.score >= 100;
+    const protectedItems = sorted.filter(isProtectedLegacy);
+    const cleanedItems = legacyHelpers.qualitySanitize(
+      legacyHelpers.foodSanitize(sorted.filter(i => !isProtectedLegacy(i)))
+    );
+    // 元のスコア順を保ったまま再構成（保護対象 + フィルタ通過分）
+    const keepSet = new Set<ScoredItem>([...protectedItems, ...cleanedItems]);
+    const preFiltered = sorted.filter(i => keepSet.has(i));
+
+    const finalItems = chooseFinalResults(preFiltered, answers.mood);
 
     // ── 夜モード：夕方〜深夜の場合、各スポットの夜景写真を取得して置き換え ──
     const isNightTime = timeContext.isEvening || timeContext.isLateNight;
