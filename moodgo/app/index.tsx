@@ -248,7 +248,7 @@ export default function Home() {
       // ★レース内のPromiseには必ず .catch を付ける（タイムアウト後の遅延rejectで
       //   未処理Promise拒否→クラッシュするのを防ぐ）
       const pos = servicesOn ? await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
       ]) : null;
       if (!pos) {
@@ -293,7 +293,7 @@ export default function Home() {
       if (status === 'granted') {
         // ハング防止のタイムアウト付き（レース内に必ず.catch→遅延rejectでのクラッシュ防止）
         const pos = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
         ]) ?? await Location.getLastKnownPositionAsync().catch(() => null);
         if (pos) {
