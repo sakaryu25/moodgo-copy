@@ -4794,6 +4794,222 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
   return result;
 }
 
+// ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
+// 経路ごとにバラバラだった「フィルタ / ソート / 重複排除 / 15件化」のロジックを
+// 1か所(createFinalizeHelpers)に集約する。挙動は従来(経路2: Supabase-first)と完全同一。
+// 将来 経路5(レガシー)等もこのヘルパーを呼ぶことで、改善(A-7/D-1/D-4/E-3 等)が全経路に効く。
+
+// パイプラインが参照するスポットの最小フィールド定義（各経路の具体型はこれを満たす）
+type FinalizeRec = {
+  title?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  distanceKm?: number;
+  distanceText?: string;
+  openNow?: boolean;
+  photoUrl?: string;
+  photoUrls?: string[];
+  userRatingCount?: number | null;
+  hasUserPhotos?: boolean;
+  features?: string[];
+};
+
+type FinalizeContext = {
+  isFoodMood: boolean;
+  minRadiusKm: number;
+  isBadWeather: boolean;
+  goodVisitedPlaces: Set<string>;
+  seenPlaces: string[];
+  showUnseenOnly: boolean;
+  effectiveDeepDive: string;
+};
+
+type FinalizeDedupeKey = { key: string; lat?: number; lng?: number };
+
+// 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
+const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
+// お腹すいた時に除外する老舗・地元食堂系。
+const FINALIZE_OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正|昭和[0-9０-９]+年創|食堂|大衆食堂)/;
+// B2B・施設系の除外（株式会社/工場 等）。
+const FINALIZE_NG_BIZ_RE = /(株式会社|有限会社|（株）|\(株\)|（有）|\(有\)|合同会社|工場|製作所|倉庫|営業所|事業所|本社)/;
+
+function createFinalizeHelpers(ctx: FinalizeContext) {
+  const {
+    isFoodMood, minRadiusKm, isBadWeather,
+    goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive,
+  } = ctx;
+
+  // distanceText 例: "車で約2分 / 1.0km" から km をパース
+  const parseKmFromDistText = (distText?: string): number => {
+    if (!distText) return 0;
+    const m = distText.match(/\/\s*([\d.]+)\s*km/);
+    return m ? parseFloat(m[1]) : 0;
+  };
+
+  const shuffleArr = <T,>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  const applyMallFilter = <T extends { title?: string }>(arr: T[]): T[] =>
+    isLargeMallSearch(effectiveDeepDive)
+      ? arr.filter(r => isLargeMallName(r.title ?? ""))
+      : arr;
+
+  const normalizeName = (str: string): string =>
+    (str ?? "")
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[^0-9a-z぀-ヿ一-鿿ｦ-ﾟ]+/g, "");
+
+  const namesOverlap = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) return true;
+    return a.slice(0, 4) === b.slice(0, 4);
+  };
+
+  // クロスソース重複排除しながら pool から最大 max 件取得。A-7: 同チェーン最大2件抑制。
+  const pickUnique = <T extends FinalizeRec>(
+    pool: T[], max: number, seen: FinalizeDedupeKey[],
+  ): { taken: T[]; skipped: T[] } => {
+    const taken: T[] = [];
+    const skipped: T[] = [];
+    const chainCounts = new Map<string, number>();
+    for (const r of pool) {
+      const key = normalizeName(r.title ?? "");
+      if (!key) continue;
+      const rl = typeof r.lat === "number" ? r.lat : undefined;
+      const rg = typeof r.lng === "number" ? r.lng : undefined;
+      let isDup = false;
+      for (const e of seen) {
+        if (e.key === key) { isDup = true; break; }
+        if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined
+            && haversineMeters(rl, rg, e.lat, e.lng) <= 80 && namesOverlap(key, e.key)) {
+          isDup = true; break;
+        }
+      }
+      if (isDup) continue;
+      const brand = brandOf(r.title ?? "");
+      const chainCnt = brand.length >= 3 ? (chainCounts.get(brand) ?? 0) : 0;
+      if (chainCnt >= 2) { skipped.push(r); continue; }
+      if (taken.length < max) {
+        seen.push({ key, lat: rl, lng: rg });
+        taken.push(r);
+        if (brand.length >= 3) chainCounts.set(brand, chainCnt + 1);
+      } else {
+        skipped.push(r);
+      }
+    }
+    return { taken, skipped };
+  };
+
+  const kmOf = (r: FinalizeRec): number => (
+    typeof r.distanceKm === "number"
+      ? r.distanceKm
+      : (parseKmFromDistText(r.distanceText) ?? 9999)
+  );
+
+  // D-1: フィードバック学習 — 過去に良かった場所を優先
+  const goodPlaceNames = new Set([...goodVisitedPlaces].map(n => n.toLowerCase()));
+
+  // D-4: 天気に基づく屋内/屋外タグ
+  const OUTDOOR_TAGS = new Set(["#自然感じたい", "#ドライブしたい", "#体動かしたい"]);
+  const INDOOR_TAGS  = new Set(["#集中したい", "#わいわい楽しみたい"]);
+  const weatherBoost = (r: FinalizeRec): number => {
+    if (!isBadWeather) return 0;
+    const tags = (r as unknown as { auto_tags?: string[]; features?: string[] }).auto_tags
+      ?? r.features ?? [];
+    if (tags.some(t => INDOOR_TAGS.has(t)))  return 0.5;
+    if (tags.some(t => OUTDOOR_TAGS.has(t))) return -0.5;
+    return 0;
+  };
+
+  // E-3: 写真の質的優先スコア
+  const photoQualityScore = (r: FinalizeRec): number => {
+    const hasUserPhoto = r.hasUserPhotos === true;
+    const photoUrls = r.photoUrls ?? [];
+    const hasPhoto = !!r.photoUrl || photoUrls.length > 0;
+    if (hasUserPhoto) return 1.2;
+    if (photoUrls.length >= 3) return 0.6;
+    if (hasPhoto) return 0.3;
+    return 0;
+  };
+
+  const sortOrShuffle = <T extends FinalizeRec>(arr: T[]): T[] => {
+    // お腹すいた: 最寄り優先。A-5: 同距離帯はopenNow→E-3写真品質でタイブレーク。
+    if (isFoodMood) {
+      return [...arr].sort((a, b) => {
+        const ka = kmOf(a), kb = kmOf(b);
+        if (Math.abs(ka - kb) < 0.5) {
+          if (a.openNow && !b.openNow) return -1;
+          if (!a.openNow && b.openNow) return 1;
+          const pq = photoQualityScore(b) - photoQualityScore(a);
+          if (Math.abs(pq) > 0.01) return pq;
+        }
+        return ka - kb;
+      });
+    }
+    if (minRadiusKm > 0) {
+      return [...arr]
+        .map(r => ({ r, km: kmOf(r) }))
+        .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
+        .map(x => x.r);
+    }
+    // 通常: D-1学習 + D-4天気 + E-3写真品質をシャッフルに加味
+    return [...arr]
+      .map(r => ({
+        r,
+        score: (Math.random() * 10)
+          + weatherBoost(r)
+          + photoQualityScore(r)
+          + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.r);
+  };
+
+  // お腹すいた 飲食店のみ強制フィルター（温泉/水族館/老舗食堂を除外）
+  const isFoodMoodReq = isFoodMood;
+  const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] => {
+    if (!isFoodMoodReq) return arr;
+    return arr.filter(r =>
+      !FINALIZE_NON_FOOD_NAME_RE.test(r.title ?? "") &&
+      !FINALIZE_NON_FOOD_NAME_RE.test(r.address ?? "") &&
+      !FINALIZE_OLD_STORE_NAME_RE.test(r.title ?? "")
+    );
+  };
+
+  // 既出スポット除外（再検索時の重複防止）
+  const seenLower = new Set(seenPlaces.map(s => s.toLowerCase()));
+  const seenFilter = <T extends { title?: string }>(arr: T[]): T[] =>
+    showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
+
+  // 品質フィルタ（B2B除外 + 写真なし&評価少を除外）
+  const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null }>(arr: T[]): T[] =>
+    arr.filter(r => {
+      const name = r.title ?? "";
+      if (FINALIZE_NG_BIZ_RE.test(name)) return false;
+      const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
+      const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
+      if (!hasPhoto && reviews < 5) return false;
+      return true;
+    });
+
+  return {
+    shuffleArr, applyMallFilter, normalizeName, namesOverlap, pickUnique,
+    kmOf, weatherBoost, photoQualityScore, sortOrShuffle,
+    foodSanitize, seenFilter, qualitySanitize,
+    seenLower, isFoodMoodReq,
+    NON_FOOD_NAME_RE: FINALIZE_NON_FOOD_NAME_RE,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
@@ -5167,25 +5383,6 @@ export async function POST(request: Request) {
         });
 
         // ── 結果の結合 ─────────────────────────────────────────────────────────
-        // 遠端バイアスが有効(minRadiusKm > 0)のとき、Supabase の近場スポットが
-        // 常に先頭に来て「毎回同じ」になる問題を防ぐため順序を制御する。
-        //
-        // distanceText 例: "車で約2分 / 1.0km"  "電車で約20分 / 15.3km"
-        const parseKmFromDistText = (distText?: string): number => {
-          if (!distText) return 0;
-          const m = distText.match(/\/\s*([\d.]+)\s*km/);
-          return m ? parseFloat(m[1]) : 0;
-        };
-
-        const shuffleArr = <T>(arr: T[]): T[] => {
-          const a = [...arr];
-          for (let i = a.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [a[i], a[j]] = [a[j], a[i]];
-          }
-          return a;
-        };
-
         // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
         // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う
         // ただし「大型ショッピングモール」系は deepDiveTag が mood タグと同一で空になるため
@@ -5194,180 +5391,21 @@ export async function POST(request: Request) {
         const skipSupabase = isApiOnlyDeepDive && hasApiResults && !isLargeMallSearch(effectiveDeepDive);
         const mergedSb = skipSupabase ? [] : supabaseRecs;
 
-        // ── 大型ショッピングモール検索の最終セーフティフィルター ─────────────────
-        // 全ソース（Supabase/Google/Yahoo）横断で、モール／百貨店として妥当でない
-        // スポット（公園・レジャー施設・商店街・観光地）を最終的に除外する。
-        const applyMallFilter = <T extends { title?: string }>(arr: T[]): T[] =>
-          isLargeMallSearch(effectiveDeepDive)
-            ? arr.filter(r => isLargeMallName(r.title ?? ""))
-            : arr;
-
-        // ── 3ソース均等マージ: Supabase 5 + Google 5 + Yahoo 5 = 最大15件 ───────
-        // いずれかのソースが不足する場合は他ソースの余りで補填する。
-        // 重複排除（表記ゆれ・座標近接）も pickUnique 内で一括処理。
-
-        const normalizeName = (str: string): string =>
-          (str ?? "")
-            .normalize("NFKC")
-            .toLowerCase()
-            .replace(/[^0-9a-z぀-ヿ一-鿿ｦ-ﾟ]+/g, "");
-        const namesOverlap = (a: string, b: string): boolean => {
-          if (!a || !b) return false;
-          if (a === b) return true;
-          if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) return true;
-          return a.slice(0, 4) === b.slice(0, 4);
-        };
-
         type DedupeKey = { key: string; lat?: number; lng?: number };
         type Rec = (typeof supabaseRecs)[number];
 
-        // クロスソース重複排除しながら pool から最大 max 件取得。
-        // 重複でなく max 超過でスキップされた件は skipped に積む（補填用）。
-        // A-7: 同チェーン重複抑制（最大2件/チェーン）
-        const pickUnique = (
-          pool: Rec[], max: number, seen: DedupeKey[],
-        ): { taken: Rec[]; skipped: Rec[] } => {
-          const taken: Rec[] = [];
-          const skipped: Rec[] = [];
-          const chainCounts = new Map<string, number>(); // A-7
-          for (const r of pool) {
-            const key = normalizeName(r.title ?? "");
-            if (!key) continue;
-            const rl = typeof r.lat === "number" ? r.lat : undefined;
-            const rg = typeof r.lng === "number" ? r.lng : undefined;
-            let isDup = false;
-            for (const e of seen) {
-              if (e.key === key) { isDup = true; break; }
-              if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined
-                  && haversineMeters(rl, rg, e.lat, e.lng) <= 80 && namesOverlap(key, e.key)) {
-                isDup = true; break;
-              }
-            }
-            if (isDup) continue;
-            // A-7: 同チェーン最大2件まで（ラーメン豚山×3を防ぐ）
-            const brand = brandOf(r.title ?? "");
-            const chainCnt = brand.length >= 3 ? (chainCounts.get(brand) ?? 0) : 0;
-            if (chainCnt >= 2) { skipped.push(r); continue; }
-            if (taken.length < max) {
-              seen.push({ key, lat: rl, lng: rg });
-              taken.push(r);
-              if (brand.length >= 3) chainCounts.set(brand, chainCnt + 1);
-            } else {
-              skipped.push(r);  // dedup OK だが max 超過 → 補填プールへ
-            }
-          }
-          return { taken, skipped };
-        };
-
-        // 距離バイアスに応じてソース内ソート/シャッフル
-        const kmOf = (r: Rec): number => (
-          typeof r.distanceKm === "number"
-            ? r.distanceKm
-            : (parseKmFromDistText(r.distanceText as string | undefined) ?? 9999)
-        );
-
-        // D-1: フィードバック学習 — 過去に良かった場所と類似エリアを優先
-        const goodPlaceNames = new Set(
-          [...goodVisitedPlaces].map(n => n.toLowerCase())
-        );
-        // D-4: 天気に基づく屋内/屋外タグ
-        const OUTDOOR_TAGS = new Set(["#自然感じたい", "#ドライブしたい", "#体動かしたい"]);
-        const INDOOR_TAGS  = new Set(["#集中したい", "#わいわい楽しみたい"]);
-        const weatherBoost = (r: Rec): number => {
-          if (!isBadWeather) return 0;
-          // 雨天時: 屋内タグ持ちを+0.5、屋外タグ持ちを-0.5
-          const tags = (r as unknown as { auto_tags?: string[]; features?: string[] }).auto_tags
-            ?? (r as unknown as { features?: string[] }).features ?? [];
-          if (tags.some(t => INDOOR_TAGS.has(t)))  return 0.5;
-          if (tags.some(t => OUTDOOR_TAGS.has(t))) return -0.5;
-          return 0;
-        };
-
-        // E-3: 写真の質的優先スコア。写真有り > 写真無し、ユーザー投稿写真は更に優遇。
-        const photoQualityScore = (r: Rec): number => {
-          const hasUserPhoto = (r as unknown as { hasUserPhotos?: boolean }).hasUserPhotos === true;
-          const photoUrls = (r as unknown as { photoUrls?: string[] }).photoUrls ?? [];
-          const hasPhoto = !!(r as unknown as { photoUrl?: string }).photoUrl || photoUrls.length > 0;
-          if (hasUserPhoto) return 1.2;   // ユーザー投稿写真があるスポットを最優先
-          if (photoUrls.length >= 3) return 0.6; // 写真が豊富
-          if (hasPhoto) return 0.3;       // 写真あり
-          return 0;                        // 写真なし → 後回し
-        };
-
-        const sortOrShuffle = (arr: Rec[]): Rec[] => {
-          // お腹すいた: "今すぐ近くで食べる"用途 → 最寄り優先（近い順）。
-          // これで各ソースの最寄り店が選ばれ、一番近い店（例: 用心棒 本号）が必ず候補に入る。
-          // A-5: 同距離帯ではopenNow=trueを優先、さらにE-3で写真の質を考慮
-          if (isFoodMood) {
-            return [...arr].sort((a, b) => {
-              const ka = kmOf(a), kb = kmOf(b);
-              // 500m以内の差ならopenNow→写真品質で優先
-              if (Math.abs(ka - kb) < 0.5) {
-                if (a.openNow && !b.openNow) return -1;
-                if (!a.openNow && b.openNow) return 1;
-                const pq = photoQualityScore(b) - photoQualityScore(a); // E-3
-                if (Math.abs(pq) > 0.01) return pq;
-              }
-              return ka - kb;
-            });
-          }
-          if (minRadiusKm > 0) {
-            return [...arr]
-              .map(r => ({ r, km: kmOf(r) }))
-              .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
-              .map(x => x.r);
-          }
-          // 通常ソート: D-1学習+D-4天気+E-3写真品質ボーナスをシャッフルに加味
-          return [...arr]
-            .map(r => ({
-              r,
-              score: (Math.random() * 10)
-                + weatherBoost(r)
-                + photoQualityScore(r)  // E-3: 写真の質を加点
-                + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
-            }))
-            .sort((a, b) => b.score - a.score)
-            .map(x => x.r);
-        };
-
-        // ── お腹すいた 飲食店のみ強制フィルター（要件③・最優先）─────────────────────
-        // 温泉/銭湯/岩盤浴等は館内に飲食店を持つため Yahoo業種コードや Supabase に
-        // 紛れ込むことがある。施設名が温浴・観光施設を示す場合は飲食結果から除外する。
-        // 誤除外を避けるため「スパ/湯/サウナ」単独などの曖昧語は使わず明確な語に限定。
-        const isFoodMoodReq = (answers.mood ?? "") === "お腹すいた";
-        const NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
-        // お腹すいたの検索結果から老舗・地元食堂系を除外（ローカルな場所が多く提案される問題の対策）
-        // 「老舗」「創業」「〇年創業」等の名前は観光客向けではなく、若者向けアプリでは不適切なケースが多い
-        const OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正|昭和[0-9０-９]+年創|食堂|大衆食堂)/;
-        // 住所にも非飲食施設名が入るケースを除外（例: カワスイ川崎水族館内のカフェ）
-        const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] => {
-          if (!isFoodMoodReq) return arr;
-          return arr.filter(r =>
-            !NON_FOOD_NAME_RE.test(r.title ?? "") &&
-            !NON_FOOD_NAME_RE.test(r.address ?? "") &&
-            !OLD_STORE_NAME_RE.test(r.title ?? "")
-          );
-        };
-
-        // 既出スポット除外（再検索時の重複防止）: showUnseenOnly のとき seenPlaces のタイトルを全ソースから除外。
-        // 従来は Supabase 結果のみに適用され、Google/Yahoo/admin が再検索で同じ場所を返していた（「同じ場所が提案される」の主因）。
-        const seenLower = new Set(seenPlaces.map(s => s.toLowerCase()));
-        const seenFilter = <T extends { title?: string }>(arr: T[]): T[] =>
-          showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
-
-        // ── 品質フィルタ ──────────────────────────────────────────────────────
-        // ① 株式会社/有限会社/工場 等のB2B・施設は観光用途に合わないため除外
-        // ② 写真が無く かつ 評価件数も少ない（<5件）低品質スポットを除外
-        const NG_BIZ_RE = /(株式会社|有限会社|（株）|\(株\)|（有）|\(有\)|合同会社|工場|製作所|倉庫|営業所|事業所|本社)/;
-        const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null }>(arr: T[]): T[] =>
-          arr.filter(r => {
-            const name = r.title ?? "";
-            if (NG_BIZ_RE.test(name)) return false;
-            const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
-            const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
-            if (!hasPhoto && reviews < 5) return false;   // 写真なし＆評価少 → 除外
-            return true;
-          });
+        // ── Step 1: 後処理パイプラインを createFinalizeHelpers に集約 ──────────────
+        //   フィルタ / ソート / 重複排除 / 15件化 の全ロジックを一元管理。
+        //   経路2(Supabase-first)で従来と完全に同一の絞り込みを行う。
+        //   （将来 経路5(レガシー)等もこのヘルパーを呼ぶことで改善が全経路に波及する）
+        const {
+          applyMallFilter, normalizeName, pickUnique, sortOrShuffle,
+          foodSanitize, seenFilter, qualitySanitize,
+          seenLower, isFoodMoodReq, NON_FOOD_NAME_RE,
+        } = createFinalizeHelpers({
+          isFoodMood, minRadiusKm, isBadWeather,
+          goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive,
+        });
 
         // 各ソースにモール/飲食/既出/品質フィルターを適用 → ソート
         const sbSorted = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(mergedSb)))));
