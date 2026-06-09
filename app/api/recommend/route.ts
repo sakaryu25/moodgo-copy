@@ -6092,11 +6092,32 @@ export async function POST(request: Request) {
           return { ...y, stationText, reason: relaxAiResult?.reason || y.vibe || "" };
         })
       );
+      // ── Step 3: まったり経路にも共通の品質フィルタを適用（createFinalizeHelpers）──
+      //   経路2/5と同じ qualitySanitize で B2B(株式会社/工場)・写真なし低評価スポットを除外。
+      //   ※ まったりは食事moodではないため foodSanitize は実質no-op（温泉カフェ等を誤除外しない）。
+      //   ※ ユーザー登録スポット(isUserSpot)は写真/評価が無くても保護して残す。
+      //   ※ 10件スライス前に適用し、ジャンクが表示枠を埋めないようにする。
+      const relaxHelpers = createFinalizeHelpers({
+        isFoodMood: false,          // まったり経路は食事moodでない（foodSanitizeは実質無効）
+        minRadiusKm: 0,
+        isBadWeather: false,        // 並びは従来通りシャッフルに委ねる
+        goodVisitedPlaces,
+        seenPlaces,
+        showUnseenOnly: false,      // まったりは別途seen除外していないため二重適用にはならない
+        effectiveDeepDive: "",
+      });
+      const relaxPool = [...relaxResults, ...yahooWithStation];
+      const isProtectedRelax = (r: { isUserSpot?: boolean }) => r.isUserSpot === true;
+      const relaxCleaned = relaxHelpers.qualitySanitize(
+        relaxHelpers.foodSanitize(relaxPool.filter(r => !isProtectedRelax(r)))
+      );
+      const relaxKeepSet = new Set([...relaxPool.filter(isProtectedRelax), ...relaxCleaned]);
       // Google + Yahoo をランダムシャッフルして最大10件
-      const merged = [...relaxResults, ...yahooWithStation]
+      const merged = relaxPool
+        .filter(r => relaxKeepSet.has(r))
         .sort(() => Math.random() - 0.5)
         .slice(0, 10);
-      console.log(`[Relax] マージ後: Google=${relaxResults.length}件 + Yahoo=${yahooWithStation.length}件 → 表示${merged.length}件`);
+      console.log(`[Relax] マージ後: Google=${relaxResults.length}件 + Yahoo=${yahooWithStation.length}件 → フィルタ後表示${merged.length}件`);
 
       // 5. 複数交通手段ごとの所要時間（必要な場合）
       const relaxModesToShow = getModesToShow(answers.transport, answers.mood);
