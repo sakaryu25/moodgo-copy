@@ -3484,7 +3484,7 @@ function getRadiusKmFromTransportAndTime(transport?: string | string[], time?: s
 // Vercelのサーバーレス関数はウォームインスタンス間でキャッシュが共有されないが、
 // 同一リクエスト内や近似条件の再検索では有効。TTL=5分。
 const _supplementCache = new Map<string, { ts: number; data: Record<string, unknown>[] }>();
-const SUPPLEMENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5分
+const SUPPLEMENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5分（インメモリ）
 function getSupplementCache(key: string): Record<string, unknown>[] | null {
   const entry = _supplementCache.get(key);
   if (!entry) return null;
@@ -3503,6 +3503,38 @@ function setSupplementCache(key: string, data: Record<string, unknown>[]): void 
   _supplementCache.set(key, { ts: Date.now(), data });
 }
 
+// ── コスト削減D: Supabase永続キャッシュ（コールドスタート跨ぎで共有・TTL長め）──────
+// インメモリ(5分)はVercelコールドスタートで消えるため、api_cache テーブルに保存して
+// 全インスタンス・再検索(シャッフル含む=E)で共有する。TTL=60分。
+// ※ api_cache テーブル未作成でもエラーにせず素通り（graceful degradation）。
+const SUPPLEMENT_DB_CACHE_TTL_SEC = 60 * 60; // 60分
+async function getSupplementDbCache(key: string): Promise<Record<string, unknown>[] | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from("api_cache")
+      .select("data, expires_at")
+      .eq("cache_key", key)
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null; // 期限切れ
+    return Array.isArray(data.data) ? (data.data as Record<string, unknown>[]) : null;
+  } catch {
+    return null;
+  }
+}
+async function setSupplementDbCache(key: string, data: Record<string, unknown>[]): Promise<void> {
+  if (!supabase || data.length === 0) return;
+  try {
+    const expiresAt = new Date(Date.now() + SUPPLEMENT_DB_CACHE_TTL_SEC * 1000).toISOString();
+    await supabase.from("api_cache").upsert(
+      { cache_key: key, data, expires_at: expiresAt, updated_at: new Date().toISOString() },
+      { onConflict: "cache_key" },
+    );
+  } catch { /* テーブル未作成等は無視 */ }
+}
+
 // ─── Google Places 補足検索 ─────────────────────────────────────────────────
 // Supabase 結果を補うために Google Places Nearby Search で 10 件追加取得
 async function fetchGooglePlacesSupplement(
@@ -3519,10 +3551,17 @@ async function fetchGooglePlacesSupplement(
   deepDiveL2: string = "",   // L2詳細カテゴリ（Text Search精度向上に使用）
   companion: string = "",    // D-3: 同行者属性（子連れ → goodForChildren フィルタ）
 ): Promise<Array<Record<string, unknown>>> {
-  // E-2: キャッシュキー（座標を0.01°≈1km単位に丸めて近似リクエストを合算）
+  // E-2/D: キャッシュキー（座標を0.01°≈1km単位に丸めて近似リクエストを合算）
+  //   existingNames(seen)はキーに含めない → シャッフル再検索も同じキャッシュにヒット(E)。
   const cacheKey = `g:${(lat * 100 | 0) / 100},${(lng * 100 | 0) / 100}:r${Math.round(radiusKm)}:${mood}:${deepDiveL1}:${deepDiveL2}`;
+  // ① インメモリ(5分) → ② Supabase永続(60分) の順にキャッシュを確認
   const cached = getSupplementCache(cacheKey);
   if (cached) return cached;
+  const dbCached = await getSupplementDbCache(cacheKey);
+  if (dbCached) {
+    setSupplementCache(cacheKey, dbCached); // インメモリにも載せ次回を高速化
+    return dbCached;
+  }
 
   try {
     // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
@@ -4078,8 +4117,10 @@ async function fetchGooglePlacesSupplement(
         routesByMode: undefined,
       };
     });
-    // E-2: 結果をキャッシュ（existingNamesを除くとキャッシュ値が変わるためcacheKeyから除外済み）
+    // E-2/D: 結果をインメモリ(5分)とSupabase永続(60分)の両方にキャッシュ
+    //   （existingNames はキーに含めないため、シャッフル再検索も同キャッシュにヒット=E）
     setSupplementCache(cacheKey, result);
+    void setSupplementDbCache(cacheKey, result); // fire-and-forget（待たない）
     return result;
   } catch (e) {
     console.error("[recommend] Google supplement search failed:", e);
