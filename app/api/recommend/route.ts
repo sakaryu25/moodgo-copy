@@ -403,6 +403,8 @@ const SPECIFIC_FOOD_PRIMARY_TYPES = new Set([
   "cafe", "bakery", "ice_cream_shop", "dessert_shop", "sandwich_shop", "fast_food_restaurant",
   "donut_shop", "coffee_shop", "tea_house", "bar", "spanish_restaurant", "greek_restaurant",
   "turkish_restaurant", "indonesian_restaurant", "lebanese_restaurant", "brazilian_restaurant",
+  "brunch_restaurant", "breakfast_restaurant", "buffet_restaurant", "deli", "bar_and_grill",
+  "pub", "wine_bar", "bagel_shop", "juice_shop", "chocolate_shop", "confectionery",
 ]);
 const ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE: Record<string, string[]> = {
   "ラーメン": ["ramen_restaurant"], "こってりラーメン": ["ramen_restaurant"],
@@ -3696,12 +3698,15 @@ async function fetchGooglePlacesSupplement(
       "洋食":                            ["restaurant"],
       "イタリアン":                      ["italian_restaurant"],
       "中華料理":                        ["chinese_restaurant"],
+      "中華":                            ["chinese_restaurant"],   // L1短縮形（broad検索化を防ぐ）
       "焼肉":                            ["barbecue_restaurant"],
       "韓国料理":                        ["korean_restaurant"],
+      "韓国":                            ["korean_restaurant"],    // L1短縮形（broad検索化を防ぐ）
       "アジア系統":                      ["thai_restaurant", "indian_restaurant"],
       "各国料理":                        ["restaurant"],
       "ラーメン":                        ["ramen_restaurant"],
       "お好み焼き":                      ["japanese_restaurant"],
+      "お好み焼きもんじゃ":              ["japanese_restaurant"],   // L1短縮形
       "カフェスイーツ":                  ["cafe", "dessert_shop"],
       "高層ビル料理":                    ["restaurant"],
       // ── お腹すいた L2 ────────────────────────────────────────────────────────
