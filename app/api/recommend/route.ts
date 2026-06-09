@@ -1,9 +1,36 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { AsyncLocalStorage } from "async_hooks";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import { MOOD_TAG_MAP } from "@/lib/predefined-tags";
+
+// ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
+// リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
+// AsyncLocalStorage で並行リクエスト間の混在を防ぐ。gfetch で実 fetch をラップして計上。
+type ApiCounts = {
+  searchText: number; searchNearby: number; geocode: number;
+  routes: number; photo: number; other: number;
+};
+const apiCounterStore = new AsyncLocalStorage<{ counts: ApiCounts }>();
+function newApiCounts(): ApiCounts {
+  return { searchText: 0, searchNearby: 0, geocode: 0, routes: 0, photo: 0, other: 0 };
+}
+/** Google API を叩く fetch のラッパー。URLから種別を判定してカウントする。 */
+function gfetch(url: string, init?: RequestInit): Promise<Response> {
+  const store = apiCounterStore.getStore();
+  if (store) {
+    const c = store.counts;
+    if (url.includes("places:searchText")) c.searchText++;
+    else if (url.includes("places:searchNearby")) c.searchNearby++;
+    else if (url.includes("maps/api/geocode")) c.geocode++;
+    else if (url.includes("routes.googleapis") || url.includes("computeRouteMatrix") || url.includes(":computeRoutes")) c.routes++;
+    else if (url.includes("/photos/") || url.includes("/photo") || url.includes("/media")) c.photo++;
+    else c.other++;
+  }
+  return fetch(url, init);
+}
 
 type FeedbackItem = {
   answers: Partial<Answers>;
@@ -458,7 +485,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     if (oldest) _stationCache.delete(oldest[0]);
   }
   try {
-    const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+    const res = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1893,7 +1920,7 @@ async function getPhotoUrl(photoName: string, apiKey: string) {
   mediaUrl.searchParams.set("maxHeightPx", "800");
   mediaUrl.searchParams.set("skipHttpRedirect", "true");
 
-  const res = await fetch(mediaUrl.toString(), {
+  const res = await gfetch(mediaUrl.toString(), {
     headers: { "X-Goog-Api-Key": apiKey },
     cache: "no-store",
   });
@@ -3227,7 +3254,7 @@ async function fetchRouteMatrix(
   }
 
   try {
-    const res = await fetch("https://routes.googleapis.com/v1/routeMatrix", {
+    const res = await gfetch("https://routes.googleapis.com/v1/routeMatrix", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -3711,7 +3738,7 @@ async function fetchGooglePlacesSupplement(
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
     ): Promise<Array<Record<string, unknown>>> => {
       try {
-        const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+        const res = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -3746,7 +3773,7 @@ async function fetchGooglePlacesSupplement(
     // ── Text Search ヘルパー（キーワード名前検索。shopping_mall系で使用）────────
     const searchTextQuery = async (textQuery: string): Promise<Array<Record<string, unknown>>> => {
       try {
-        const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -4578,7 +4605,7 @@ async function fetchYahooSupplement(
     if (googleApiKey && results.length > 0) {
       await Promise.all(results.map(async (r) => {
         try {
-          const sres = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const sres = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -4816,7 +4843,7 @@ ${extraQs ? extraQs : ""}
     const results = await Promise.all(
       suggestions.slice(0, 15).map(async (p) => {
         try {
-          const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -5211,7 +5238,19 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 }
 
-export async function POST(request: Request) {
+// 計測ラッパー: API呼び出しカウンタを用意してハンドラを実行し、最後に1行ログ出力する。
+export async function POST(request: Request): Promise<Response> {
+  const counts = newApiCounts();
+  const t0 = Date.now();
+  return apiCounterStore.run({ counts }, async () => {
+    const res = await handleRecommend(request);
+    const total = counts.searchText + counts.searchNearby + counts.geocode + counts.routes + counts.photo + counts.other;
+    console.log(`[api-count] total=${total} searchText=${counts.searchText} searchNearby=${counts.searchNearby} geocode=${counts.geocode} routes=${counts.routes} photo=${counts.photo} other=${counts.other} elapsed=${Date.now() - t0}ms`);
+    return res;
+  });
+}
+
+async function handleRecommend(request: Request) {
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
 
@@ -5241,7 +5280,7 @@ export async function POST(request: Request) {
         const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
           answers.area.trim()
         )}&language=ja&region=JP&key=${apiKey}`;
-        const geoRes = await fetch(geoUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+        const geoRes = await gfetch(geoUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
         const geoData = await geoRes.json().catch(() => null);
         const loc = geoData?.status === "OK" ? geoData?.results?.[0]?.geometry?.location : null;
         if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
@@ -5519,7 +5558,7 @@ export async function POST(request: Request) {
             if (!apiKey || !hasLocation || noPhotoNames.length === 0) return photoMap;
             await Promise.all(noPhotoNames.map(async (name) => {
               try {
-                const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+                const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -5832,7 +5871,7 @@ export async function POST(request: Request) {
               let imgs = hasLegacyOnly ? [] : rawImgs.map(wrapWithPhotoProxy);
               if (imgs.length === 0 && apiKey) {
                 try {
-                  const pr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+                  const pr = await gfetch("https://places.googleapis.com/v1/places:searchText", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.photos" },
                     body: JSON.stringify({ textQuery: s.address ? `${name} ${s.address}` : name, languageCode: "ja", pageSize: 1 }),
@@ -6056,7 +6095,7 @@ export async function POST(request: Request) {
         const hiResults: Record<string, unknown>[] = [];
         for (const q of hiQueries) {
           try {
-            const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -6272,7 +6311,7 @@ export async function POST(request: Request) {
         }
         console.log(`[Relax] Places API 送信: query="${query}" radius=${radiusM}m`);
         try {
-          const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -6660,7 +6699,7 @@ export async function POST(request: Request) {
           }
         }
 
-        const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -6703,7 +6742,7 @@ export async function POST(request: Request) {
               circle: { center: { latitude: answers.originLat, longitude: answers.originLng }, radius: fbRadius },
             };
           }
-          const fbRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const fbRes = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": hasOrigin && travelMode ? fieldMaskWithRouting : fieldMaskBase },
             body: JSON.stringify(fbPayload),
@@ -6921,7 +6960,7 @@ export async function POST(request: Request) {
               },
             };
           }
-          const chainRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const chainRes = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -7139,7 +7178,7 @@ export async function POST(request: Request) {
       if (imgs.length === 0 && apiKey) {
         try {
           const searchQ = s.address ? `${name} ${s.address}` : name;
-          const placeRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          const placeRes = await gfetch("https://places.googleapis.com/v1/places:searchText", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.photos" },
             body: JSON.stringify({ textQuery: searchQ, languageCode: "ja", pageSize: 1 }),
@@ -7249,7 +7288,7 @@ export async function POST(request: Request) {
                 },
               };
             }
-            const nightRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            const nightRes = await gfetch("https://places.googleapis.com/v1/places:searchText", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
