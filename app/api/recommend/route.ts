@@ -218,6 +218,33 @@ async function fetchApprovedSuggestions(): Promise<ApprovedSuggestion[]> {
 }
 
 
+// ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
+// 5段階評価(1-5)を比率に変換し、Wilson下限(95%)を計算。
+// 少件数の高評価(★5/2件)が多件数の平均(★4.3/800件)に勝てないようにする。
+function wilsonLower(rating: number | null | undefined, count: number | null | undefined): number {
+  const r = typeof rating === "number" ? rating : 0;
+  const n = typeof count === "number" ? count : 0;
+  if (n === 0) return 0;
+  const p = Math.max(0, Math.min(1, (r - 1) / 4)); // 5段階→0-1比率
+  const z = 1.96; // 95%信頼区間
+  const denom = 1 + (z * z) / n;
+  const centre = (p + (z * z) / (2 * n)) / denom;
+  const margin = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / denom;
+  return centre - margin;
+}
+
+// ── A-7: チェーンブランド名正規化（同チェーン重複抑制用）──────────────────────
+// 支店名・地名サフィックスを除去してブランド幹を取得（例: 豚山 渋谷店→豚山）
+function brandOf(name: string): string {
+  // 全角スペース(　)も含めた空白除去、支店サフィックス除去
+  return name
+    .replace(/[\s　]*(本店|支店|直営店|本号|[0-9０-９]+(号店|店目)|[A-Za-z0-9]+号)$/, "")
+    .replace(/[\s　]*(新宿|渋谷|銀座|上野|池袋|秋葉原|浅草|品川|新橋|恵比寿|表参道|原宿|代々木|吉祥寺|三軒茶屋|下北沢|横浜|川崎|大宮|梅田|難波|天王寺|博多)[^\s店]*$/, "")
+    .replace(/[\s　]*(東京|大阪|京都|名古屋|福岡|仙台|札幌|広島|神戸)[^\s店]*$/, "")
+    .trim()
+    .slice(0, 6); // 先頭6文字をブランドキーに
+}
+
 // Haversine距離(m)
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -3601,29 +3628,51 @@ async function fetchGooglePlacesSupplement(
     // Google Text Search 用クエリ: L2 が具体的なカテゴリ名なら L2 を優先（例「うどん・そば」「ハンバーグ」）。
     // L2 が未指定 or こだわらない の場合は L1（例「居酒屋」「和食」）を使用。
     // DIVE_KW の先頭キーワードを優先して使う（例「うどん・そば」→「うどんそば屋」で高精度検索）。
-    const DIVE_KW_FOR_SEARCH: Record<string, string> = {
-      "うどん・そば": "うどんそば屋", "懐石料理": "懐石料理",
-      "ハンバーグ": "ハンバーグ専門店", "オムライス": "オムライス",
-      "ステーキ": "ステーキ", "レトロ洋食": "昔ながら洋食屋",
-      "個室居酒屋": "個室居酒屋", "大衆酒場": "大衆居酒屋",
-      "こってりラーメン": "家系ラーメン", "あっさりラーメン": "塩ラーメン",
-      "味噌ラーメン": "味噌ラーメン", "つけ麺・まぜそば": "つけ麺",
-      "フルーツ": "フルーツカフェ", "喫茶店": "喫茶店", "流行りカフェ": "韓国カフェ",
-      "焼肉食べ放題": "焼肉食べ放題", "高級焼肉": "高級焼肉",
-      "焼肉単品": "大衆焼肉", "レトロ洋食": "昔ながら洋食屋",
-      "インド・ネパール": "インドカレー",
-      "韓国料理": "韓国料理", "イタリアン": "イタリアン",
-      "中華料理": "中華料理",
-      "タイ料理": "タイ料理", "ベトナム料理": "ベトナム料理",
-      "アジアンエスニック": "アジアンエスニック料理",
-      "こってりラーメン": "家系ラーメン",
-      "あっさりラーメン": "塩ラーメン",
-      "つけ麺・まぜそば": "つけ麺",
+    // A-2: ジャンルごとに複数キーワードを定義して並列テキスト検索（先頭2語使用）
+    const DIVE_MULTI_KW: Record<string, string[]> = {
+      "うどん・そば":            ["うどんそば屋", "うどん専門店"],
+      "懐石料理":                ["懐石料理", "日本料理 懐石"],
+      "ハンバーグ":              ["ハンバーグ専門店", "洋食 ハンバーグ"],
+      "オムライス":              ["オムライス専門店", "洋食 オムライス"],
+      "ステーキ":                ["ステーキハウス", "熟成ステーキ"],
+      "レトロ洋食":              ["昔ながら洋食屋", "老舗洋食"],
+      "個室居酒屋":              ["個室居酒屋", "完全個室 居酒屋"],
+      "大衆酒場":                ["大衆居酒屋", "せんべろ 立ち飲み"],
+      "こってりラーメン":        ["家系ラーメン", "豚骨ラーメン"],
+      "あっさりラーメン":        ["塩ラーメン", "あっさり系ラーメン"],
+      "味噌ラーメン":            ["味噌ラーメン専門店", "北海道味噌ラーメン"],
+      "つけ麺・まぜそば":        ["つけ麺", "まぜそば 油そば"],
+      "フルーツ":                ["フルーツパーラー", "フルーツカフェ"],
+      "喫茶店":                  ["昭和喫茶店", "レトロ喫茶"],
+      "流行りカフェ":            ["韓国カフェ", "インスタ映えカフェ"],
+      "焼肉食べ放題":            ["焼肉食べ放題", "焼肉 食べ放題 コース"],
+      "高級焼肉":                ["高級焼肉 コース", "黒毛和牛 焼肉"],
+      "焼肉単品":                ["大衆焼肉", "焼肉 リーズナブル"],
+      "インド・ネパール":        ["インドカレー", "ネパールカレー"],
+      "韓国料理":                ["韓国料理", "サムギョプサル チーズダッカルビ"],
+      "イタリアン":              ["イタリアン", "ピッツェリア パスタ専門"],
+      "中華料理":                ["町中華", "中国料理 本格"],
+      "タイ料理":                ["タイ料理 ガパオ", "本格タイ料理"],
+      "ベトナム料理":            ["ベトナム料理 フォー", "バインミー"],
+      "アジアンエスニック":      ["アジアンエスニック料理", "エスニック料理"],
+      "海鮮・お寿司":            ["海鮮料理", "海鮮丼 お寿司"],
+      "居酒屋":                  ["和風居酒屋", "居酒屋 ダイニング"],
+      "和食":                    ["和食レストラン", "日本料理 定食"],
+      "ラーメン":                ["ラーメン", "中華そば 麺"],
+      "カフェスイーツ":          ["スイーツカフェ", "パフェカフェ"],
+      "お好み焼きもんじゃ":      ["お好み焼き", "もんじゃ焼き"],
+      "温泉":                    ["日帰り温泉", "天然温泉 スパ"],
+      "サウナ":                  ["サウナ施設", "フィンランドサウナ"],
+      "道の駅":                  ["道の駅 グルメ", "道の駅 ランチ"],
     };
     const dvTextBase = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : deepDiveL1;
-    const dvTextKey = DIVE_KW_FOR_SEARCH[dvTextBase] ?? dvTextBase;
+    const dvMultiRaw = DIVE_MULTI_KW[dvTextBase];
+    const dvTextKey = dvMultiRaw?.[0] ?? dvTextBase; // 後方互換
+    // A-2: 最大2キーワードを並列テキスト検索（精度向上）
     const dvTextQueries: string[] =
-      (!isMallSearch && dvTextKey && dvTextKey !== "こだわらない") ? [dvTextKey] : [];
+      (!isMallSearch && dvTextBase && dvTextBase !== "こだわらない")
+        ? (dvMultiRaw ? dvMultiRaw.slice(0, 2) : [dvTextKey])
+        : [];
     // お腹すいた時は現在地中心の DISTANCE 順検索も中心点に加える（最寄り店の取りこぼし防止）
     const nearbyCenterCalls = isMallSearch
       ? Promise.resolve([] as Array<Array<Record<string, unknown>>>)
@@ -3676,11 +3725,32 @@ async function fetchGooglePlacesSupplement(
       PRICE_LEVEL_EXPENSIVE:     8000,
       PRICE_LEVEL_VERY_EXPENSIVE: 15000,
     };
-    // 予算オーバーか判定（priceLevel がない/不明な場合は通過させる）
+    // A-8: priceLevel欠損時にジャンルから概算費用を推定
+    const GENRE_PRICE_ESTIMATE: Record<string, string> = {
+      "懐石料理":    "PRICE_LEVEL_EXPENSIVE",
+      "高級焼肉":    "PRICE_LEVEL_EXPENSIVE",
+      "ステーキ":    "PRICE_LEVEL_EXPENSIVE",
+      "展望レストラン": "PRICE_LEVEL_EXPENSIVE",
+      "居酒屋":      "PRICE_LEVEL_INEXPENSIVE",
+      "大衆酒場":    "PRICE_LEVEL_INEXPENSIVE",
+      "焼肉単品":    "PRICE_LEVEL_INEXPENSIVE",
+      "大衆焼肉":    "PRICE_LEVEL_INEXPENSIVE",
+      "こってりラーメン": "PRICE_LEVEL_INEXPENSIVE",
+      "あっさりラーメン": "PRICE_LEVEL_INEXPENSIVE",
+      "ラーメン":    "PRICE_LEVEL_INEXPENSIVE",
+      "うどん・そば": "PRICE_LEVEL_INEXPENSIVE",
+      "カフェスイーツ": "PRICE_LEVEL_INEXPENSIVE",
+    };
+    const estimatedPriceLevel = GENRE_PRICE_ESTIMATE[deepDiveL2 || deepDiveL1] ?? null;
+
+    // 予算オーバーか判定（priceLevel がない/不明な場合はジャンル推定を使用）
     const isOverBudget = (priceLevel: string | undefined): boolean => {
       if (!budget || budget >= 10000) return false; // 予算未設定 or 高め → フィルタなし
-      if (!priceLevel || priceLevel === "PRICE_LEVEL_UNSPECIFIED") return false; // 不明 → 通過
-      return (PRICE_LEVEL_COST[priceLevel] ?? 0) > budget;
+      const pl = (priceLevel && priceLevel !== "PRICE_LEVEL_UNSPECIFIED")
+        ? priceLevel
+        : estimatedPriceLevel; // A-8: ジャンル推定を使用
+      if (!pl) return false; // 不明 → 通過
+      return (PRICE_LEVEL_COST[pl] ?? 0) > budget;
     };
 
     // 食事系の気分（お腹すいた）はホテル内レストランを許容するため名前フィルタを緩める
@@ -3738,10 +3808,38 @@ async function fetchGooglePlacesSupplement(
       return shuffleArr(group);
     };
 
+    // A-3: ジャンル不一致フィルター（Text Search結果のみ）
+    // 名前にジャンルキーワードが全く含まれない店は除外（たこ焼き屋がラーメン検索に混入するのを防ぐ）
+    const GENRE_FIDELITY_RE: Record<string, RegExp> = {
+      "ラーメン":              /ラーメン|らーめん|らあめん|中華そば|支那そば|拉麺|らーめん/i,
+      "こってりラーメン":      /ラーメン|らーめん|らあめん|中華そば|豚骨|家系/i,
+      "あっさりラーメン":      /ラーメン|らーめん|らあめん|中華そば|塩ラーメン/i,
+      "味噌ラーメン":          /ラーメン|らーめん|味噌/i,
+      "つけ麺・まぜそば":      /つけ麺|まぜそば|油そば|麺/i,
+      "うどん・そば":          /うどん|そば|蕎麦|饂飩/i,
+      "お好み焼きもんじゃ":    /お好み焼き|もんじゃ|鉄板|たこ焼き/i,
+      "焼肉食べ放題":          /焼肉|焼き肉|バーベキュー|BBQ|牛角|叙々苑/i,
+      "高級焼肉":              /焼肉|焼き肉|和牛|黒毛/i,
+      "焼肉単品":              /焼肉|焼き肉/i,
+      "個室居酒屋":            /居酒屋|ダイニング|酒場|バル|izakaya/i,
+      "大衆酒場":              /居酒屋|酒場|大衆|立ち飲み|ホッピー/i,
+    };
+    const genreFidelityRe = GENRE_FIDELITY_RE[dvTextBase] ?? null;
+    const applyGenreFidelity = (group: typeof withDist): typeof withDist => {
+      if (!genreFidelityRe) return group;
+      const matched = group.filter(d => {
+        const name = (d.p.displayName as { text?: string } | undefined)?.text ?? "";
+        return genreFidelityRe.test(name);
+      });
+      // マッチ0件なら元のリストを返す（過剰フィルタ防止）
+      return matched.length > 0 ? matched : group;
+    };
+
     // キーワード(深掘り)一致の Text Search 結果を最優先。タイプ検索(Nearby)結果は補填。
     //   これにより「個室居酒屋」検索で人気ラーメン店ではなく個室居酒屋が上位に来る。
+    // A-3: Text Search 結果にのみジャンルフィルターを適用
     const ordered = [
-      ...orderGroup(withDist.filter(d => d.isText)),
+      ...orderGroup(applyGenreFidelity(withDist.filter(d => d.isText))),
       ...orderGroup(withDist.filter(d => !d.isText)),
     ];
 
@@ -4789,13 +4887,25 @@ export async function POST(request: Request) {
         "どこでも行きたい":    160,
       };
       const useQuizRadius = !!(answers.radiusKm || answers.distanceFeeling);
-      // 「お腹すいた」は“今すぐ近くで食べる”用途のため遠端バイアスを無効化（最寄り優先）。
+      // 「お腹すいた」は"今すぐ近くで食べる"用途のため遠端バイアスを無効化（最寄り優先）。
       // これがないと「今日は出かけたい(16km〜)」等で15〜18km先の店が優先され、
       // 一番近いラーメン店（例: 用心棒 本号）が出てこなくなる。
       const isFoodMood = answers.mood === "お腹すいた";
       const minRadiusKm = (isFoodMood || answers.areaMode === 'manual' || !useQuizRadius)
         ? 0
         : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
+
+      // A-4: お腹すいた時はSupabaseも近場キャップ（最大10km）。
+      // クイズで「今日は出かけたい(20km)」を選んでいても、食事は近場が優先。
+      const sbRadiusKm = isFoodMood ? Math.min(radiusKm, 10) : radiusKm;
+
+      // D-4: 天気情報をSupabase-firstパスでも取得（屋内/屋外ソート補正に使用）
+      const sbWeather = hasLocation
+        ? await getWeatherContext(answers.originLat, answers.originLng).catch(() => ({} as WeatherContext))
+        : {} as WeatherContext;
+      const isRainyNow = isRainLikeWeather(sbWeather.weatherCode);
+      const isSnowyNow = isSnowLikeWeather(sbWeather.weatherCode);
+      const isBadWeather = isRainyNow || isSnowyNow;
 
       // Supabase 検索: 選択した距離を厳密な上限として使用（遠端バイアスなし）
       // → "近場でいい(3km)" なら 3km 以内のみ、"どこでも行きたい(200km)" なら 200km 以内
@@ -4804,7 +4914,7 @@ export async function POST(request: Request) {
         fallbackTags: sbFallbackTags,  // 気分タグにフォールバック（深掘りタグが0件の場合）
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
-        radiusKm,
+        radiusKm: sbRadiusKm,  // A-4: 食事は近場キャップ適用
         minRadiusKm: 0,  // Supabaseは厳密な上限のみ（遠端バイアスなし）
         transport: answers.transport,
         limit: 5,  // Supabaseから最大5件
@@ -4843,11 +4953,13 @@ export async function POST(request: Request) {
         const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0);
 
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
+        // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
         const scored = sbPool
           .map(r => ({
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
-              + Math.random() * 0.5,
+              + wilsonLower(r.rating, r.reviewCount) * 2  // Wilson: 最大約2点加算
+              + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
           .sort((a, b) => b._niceScore - a._niceScore)
           .slice(0, 5);  // Supabase: 最大5件
@@ -5058,11 +5170,13 @@ export async function POST(request: Request) {
 
         // クロスソース重複排除しながら pool から最大 max 件取得。
         // 重複でなく max 超過でスキップされた件は skipped に積む（補填用）。
+        // A-7: 同チェーン重複抑制（最大2件/チェーン）
         const pickUnique = (
           pool: Rec[], max: number, seen: DedupeKey[],
         ): { taken: Rec[]; skipped: Rec[] } => {
           const taken: Rec[] = [];
           const skipped: Rec[] = [];
+          const chainCounts = new Map<string, number>(); // A-7
           for (const r of pool) {
             const key = normalizeName(r.title ?? "");
             if (!key) continue;
@@ -5077,9 +5191,14 @@ export async function POST(request: Request) {
               }
             }
             if (isDup) continue;
+            // A-7: 同チェーン最大2件まで（ラーメン豚山×3を防ぐ）
+            const brand = brandOf(r.title ?? "");
+            const chainCnt = brand.length >= 3 ? (chainCounts.get(brand) ?? 0) : 0;
+            if (chainCnt >= 2) { skipped.push(r); continue; }
             if (taken.length < max) {
               seen.push({ key, lat: rl, lng: rg });
               taken.push(r);
+              if (brand.length >= 3) chainCounts.set(brand, chainCnt + 1);
             } else {
               skipped.push(r);  // dedup OK だが max 超過 → 補填プールへ
             }
@@ -5093,11 +5212,38 @@ export async function POST(request: Request) {
             ? r.distanceKm
             : (parseKmFromDistText(r.distanceText as string | undefined) ?? 9999)
         );
+
+        // D-1: フィードバック学習 — 過去に良かった場所と類似エリアを優先
+        const goodPlaceNames = new Set(
+          [...goodVisitedPlaces].map(n => n.toLowerCase())
+        );
+        // D-4: 天気に基づく屋内/屋外タグ
+        const OUTDOOR_TAGS = new Set(["#自然感じたい", "#ドライブしたい", "#体動かしたい"]);
+        const INDOOR_TAGS  = new Set(["#集中したい", "#わいわい楽しみたい"]);
+        const weatherBoost = (r: Rec): number => {
+          if (!isBadWeather) return 0;
+          // 雨天時: 屋内タグ持ちを+0.5、屋外タグ持ちを-0.5
+          const tags = (r as unknown as { auto_tags?: string[]; features?: string[] }).auto_tags
+            ?? (r as unknown as { features?: string[] }).features ?? [];
+          if (tags.some(t => INDOOR_TAGS.has(t)))  return 0.5;
+          if (tags.some(t => OUTDOOR_TAGS.has(t))) return -0.5;
+          return 0;
+        };
+
         const sortOrShuffle = (arr: Rec[]): Rec[] => {
-          // お腹すいた: “今すぐ近くで食べる”用途 → 最寄り優先（近い順）。
+          // お腹すいた: "今すぐ近くで食べる"用途 → 最寄り優先（近い順）。
           // これで各ソースの最寄り店が選ばれ、一番近い店（例: 用心棒 本号）が必ず候補に入る。
+          // A-5: 同距離帯ではopenNow=trueを優先
           if (isFoodMood) {
-            return [...arr].sort((a, b) => kmOf(a) - kmOf(b));
+            return [...arr].sort((a, b) => {
+              const ka = kmOf(a), kb = kmOf(b);
+              // 500m以内の差ならopenNow優先
+              if (Math.abs(ka - kb) < 0.5) {
+                if (a.openNow && !b.openNow) return -1;
+                if (!a.openNow && b.openNow) return 1;
+              }
+              return ka - kb;
+            });
           }
           if (minRadiusKm > 0) {
             return [...arr]
@@ -5105,7 +5251,16 @@ export async function POST(request: Request) {
               .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
               .map(x => x.r);
           }
-          return shuffleArr([...arr]);
+          // 通常ソート: D-1学習+D-4天気ボーナスをシャッフルに加味
+          return [...arr]
+            .map(r => ({
+              r,
+              score: (Math.random() * 10)
+                + weatherBoost(r)
+                + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
+            }))
+            .sort((a, b) => b.score - a.score)
+            .map(x => x.r);
         };
 
         // ── お腹すいた 飲食店のみ強制フィルター（要件③・最優先）─────────────────────
@@ -5170,12 +5325,14 @@ export async function POST(request: Request) {
           ...sbTaken, ...gTaken, ...yTaken, ...backfill,
         ];
 
-        // ── 最終セーフティ補填: それでも15件未満なら広域・広カテゴリで追加取得 ──────
+        // ── B-2: 最終セーフティ補填: それでも15件未満なら広域・広カテゴリで追加取得 ──────
         // 「居酒屋」等の狭いカテゴリは指定半径内に該当スポットが15件存在しない場合がある。
         // その時のみ、深掘りを外して気分ベースの広いカテゴリ＋拡大半径で追加検索し15件まで補う。
         //   ・お腹すいた: MOOD_TYPES=["restaurant"] / MOOD_KW="レストラン グルメ" のため飲食店のまま維持
         //   ・拡大半径は Google 50km / Yahoo 20km の各API上限内にクランプされる
+        let widenedSearch = false;
         if (recommendations.length < 15 && hasLocation) {
+          widenedSearch = recommendations.length < 8; // 8件未満なら「条件広げました」を表示
           const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
           const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
           const isFoodMoodTopUp = (answers.mood ?? "") === "お腹すいた";
@@ -5328,11 +5485,19 @@ export async function POST(request: Request) {
           }
         }
 
+        // B-2: 検索幅を広げた場合のワーニングメッセージ
+        const widenedWarning = widenedSearch
+          ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
+          : "";
+
         return json({
           recommendations,
           source: "supabase",
           usedAI: !!process.env.OPENAI_API_KEY,
-          warning: hasLocation ? "" : "現在地未使用のため、距離順ではない場合があります。",
+          widenedSearch,
+          warning: hasLocation
+            ? widenedWarning
+            : "現在地未使用のため、距離順ではない場合があります。",
         });
       }
     } catch (err) {
