@@ -3743,7 +3743,7 @@ async function fetchGooglePlacesSupplement(
       "カフェ":                          ["cafe", "coffee_shop"],
       "温泉スパ":                        ["spa", "sauna"],
       "温泉サウナ":                      ["spa", "sauna"],
-      "絶景スポット":                    ["viewpoint", "scenic_point", "tourist_attraction"],
+      "絶景スポット":                    ["tourist_attraction", "park"],   // 修正: viewpoint/scenic_point は無効
       // ── まったり L2 ──────────────────────────────────────────────────────────
       "ブックカフェ・隠れカフェ":        ["cafe", "book_store"],
       "動物カフェ":                      ["cafe", "pet_store"],
@@ -3751,28 +3751,28 @@ async function fetchGooglePlacesSupplement(
       "犬カフェ":                        ["cafe", "pet_store"],
       "小動物カフェ":                    ["cafe", "pet_store"],
       "アニマルカフェ":                  ["cafe", "pet_store"],           // 旧キー（後方互換）
-      "景色良いカフェ":                  ["cafe", "scenic_point"],
-      "景色が良いカフェ":                ["cafe", "scenic_point"],        // 旧キー（後方互換）
-      "海辺カフェ":                      ["cafe", "scenic_point"],
-      "森林カフェ":                      ["cafe", "scenic_point"],
-      "高層ビルカフェ":                  ["cafe", "scenic_point"],
+      "景色良いカフェ":                  ["cafe", "coffee_shop"],
+      "景色が良いカフェ":                ["cafe", "coffee_shop"],        // 旧キー（後方互換）
+      "海辺カフェ":                      ["cafe", "coffee_shop"],
+      "森林カフェ":                      ["cafe", "coffee_shop"],
+      "高層ビルカフェ":                  ["cafe", "coffee_shop"],
       "流行りのカフェ":                  ["cafe", "coffee_shop"],         // 旧キー（後方互換）
       "絶品スイーツカフェ":              ["cafe", "dessert_shop"],
-      "サウナ・岩盤浴":                  ["spa", "sauna", "fitness_center"],
-      "温泉施設全般":                    ["spa", "onsen", "bath"],
+      "サウナ・岩盤浴":                  ["spa", "sauna"],
+      "温泉施設全般":                    ["spa", "sauna"],          // 修正: onsen/bath は無効な型のため除去
       // ── わいわい L1 ──────────────────────────────────────────────────────────
       "体を動かして遊びたい":            ["bowling_alley", "amusement_park", "sports_complex"],
       "歌って飲んで騒ぎたい":            ["karaoke", "bar", "night_club"],
       "非日常の体験で盛り上がりたい":    ["amusement_park", "tourist_attraction"],
       // ── 自然 L1 ──────────────────────────────────────────────────────────────
-      "波の音と海風":                    ["beach", "marina"],
+      "波の音と海風":                    ["marina", "tourist_attraction"],  // 修正: beach は無効な型
       "森の中で深呼吸":                  ["park", "nature_park", "hiking_area"],
       "広い芝生でゴロゴロ":              ["park", "national_park"],
-      "圧倒的な絶景":                    ["viewpoint", "scenic_point"],
+      "圧倒的な絶景":                    ["tourist_attraction", "park"],     // 修正: viewpoint/scenic_point は無効
       // ── ドライブ L1 ──────────────────────────────────────────────────────────
-      "海沿いを爽快に走りたい":          ["beach", "marina", "scenic_point"],
-      "綺麗な景色や夜景を見に行きたい":  ["viewpoint", "scenic_point", "tourist_attraction"],
-      "道の駅でご当地グルメ":            ["restaurant", "food"],
+      "海沿いを爽快に走りたい":          ["marina", "tourist_attraction"],
+      "綺麗な景色や夜景を見に行きたい":  ["tourist_attraction", "park"],
+      "道の駅でご当地グルメ":            ["restaurant", "market"],           // 修正: food は無効な型
       "郊外の大型施設に行きたい":        ["shopping_mall", "department_store"],
       // ── 集中 L1 ──────────────────────────────────────────────────────────────
       "カフェで作業・勉強したい":        ["cafe", "coffee_shop", "library"],
@@ -3790,18 +3790,19 @@ async function fetchGooglePlacesSupplement(
       // ── ショッピング L1 ─────────────────────────────────────────────────────────
       "服・アクセサリー":                ["clothing_store", "shopping_mall"],
       "雑貨・インテリア":                ["home_goods_store", "furniture_store"],
-      "コスメ・美容":                    ["beauty_salon", "cosmetics_store"],
+      "コスメ・美容":                    ["beauty_salon", "drugstore"],      // 修正: cosmetics_store は無効
       "大型ショッピングモール":          ["shopping_mall", "department_store"],
-      "お土産・ギフト":                  ["gift_shop", "tourist_attraction"],
+      "お土産・ギフト":                  ["gift_shop", "store"],
       // ── ショッピング L2 ─────────────────────────────────────────────────────────
       "新品・現行":                      ["clothing_store", "shopping_mall"],
-      "古着・ヴィンテージ":              ["clothing_store", "thrift_store"],
+      "古着・ヴィンテージ":              ["clothing_store", "store"],         // 修正: thrift_store は無効
       // ── 旅行 L1 ──────────────────────────────────────────────────────────────
-      "パワースポット":                  ["hindu_temple", "mosque", "tourist_attraction"],
-      "パワースポットへ":                ["hindu_temple", "mosque", "tourist_attraction"],
+      // 修正: 日本の神社は hindu_temple/mosque ではなく place_of_worship。tourist_attraction併用。
+      "パワースポット":                  ["place_of_worship", "tourist_attraction"],
+      "パワースポットへ":                ["place_of_worship", "tourist_attraction"],
       "別世界のテーマパーク":            ["amusement_park", "tourist_attraction"],
-      "知らない街をぶらぶら":            ["shopping", "market", "tourist_attraction"],
-      "息を呑む絶景":                    ["viewpoint", "scenic_point"],
+      "知らない街をぶらぶら":            ["market", "tourist_attraction"],    // 修正: shopping は無効
+      "息を呑む絶景":                    ["tourist_attraction", "park"],      // 修正: viewpoint/scenic_point は無効
     };
 
     const MOOD_TYPES: Record<string, string[]> = {
@@ -3809,19 +3810,22 @@ async function fetchGooglePlacesSupplement(
       "お腹すいた":         ["restaurant"],
       "まったりしたい":     ["spa", "cafe", "park"],
       "わいわい楽しみたい": ["amusement_park", "bowling_alley", "karaoke"],
-      "自然感じたい":       ["park", "natural_feature"],
-      "ドライブしたい":     ["tourist_attraction", "scenic_point"],
+      "自然感じたい":       ["park", "national_park", "nature_park"],
+      "ドライブしたい":     ["tourist_attraction", "park"],
       "集中したい":         ["library", "cafe"],
       "体を動かしたい":     ["gym", "sports_complex", "park"],
+      "体動かしたい":       ["gym", "sports_complex", "park"],     // 短縮形
       "遠くに行きたい":     ["tourist_attraction", "amusement_park"],
+      "ショッピング":       ["shopping_mall", "clothing_store", "store"],  // 追加（従来 tourist_attraction に誤フォールバックしていた）
       // クイズ短縮キー（同じマッピング）
       "まったり":   ["spa", "cafe", "park"],
       "わいわい":   ["amusement_park", "bowling_alley", "karaoke"],
-      "自然":       ["park", "natural_feature"],
+      "自然":       ["park", "national_park", "nature_park"],
       "ドライブ":   ["tourist_attraction"],
       "集中":       ["library", "cafe"],
       "運動":       ["gym", "sports_complex", "park"],
       "旅行":       ["tourist_attraction", "amusement_park"],
+      "ショッピングしたい": ["shopping_mall", "clothing_store", "store"],
     };
 
     // 深掘りタグが一致すればそちらを優先（より具体的な結果）
