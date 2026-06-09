@@ -3608,8 +3608,9 @@ async function fetchGooglePlacesSupplement(
 
     // ── 1回分の Nearby Search を実行して places を返すヘルパー ──────────────────
     // D-3: goodForChildren/goodForGroups/liveMusic を追加してコンパニオンフィルタに活用
-    // #7/#8: currentOpeningHours(openNow + periods) を追加し、営業中優先・バッジ計算に使う。
-    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
+    // #7/#8: currentOpeningHours(openNow + periods) を追加し営業中優先・バッジ計算に使う。
+    // #12: businessStatus を追加し、閉店(CLOSED_PERMANENTLY)・長期休業店を除外する。
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.businessStatus,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
     const searchNearbyAt = async (
       cLat: number, cLng: number, rM: number,
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
@@ -3861,6 +3862,9 @@ async function fetchGooglePlacesSupplement(
       .filter((p: Record<string, unknown>) => {
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
         if (existingLower.has(name.toLowerCase()) || name.length === 0) return false;
+        // #12: 閉店・長期休業の店を除外（鮮度確保）。OPERATIONAL と未指定のみ通す。
+        const bizStatus = p.businessStatus as string | undefined;
+        if (bizStatus === "CLOSED_PERMANENTLY" || bizStatus === "CLOSED_TEMPORARILY") return false;
         if (isOverBudget(p.priceLevel as string | undefined)) return false;
         // 宿泊施設の除外（primaryType ベース。API除外をすり抜けた場合の保険）
         if (LODGING_PRIMARY_SET.has((p.primaryType as string) ?? "")) return false;

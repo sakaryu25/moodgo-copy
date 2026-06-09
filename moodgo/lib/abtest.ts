@@ -9,8 +9,8 @@ const AB_DEVICE_ID_KEY = "moodgo-device-id";
 
 let _cachedVariant: "A" | "B" | null = null;
 
-/** デバイス固有IDを取得（無ければ生成して保存） */
-async function getDeviceId(): Promise<string> {
+/** デバイス固有IDを取得（無ければ生成して保存）。閉店報告の重複防止(sessionId)にも使う。 */
+export async function getDeviceId(): Promise<string> {
   try {
     let id = await AsyncStorage.getItem(AB_DEVICE_ID_KEY);
     if (!id) {

@@ -57,15 +57,73 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // report_count をインクリメント
+    // ── 迷惑報告対策（#9・必須）─────────────────────────────────────────────────
+    // sessionId を必須化し、closed_reports の「異なるセッション数」で非活性化を判定する。
+    // ① 同一セッションの重複報告はカウントしない（1人が連打しても1票）
+    // ② 異なる 3 セッション以上が報告した場合のみ非活性化する
+    //   → 単独ユーザーの悪意ある連投でスポットが消える事故を防ぐ。
+    const safeSession = (typeof sessionId === "string" && sessionId.trim()) ? sessionId.trim() : "";
+    if (!safeSession) {
+      return NextResponse.json({ ok: false, error: "sessionId が必要です（迷惑報告対策）" }, { status: 400 });
+    }
+
+    let distinctSessions = 0;
+    let alreadyReportedBySession = false;
+    let closedReportsAvailable = true;
+    try {
+      const { data: existing, error: exErr } = await supabase
+        .from("closed_reports")
+        .select("user_session_id")
+        .eq("place_id", place.id);
+      if (exErr) {
+        closedReportsAvailable = false;
+      } else {
+        const sessions = new Set(
+          (existing ?? [])
+            .map((r: { user_session_id: string | null }) => r.user_session_id)
+            .filter(Boolean) as string[]
+        );
+        alreadyReportedBySession = sessions.has(safeSession);
+        distinctSessions = sessions.size;
+      }
+    } catch {
+      closedReportsAvailable = false;
+    }
+
+    // 同一セッションが既に報告済み → カウントせず受付のみ返す（連投無効化）
+    if (closedReportsAvailable && alreadyReportedBySession) {
+      return NextResponse.json({
+        ok: true,
+        placeName: place.name,
+        alreadyReported: true,
+        message: "この端末からは既に報告済みです（重複報告は無効）",
+      });
+    }
+
+    // 今回の報告を closed_reports に記録（新規セッションのみ加算）
+    if (closedReportsAvailable) {
+      try {
+        await supabase.from("closed_reports").insert({
+          place_id: place.id,
+          hotpepper_id: place.hotpepper_id ?? hotpepperId ?? null,
+          user_session_id: safeSession,
+          reported_at: new Date().toISOString(),
+        });
+        distinctSessions += 1;
+      } catch {
+        closedReportsAvailable = false;
+      }
+    }
+
+    // 非活性化判定: closed_reports があれば「異なるセッション数」、無ければ従来の report_count
     const newCount = (place.report_count ?? 0) + 1;
-    const shouldDeactivate = newCount >= AUTO_DEACTIVATE_THRESHOLD;
+    const effectiveCount = closedReportsAvailable ? distinctSessions : newCount;
+    const shouldDeactivate = effectiveCount >= AUTO_DEACTIVATE_THRESHOLD;
 
     const updateData: Record<string, unknown> = {
       report_count: newCount,
       last_reported_at: new Date().toISOString(),
     };
-
     if (shouldDeactivate) {
       updateData.is_active = false;
     }
@@ -79,25 +137,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
     }
 
-    // 報告ログを closed_reports テーブルに保存（テーブルがあれば）
-    // ※ テーブルがなくてもエラーにしない
-    try {
-      await supabase.from("closed_reports").insert({
-        place_id: place.id,
-        hotpepper_id: place.hotpepper_id ?? hotpepperId ?? null,
-        user_session_id: sessionId ?? null,
-        reported_at: new Date().toISOString(),
-      });
-    } catch { /* closed_reports テーブルが未作成でも無視 */ }
-
     return NextResponse.json({
       ok: true,
       placeName: place.name,
-      reportCount: newCount,
+      reportCount: effectiveCount,
+      distinctSessions: closedReportsAvailable ? distinctSessions : undefined,
       deactivated: shouldDeactivate,
       message: shouldDeactivate
-        ? `${newCount}件の報告により「${place.name}」を閉店済みとして非表示にしました`
-        : `「${place.name}」の閉店報告を受け付けました（${newCount}/${AUTO_DEACTIVATE_THRESHOLD}件）`,
+        ? `${effectiveCount}人の報告により「${place.name}」を閉店済みとして非表示にしました`
+        : `「${place.name}」の閉店報告を受け付けました（${effectiveCount}/${AUTO_DEACTIVATE_THRESHOLD}人）`,
     });
   } catch (error) {
     console.error("[report-closed] Error:", error);

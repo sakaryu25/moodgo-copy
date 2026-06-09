@@ -35,7 +35,7 @@ import {
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
 import { setSelectedPlace } from '@/lib/selectedPlace';
-import { getABVariant } from '@/lib/abtest';
+import { getABVariant, getDeviceId } from '@/lib/abtest';
 import * as Location from 'expo-location';
 import { Asset } from 'expo-asset';
 import { preloadMaps } from '@/components/FeatureScreen';
@@ -924,10 +924,12 @@ export default function Home() {
               try {
                 if (reportReason === '閉店・閉業' || reportReason === 'Closed/Shut down') {
                   if (reportingSpot.supabaseId) {
+                    // #9 迷惑報告対策: デバイスIDを sessionId として送り、同一端末の連投を無効化
+                    const sessionId = await getDeviceId().catch(() => '');
                     await apiFetch('/api/report-closed', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ placeId: reportingSpot.supabaseId }),
+                      body: JSON.stringify({ placeId: reportingSpot.supabaseId, sessionId }),
                     }).catch(() => {});
                   }
                 }
