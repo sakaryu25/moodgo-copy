@@ -436,9 +436,27 @@ function destinationPoint(lat: number, lng: number, bearingDeg: number, distKm: 
   return { lat: (φ2 * 180) / Math.PI, lng: (((λ2 * 180) / Math.PI + 540) % 360) - 180 };
 }
 
+// ── コスト削減A: 駅検索のインメモリキャッシュ ───────────────────────────────────
+// findNearestStation は結果ごとに searchNearby を叩くため1検索で5〜15回発生する。
+// 駅は移動しないので、座標を約100m grid(小数3桁)に丸めてキャッシュし重複呼び出しを排除する。
+// TTLは長め(2時間)。Vercelウォームインスタンス内で共有される。
+const _stationCache = new Map<string, { ts: number; val: string }>();
+const STATION_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2時間
+const stationCacheKey = (lat: number, lng: number) =>
+  `${lat.toFixed(3)},${lng.toFixed(3)}`; // 小数3桁 ≈ 111m grid
+
 // 最寄り駅を検索して「〇〇駅から徒歩約N分」を返す
 // Nearby SearchはRankPreference:DISTANCEを使い、距離順で取得する
 async function findNearestStation(lat: number, lng: number, apiKey: string): Promise<string> {
+  // A: キャッシュヒットなら Google を叩かない
+  const ckey = stationCacheKey(lat, lng);
+  const cached = _stationCache.get(ckey);
+  if (cached && Date.now() - cached.ts < STATION_CACHE_TTL_MS) return cached.val;
+  // キャッシュサイズ上限（500エントリ）超過時は最古を削除
+  if (_stationCache.size >= 500) {
+    const oldest = [..._stationCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+    if (oldest) _stationCache.delete(oldest[0]);
+  }
   try {
     const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
       method: "POST",
@@ -461,7 +479,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     if (!res.ok) return "";
     const data = await res.json();
     const places: Array<{ displayName?: { text?: string }; location?: { latitude?: number; longitude?: number } }> = data.places ?? [];
-    if (places.length === 0) return "";
+    if (places.length === 0) { _stationCache.set(ckey, { ts: Date.now(), val: "" }); return ""; }
 
     // 全駅の距離を計算して最も近いものを選ぶ
     let nearest: { name: string; dist: number } | null = null;
@@ -475,9 +493,11 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
         nearest = { name, dist };
       }
     }
-    if (!nearest) return "";
+    if (!nearest) { _stationCache.set(ckey, { ts: Date.now(), val: "" }); return ""; }
     const minutes = Math.ceil(nearest.dist / 80);
-    return `${nearest.name}から徒歩約${minutes}分`;
+    const val = `${nearest.name}から徒歩約${minutes}分`;
+    _stationCache.set(ckey, { ts: Date.now(), val });  // A: 結果をキャッシュ
+    return val;
   } catch {
     return "";
   }
@@ -3643,7 +3663,10 @@ async function fetchGooglePlacesSupplement(
     // D-3: goodForChildren/goodForGroups/liveMusic を追加してコンパニオンフィルタに活用
     // #7/#8: currentOpeningHours(openNow + periods) を追加し営業中優先・バッジ計算に使う。
     // #12: businessStatus を追加し、閉店(CLOSED_PERMANENTLY)・長期休業店を除外する。
-    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.businessStatus,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
+    // コスト削減C: goodForChildren/goodForGroups/liveMusic(Atmosphere課金=最高SKU)を除外。
+    //   これらは D-3 同行者ソートにのみ使う軽微な加点だったため、コスト優先で取得を停止。
+    //   （必要なら詳細ページで該当スポットのみ遅延取得する設計に移行可能）
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.businessStatus,places.priceLevel,places.location,places.primaryType";
     const searchNearbyAt = async (
       cLat: number, cLng: number, rM: number,
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
