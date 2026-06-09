@@ -5019,6 +5019,7 @@ type FinalizeRec = {
   userRatingCount?: number | null;
   hasUserPhotos?: boolean;
   features?: string[];
+  source?: string;   // 手動追加(manual/admin/user)優先のために参照
 };
 
 type FinalizeContext = {
@@ -5176,7 +5177,8 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
         .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
         .map(x => x.r);
     }
-    // 通常: D-1学習 + D-4天気 + E-3写真品質 + #7営業中ボーナス をシャッフルに加味
+    // 通常: D-1学習 + D-4天気 + E-3写真品質 + #7営業中 + 手動追加優先 をシャッフルに加味
+    const isCurated = (src?: string) => src === "manual" || src === "admin" || src === "user";
     return [...arr]
       .map(r => ({
         r,
@@ -5185,6 +5187,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
           + photoQualityScore(r)
           + (r.openNow === true ? 2 : 0)         // #7: 営業中の店を優先
           + (r.openNow === false ? -1.5 : 0)     //     営業時間外は控えめに後ろへ
+          + (isCurated(r.source) ? 8 : 0)        // 手動追加スポットを上位に（埋もれ防止）
           + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
       }))
       .sort((a, b) => b.score - a.score)
@@ -5512,6 +5515,10 @@ async function handleRecommend(request: Request) {
         // Supabaseで賄う件数: スキップ時は15件まで、通常は5件
         const sbTakeCount = skipAllSupplements ? 15 : 5;
 
+        // 手動追加スポット優先（埋もれ防止）: 人が手入力した source="manual"/"admin"/"user" は
+        // Google自動取り込み("google")より上位に出す。最近の流行りカフェ等を埋もれさせない。
+        const isCuratedSource = (src?: string) => src === "manual" || src === "admin" || src === "user";
+
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
         const scored = sbPoolCapped
@@ -5519,6 +5526,7 @@ async function handleRecommend(request: Request) {
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
               + wilsonLower(r.rating, r.reviewCount) * 2  // Wilson: 最大約2点加算
+              + (isCuratedSource(r.source) ? 5 : 0)        // 手動追加スポットを大きく優先
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
           .sort((a, b) => b._niceScore - a._niceScore)

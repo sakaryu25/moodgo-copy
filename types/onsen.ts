@@ -25,7 +25,7 @@ export interface PlaceResponse {
   catchphrase?: string;          // ルールベースのキャッチコピー（時間潰したい用）
   tags?: string[];               // スポットのタグ一覧
   // ── ソース情報（HotPepper 由来スポットの識別）────────────────────────────
-  source?: "hotpepper" | "google" | "admin" | "user";
+  source?: "hotpepper" | "google" | "admin" | "user" | "manual";
   hotpepperUrl?: string;
   lat?: number | null;
   lng?: number | null;

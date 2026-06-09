@@ -148,7 +148,7 @@ export function nearbyRowToPlaceResponse(
     lat:          row.lat ?? null,
     lng:          row.lng ?? null,
     tags:         row.tags,
-    source:       (row.source_type as "hotpepper" | "google" | "admin" | "user") ?? "admin",
+    source:       (row.source_type as "hotpepper" | "google" | "admin" | "user" | "manual") ?? "admin",
     hotpepperUrl: row.hotpepper_url ?? undefined,
   };
 }

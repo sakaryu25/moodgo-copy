@@ -99,6 +99,9 @@ export async function POST(req: NextRequest) {
       area:            area || null,
       description:     description?.trim() || null,
       is_active:       true,
+      // 手動追加スポットは source_type="manual" で明示保存し、Google自動取り込み("google")と
+      // 保管区分を分ける。検索ランキングで手動を優先し「埋もれ」を防ぐ。
+      source_type:     "manual",
     };
 
     let savedId: string;
