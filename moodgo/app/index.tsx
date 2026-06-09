@@ -435,7 +435,11 @@ export default function Home() {
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
 
       setApiRecommendations(recs);
-      setApiWarning(d.warning ?? '');
+      // B-2: 検索幅を広げた場合は "条件を広げました" を優先表示
+      const warningText = d.widenedSearch
+        ? `条件に合うスポットが少なかったため、範囲を少し広げました。${d.warning ? '\n' + d.warning : ''}`
+        : (d.warning ?? '');
+      setApiWarning(warningText);
 
       // ── 履歴保存（新規検索のみ）────────────────────────────────────────────
       if (recs.length > 0 && !isRefinement) {
@@ -613,7 +617,10 @@ export default function Home() {
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
       if (recs.length > 0) {
         setApiRecommendations(recs);
-        setApiWarning(d.warning ?? '');
+        const warningText2 = d.widenedSearch
+          ? `条件に合うスポットが少なかったため、範囲を少し広げました。${d.warning ? '\n' + d.warning : ''}`
+          : (d.warning ?? '');
+        setApiWarning(warningText2);
       }
     } catch (e) {
       console.error('[handleResearch]', e);
