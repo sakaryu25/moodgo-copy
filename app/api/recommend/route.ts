@@ -329,14 +329,16 @@ const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
 };
 // 名前がジャンルに適合するか（否定語にマッチせず、肯定語があればマッチする）。
 // 肯定語の定義が無いジャンル（非飲食の深掘り等）は常にtrue＝フィルタしない。
+// 【重要】否定語による除外のみ。肯定語の必須化はしない。
+//   名前に「ラーメン」を含まない正規ラーメン店（用心棒・一蘭・蒙古タンメン中本 等）を
+//   誤除外しないため。検索側(Google type/Yahoo gc/Supabase tag)で既にジャンル指定済みなので、
+//   名前にキーワードが無くてもジャンル適合とみなす。明確な異ジャンル語(アイス/パスタ等)のみ弾く。
 function nameMatchesGenre(name: string, deepDive: string): boolean {
   if (!deepDive) return true;
-  if (!name) return false;
+  if (!name) return true;
   const neg = GENRE_NEGATIVE_RE[deepDive];
   if (neg && neg.test(name)) return false;   // 否定語ヒット → 除外
-  const pos = GENRE_POSITIVE_RE[deepDive];
-  if (!pos) return true;                       // 肯定語定義なし → 通す
-  return pos.test(name);                        // 肯定語マッチで通す
+  return true;                                 // 否定語に当たらなければ通す（肯定語は要求しない）
 }
 
 // ── #6: 「こだわらない」時のジャンル代表性（粗ジャンル分類）──────────────────────
@@ -5224,11 +5226,12 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       return true;
     });
 
-  // #1/#3/#13: ジャンル不一致フィルタ（深掘りジャンルに名前が適合しない店を全ソースで除外）。
-  // effectiveDeepDive にジャンル定義がある場合のみ作動。非飲食/未定義ジャンルは素通り。
+  // #1/#3/#13: ジャンル不一致フィルタ（明確な異ジャンル語を含む店のみ除外＝否定語ベース）。
+  // 否定語定義があるジャンルのみ作動。肯定語は要求しないため、名前にジャンル名を含まない
+  // 正規店（用心棒・一蘭 等）は除外されない。
   const genreFidelityFilter = <T extends { title?: string }>(arr: T[]): T[] => {
     if (!effectiveDeepDive) return arr;
-    if (!GENRE_POSITIVE_RE[effectiveDeepDive] && !GENRE_NEGATIVE_RE[effectiveDeepDive]) return arr;
+    if (!GENRE_NEGATIVE_RE[effectiveDeepDive]) return arr;
     return arr.filter(r => nameMatchesGenre(r.title ?? "", effectiveDeepDive));
   };
 

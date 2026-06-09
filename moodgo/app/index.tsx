@@ -440,11 +440,9 @@ export default function Home() {
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
 
       setApiRecommendations(recs);
-      // B-2: 検索幅を広げた場合は "条件を広げました" を優先表示
-      const warningText = d.widenedSearch
-        ? `条件に合うスポットが少なかったため、範囲を少し広げました。${d.warning ? '\n' + d.warning : ''}`
-        : (d.warning ?? '');
-      setApiWarning(warningText);
+      // B-2: ワーニングはAPIの warning をそのまま表示（API側で既に「範囲を広げました」を含むため
+      //   アプリ側で同文を重ねない＝重複表示の修正）
+      setApiWarning(d.warning ?? '');
 
       // ── 履歴保存（新規検索のみ）────────────────────────────────────────────
       if (recs.length > 0 && !isRefinement) {
@@ -624,10 +622,7 @@ export default function Home() {
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
       if (recs.length > 0) {
         setApiRecommendations(recs);
-        const warningText2 = d.widenedSearch
-          ? `条件に合うスポットが少なかったため、範囲を少し広げました。${d.warning ? '\n' + d.warning : ''}`
-          : (d.warning ?? '');
-        setApiWarning(warningText2);
+        setApiWarning(d.warning ?? '');  // 重複表示の修正（API warning をそのまま使用）
       }
     } catch (e) {
       console.error('[handleResearch]', e);
