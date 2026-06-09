@@ -5842,6 +5842,37 @@ export async function POST(request: Request) {
           }
         }
 
+        // ── コスト削減F: Google補足結果を Supabase(places) に自動保存（fire-and-forget）──
+        //   Supabaseカバレッジが育つほど将来の検索でB(充足スキップ)が効き、Google呼び出しが
+        //   逓減する複利効果。座標とplaceIdが揃うGoogle由来スポットのみ保存する。
+        try {
+          const googleEntries = (googleSupplements as Array<Record<string, unknown>>)
+            .filter(g => g.placeId && typeof g.lat === "number" && typeof g.lng === "number")
+            .map(g => ({
+              googlePlaceId: String(g.placeId),
+              name: String(g.title ?? ""),
+              address: String(g.address ?? ""),
+              lat: g.lat as number,
+              lng: g.lng as number,
+              photoUrl: (g.photoUrl as string | undefined) ?? null,
+              rating: (g.rating as number | null | undefined) ?? null,
+              openNow: (g.openNow as boolean | null | undefined) ?? null,
+            }))
+            .filter(e => e.googlePlaceId && e.name);
+          if (googleEntries.length > 0) {
+            const { scheduleAutoSave, scheduleGenericAutoSave, detectFoodGenreTag } =
+              await import("@/lib/google-places-auto-save");
+            const foodGenreTag = isFoodMood ? detectFoodGenreTag(effectiveDeepDive || (answers.mood ?? "")) : null;
+            if (foodGenreTag) {
+              scheduleAutoSave(googleEntries, foodGenreTag);   // 食ジャンル別ルールで保存
+            } else {
+              // 非食 or ジャンル未検出: ユーザーのmustタグで保存
+              const tags = userTags.mustTags.filter(t => t.startsWith("#"));
+              if (tags.length > 0) scheduleGenericAutoSave(googleEntries, tags);
+            }
+          }
+        } catch { /* 自動保存失敗は検索結果に影響させない */ }
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
