@@ -312,6 +312,71 @@ function nameMatchesGenre(name: string, deepDive: string): boolean {
   return pos.test(name);                        // 肯定語マッチで通す
 }
 
+// ── #7/#8: 営業状態バッジ計算 ───────────────────────────────────────────────
+// Google currentOpeningHours(openNow + periods) と現在時刻(JST)から
+// 「営業中 / もうすぐ閉店 / もうすぐ開店 / 営業時間外」を判定する。
+type GooglePeriod = {
+  open?: { day?: number; hour?: number; minute?: number };
+  close?: { day?: number; hour?: number; minute?: number };
+};
+type OpenStatus = {
+  openNow?: boolean;
+  badge?: string;              // 表示用バッジ（営業中 / もうすぐ閉店(あとN分) 等）
+  closingSoonMin?: number;     // 閉店まで分（openNow時のみ）
+  openingSoonMin?: number;     // 開店まで分（閉店時のみ）
+};
+function computeOpenStatus(
+  current: { openNow?: boolean; periods?: GooglePeriod[] } | undefined,
+): OpenStatus {
+  if (!current) return {};
+  const openNow = typeof current.openNow === "boolean" ? current.openNow : undefined;
+  // 現在のJST曜日(0=日)・時分
+  const fmt = new Intl.DateTimeFormat("ja-JP", {
+    weekday: "short", hour: "numeric", minute: "numeric", hour12: false, timeZone: "Asia/Tokyo",
+  });
+  const parts = fmt.formatToParts(new Date());
+  const hourNow = Number(parts.find(p => p.type === "hour")?.value ?? "0");
+  const minNow = Number(parts.find(p => p.type === "minute")?.value ?? "0");
+  const dayMap: Record<string, number> = { "日": 0, "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6 };
+  const dayNow = dayMap[parts.find(p => p.type === "weekday")?.value ?? "日"] ?? 0;
+  const nowMin = dayNow * 1440 + hourNow * 60 + minNow;
+  const periods = current.periods ?? [];
+
+  if (openNow === true) {
+    // 現在開いている period の close 時刻までの分を求める（最短のもの）
+    let minToClose = Infinity;
+    for (const pd of periods) {
+      if (!pd.close) continue;
+      let closeMin = (pd.close.day ?? 0) * 1440 + (pd.close.hour ?? 0) * 60 + (pd.close.minute ?? 0);
+      // 週跨ぎ（close が現在より前なら翌週扱い）
+      if (closeMin < nowMin) closeMin += 7 * 1440;
+      const diff = closeMin - nowMin;
+      if (diff >= 0 && diff < minToClose) minToClose = diff;
+    }
+    if (minToClose <= 60) {
+      return { openNow: true, badge: `もうすぐ閉店（あと${minToClose}分）`, closingSoonMin: minToClose };
+    }
+    return { openNow: true, badge: "営業中" };
+  }
+
+  if (openNow === false) {
+    // 次に開く open 時刻までの分（最短）
+    let minToOpen = Infinity;
+    for (const pd of periods) {
+      if (!pd.open) continue;
+      let openMin = (pd.open.day ?? 0) * 1440 + (pd.open.hour ?? 0) * 60 + (pd.open.minute ?? 0);
+      if (openMin < nowMin) openMin += 7 * 1440;
+      const diff = openMin - nowMin;
+      if (diff >= 0 && diff < minToOpen) minToOpen = diff;
+    }
+    if (minToOpen <= 60) {
+      return { openNow: false, badge: `もうすぐ開店（あと${minToOpen}分）`, openingSoonMin: minToOpen };
+    }
+    return { openNow: false, badge: "営業時間外" };
+  }
+  return { openNow };
+}
+
 // Haversine距離(m)
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -3543,7 +3608,8 @@ async function fetchGooglePlacesSupplement(
 
     // ── 1回分の Nearby Search を実行して places を返すヘルパー ──────────────────
     // D-3: goodForChildren/goodForGroups/liveMusic を追加してコンパニオンフィルタに活用
-    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
+    // #7/#8: currentOpeningHours(openNow + periods) を追加し、営業中優先・バッジ計算に使う。
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
     const searchNearbyAt = async (
       cLat: number, cLng: number, rM: number,
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
@@ -3913,6 +3979,10 @@ async function fetchGooglePlacesSupplement(
       const photoUrl = photoUrls[0] ?? undefined;
       const hours = p.regularOpeningHours as { weekdayDescriptions?: string[] } | undefined;
       const gloc = p.location as { latitude?: number; longitude?: number } | undefined;
+      // #7/#8: 営業状態とバッジを計算
+      const openStatus = computeOpenStatus(
+        p.currentOpeningHours as { openNow?: boolean; periods?: GooglePeriod[] } | undefined,
+      );
       return {
         title: name,
         address: (p.formattedAddress as string | undefined) ?? "",
@@ -3920,7 +3990,10 @@ async function fetchGooglePlacesSupplement(
         photoUrls,
         rating: typeof p.rating === "number" ? p.rating : null,
         userRatingCount: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
-        openNow: undefined,
+        openNow: openStatus.openNow,
+        openStatusBadge: openStatus.badge,           // #7/#8: 「営業中」「もうすぐ閉店」等
+        closingSoonMin: openStatus.closingSoonMin,
+        openingSoonMin: openStatus.openingSoonMin,
         openingHoursText: hours?.weekdayDescriptions?.join("\n") ?? undefined,
         mapUrl: (p.googleMapsUri as string | undefined) ?? "",
         googleMapsUrl: (p.googleMapsUri as string | undefined) ?? "",
@@ -4975,13 +5048,15 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
         .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
         .map(x => x.r);
     }
-    // 通常: D-1学習 + D-4天気 + E-3写真品質をシャッフルに加味
+    // 通常: D-1学習 + D-4天気 + E-3写真品質 + #7営業中ボーナス をシャッフルに加味
     return [...arr]
       .map(r => ({
         r,
         score: (Math.random() * 10)
           + weatherBoost(r)
           + photoQualityScore(r)
+          + (r.openNow === true ? 2 : 0)         // #7: 営業中の店を優先
+          + (r.openNow === false ? -1.5 : 0)     //     営業時間外は控えめに後ろへ
           + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
       }))
       .sort((a, b) => b.score - a.score)
@@ -5407,6 +5482,8 @@ export async function POST(request: Request) {
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,
+            // #7: Supabaseスポットは periods が無いため openNow から簡易バッジを付与
+            openStatusBadge: r.openNow === true ? "営業中" : (r.openNow === false ? "営業時間外" : undefined),
             openingHoursText: r.openingHours ?? undefined,  // 全曜日分をそのまま渡す
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
