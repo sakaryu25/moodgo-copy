@@ -312,6 +312,39 @@ function nameMatchesGenre(name: string, deepDive: string): boolean {
   return pos.test(name);                        // 肯定語マッチで通す
 }
 
+// ── #6: 「こだわらない」時のジャンル代表性（粗ジャンル分類）──────────────────────
+// 食事で深掘り未指定のとき、結果が同一ジャンル（例: 全部ラーメン）に偏らないよう
+// 粗いジャンルに分類し、各ジャンルの件数に上限を設けて多様性を確保する。
+const COARSE_FOOD_GENRES: { key: string; re: RegExp }[] = [
+  { key: "ラーメン",   re: /ラーメン|らーめん|中華そば|つけ麺|まぜそば|麺屋|家系/i },
+  { key: "焼肉",       re: /焼肉|焼き肉|ホルモン|カルビ|牛角/i },
+  { key: "寿司海鮮",   re: /寿司|鮨|海鮮|魚介|刺身|浜焼/i },
+  { key: "居酒屋",     re: /居酒屋|酒場|ダイニングバー|バル|立ち飲み/i },
+  { key: "カフェ",     re: /カフェ|cafe|珈琲|coffee|喫茶|スイーツ|パフェ/i },
+  { key: "中華",       re: /中華|餃子|麻婆|町中華|台湾/i },
+  { key: "イタリアン", re: /イタリア|パスタ|ピザ|ピッツェ|トラットリア/i },
+  { key: "韓国",       re: /韓国|サムギョプサル|タッカルビ|スンドゥブ/i },
+  { key: "カレー",     re: /カレー|インド|ネパール|スパイス/i },
+  { key: "定食和食",   re: /定食|食堂|和食|うどん|そば|天ぷら|丼/i },
+];
+function coarseFoodGenreOf(name: string): string {
+  for (const g of COARSE_FOOD_GENRES) if (g.re.test(name)) return g.key;
+  return "その他";
+}
+// 同一粗ジャンルが cap 件を超えたら末尾に回す（順序は保ちつつ偏りを後ろへ）。
+function diversifyByCoarseGenre<T extends { title?: string }>(arr: T[], cap = 4): T[] {
+  const counts = new Map<string, number>();
+  const kept: T[] = [];
+  const overflow: T[] = [];
+  for (const r of arr) {
+    const g = coarseFoodGenreOf(r.title ?? "");
+    const c = counts.get(g) ?? 0;
+    if (c < cap) { counts.set(g, c + 1); kept.push(r); }
+    else overflow.push(r);
+  }
+  return [...kept, ...overflow];
+}
+
 // ── #7/#8: 営業状態バッジ計算 ───────────────────────────────────────────────
 // Google currentOpeningHours(openNow + periods) と現在時刻(JST)から
 // 「営業中 / もうすぐ閉店 / もうすぐ開店 / 営業時間外」を判定する。
@@ -5539,9 +5572,16 @@ export async function POST(request: Request) {
         });
 
         // 各ソースにモール/飲食/既出/品質/ジャンル(#1)フィルターを適用 → ソート
-        const sbSorted = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(mergedSb))))));
-        const gSorted  = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[])))));
-        const ySorted  = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[])))));
+        // #6: 食事で深掘り未指定(こだわらない)のときは、各ソース内で同一粗ジャンルを
+        //   最大2件に抑えて多様性を確保する（全部ラーメンにならないように）。
+        const diversifyFood = isFoodMood && !effectiveDeepDive;
+        const finalizeSource = (arr: Rec[]): Rec[] => {
+          const sorted = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(arr))))));
+          return diversifyFood ? diversifyByCoarseGenre(sorted, 2) : sorted;
+        };
+        const sbSorted = finalizeSource(mergedSb);
+        const gSorted  = finalizeSource(googleSupplements as Rec[]);
+        const ySorted  = finalizeSource(yahooSupplements as Rec[]);
 
         // 各ソースから最大5件を重複排除しながら取得
         const seen: DedupeKey[] = [];
