@@ -337,7 +337,26 @@ const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
   "レトロ洋食":          /ラーメン|うどん|そば|寿司|鮨|焼肉|中華|餃子|韓国|タイ|ベトナム|インド|アイス|パン屋|居酒屋|ファミレス/i,
   "アジアンエスニック料理": /ラーメン|うどん|そば|寿司|鮨|焼肉|中華料理|町中華|餃子|和食|イタリア|パスタ|喫茶|カフェ|アイス|パン屋|居酒屋|焼鳥/i,
   "メキシコ料理":        /ラーメン|うどん|そば|寿司|鮨|焼肉|中華|餃子|韓国|タイ|ベトナム|インド|和食|喫茶|カフェ|アイス|パン屋|居酒屋/i,
+  // ── L1カテゴリ（深掘り「こだわらない」時に effectiveDeepDive=L1 になる経路）──────
+  "中華":               /イタリア|パスタ|ピッツ|ラーメン|らーめん|うどん|そば|寿司|鮨|海鮮|焼肉|ホルモン|喫茶|カフェ|フルーツ|パフェ|アイス|タイ料理|韓国|カレー専門|天ぷら|和食/i,
+  "韓国":               /ラーメン|らーめん|うどん|そば|イタリア|パスタ|寿司|鮨|海鮮|町中華|餃子|喫茶|カフェ|フルーツ|アイス|タイ料理|ベトナム|天ぷら|和食/i,
+  "焼肉":               /ラーメン|うどん|そば|寿司|鮨|海鮮|喫茶|カフェ|フルーツ|パフェ|アイス|パン屋|ベーカリー|イタリア|パスタ|中華|餃子|天ぷら/i,
+  "和食":               /ラーメン|イタリア|パスタ|ピッツ|町中華|中華料理|餃子|韓国|サムギョプサル|タイ料理|ガパオ|ベトナム|フォー|インドカレー|ナン|アイス|パン屋|ベーカリー|ケーキ|フルーツパーラー/i,
+  "洋食":               /ラーメン|うどん|そば|寿司|鮨|中華|町中華|餃子|焼肉|ホルモン|韓国|タイ料理|ベトナム|インドカレー|アイス|喫茶|居酒屋|和食処/i,
+  "居酒屋":             /アイス|サーティワン|パン屋|ベーカリー|ケーキ|フルーツパーラー/i,
+  "アジア系統":         /ラーメン専門|うどん|そば|寿司|鮨|海鮮|和食|イタリア|パスタ|焼肉専門|喫茶|カフェ|フルーツ|アイス|パン屋|天ぷら|居酒屋/i,
+  "カフェスイーツ":     /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|町中華|餃子|居酒屋|焼鳥|定食屋/i,
 };
+
+// 深掘りキーの正規化（L1短縮形 → 正規キー）。マップのキー不一致を吸収する。
+const DEEPDIVE_ALIAS: Record<string, string> = {
+  "中華料理": "中華",          // ALLOWED/NEGATIVE は "中華" に統一
+  "韓国料理": "韓国",
+  "お好み焼き": "お好み焼きもんじゃ",
+};
+function canonDeepDive(d: string): string {
+  return DEEPDIVE_ALIAS[d] ?? d;
+}
 // 名前がジャンルに適合するか（否定語にマッチせず、肯定語があればマッチする）。
 // 肯定語の定義が無いジャンル（非飲食の深掘り等）は常にtrue＝フィルタしない。
 // 【重要】否定語による除外のみ。肯定語の必須化はしない。
@@ -361,9 +380,10 @@ const GENRE_POSITIVE_REQUIRED: Record<string, RegExp> = {
   "フルーツ":     /フルーツ|果物|パフェ|パーラー|アサイー|果実|ベリー|フルー|タカノ|果汁/i,
 };
 
-function nameMatchesGenre(name: string, deepDive: string): boolean {
-  if (!deepDive) return true;
+function nameMatchesGenre(name: string, deepDiveRaw: string): boolean {
+  if (!deepDiveRaw) return true;
   if (!name) return true;
+  const deepDive = canonDeepDive(deepDiveRaw);   // L1短縮形(中華→中華料理等)を正規化
   const neg = GENRE_NEGATIVE_RE[deepDive];
   if (neg && neg.test(name)) return false;   // 否定語ヒット → 除外
   const posReq = GENRE_POSITIVE_REQUIRED[deepDive];
@@ -406,7 +426,8 @@ const ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE: Record<string, string[]> = {
   "流行りカフェ": ["cafe", "coffee_shop", "dessert_shop"],
   "カフェスイーツ": ["cafe", "coffee_shop", "dessert_shop", "ice_cream_shop", "bakery"],
 };
-function primaryTypeAllowedForGenre(primaryType: string | undefined, deepDive: string): boolean {
+function primaryTypeAllowedForGenre(primaryType: string | undefined, deepDiveRaw: string): boolean {
+  const deepDive = canonDeepDive(deepDiveRaw);   // L1短縮形を正規化
   const allowed = ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE[deepDive];
   if (allowed === undefined) return true;            // 定義なし → 制限しない
   if (!primaryType) return true;                      // 型不明 → 名前フィルタに委ねる
@@ -5295,7 +5316,10 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   // 正規店（用心棒・一蘭 等）は除外されない。
   const genreFidelityFilter = <T extends { title?: string }>(arr: T[]): T[] => {
     if (!effectiveDeepDive) return arr;
-    if (!GENRE_NEGATIVE_RE[effectiveDeepDive] && !GENRE_POSITIVE_REQUIRED[effectiveDeepDive]) return arr;
+    {
+      const cdd = canonDeepDive(effectiveDeepDive);
+      if (!GENRE_NEGATIVE_RE[cdd] && !GENRE_POSITIVE_REQUIRED[cdd]) return arr;
+    }
     return arr.filter(r => nameMatchesGenre(r.title ?? "", effectiveDeepDive));
   };
 
