@@ -339,12 +339,21 @@ const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
 //   名前に「ラーメン」を含まない正規ラーメン店（用心棒・一蘭・蒙古タンメン中本 等）を
 //   誤除外しないため。検索側(Google type/Yahoo gc/Supabase tag)で既にジャンル指定済みなので、
 //   名前にキーワードが無くてもジャンル適合とみなす。明確な異ジャンル語(アイス/パスタ等)のみ弾く。
+// 肯定語必須ジャンル: Googleに専用型が無く一般和食/汎用型に埋もれる狭いジャンルは、
+//   名前に肯定語を含むことを要求して純度を上げる（例: うどん・そば検索で一般和食を除外）。
+//   ※ラーメン等は keyword-less の名店(用心棒/一蘭)があるため必須にしない（負け筋なので除外）。
+const GENRE_POSITIVE_REQUIRED: Record<string, RegExp> = {
+  "うどん・そば": /うどん|そば|蕎麦|饂飩|麺|めん|製麺|うどんそば|きしめん|ほうとう|そば処|うどん処|庵|ゆで太郎|富士そば|小諸|名代|立ち食い/i,
+};
+
 function nameMatchesGenre(name: string, deepDive: string): boolean {
   if (!deepDive) return true;
   if (!name) return true;
   const neg = GENRE_NEGATIVE_RE[deepDive];
   if (neg && neg.test(name)) return false;   // 否定語ヒット → 除外
-  return true;                                 // 否定語に当たらなければ通す（肯定語は要求しない）
+  const posReq = GENRE_POSITIVE_REQUIRED[deepDive];
+  if (posReq) return posReq.test(name);       // 肯定語必須ジャンルは肯定語マッチを要求
+  return true;                                 // それ以外は否定語に当たらなければ通す（肯定語不要）
 }
 
 // ── Google primaryType による精密ジャンル判定（名前に頼らず確実に異ジャンルを除外）─────
@@ -5271,7 +5280,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   // 正規店（用心棒・一蘭 等）は除外されない。
   const genreFidelityFilter = <T extends { title?: string }>(arr: T[]): T[] => {
     if (!effectiveDeepDive) return arr;
-    if (!GENRE_NEGATIVE_RE[effectiveDeepDive]) return arr;
+    if (!GENRE_NEGATIVE_RE[effectiveDeepDive] && !GENRE_POSITIVE_REQUIRED[effectiveDeepDive]) return arr;
     return arr.filter(r => nameMatchesGenre(r.title ?? "", effectiveDeepDive));
   };
 
