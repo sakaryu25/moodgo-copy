@@ -5245,8 +5245,18 @@ export async function POST(request: Request): Promise<Response> {
   return apiCounterStore.run({ counts }, async () => {
     const res = await handleRecommend(request);
     const total = counts.searchText + counts.searchNearby + counts.geocode + counts.routes + counts.photo + counts.other;
-    console.log(`[api-count] total=${total} searchText=${counts.searchText} searchNearby=${counts.searchNearby} geocode=${counts.geocode} routes=${counts.routes} photo=${counts.photo} other=${counts.other} elapsed=${Date.now() - t0}ms`);
-    return res;
+    const elapsed = Date.now() - t0;
+    console.log(`[api-count] total=${total} searchText=${counts.searchText} searchNearby=${counts.searchNearby} geocode=${counts.geocode} routes=${counts.routes} photo=${counts.photo} other=${counts.other} elapsed=${elapsed}ms`);
+    // 計測値をレスポンスにも埋め込む（_apiCount）。アプリは未知フィールドを無視するため無害。
+    try {
+      const body = await res.clone().json();
+      return NextResponse.json(
+        { ...body, _apiCount: { total, ...counts, elapsedMs: elapsed } },
+        { status: res.status },
+      );
+    } catch {
+      return res; // JSON以外（エラー等）はそのまま返す
+    }
   });
 }
 
