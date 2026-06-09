@@ -5163,9 +5163,21 @@ export async function POST(request: Request) {
         // Supabase 結果は最終マージでフォールバック扱いにする。
         const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0);
 
+        // 距離キャップ厳守（修正2）: spatialSearch の 1.5倍backfill 等で選択半径を超えた
+        // 遠方の places スポット（source="admin"ラベルを含む）を除外する。
+        // 許容は sbRadiusKm × 1.15（Google補足検索の maxDistKm と同じ係数で整合）。
+        // 座標不明スポットは距離判定不能のため通す（回帰防止）。
+        const sbDistCapKm = sbRadiusKm * 1.15;
+        const sbPoolCapped = sbPool.filter(r => {
+          if (typeof r.lat !== "number" || typeof r.lng !== "number") return true;
+          if (typeof answers.originLat !== "number" || typeof answers.originLng !== "number") return true;
+          const dkm = haversineMeters(answers.originLat, answers.originLng, r.lat, r.lng) / 1000;
+          return dkm <= sbDistCapKm;
+        });
+
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
-        const scored = sbPool
+        const scored = sbPoolCapped
           .map(r => ({
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
@@ -5436,8 +5448,11 @@ export async function POST(request: Request) {
           // subTags が空でも、sbMustTags（Supabase検索用の実タグ）でフィルタする。
           // これにより「焼肉食べ放題」選択時に横浜中華街が混入しなくなる。
           const adminSubFilter = sbMustTags.filter(t => t !== moodTag);
-          const ADMIN_MAX_KM = 40;
-          const matchingAdmin = adminSpots
+          // 距離無視バグ修正: 転載スポットもユーザー選択の距離感(radiusKm)でクランプする。
+          // 従来は固定40kmで「すぐそこ(1km)」でも31km先の転載店が先頭に出ていた。
+          // 上限40km・下限はradiusKmの1.2倍（最低でも選択半径より少し広く取り、近場転載は残す）。
+          const ADMIN_MAX_KM = Math.min(40, radiusKm * 1.2);
+          const matchingAdminSorted = adminSpots
             .map(s => {
               const tags = new Set(s.auto_tags ?? []);
               if (!moodTag || !tags.has(moodTag)) return null;                          // ① 気分タグ一致(必須)
@@ -5466,7 +5481,20 @@ export async function POST(request: Request) {
               return { s, dkm };
             })
             .filter((x): x is { s: (typeof adminSpots)[number]; dkm: number } => x !== null)
-            .sort((a, b) => a.dkm - b.dkm)   // 近い順
+            .sort((a, b) => a.dkm - b.dkm);  // 近い順
+
+          // A-7: admin転載にも同チェーン抑制を適用（ラーメン豚山×3 等を防ぐ。最大2件/チェーン）。
+          // admin注入は pickUnique を通らず先頭注入されるため、ここで個別にブランド重複を抑える。
+          const adminChainCounts = new Map<string, number>();
+          const matchingAdmin = matchingAdminSorted
+            .filter(({ s }) => {
+              const brand = brandOf(s.google_place_name ?? s.spot_name);
+              if (brand.length < 3) return true;            // ブランド名が短すぎる場合は抑制しない
+              const cnt = adminChainCounts.get(brand) ?? 0;
+              if (cnt >= 2) return false;                   // 同チェーン3件目以降は除外
+              adminChainCounts.set(brand, cnt + 1);
+              return true;
+            })
             .slice(0, 3)                      // 積極的に表示しつつ他ソースの多様性も残す（最大3件）
             .map(x => x.s);
 
