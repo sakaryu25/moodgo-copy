@@ -5345,7 +5345,7 @@ export async function POST(request: Request) {
         radiusKm: sbRadiusKm,  // A-4: 食事は近場キャップ適用
         minRadiusKm: 0,  // Supabaseは厳密な上限のみ（遠端バイアスなし）
         transport: answers.transport,
-        limit: 5,  // Supabaseから最大5件
+        limit: 20,  // コスト削減B: Supabaseが充足したらGoogle/Yahooをスキップするため多めに取得
         googleApiKey: apiKey,
       });
 
@@ -5405,6 +5405,23 @@ export async function POST(request: Request) {
           return dkm <= sbDistCapKm;
         });
 
+        // ── コスト削減B: Supabaseが充足したらGoogle/Yahoo補足をスキップ ──────────────
+        //   Supabase(places)の検索は安価。ジャンル・飲食適合する在庫が十分あるなら、
+        //   高額な Google/Yahoo 補足検索を呼ばずに Supabase だけで15件を組む。
+        //   sbQualified = 距離キャップ後のSupabaseのうち、ジャンル＆飲食フィルタを通る件数。
+        const isFoodForSkip = answers.mood === "お腹すいた";
+        const sbQualified = sbPoolCapped.filter(r => {
+          const nm = r.name ?? "";
+          if (!nameMatchesGenre(nm, effectiveDeepDive)) return false;          // ジャンル不一致を除外
+          if (isFoodForSkip && (FINALIZE_NON_FOOD_NAME_RE.test(nm))) return false; // 食事で温泉等を除外
+          return true;
+        });
+        // 充足判定: 15件以上 → Google/Yahoo両方スキップ / 10件以上 → Yahooのみスキップ
+        const skipAllSupplements = sbQualified.length >= 15;
+        const skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
+        // Supabaseで賄う件数: スキップ時は15件まで、通常は5件
+        const sbTakeCount = skipAllSupplements ? 15 : 5;
+
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
         const scored = sbPoolCapped
@@ -5415,7 +5432,7 @@ export async function POST(request: Request) {
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
           .sort((a, b) => b._niceScore - a._niceScore)
-          .slice(0, 5);  // Supabase: 最大5件
+          .slice(0, sbTakeCount);  // B: スキップ時は最大15件、通常は5件
 
         const sbNames = scored.map(r => r.name);
         // 写真がないSupabase結果の名前リスト（Google写真補完対象）
@@ -5423,15 +5440,18 @@ export async function POST(request: Request) {
         // 旧形式URL: maps.googleapis.com/maps/api/place/photo → v1 API非対応で表示できないため
         const isLegacyPhotoUrl = (url: string | undefined) =>
           !!url && url.includes("maps.googleapis.com/maps/api/place/photo");
+        // コスト削減(I): 写真補完(searchText)は上位8件のみに制限。
+        //   B で scored が最大15件になっても写真補完で searchText が増えすぎないようにする。
         const noPhotoNames = scored
           .filter(r => !r.imageUrl || isLegacyPhotoUrl(r.imageUrl))
+          .slice(0, 8)
           .map(r => r.name);
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
-          //   1ソースが不足してもGoogle/Yahooの余りで15件まで補填できるよう余裕を持たせる
-          hasLocation
+          //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
+          (hasLocation && !skipAllSupplements)
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
@@ -5440,9 +5460,8 @@ export async function POST(request: Request) {
               )
             : Promise.resolve([]),
           // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
-          // ※ Google と並列実行するため Google 名の除外は行わず sbPool 名のみ除外
-          //   最終マージ時にタイトル重複を除去する
-          hasLocation
+          //   B: Supabaseが10件以上 or 15件以上なら Yahoo を呼ばない（コスト削減）
+          (hasLocation && !skipAllSupplements && !skipYahooOnly)
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
