@@ -337,6 +337,10 @@ const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
   "レトロ洋食":          /ラーメン|うどん|そば|寿司|鮨|焼肉|中華|餃子|韓国|タイ|ベトナム|インド|アイス|パン屋|居酒屋|ファミレス/i,
   "アジアンエスニック料理": /ラーメン|うどん|そば|寿司|鮨|焼肉|中華料理|町中華|餃子|和食|イタリア|パスタ|喫茶|カフェ|アイス|パン屋|居酒屋|焼鳥/i,
   "メキシコ料理":        /ラーメン|うどん|そば|寿司|鮨|焼肉|中華|餃子|韓国|タイ|ベトナム|インド|和食|喫茶|カフェ|アイス|パン屋|居酒屋/i,
+  // 楽しみたい: 王道で遊ぶ（テーマパーク/カラオケ/ラボ/ランドマーク。飲食・公園・寺社・温泉を排除）
+  "王道で遊ぶ":      /焼肉|居酒屋|寿司|鮨|ラーメン|うどん|そば|定食|食堂|レストラン|ダイニング|バル|酒場|喫茶|公園|緑地|樹林|霊園|墓地|神社|寺|大社|稲荷|温泉|銭湯|サウナ|岩盤浴|スポーツセンター|ジム/i,
+  // 楽しみたい: アクティブに遊ぶ（ゲーセン/ボウリング/脱出等。飲食・公園・鑑賞施設を排除）
+  "アクティブに遊ぶ": /焼肉|居酒屋|寿司|鮨|ラーメン|うどん|そば|定食|食堂|レストラン|ダイニング|バル|酒場|喫茶|公園|緑地|樹林|霊園|墓地|神社|寺|大社|稲荷|温泉|銭湯|サウナ|岩盤浴|水族館|動物園|映画|シネマ|博物館|美術館|プラネタリウム/i,
   // 旅行: 知らない街をぶらぶら → 街歩き/商店街/中華街/通り/道の駅 を出したい。generic な公園・緑地・
   //   動物園・霊園・駐車場・グラウンド等の「街歩きでない緑地/施設」を除外する。
   "知らない街をぶらぶら": /公園|緑地|樹林|動物園|植物園|霊園|墓地|駐車場|グラウンド|運動場|ゴルフ|キャンプ|河川敷|広場|スポーツ|ジム|フットサル|ボルダリング|バッティング|ラケット|ダイビング|スキューバ|フィットネス|スイミング|プール|テニス|体育館|アスレチック|サッカー|野球場|FUTSAL|SPORTS|FITNESS|SWING|BATTING|TENNIS|BOWL/i,
@@ -383,6 +387,10 @@ const GENRE_POSITIVE_REQUIRED: Record<string, RegExp> = {
   "お好み焼き":   /お好み焼き|もんじゃ|鉄板|ぼんち|風月|偶|きじ|千房|道とん堀/i,
   // フルーツ（汎用cafe型・果物/パフェ/パーラーで識別）
   "フルーツ":     /フルーツ|果物|パフェ|パーラー|アサイー|果実|ベリー|フルー|タカノ|果汁/i,
+  // 楽しみたい: 観て楽しむ（鑑賞施設に限定。飲食/カラオケ/公園を排除）
+  "観て楽しむ":   /水族館|アクアリウム|動物園|ズー|サファリ|映画|シネマ|シアター|劇場|ホール|博物館|美術館|ミュージアム|プラネタリウム|科学館|展示|ギャラリー|資料館|記念館|ライブ/i,
+  // 楽しみたい: つくる・体験（体験施設に限定）
+  "つくる・体験": /体験|工房|工場見学|陶芸|ガラス|手作り|ワークショップ|クラフト|ものづくり|教室|アトリエ|キャンドル|レザー|アクセサリー|そば打ち|見学|染め|細工|手づくり|DIY|スタジオ/i,
 };
 
 function nameMatchesGenre(name: string, deepDiveRaw: string): boolean {
@@ -433,8 +441,17 @@ const ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE: Record<string, string[]> = {
   "流行りカフェ": ["cafe", "coffee_shop", "dessert_shop"],
   "カフェスイーツ": ["cafe", "coffee_shop", "dessert_shop", "ice_cream_shop", "bakery"],
 };
+// 楽しみたい系の深掘りは飲食店を全除外する（汎用restaurant/japanese_restaurant含む）。
+//   #わいわい楽しみたいタグの飲食店(HAL YAMASHITA等)が混入するのを型で防ぐ。
+const AMUSEMENT_NO_FOOD_DEEPDIVES = new Set(["王道で遊ぶ", "アクティブに遊ぶ", "観て楽しむ", "つくる・体験"]);
+const FOOD_FAMILY_PRIMARY_TYPES = new Set([
+  ...SPECIFIC_FOOD_PRIMARY_TYPES,
+  "restaurant", "japanese_restaurant", "food", "meal_takeaway", "meal_delivery", "food_court",
+]);
 function primaryTypeAllowedForGenre(primaryType: string | undefined, deepDiveRaw: string): boolean {
   const deepDive = canonDeepDive(deepDiveRaw);   // L1短縮形を正規化
+  // 楽しみたい系: 飲食店型は全て除外
+  if (AMUSEMENT_NO_FOOD_DEEPDIVES.has(deepDive) && primaryType && FOOD_FAMILY_PRIMARY_TYPES.has(primaryType)) return false;
   const allowed = ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE[deepDive];
   if (allowed === undefined) return true;            // 定義なし → 制限しない
   if (!primaryType) return true;                      // 型不明 → 名前フィルタに委ねる
@@ -5959,6 +5976,12 @@ async function handleRecommend(request: Request) {
               //     generic公園・動物園を除外）。admin注入は merge後に prepend されフィルタを
               //     通らないため、ここで個別に nameMatchesGenre で判定する。
               if (!nameMatchesGenre(s.google_place_name ?? s.spot_name, effectiveDeepDive)) return null;
+              // ④'' 楽しみたい系: 食タグを持つadmin転載(飲食店)を除外（primaryTypeが無いので
+              //     タグで判定）。HAL YAMASHITA等の飲食店が #わいわい楽しみたい で注入されるのを防ぐ。
+              if (AMUSEMENT_NO_FOOD_DEEPDIVES.has(canonDeepDive(effectiveDeepDive))) {
+                const FOOD_GENRE_TAGS = ["#お腹すいた", "#居酒屋", "#和食", "#洋食", "#イタリアン", "#中華", "#焼肉", "#韓国", "#ラーメン", "#カフェスイーツ", "#アジア系統"];
+                if ((s.auto_tags ?? []).some(t => FOOD_GENRE_TAGS.includes(t))) return null;
+              }
               // 既出スポット除外（再検索時の重複防止）
               if (showUnseenOnly && seenLower.has((s.google_place_name ?? s.spot_name).toLowerCase())) return null;
               const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
