@@ -5981,6 +5981,56 @@ async function handleRecommend(request: Request) {
           }).slice(0, 15);
         }
 
+        // ── 最終結果の補完エンリッチ（営業時間＋写真10枚）─────────────────────────
+        //   Yahoo/Supabase 由来の店は営業時間・写真が欠けがち。結果画面では充実を優先し、
+        //   営業時間が無い or 写真が10枚未満の結果だけ Google Text Search で補完する。
+        //   （表示する15件のみ対象。各店1回の searchText で hours+photos を一括取得）
+        if (apiKey && recommendations.length > 0) {
+          await Promise.all(recommendations.map(async (rec, idx) => {
+            const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
+            const needPhotos = photoUrls.length < 10;
+            const needHours = rec.openNow === undefined || !rec.openingHoursText;
+            if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
+            try {
+              const q = rec.address ? `${rec.title} ${rec.address}` : rec.title ?? "";
+              if (!q.trim()) return;
+              const er = await gfetch("https://places.googleapis.com/v1/places:searchText", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Goog-Api-Key": apiKey,
+                  "X-Goog-FieldMask": "places.photos,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.currentOpeningHours.weekdayDescriptions,places.regularOpeningHours.weekdayDescriptions",
+                },
+                body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
+                cache: "no-store", signal: AbortSignal.timeout(6000),
+              });
+              if (!er.ok) return;
+              const ed = await er.json().catch(() => null);
+              const place = ed?.places?.[0];
+              if (!place) return;
+              // 写真を最大10枚補完
+              if (needPhotos) {
+                const photos = (place.photos ?? []) as Array<{ name?: string }>;
+                const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
+                if (urls.length > photoUrls.length) {
+                  recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
+                }
+              }
+              // 営業時間・営業状態を補完
+              if (needHours && place.currentOpeningHours) {
+                const st = computeOpenStatus(place.currentOpeningHours as { openNow?: boolean; periods?: GooglePeriod[] });
+                const wd = (place.currentOpeningHours?.weekdayDescriptions ?? place.regularOpeningHours?.weekdayDescriptions) as string[] | undefined;
+                recommendations[idx] = {
+                  ...recommendations[idx],
+                  openNow: st.openNow ?? recommendations[idx].openNow,
+                  openStatusBadge: st.badge ?? recommendations[idx].openStatusBadge,
+                  openingHoursText: wd?.join("\n") ?? recommendations[idx].openingHoursText,
+                };
+              }
+            } catch { /* 補完失敗は無視 */ }
+          }));
+        }
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
