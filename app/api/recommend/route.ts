@@ -5955,6 +5955,10 @@ async function handleRecommend(request: Request) {
                 const addr = s.address ?? "";
                 if (NON_FOOD_NAME_RE.test(addr)) return null;
               }
+              // ④' ジャンル不一致フィルタを admin転載にも適用（例: 知らない街をぶらぶらで
+              //     generic公園・動物園を除外）。admin注入は merge後に prepend されフィルタを
+              //     通らないため、ここで個別に nameMatchesGenre で判定する。
+              if (!nameMatchesGenre(s.google_place_name ?? s.spot_name, effectiveDeepDive)) return null;
               // 既出スポット除外（再検索時の重複防止）
               if (showUnseenOnly && seenLower.has((s.google_place_name ?? s.spot_name).toLowerCase())) return null;
               const hasCoord = typeof s.lat === "number" && typeof s.lng === "number";
