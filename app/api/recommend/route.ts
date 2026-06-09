@@ -4766,8 +4766,11 @@ type FinalizeDedupeKey = { key: string; lat?: number; lng?: number };
 
 // 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
 const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
-// お腹すいた時に除外する老舗・地元食堂系。
-const FINALIZE_OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正|昭和[0-9０-９]+年創|食堂|大衆食堂)/;
+// お腹すいた時に除外する老舗系（観光客向けでない古すぎる地元店の抑制）。
+// ※「食堂」「大衆食堂」は正規の定食屋・大衆食堂(〇〇食堂)が多く、docx仕様も除外を求めて
+//   いないため除外対象から外した（定食食堂の取りこぼし防止）。
+// ※「老舗」等は喫茶/レトロ系ジャンルでは docx が明示的に求めるため foodSanitize 側で除外を免除する。
+const FINALIZE_OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正|昭和[0-9０-９]+年創)/;
 // B2B・施設系の除外（株式会社/工場 等）。
 const FINALIZE_NG_BIZ_RE = /(株式会社|有限会社|（株）|\(株\)|（有）|\(有\)|合同会社|工場|製作所|倉庫|営業所|事業所|本社)/;
 
@@ -4911,14 +4914,17 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       .map(x => x.r);
   };
 
-  // お腹すいた 飲食店のみ強制フィルター（温泉/水族館/老舗食堂を除外）
+  // お腹すいた 飲食店のみ強制フィルター（温泉/水族館を除外。老舗は喫茶/レトロ系では免除）
   const isFoodMoodReq = isFoodMood;
+  // docx仕様「喫茶店・レトロ＝レトロ喫茶店、老舗」のように、ジャンル自体が老舗・レトロを
+  // 求めている場合は OLD_STORE 除外を免除する（喫茶/カフェ/レトロ/老舗 を含む深掘り）。
+  const wantsRetro = /喫茶|レトロ|老舗|カフェ/.test(effectiveDeepDive);
   const foodSanitize = <T extends { title?: string; address?: string }>(arr: T[]): T[] => {
     if (!isFoodMoodReq) return arr;
     return arr.filter(r =>
       !FINALIZE_NON_FOOD_NAME_RE.test(r.title ?? "") &&
       !FINALIZE_NON_FOOD_NAME_RE.test(r.address ?? "") &&
-      !FINALIZE_OLD_STORE_NAME_RE.test(r.title ?? "")
+      (wantsRetro || !FINALIZE_OLD_STORE_NAME_RE.test(r.title ?? ""))
     );
   };
 
@@ -6811,6 +6817,11 @@ export async function POST(request: Request) {
     //   ※ admin注入スポット(score>=100)・AIピン留め(isPinned)は写真/評価が無くても
     //     必ず残すよう保護する（誤除外防止）。
     //   ※ 既出除外(seenPlaces)・閉店除外は既に mergedMap 段階で実施済みのため二重適用しない。
+    // 喫茶/レトロ系ジャンルの老舗除外免除を経路5でも効かせるため深掘りを導出して渡す。
+    // （経路5は applyMallFilter を呼ばないため effectiveDeepDive を渡してもモールフィルタは作動しない）
+    const legacyDeepDive = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer
+      ?? (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer
+      ?? "";
     const legacyHelpers = createFinalizeHelpers({
       isFoodMood: answers.mood === "お腹すいた",
       minRadiusKm: 0,          // 経路5はバケット順序のため距離バイアス未使用
@@ -6818,7 +6829,7 @@ export async function POST(request: Request) {
       goodVisitedPlaces,
       seenPlaces,
       showUnseenOnly: false,   // seen除外は mergedMap で実施済み → 二重適用回避
-      effectiveDeepDive: "",   // 経路5ではモールフィルタ未使用
+      effectiveDeepDive: legacyDeepDive,  // 喫茶/レトロ系の老舗除外免除に使用（モールフィルタは未呼出）
     });
     const isProtectedLegacy = (i: ScoredItem) => i.isPinned === true || i.score >= 100;
     const protectedItems = sorted.filter(isProtectedLegacy);
