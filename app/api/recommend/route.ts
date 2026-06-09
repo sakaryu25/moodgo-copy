@@ -3986,9 +3986,12 @@ async function fetchGooglePlacesSupplement(
       .filter((p: Record<string, unknown>) => {
         const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
         if (existingLower.has(name.toLowerCase()) || name.length === 0) return false;
-        // #12: 閉店・長期休業の店を除外（鮮度確保）。OPERATIONAL と未指定のみ通す。
+        // #12: 完全閉店(CLOSED_PERMANENTLY)のみ除外する。
+        //   CLOSED_TEMPORARILY は「売り切れ次第閉店/定休日/本日休業」等の一時閉店を含み、
+        //   営業中の人気店(用心棒・二郎系等)が本日閉店中なだけで消えてしまうため除外しない。
+        //   （本日閉店中の店は openNow=false の「営業時間外」バッジで表示する）
         const bizStatus = p.businessStatus as string | undefined;
-        if (bizStatus === "CLOSED_PERMANENTLY" || bizStatus === "CLOSED_TEMPORARILY") return false;
+        if (bizStatus === "CLOSED_PERMANENTLY") return false;
         if (isOverBudget(p.priceLevel as string | undefined)) return false;
         // 宿泊施設の除外（primaryType ベース。API除外をすり抜けた場合の保険）
         if (LODGING_PRIMARY_SET.has((p.primaryType as string) ?? "")) return false;
