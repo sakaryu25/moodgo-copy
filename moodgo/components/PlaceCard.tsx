@@ -185,10 +185,17 @@ export default function PlaceCard({
     ]).start();
   };
 
+  // #8: openStatusBadge（営業中/もうすぐ閉店/もうすぐ開店/営業時間外）を優先表示（日本語時のみ）。
+  //   無い場合は従来の openNow ベースの 営業中/閉店 ラベルにフォールバック。
+  const badge = lang === 'ja' ? item.openStatusBadge : undefined;
   const openNowColor =
+    badge?.includes('もうすぐ閉店') ? '#F59E0B' :          // オレンジ（まもなく閉店）
+    badge?.includes('もうすぐ開店') ? '#3B82F6' :          // 青（まもなく開店）
+    badge === '営業時間外'          ? '#EF4444' :
     item.openNow === true  ? '#10B981' :
     item.openNow === false ? '#EF4444' : COLORS.textMuted;
   const openNowLabel =
+    badge ? badge :
     item.openNow === true  ? t.openNow :
     item.openNow === false ? t.closedNow : '';
 

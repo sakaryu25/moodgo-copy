@@ -19,6 +19,7 @@ export type Recommendation = {
   distanceText?: string;
   durationText?: string;
   openNow?: boolean;
+  openStatusBadge?: string;   // #8: 「営業中」「もうすぐ閉店（あとN分）」等の詳細バッジ
   reason?: string;
   /** AI相談フロー専用: なぜこの場所をおすすめするのか（結果画面で表示） */
   aiReason?: string;
@@ -58,6 +59,7 @@ export type FavoriteItem = {
   rating?: number | null;
   openingHoursText?: string;
   openNow?: boolean;
+  openStatusBadge?: string;   // #8: 「営業中」「もうすぐ閉店（あとN分）」等の詳細バッジ
   photoUrls?: string[];
   stationText?: string;
   distanceText?: string;
