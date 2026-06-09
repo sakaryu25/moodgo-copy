@@ -5166,12 +5166,25 @@ export async function POST(request: Request) {
         // 距離キャップ厳守（修正2）: spatialSearch の 1.5倍backfill 等で選択半径を超えた
         // 遠方の places スポット（source="admin"ラベルを含む）を除外する。
         // 許容は sbRadiusKm × 1.15（Google補足検索の maxDistKm と同じ係数で整合）。
-        // 座標不明スポットは距離判定不能のため通す（回帰防止）。
+        //
+        // 【重要】spatialSearch の返却は lat/lng が null のケースがある（distance_m は別途PostGISが算出）。
+        //   そのため距離判定はまず distanceInfo("...で約X分 / 15.8km") のkm値を最優先で使い、
+        //   無い場合のみ lat/lng の haversine にフォールバックする。
+        //   （従来は lat/lng のみ見ていたため null 時に遠方店が素通りしていた）
         const sbDistCapKm = sbRadiusKm * 1.15;
+        const parseKmFromDistanceInfo = (info?: string | null): number | null => {
+          if (!info) return null;
+          const m = info.match(/\/\s*([\d.]+)\s*km/);
+          return m ? parseFloat(m[1]) : null;
+        };
         const sbPoolCapped = sbPool.filter(r => {
-          if (typeof r.lat !== "number" || typeof r.lng !== "number") return true;
-          if (typeof answers.originLat !== "number" || typeof answers.originLng !== "number") return true;
-          const dkm = haversineMeters(answers.originLat, answers.originLng, r.lat, r.lng) / 1000;
+          let dkm = parseKmFromDistanceInfo(r.distanceInfo);
+          if (dkm === null
+              && typeof r.lat === "number" && typeof r.lng === "number"
+              && typeof answers.originLat === "number" && typeof answers.originLng === "number") {
+            dkm = haversineMeters(answers.originLat, answers.originLng, r.lat, r.lng) / 1000;
+          }
+          if (dkm === null) return true;  // 距離不明は通す（回帰防止）
           return dkm <= sbDistCapKm;
         });
 
