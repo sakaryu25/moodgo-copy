@@ -3311,7 +3311,8 @@ function chooseFinalResults(items: ScoredItem[], mood?: string) {
     if (mood === "お腹すいた") {
       if (item.bucket !== "food" && item.bucket !== "indoor") continue;
       // 館内にお食事処を持つ温泉/銭湯等は bucket=food でも飲食目的に不適切 → 名前で除外（要件③）
-      if (/(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/.test(item.title)) continue;
+      // Step 4: 共通モジュール定数 FINALIZE_NON_FOOD_NAME_RE に統一（インライン重複を削除）
+      if (FINALIZE_NON_FOOD_NAME_RE.test(item.title)) continue;
     }
 
     if (item.bucket === "scenic" && !scenicAllowedMoods.has(mood ?? "")) {
