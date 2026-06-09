@@ -3358,6 +3358,29 @@ function getRadiusKmFromTransportAndTime(transport?: string | string[], time?: s
   return Math.max(2, Math.round(base * mult));
 }
 
+// ── E-2: 短時間インメモリキャッシュ（Google/Yahoo 並列呼び出しの重複削減）──────
+// Vercelのサーバーレス関数はウォームインスタンス間でキャッシュが共有されないが、
+// 同一リクエスト内や近似条件の再検索では有効。TTL=5分。
+const _supplementCache = new Map<string, { ts: number; data: Record<string, unknown>[] }>();
+const SUPPLEMENT_CACHE_TTL_MS = 5 * 60 * 1000; // 5分
+function getSupplementCache(key: string): Record<string, unknown>[] | null {
+  const entry = _supplementCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > SUPPLEMENT_CACHE_TTL_MS) {
+    _supplementCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+function setSupplementCache(key: string, data: Record<string, unknown>[]): void {
+  // キャッシュサイズ上限（最大50エントリ）を超えたら古いものを削除
+  if (_supplementCache.size >= 50) {
+    const oldest = [..._supplementCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+    if (oldest) _supplementCache.delete(oldest[0]);
+  }
+  _supplementCache.set(key, { ts: Date.now(), data });
+}
+
 // ─── Google Places 補足検索 ─────────────────────────────────────────────────
 // Supabase 結果を補うために Google Places Nearby Search で 10 件追加取得
 async function fetchGooglePlacesSupplement(
@@ -3372,7 +3395,13 @@ async function fetchGooglePlacesSupplement(
   deepDiveL1: string = "",
   minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
   deepDiveL2: string = "",   // L2詳細カテゴリ（Text Search精度向上に使用）
+  companion: string = "",    // D-3: 同行者属性（子連れ → goodForChildren フィルタ）
 ): Promise<Array<Record<string, unknown>>> {
+  // E-2: キャッシュキー（座標を0.01°≈1km単位に丸めて近似リクエストを合算）
+  const cacheKey = `g:${(lat * 100 | 0) / 100},${(lng * 100 | 0) / 100}:r${Math.round(radiusKm)}:${mood}:${deepDiveL1}:${deepDiveL2}`;
+  const cached = getSupplementCache(cacheKey);
+  if (cached) return cached;
+
   try {
     // 深掘りカテゴリ別の Google Places types（気分タグより具体的）
     const DEEP_DIVE_TYPES: Record<string, string[]> = {
@@ -3509,7 +3538,8 @@ async function fetchGooglePlacesSupplement(
     const types = DEEP_DIVE_TYPES[deepDiveL1] ?? MOOD_TYPES[mood] ?? ["tourist_attraction"];
 
     // ── 1回分の Nearby Search を実行して places を返すヘルパー ──────────────────
-    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType";
+    // D-3: goodForChildren/goodForGroups/liveMusic を追加してコンパニオンフィルタに活用
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.primaryType,places.goodForChildren,places.goodForGroups,places.liveMusic";
     const searchNearbyAt = async (
       cLat: number, cLng: number, rM: number,
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
@@ -3784,7 +3814,18 @@ async function fetchGooglePlacesSupplement(
         const distKm = (typeof loc?.latitude === "number" && typeof loc?.longitude === "number")
           ? haversineMeters(lat, lng, loc.latitude, loc.longitude) / 1000
           : -1;  // 座標不明
-        return { p, distKm, isText: textKeys.has(keyOf(p)) };
+        // D-3: 同行者属性に基づくコンパニオンスコア（ソート時に優遇）
+        let companionScore = 0;
+        if (companion.includes("家族") || companion.includes("子ども")) {
+          if (p.goodForChildren === true) companionScore += 1;
+        }
+        if (companion.includes("大人数") || companion.includes("グループ")) {
+          if (p.goodForGroups === true) companionScore += 1;
+        }
+        if (companion.includes("恋人") || companion.includes("デート")) {
+          if (p.liveMusic === true || p.outdoorSeating === true) companionScore += 0.5;
+        }
+        return { p, distKm, isText: textKeys.has(keyOf(p)), companionScore };
       })
       .filter((d) => d.distKm < 0 || d.distKm <= maxDistKm);
 
@@ -3798,12 +3839,20 @@ async function fetchGooglePlacesSupplement(
     };
 
     // グループ内の並び順（遠端バイアス時は遠い順、通常はシャッフル）
+    // D-3: companionScoreが高い場合はシャッフルでも少し上位に来やすくする
     const orderGroup = (group: typeof withDist): typeof withDist => {
       if (minRadiusKm > 0) {
         const far  = group.filter(d => d.distKm >= minRadiusKm);
         const near = group.filter(d => d.distKm < minRadiusKm);
         far.sort((a, b) => (b.distKm - a.distKm) + (Math.random() - 0.5) * 2);
         return [...far, ...shuffleArr(near)];
+      }
+      // D-3: companionScore > 0 のスポットをシャッフル前に少し優遇
+      if (companion) {
+        return [...group]
+          .map(d => ({ d, s: Math.random() + d.companionScore * 2 }))
+          .sort((a, b) => b.s - a.s)
+          .map(x => x.d);
       }
       return shuffleArr(group);
     };
@@ -3852,7 +3901,7 @@ async function fetchGooglePlacesSupplement(
     };
 
     // 写真は photo-proxy URL を直接組み立て（解決は表示時に遅延 → 高速化、最大10枚）
-    return filtered.map(({ p, distKm }: { p: Record<string, unknown>; distKm: number }) => {
+    const result = filtered.map(({ p, distKm }: { p: Record<string, unknown>; distKm: number }) => {
       const name = (p.displayName as { text?: string } | undefined)?.text ?? "";
       const photoObjs = (p.photos as Array<{ name: string }> | undefined) ?? [];
       const photoNames = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
@@ -3892,6 +3941,9 @@ async function fetchGooglePlacesSupplement(
         routesByMode: undefined,
       };
     });
+    // E-2: 結果をキャッシュ（existingNamesを除くとキャッシュ値が変わるためcacheKeyから除外済み）
+    setSupplementCache(cacheKey, result);
+    return result;
   } catch (e) {
     console.error("[recommend] Google supplement search failed:", e);
     return [];
@@ -4982,7 +5034,8 @@ export async function POST(request: Request) {
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
-                answers.budget, effectiveDeepDive, minRadiusKm, deepDiveL2
+                answers.budget, effectiveDeepDive, minRadiusKm, deepDiveL2,
+                answers.companion ?? ""  // D-3: 同行者属性を渡す
               )
             : Promise.resolve([]),
           // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
