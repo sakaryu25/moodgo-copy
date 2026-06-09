@@ -67,6 +67,7 @@ const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
   { key: 'お腹すいた', label: 'お腹すいた', sub: '絶品グルメ',  Icon: UtensilsCrossed },
   { key: 'まったり',   label: 'まったり',   sub: '癒やし',      Icon: Coffee },
   { key: '自然',       label: '自然',       sub: '絶景',        Icon: Leaf },
+  { key: '楽しみたい', label: '楽しみたい', sub: 'アミューズメント', Icon: Sparkles },
   { key: 'ドライブ',   label: 'ドライブ',   sub: 'ツーリング',  Icon: Car },
   { key: '集中',       label: '集中',       sub: '作業・勉強',  Icon: BookOpen },
   { key: '運動',       label: '運動',       sub: 'スポーツ',    Icon: Activity },
@@ -235,6 +236,17 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: '広い芝生でゴロゴロ', label: '芝生でゴロゴロ',   sub: '広々した大型公園',     Icon: Leaf },
       { key: '圧倒的な絶景',       label: '圧倒的な絶景',       sub: '展望台・絶景',         Icon: Mountain },
       { key: 'こだわらない',       label: 'こだわらない',       sub: 'なんでもOK',           Icon: Shuffle },
+    ],
+  },
+
+  '楽しみたい': {
+    title: 'どう楽しみたい？',
+    options: [
+      { key: '王道で遊ぶ',       label: '王道で遊ぶ',       sub: 'テーマパーク・カラオケ・ラボ', Icon: Star },
+      { key: 'アクティブに遊ぶ', label: 'アクティブに遊ぶ', sub: 'ゲーセン・ボウリング・脱出', Icon: Gamepad2 },
+      { key: '観て楽しむ',       label: '観て楽しむ',       sub: '水族館・映画・ミュージアム',   Icon: Camera },
+      { key: 'つくる・体験',     label: 'つくる・体験',     sub: 'ものづくり・工場見学',         Icon: ChefHat },
+      { key: 'こだわらない',     label: 'こだわらない',     sub: 'なんでもOK',                   Icon: Shuffle },
     ],
   },
 
