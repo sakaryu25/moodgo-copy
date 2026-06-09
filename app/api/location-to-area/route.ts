@@ -97,6 +97,9 @@ function pickAreaFromResult(result?: GoogleGeocodeResult) {
     fa = fa.replace(/^日本[、,\s]*/, "");           // 先頭「日本、」除去
     fa = fa.replace(/〒\s*\d{3}-?\d{4}\s*/, "");      // 郵便番号除去
     fa = fa.normalize("NFKC").trim();                 // 全角→半角正規化
+    // 建物名（番地のあとのスペース以降）を除去して「丁目-番地」までにする。
+    //   例 "東京都文京区白山1丁目27-7 アービス白山" → "東京都文京区白山1丁目27-7"
+    fa = fa.split(/[\s　]+/)[0];
     return fa || displayArea;
   })();
 
