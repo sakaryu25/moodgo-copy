@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null);
     if (!body) return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
 
-    const { error } = await supabase.from("feedback").insert({
+    const insertRow: Record<string, unknown> = {
       mood: body.mood ?? null,
       area: body.area ?? null,
       age: body.age ?? null,
@@ -25,7 +25,17 @@ export async function POST(request: Request) {
       visited_place: body.visitedPlace ?? null,
       liked_places: body.likedPlaces ?? [],
       map_clicked_places: body.mapClickedPlaces ?? [],
-    });
+      variant: body.variant ?? null,  // G-2: A/Bテスト variant
+    };
+
+    let { error } = await supabase.from("feedback").insert(insertRow);
+
+    // G-2: variant カラム未作成時はカラムを除いて再挿入（後方互換）
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      delete insertRow.variant;
+      const retry = await supabase.from("feedback").insert(insertRow);
+      error = retry.error;
+    }
 
     if (error) throw error;
     return NextResponse.json({ ok: true });

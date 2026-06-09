@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
 import CoveragePanel from "./_components/CoveragePanel";
+import ReviewQueuePanel from "./_components/ReviewQueuePanel";
 
 const ADMIN_PASSWORD = "moodgoadmin123";
 
@@ -620,7 +621,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2755,6 +2756,7 @@ export default function AdminPage() {
             { key: "db-stats",  label: "🗄 DB統計" },
             { key: "pref-featured", label: "🗾 県別特集" },
             { key: "coverage",  label: "📊 カバレッジ" },
+            { key: "review-queue", label: "✅ タグ検証" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7373,6 +7375,11 @@ export default function AdminPage() {
         {/* ===== 📊 カバレッジタブ (C-1) ===== */}
         {tab === "coverage" && (
           <CoveragePanel secret={ADMIN_PASSWORD} />
+        )}
+
+        {/* ===== ✅ AIタグ検証キュー (C-2) ===== */}
+        {tab === "review-queue" && (
+          <ReviewQueuePanel secret={ADMIN_PASSWORD} />
         )}
 
       </div>

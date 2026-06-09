@@ -35,6 +35,7 @@ import {
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import { getABVariant } from '@/lib/abtest';
 import * as Location from 'expo-location';
 import { Asset } from 'expo-asset';
 import { preloadMaps } from '@/components/FeatureScreen';
@@ -141,6 +142,8 @@ export default function Home() {
   const [refinementText,         setRefinementText]         = useState('');
   const [isRefining,             setIsRefining]             = useState(false);
   const [selectedPrefecture,     setSelectedPrefecture]     = useState('');
+  // G-2: A/Bテスト variant（デバイス単位で安定）
+  const [abVariant,              setAbVariant]              = useState<'A' | 'B'>('A');
 
   // ── Feedback ─────────────────────────────────────────────────────────────
   const [pastFeedback,        setPastFeedback]        = useState<FeedbackItem[]>([]);
@@ -184,6 +187,8 @@ export default function Home() {
   useEffect(() => {
     preloadMaps();
     Asset.loadAsync([require('../assets/images/home-featured.png')]).catch(() => {});
+    // G-2: A/Bテスト variant をロード
+    getABVariant().then(setAbVariant).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -515,6 +520,7 @@ export default function Home() {
         visitedPlace:     placeTitle,
         likedPlaces:      verdict === 'good' ? [placeTitle] : [],
         mapClickedPlaces: [],
+        variant:          abVariant,  // G-2: A/Bテスト
       }),
     }).catch(() => {});
 
@@ -558,6 +564,7 @@ export default function Home() {
         visitedPlace:     title,
         likedPlaces:      [],
         mapClickedPlaces: [],
+        variant:          abVariant,  // G-2: A/Bテスト
       }),
     }).catch(() => {});
   };

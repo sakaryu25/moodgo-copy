@@ -5283,17 +5283,30 @@ export async function POST(request: Request) {
           return 0;
         };
 
+        // E-3: 写真の質的優先スコア。写真有り > 写真無し、ユーザー投稿写真は更に優遇。
+        const photoQualityScore = (r: Rec): number => {
+          const hasUserPhoto = (r as unknown as { hasUserPhotos?: boolean }).hasUserPhotos === true;
+          const photoUrls = (r as unknown as { photoUrls?: string[] }).photoUrls ?? [];
+          const hasPhoto = !!(r as unknown as { photoUrl?: string }).photoUrl || photoUrls.length > 0;
+          if (hasUserPhoto) return 1.2;   // ユーザー投稿写真があるスポットを最優先
+          if (photoUrls.length >= 3) return 0.6; // 写真が豊富
+          if (hasPhoto) return 0.3;       // 写真あり
+          return 0;                        // 写真なし → 後回し
+        };
+
         const sortOrShuffle = (arr: Rec[]): Rec[] => {
           // お腹すいた: "今すぐ近くで食べる"用途 → 最寄り優先（近い順）。
           // これで各ソースの最寄り店が選ばれ、一番近い店（例: 用心棒 本号）が必ず候補に入る。
-          // A-5: 同距離帯ではopenNow=trueを優先
+          // A-5: 同距離帯ではopenNow=trueを優先、さらにE-3で写真の質を考慮
           if (isFoodMood) {
             return [...arr].sort((a, b) => {
               const ka = kmOf(a), kb = kmOf(b);
-              // 500m以内の差ならopenNow優先
+              // 500m以内の差ならopenNow→写真品質で優先
               if (Math.abs(ka - kb) < 0.5) {
                 if (a.openNow && !b.openNow) return -1;
                 if (!a.openNow && b.openNow) return 1;
+                const pq = photoQualityScore(b) - photoQualityScore(a); // E-3
+                if (Math.abs(pq) > 0.01) return pq;
               }
               return ka - kb;
             });
@@ -5304,12 +5317,13 @@ export async function POST(request: Request) {
               .sort((a, b) => (b.km - a.km) + (Math.random() - 0.5) * 4)
               .map(x => x.r);
           }
-          // 通常ソート: D-1学習+D-4天気ボーナスをシャッフルに加味
+          // 通常ソート: D-1学習+D-4天気+E-3写真品質ボーナスをシャッフルに加味
           return [...arr]
             .map(r => ({
               r,
               score: (Math.random() * 10)
                 + weatherBoost(r)
+                + photoQualityScore(r)  // E-3: 写真の質を加点
                 + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
             }))
             .sort((a, b) => b.score - a.score)
