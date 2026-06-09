@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
+import CoveragePanel from "./_components/CoveragePanel";
 
 const ADMIN_PASSWORD = "moodgoadmin123";
 
@@ -619,7 +620,7 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2753,6 +2754,7 @@ export default function AdminPage() {
             { key: "vitality",  label: "🔍 生存確認・自浄" },
             { key: "db-stats",  label: "🗄 DB統計" },
             { key: "pref-featured", label: "🗾 県別特集" },
+            { key: "coverage",  label: "📊 カバレッジ" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7366,6 +7368,11 @@ export default function AdminPage() {
         {/* ===== 🗾 県別特集タブ ===== */}
         {tab === "pref-featured" && (
           <PrefFeaturedPanel secret={ADMIN_PASSWORD} />
+        )}
+
+        {/* ===== 📊 カバレッジタブ (C-1) ===== */}
+        {tab === "coverage" && (
+          <CoveragePanel secret={ADMIN_PASSWORD} />
         )}
 
       </div>
