@@ -279,6 +279,7 @@ export function extractUserTagsFromAnswers(answers: {
   const MOOD_SHORT_KEY_TO_TAG: Record<string, string> = {
     "まったり":     "#まったりしたい",
     "わいわい":     "#わいわい楽しみたい",
+    "楽しみたい":   "#わいわい楽しみたい",
     "自然":         "#自然感じたい",
     "ドライブ":     "#ドライブしたい",
     "集中":         "#集中したい",
