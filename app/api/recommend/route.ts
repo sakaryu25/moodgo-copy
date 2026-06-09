@@ -245,6 +245,73 @@ function brandOf(name: string): string {
     .slice(0, 6); // 先頭6文字をブランドキーに
 }
 
+// ── ジャンル精度フィルタ（#1 全段階適用 / #3 ネガティブ除外 / #13 各国料理細分化）────
+// 飲食の深掘りジャンルごとに「肯定語(含めば適合)」と「否定語(含めば除外)」を定義。
+// type検索のすり抜け（ラーメン検索にアイス/イタリアン混入、タイ検索にベトナム混入等）を
+// 名前ベースで防ぐ。全ソース(Supabase/Google/Yahoo/backfill/widen)の最終マージで適用する。
+const GENRE_POSITIVE_RE: Record<string, RegExp> = {
+  "ラーメン":            /ラーメン|らーめん|らあめん|中華そば|支那そば|拉麺|麺屋|家系|二郎|つけ麺|麺/i,
+  "こってりラーメン":    /ラーメン|らーめん|中華そば|豚骨|家系|二郎|麺/i,
+  "あっさりラーメン":    /ラーメン|らーめん|中華そば|塩|淡麗|麺/i,
+  "味噌ラーメン":        /ラーメン|らーめん|味噌|麺/i,
+  "つけ麺・まぜそば":    /つけ麺|まぜそば|油そば|麺/i,
+  "うどん・そば":        /うどん|そば|蕎麦|饂飩|麺/i,
+  "お好み焼きもんじゃ":  /お好み焼き|もんじゃ|鉄板/i,
+  "焼肉食べ放題":        /焼肉|焼き肉|ホルモン|カルビ|牛角|食べ放題/i,
+  "高級焼肉":            /焼肉|焼き肉|和牛|黒毛|ホルモン/i,
+  "焼肉単品":            /焼肉|焼き肉|ホルモン/i,
+  "個室居酒屋":          /居酒屋|ダイニング|酒場|バル|個室|izakaya/i,
+  "大衆酒場":            /居酒屋|酒場|大衆|立ち飲み|ホッピー|もつ焼き/i,
+  "海鮮・お寿司":        /寿司|鮨|海鮮|魚|刺身|浜焼|魚介/i,
+  "天ぷら":              /天ぷら|天麩羅|天丼/i,
+  "懐石料理":            /懐石|割烹|料亭|会席|日本料理/i,
+  "ハンバーグ":          /ハンバーグ|洋食|グリル/i,
+  "オムライス":          /オムライス|洋食/i,
+  "ステーキ":            /ステーキ|肉|グリル|鉄板/i,
+  "イタリアン":          /イタリア|パスタ|ピザ|ピッツェ|トラットリア|リストランテ|スパゲ|オステリア/i,
+  "中華料理":            /中華|中国|餃子|麻婆|四川|台湾|飲茶|点心|町中華/i,
+  "韓国料理":            /韓国|サムギョプサル|タッカルビ|スンドゥブ|コリアン|チゲ|焼肉/i,
+  "インド・ネパール":    /インド|ネパール|カレー|ナン|タンドール|スパイス/i,
+  "タイ料理":            /タイ|ガパオ|トムヤム|パッタイ|タイ料理/i,
+  "ベトナム料理":        /ベトナム|フォー|バインミー|生春巻/i,
+  "フルーツ":            /フルーツ|果物|パフェ|パーラー|アサイー/i,
+  "喫茶店":              /喫茶|珈琲|コーヒー|coffee|カフェ|cafe|老舗/i,
+  "流行りカフェ":        /カフェ|cafe|コーヒー|coffee|スイーツ|tea|ティー/i,
+};
+// 否定語（このジャンル検索では明確に出したくない異ジャンル）。#13: 各国料理の混同防止を重視。
+const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
+  "ラーメン":            /アイス|サーティワン|ベーカリー|パン屋|ケーキ|イタリア|パスタ|ピッツ|喫茶|スイーツ|焼肉|寿司|鮨|居酒屋/i,
+  "こってりラーメン":    /アイス|パン屋|ケーキ|イタリア|喫茶|スイーツ|焼肉|寿司/i,
+  "あっさりラーメン":    /アイス|パン屋|ケーキ|イタリア|喫茶|スイーツ|焼肉|寿司/i,
+  "味噌ラーメン":        /アイス|パン屋|ケーキ|イタリア|喫茶|焼肉|寿司/i,
+  "つけ麺・まぜそば":    /アイス|パン屋|ケーキ|イタリア|喫茶|焼肉|寿司/i,
+  "うどん・そば":        /ラーメン専門|アイス|パン屋|ケーキ|イタリア|喫茶/i,
+  "イタリアン":          /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|町中華|カレー|アイス|タイ料理|韓国/i,
+  "中華料理":            /イタリア|パスタ|ラーメン専門店|うどん|そば|寿司|鮨|焼肉|喫茶|アイス|タイ料理|韓国/i,
+  "韓国料理":            /ラーメン専門|うどん|そば|イタリア|寿司|鮨|町中華|喫茶|アイス|タイ料理|ベトナム/i,
+  "タイ料理":            /ベトナム|インド|ネパール|中華|町中華|韓国|ラーメン|寿司|イタリア/i,
+  "ベトナム料理":        /タイ料理|ガパオ|インド|ネパール|中華|韓国|ラーメン|寿司|イタリア/i,
+  "インド・ネパール":    /タイ|ガパオ|ベトナム|フォー|中華|韓国|ラーメン|寿司|イタリア/i,
+  "海鮮・お寿司":        /ラーメン|うどん|カレー|アイス|パン屋|イタリア|焼肉/i,
+  "焼肉食べ放題":        /ラーメン|寿司|鮨|喫茶|アイス|パン屋|イタリア/i,
+  "高級焼肉":            /ラーメン|寿司|鮨|喫茶|アイス|パン屋/i,
+  "焼肉単品":            /ラーメン|寿司|鮨|喫茶|アイス|パン屋/i,
+  "天ぷら":              /ラーメン|アイス|パン屋|イタリア|焼肉|喫茶/i,
+  "個室居酒屋":          /アイス|サーティワン|パン屋|ベーカリー/i,
+  "大衆酒場":            /アイス|サーティワン|パン屋|ベーカリー/i,
+};
+// 名前がジャンルに適合するか（否定語にマッチせず、肯定語があればマッチする）。
+// 肯定語の定義が無いジャンル（非飲食の深掘り等）は常にtrue＝フィルタしない。
+function nameMatchesGenre(name: string, deepDive: string): boolean {
+  if (!deepDive) return true;
+  if (!name) return false;
+  const neg = GENRE_NEGATIVE_RE[deepDive];
+  if (neg && neg.test(name)) return false;   // 否定語ヒット → 除外
+  const pos = GENRE_POSITIVE_RE[deepDive];
+  if (!pos) return true;                       // 肯定語定義なし → 通す
+  return pos.test(name);                        // 肯定語マッチで通す
+}
+
 // Haversine距離(m)
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -4745,6 +4812,7 @@ type FinalizeRec = {
   distanceKm?: number;
   distanceText?: string;
   openNow?: boolean;
+  rating?: number | null;
   photoUrl?: string;
   photoUrls?: string[];
   userRatingCount?: number | null;
@@ -4882,16 +4950,22 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 
   const sortOrShuffle = <T extends FinalizeRec>(arr: T[]): T[] => {
-    // お腹すいた: 最寄り優先。A-5: 同距離帯はopenNow→E-3写真品質でタイブレーク。
+    // お腹すいた: 近場優先を保ちつつ、#5 距離×評価バランスで「近くて☆も高い店」を上位化。
+    //   距離を0.4km帯にバンド分けし、同帯内は openNow → 評価(Wilson下限) → 写真品質 で優先。
+    //   これで至近の低評価店より、ほぼ同距離の高評価店が上に来る（ハズレ減少）。
     if (isFoodMood) {
+      const ratingScore = (r: FinalizeRec) => wilsonLower(r.rating ?? null, r.userRatingCount ?? null); // 0..1
       return [...arr].sort((a, b) => {
         const ka = kmOf(a), kb = kmOf(b);
-        if (Math.abs(ka - kb) < 0.5) {
-          if (a.openNow && !b.openNow) return -1;
-          if (!a.openNow && b.openNow) return 1;
-          const pq = photoQualityScore(b) - photoQualityScore(a);
-          if (Math.abs(pq) > 0.01) return pq;
-        }
+        const bandA = Math.floor(ka / 0.4), bandB = Math.floor(kb / 0.4);
+        if (bandA !== bandB) return ka - kb;          // 異なる距離帯 → 近い順を厳守
+        // 同距離帯内: 営業中 → 評価 → 写真 → 距離
+        if (a.openNow && !b.openNow) return -1;
+        if (!a.openNow && b.openNow) return 1;
+        const rs = ratingScore(b) - ratingScore(a);
+        if (Math.abs(rs) > 0.02) return rs;
+        const pq = photoQualityScore(b) - photoQualityScore(a);
+        if (Math.abs(pq) > 0.01) return pq;
         return ka - kb;
       });
     }
@@ -4944,10 +5018,18 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       return true;
     });
 
+  // #1/#3/#13: ジャンル不一致フィルタ（深掘りジャンルに名前が適合しない店を全ソースで除外）。
+  // effectiveDeepDive にジャンル定義がある場合のみ作動。非飲食/未定義ジャンルは素通り。
+  const genreFidelityFilter = <T extends { title?: string }>(arr: T[]): T[] => {
+    if (!effectiveDeepDive) return arr;
+    if (!GENRE_POSITIVE_RE[effectiveDeepDive] && !GENRE_NEGATIVE_RE[effectiveDeepDive]) return arr;
+    return arr.filter(r => nameMatchesGenre(r.title ?? "", effectiveDeepDive));
+  };
+
   return {
     shuffleArr, applyMallFilter, normalizeName, namesOverlap, pickUnique,
     kmOf, weatherBoost, photoQualityScore, sortOrShuffle,
-    foodSanitize, seenFilter, qualitySanitize,
+    foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter,
     seenLower, isFoodMoodReq,
     NON_FOOD_NAME_RE: FINALIZE_NON_FOOD_NAME_RE,
   };
@@ -5368,17 +5450,17 @@ export async function POST(request: Request) {
         //   （将来 経路5(レガシー)等もこのヘルパーを呼ぶことで改善が全経路に波及する）
         const {
           applyMallFilter, normalizeName, pickUnique, sortOrShuffle,
-          foodSanitize, seenFilter, qualitySanitize,
+          foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter,
           seenLower, isFoodMoodReq, NON_FOOD_NAME_RE,
         } = createFinalizeHelpers({
           isFoodMood, minRadiusKm, isBadWeather,
           goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive,
         });
 
-        // 各ソースにモール/飲食/既出/品質フィルターを適用 → ソート
-        const sbSorted = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(mergedSb)))));
-        const gSorted  = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[]))));
-        const ySorted  = sortOrShuffle(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[]))));
+        // 各ソースにモール/飲食/既出/品質/ジャンル(#1)フィルターを適用 → ソート
+        const sbSorted = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(mergedSb))))));
+        const gSorted  = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(googleSupplements) as Rec[])))));
+        const ySorted  = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(yahooSupplements) as Rec[])))));
 
         // 各ソースから最大5件を重複排除しながら取得
         const seen: DedupeKey[] = [];
@@ -5407,38 +5489,61 @@ export async function POST(request: Request) {
         if (recommendations.length < 15 && hasLocation) {
           widenedSearch = recommendations.length < 8; // 8件未満なら「条件広げました」を表示
           const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
-          const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
           const isFoodMoodTopUp = (answers.mood ?? "") === "お腹すいた";
-          const [gWide, gCafe, yWide] = await Promise.all([
-            // Google: deepDive="" → 気分ベースの広いtypes（お腹すいたは["restaurant"]＝飲食店のみ）
-            fetchGooglePlacesSupplement(
-              answers.originLat!, answers.originLng!, wideRadiusKm,
-              answers.mood ?? "", excludeNames, apiKey, 20,
-              answers.budget, "", minRadiusKm,
-            ),
-            // お腹すいた時はカフェ型(cafe/dessert_shop)も併用し、フルーツ等カフェ系ジャンルの
-            //   不足を埋める（restaurant型だけだとカフェが拾えず15件に届かないため）
-            isFoodMoodTopUp
-              ? fetchGooglePlacesSupplement(
-                  answers.originLat!, answers.originLng!, wideRadiusKm,
-                  answers.mood ?? "", excludeNames, apiKey, 20,
-                  answers.budget, "カフェスイーツ", minRadiusKm,
-                )
-              : Promise.resolve([] as Record<string, unknown>[]),
-            // Yahoo: お腹すいた時は広域キーワード検索が温泉/スパ等の非飲食店を拾うため除外。
-            //   Google の飲食店型検索のみで飲食店を維持しつつ15件を確保する（要件③厳守）。
-            isFoodMoodTopUp
-              ? Promise.resolve([] as Record<string, unknown>[])
-              : fetchYahooSupplement(
-                  answers.originLat!, answers.originLng!, wideRadiusKm,
-                  answers.mood ?? "", "",
-                  excludeNames, 20, minRadiusKm, apiKey,
-                ),
-          ]);
-          const widePool = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[]))));
-          const stillNeed = 15 - recommendations.length;
-          const { taken: topUp } = pickUnique(widePool, stillNeed, seen);
-          recommendations = [...recommendations, ...topUp];
+          const hasGenreDef = !!(GENRE_POSITIVE_RE[effectiveDeepDive] || GENRE_NEGATIVE_RE[effectiveDeepDive]);
+
+          // ── #2 第1段: ジャンルを保ったまま半径拡大して「同じジャンル」で補填する ──
+          //   これにより「近くにラーメンが少ない」時でもアイス屋ではなく少し遠いラーメン屋が入る。
+          if (hasGenreDef) {
+            const excludeG = [...sbNames, ...recommendations.map(r => r.title ?? "")];
+            const [gGenre, yGenre] = await Promise.all([
+              fetchGooglePlacesSupplement(
+                answers.originLat!, answers.originLng!, wideRadiusKm,
+                answers.mood ?? "", excludeG, apiKey, 20,
+                answers.budget, effectiveDeepDive, minRadiusKm, deepDiveL2,
+              ),
+              isFoodMoodTopUp
+                ? fetchYahooSupplement(
+                    answers.originLat!, answers.originLng!, wideRadiusKm,
+                    answers.mood ?? "", effectiveDeepDive,
+                    excludeG, 20, minRadiusKm, apiKey,
+                  )
+                : Promise.resolve([] as Record<string, unknown>[]),
+            ]);
+            const genrePool = sortOrShuffle(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter([...gGenre, ...yGenre] as Rec[]))))));
+            const { taken } = pickUnique(genrePool, 15 - recommendations.length, seen);
+            recommendations = [...recommendations, ...taken];
+          }
+
+          // ── 最終手段: それでも15件未満なら、ジャンルを外した広域検索で埋める（混在許容）──
+          //   都市部ではほぼ第1段で埋まるため、この経路は稀（過疎地・極狭ジャンル時のみ）。
+          if (recommendations.length < 15) {
+            const excludeNames = [...sbNames, ...recommendations.map(r => r.title ?? "")];
+            const [gWide, gCafe, yWide] = await Promise.all([
+              fetchGooglePlacesSupplement(
+                answers.originLat!, answers.originLng!, wideRadiusKm,
+                answers.mood ?? "", excludeNames, apiKey, 20,
+                answers.budget, "", minRadiusKm,
+              ),
+              isFoodMoodTopUp
+                ? fetchGooglePlacesSupplement(
+                    answers.originLat!, answers.originLng!, wideRadiusKm,
+                    answers.mood ?? "", excludeNames, apiKey, 20,
+                    answers.budget, "カフェスイーツ", minRadiusKm,
+                  )
+                : Promise.resolve([] as Record<string, unknown>[]),
+              isFoodMoodTopUp
+                ? Promise.resolve([] as Record<string, unknown>[])
+                : fetchYahooSupplement(
+                    answers.originLat!, answers.originLng!, wideRadiusKm,
+                    answers.mood ?? "", "",
+                    excludeNames, 20, minRadiusKm, apiKey,
+                  ),
+            ]);
+            const widePool = sortOrShuffle(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[]))));
+            const { taken: topUp } = pickUnique(widePool, 15 - recommendations.length, seen);
+            recommendations = [...recommendations, ...topUp];
+          }
         }
 
         // ── 期間限定転載（管理者追加スポット）の優先注入 ───────────────────────────
