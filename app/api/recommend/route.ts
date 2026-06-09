@@ -312,20 +312,26 @@ const GENRE_NEGATIVE_RE: Record<string, RegExp> = {
   "あっさりラーメン":    /アイス|パン屋|ケーキ|イタリア|喫茶|カフェ|スイーツ|焼肉|寿司|たこ焼き|もんじゃ/i,
   "味噌ラーメン":        /アイス|パン屋|ケーキ|イタリア|喫茶|カフェ|焼肉|寿司|たこ焼き|もんじゃ/i,
   "つけ麺・まぜそば":    /アイス|パン屋|ケーキ|イタリア|喫茶|カフェ|焼肉|寿司|たこ焼き|もんじゃ/i,
-  "うどん・そば":        /ラーメン専門|アイス|パン屋|ケーキ|イタリア|喫茶/i,
-  "イタリアン":          /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|町中華|カレー|アイス|タイ料理|韓国/i,
-  "中華料理":            /イタリア|パスタ|ラーメン専門店|うどん|そば|寿司|鮨|焼肉|喫茶|アイス|タイ料理|韓国/i,
-  "韓国料理":            /ラーメン専門|うどん|そば|イタリア|寿司|鮨|町中華|喫茶|アイス|タイ料理|ベトナム/i,
-  "タイ料理":            /ベトナム|インド|ネパール|中華|町中華|韓国|ラーメン|寿司|イタリア/i,
-  "ベトナム料理":        /タイ料理|ガパオ|インド|ネパール|中華|韓国|ラーメン|寿司|イタリア/i,
-  "インド・ネパール":    /タイ|ガパオ|ベトナム|フォー|中華|韓国|ラーメン|寿司|イタリア/i,
-  "海鮮・お寿司":        /ラーメン|うどん|カレー|アイス|パン屋|イタリア|焼肉/i,
-  "焼肉食べ放題":        /ラーメン|寿司|鮨|喫茶|アイス|パン屋|イタリア/i,
-  "高級焼肉":            /ラーメン|寿司|鮨|喫茶|アイス|パン屋/i,
-  "焼肉単品":            /ラーメン|寿司|鮨|喫茶|アイス|パン屋/i,
-  "天ぷら":              /ラーメン|アイス|パン屋|イタリア|焼肉|喫茶/i,
-  "個室居酒屋":          /アイス|サーティワン|パン屋|ベーカリー/i,
-  "大衆酒場":            /アイス|サーティワン|パン屋|ベーカリー/i,
+  "うどん・そば":        /ラーメン専門|寿司|鮨|スシロー|くら寿司|はま寿司|回転寿司|海鮮|魚屋|焼肉|ホルモン|中華|餃子|カレー|イタリア|パスタ|アイス|パン屋|ベーカリー|ケーキ|喫茶|カフェ|韓国|焼鳥|焼き鳥|sushi/i,
+  "天ぷら":              /ラーメン|うどん|そば|寿司|鮨|スシロー|くら寿司|はま寿司|回転寿司|焼肉|ホルモン|中華|餃子|カレー|イタリア|パスタ|アイス|パン屋|ベーカリー|焼肉|喫茶|カフェ|韓国|sushi/i,
+  "懐石料理":            /ラーメン|寿司|鮨|回転寿司|焼肉|ホルモン|中華|餃子|イタリア|パスタ|カレー|アイス|パン屋|ベーカリー|喫茶|カフェ|ファミレス/i,
+  "イタリアン":          /ラーメン|うどん|そば|焼肉|寿司|鮨|海鮮|中華|町中華|餃子|カレー|アイス|タイ料理|韓国|焼鳥|焼き鳥|天ぷら/i,
+  "中華料理":            /イタリア|パスタ|ピッツ|ラーメン専門店|うどん|そば|寿司|鮨|海鮮|焼肉|ホルモン|喫茶|カフェ|アイス|タイ料理|韓国|カレー|天ぷら/i,
+  "韓国料理":            /ラーメン専門|うどん|そば|イタリア|パスタ|寿司|鮨|海鮮|町中華|餃子|喫茶|カフェ|アイス|タイ料理|ベトナム|天ぷら/i,
+  "タイ料理":            /ベトナム|フォー|インド|ネパール|中華|町中華|餃子|韓国|ラーメン|うどん|そば|寿司|鮨|イタリア|焼肉|天ぷら/i,
+  "ベトナム料理":        /タイ料理|ガパオ|インド|ネパール|中華|餃子|韓国|ラーメン|うどん|そば|寿司|鮨|イタリア|焼肉|天ぷら/i,
+  "インド・ネパール":    /タイ|ガパオ|ベトナム|フォー|中華|餃子|韓国|ラーメン|うどん|そば|寿司|鮨|イタリア|焼肉|天ぷら/i,
+  "海鮮・お寿司":        /ラーメン|うどん|そば|カレー|アイス|パン屋|ベーカリー|イタリア|パスタ|焼肉|ホルモン|中華|餃子|韓国|喫茶|カフェ|タイ料理/i,
+  "焼肉食べ放題":        /ラーメン|うどん|そば|寿司|鮨|海鮮|喫茶|カフェ|アイス|パン屋|ベーカリー|イタリア|パスタ|中華|餃子|天ぷら/i,
+  "高級焼肉":            /ラーメン|うどん|そば|寿司|鮨|海鮮|喫茶|カフェ|アイス|パン屋|イタリア|パスタ|中華|天ぷら/i,
+  "焼肉単品":            /ラーメン|うどん|そば|寿司|鮨|海鮮|喫茶|カフェ|アイス|パン屋|イタリア|パスタ|中華|天ぷら/i,
+  "ハンバーグ":          /ラーメン|うどん|そば|寿司|鮨|焼肉|中華|餃子|イタリア|パスタ|アイス|喫茶|カフェ|韓国|タイ/i,
+  "ステーキ":            /ラーメン|うどん|そば|寿司|鮨|中華|餃子|イタリア|パスタ|アイス|喫茶|カフェ|韓国|タイ/i,
+  "個室居酒屋":          /アイス|サーティワン|パン屋|ベーカリー|ケーキ/i,
+  "大衆酒場":            /アイス|サーティワン|パン屋|ベーカリー|ケーキ/i,
+  "フルーツ":            /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|餃子|イタリア|居酒屋|カレー|定食/i,
+  "喫茶店":              /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|餃子|居酒屋|カレー専門|焼鳥/i,
+  "流行りカフェ":        /ラーメン|うどん|そば|焼肉|寿司|鮨|中華|餃子|居酒屋|焼鳥/i,
 };
 // 名前がジャンルに適合するか（否定語にマッチせず、肯定語があればマッチする）。
 // 肯定語の定義が無いジャンル（非飲食の深掘り等）は常にtrue＝フィルタしない。
@@ -339,6 +345,50 @@ function nameMatchesGenre(name: string, deepDive: string): boolean {
   const neg = GENRE_NEGATIVE_RE[deepDive];
   if (neg && neg.test(name)) return false;   // 否定語ヒット → 除外
   return true;                                 // 否定語に当たらなければ通す（肯定語は要求しない）
+}
+
+// ── Google primaryType による精密ジャンル判定（名前に頼らず確実に異ジャンルを除外）─────
+//   例: うどん・そば検索に「魚屋路(回転寿司)」が混入 → primaryType=sushi_restaurant で除外。
+//   各深掘りで許可する具体フード型を定義。許可外の「具体フード型」なら除外、汎用型(restaurant/
+//   japanese_restaurant)は通す（うどん専門型がGoogleに無いケースを誤除外しないため）。
+const SPECIFIC_FOOD_PRIMARY_TYPES = new Set([
+  "ramen_restaurant", "sushi_restaurant", "barbecue_restaurant", "korean_restaurant",
+  "italian_restaurant", "chinese_restaurant", "indian_restaurant", "thai_restaurant",
+  "vietnamese_restaurant", "french_restaurant", "mexican_restaurant", "american_restaurant",
+  "seafood_restaurant", "steak_house", "hamburger_restaurant", "pizza_restaurant",
+  "cafe", "bakery", "ice_cream_shop", "dessert_shop", "sandwich_shop", "fast_food_restaurant",
+  "donut_shop", "coffee_shop", "tea_house", "bar", "spanish_restaurant", "greek_restaurant",
+  "turkish_restaurant", "indonesian_restaurant", "lebanese_restaurant", "brazilian_restaurant",
+]);
+const ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE: Record<string, string[]> = {
+  "ラーメン": ["ramen_restaurant"], "こってりラーメン": ["ramen_restaurant"],
+  "あっさりラーメン": ["ramen_restaurant"], "味噌ラーメン": ["ramen_restaurant"],
+  "つけ麺・まぜそば": ["ramen_restaurant"],
+  "うどん・そば": [],                       // 汎用japanese_restaurantのみ許可、寿司/ラーメン等は除外
+  "天ぷら": [], "懐石料理": [], "お好み焼きもんじゃ": [], "お好み焼き": [],
+  "海鮮・お寿司": ["sushi_restaurant", "seafood_restaurant"],
+  "個室居酒屋": ["bar"], "大衆酒場": ["bar"], "居酒屋": ["bar"],
+  "焼肉食べ放題": ["barbecue_restaurant", "korean_restaurant"],
+  "高級焼肉": ["barbecue_restaurant"], "焼肉単品": ["barbecue_restaurant"], "焼肉": ["barbecue_restaurant", "korean_restaurant"],
+  "イタリアン": ["italian_restaurant", "pizza_restaurant"],
+  "中華料理": ["chinese_restaurant"], "中華": ["chinese_restaurant"],
+  "韓国料理": ["korean_restaurant", "barbecue_restaurant"], "韓国": ["korean_restaurant", "barbecue_restaurant"],
+  "インド・ネパール": ["indian_restaurant"], "タイ料理": ["thai_restaurant"],
+  "ベトナム料理": ["vietnamese_restaurant"],
+  "ハンバーグ": ["hamburger_restaurant", "american_restaurant"], "ステーキ": ["steak_house"],
+  "メキシコ料理": ["mexican_restaurant"],
+  "フルーツ": ["cafe", "dessert_shop", "ice_cream_shop"],
+  "喫茶店": ["cafe", "coffee_shop", "tea_house"],
+  "流行りカフェ": ["cafe", "coffee_shop", "dessert_shop"],
+  "カフェスイーツ": ["cafe", "coffee_shop", "dessert_shop", "ice_cream_shop", "bakery"],
+};
+function primaryTypeAllowedForGenre(primaryType: string | undefined, deepDive: string): boolean {
+  const allowed = ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE[deepDive];
+  if (allowed === undefined) return true;            // 定義なし → 制限しない
+  if (!primaryType) return true;                      // 型不明 → 名前フィルタに委ねる
+  if (allowed.includes(primaryType)) return true;     // 明示的に許可された型
+  if (SPECIFIC_FOOD_PRIMARY_TYPES.has(primaryType)) return false; // 許可外の具体フード型 → 除外
+  return true;                                         // restaurant/japanese_restaurant 等の汎用型 → 通す
 }
 
 // ── #6: 「こだわらない」時のジャンル代表性（粗ジャンル分類）──────────────────────
@@ -3999,6 +4049,9 @@ async function fetchGooglePlacesSupplement(
         if (!isFoodMoodGoogle && isLodgingName(name)) return false;
         // 大型ショッピングモール検索時に商店街・市場系を除外（Google が shopping_mall タイプに含めてしまうため）
         if (isShoppingMallMismatch(name, deepDiveL1)) return false;
+        // ジャンル精度: primaryType が深掘りジャンルと異なる具体フード型なら除外
+        //   （例: うどん・そば検索の sushi_restaurant=魚屋路 を除外）。汎用型は通す。
+        if (!primaryTypeAllowedForGenre(p.primaryType as string | undefined, dvTextBase)) return false;
         return true;
       });
 
