@@ -5958,6 +5958,26 @@ async function handleRecommend(request: Request) {
           }
         } catch { /* 自動保存失敗は検索結果に影響させない */ }
 
+        // ── お腹すいた: 最終結果を全体で「近い順」に並べ替え ───────────────────────
+        //   各ソース内は近い順だが、ソース連結(sb+g+y+backfill)＋widen＋admin注入で
+        //   遠い店が上位に来ることがある。食事は最寄り最優先なので最後に全体ソートする。
+        //   （admin転載も食事では近い順に従わせる。営業中は同距離帯で優先）
+        if (isFoodMood) {
+          const kmOfRec = (r: { distanceKm?: number; distanceText?: string }): number => {
+            if (typeof r.distanceKm === "number") return r.distanceKm;
+            const m = (r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/);
+            return m ? parseFloat(m[1]) : 9999;
+          };
+          recommendations = [...recommendations].sort((a, b) => {
+            const ka = kmOfRec(a), kb = kmOfRec(b);
+            if (Math.abs(ka - kb) < 0.4) {            // 同距離帯は営業中を優先
+              if (a.openNow === true && b.openNow !== true) return -1;
+              if (b.openNow === true && a.openNow !== true) return 1;
+            }
+            return ka - kb;
+          }).slice(0, 15);
+        }
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
