@@ -199,7 +199,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
       <Animated.View style={[s.flex, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <ScrollView
           style={s.flex}
-          contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 80 }]}
+          contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
         >
 

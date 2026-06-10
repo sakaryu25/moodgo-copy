@@ -386,7 +386,7 @@ export default function ResultsView(props: Props) {
 
       <ScrollView
         style={s.scroll}
-        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 80 }]}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* ── 今回の条件 ─────────────────────────────── */}

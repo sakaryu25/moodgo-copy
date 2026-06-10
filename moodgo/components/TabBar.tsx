@@ -154,13 +154,13 @@ function TabItem({
 
 export default function TabBar({ homeView, onChangeView, onReset, insets, lang = 'ja' }: Props) {
   const labels = LABELS[lang];
+  const bottomOffset = Math.max(insets.bottom, 8) + 16;
   return (
-    <View style={s.container}>
-      {/* ガラス効果 */}
-      <BlurView intensity={70} tint="light" style={StyleSheet.absoluteFill} />
-      {/* 上のボーダーライン（パープルグラデーション） */}
-      <View style={s.topBorder} />
-      <View style={[s.inner, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View style={[s.container, { bottom: bottomOffset }]}>
+      <BlurView intensity={60} tint="light" style={[StyleSheet.absoluteFill, s.blur]} />
+      {/* 白オーバーレイ */}
+      <View style={s.overlay} />
+      <View style={s.inner}>
         {TABS.map(({ key, Icon }) => (
           <TabItem
             key={key}
@@ -180,27 +180,31 @@ export default function TabBar({ homeView, onChangeView, onReset, insets, lang =
 const s = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0, left: 0, right: 0,
+    left: 20,
+    right: 20,
     zIndex: 200,
+    borderRadius: 32,
     overflow: 'hidden',
-    backgroundColor: COLORS.tabBg,
-    // 要件③: コンテンツエリアとの区切り（上方向への薄いシャドウ）
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 12,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
   },
-  topBorder: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    // 要件③: 1px ボーダーを明確化（tabBorder を 0.10 に濃くした）
-    height: 1,
-    backgroundColor: COLORS.tabBorder,
+  blur: {
+    borderRadius: 32,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.60)',
+    borderRadius: 32,
   },
   inner: {
     flexDirection: 'row',
-    paddingTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
   },
   tab: {
     flex: 1,
@@ -210,14 +214,14 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    minWidth: 60,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    minWidth: 56,
   },
   activePill: {
     position: 'absolute',
     top: 0, bottom: 0, left: 0, right: 0,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   label: {
