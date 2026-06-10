@@ -394,6 +394,7 @@ export default function PlaceCard({
                 }
               }}
               style={s.mapBtn}
+              containerStyle={{ flex: 1 }}
             >
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
                 <MapPin size={15} color="#fff" strokeWidth={2.5} />
@@ -444,11 +445,11 @@ export default function PlaceCard({
               </View>
             ) : (
               <View style={s.moodRow}>
-                <PuniPressable onPress={() => onMoodMatch?.()} style={s.moodMatchBtn}>
+                <PuniPressable onPress={() => onMoodMatch?.()} style={s.moodMatchBtn} containerStyle={{ flex: 1 }}>
                   <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
                   <Text style={s.moodMatchText}>{t.moodMatch}</Text>
                 </PuniPressable>
-                <PuniPressable onPress={() => onMoodNotMatch?.()} style={s.moodNotMatchBtn}>
+                <PuniPressable onPress={() => onMoodNotMatch?.()} style={s.moodNotMatchBtn} containerStyle={{ flex: 1 }}>
                   <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />
                   <Text style={s.moodNotMatchText}>{t.moodNotMatch}</Text>
                 </PuniPressable>

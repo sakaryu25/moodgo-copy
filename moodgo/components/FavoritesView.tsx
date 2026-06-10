@@ -158,6 +158,7 @@ export default function FavoritesView({
                   <PuniPressable
                     onPress={() => Linking.openURL(item.mapUrl!)}
                     style={s.mapBtn}
+                    containerStyle={{ flex: 1 }}
                   >
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
                       <MapPin size={12} color="#fff" strokeWidth={2.5} />

@@ -578,6 +578,7 @@ export default function ResultsView(props: Props) {
           <PuniPressable
             onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
             style={[s.loadMoreBtn, { borderColor: accentColor }]}
+            containerStyle={{ alignSelf: 'center' }}
           >
             <Text style={[s.loadMoreText, { color: accentColor }]}>
               {t.loadMore(facilityItems.length - visibleCount)}
@@ -657,10 +658,10 @@ export default function ResultsView(props: Props) {
         {/* ── 条件を見直す / ホームに戻る ──────────── */}
         {!isLoading && (
           <View style={s.bottomBtns}>
-            <PuniPressable onPress={onReviewConditions ?? onReset} style={s.reviewBtn}>
+            <PuniPressable onPress={onReviewConditions ?? onReset} style={s.reviewBtn} containerStyle={{ flex: 1 }}>
               <Text style={s.reviewBtnText}>条件を見直す</Text>
             </PuniPressable>
-            <PuniPressable onPress={onReset} style={s.homeBtn}>
+            <PuniPressable onPress={onReset} style={s.homeBtn} containerStyle={{ flex: 1 }}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.homeBtnInner}>
                 <Text style={s.homeBtnText}>ホームに戻る</Text>
               </LinearGradient>
