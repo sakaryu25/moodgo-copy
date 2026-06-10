@@ -1,8 +1,8 @@
 // ── TabBar ─────────────────────────────────────────────────────────────────
-// ガラスのバー（Instagram風）: 強めブラー＋薄い白＋アイコンのみ
+// Liquid Glass バー: ほぼ素通しのブラー＋液体みたいに動くガラスブロブ
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { EdgeInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -19,6 +19,9 @@ type Props = {
 
 const ACTIVE   = '#A855F7'; // purple-500
 const INACTIVE = '#8E8E93'; // iOS systemGray（透けても見える濃さ）
+
+const PAD_H  = 12; // inner の左右 padding
+const BLOB_H = 46; // ガラスブロブの高さ
 
 function IconHome({ active }: { active: boolean }) {
   const fill = active ? ACTIVE : INACTIVE;
@@ -77,8 +80,8 @@ function TabItem({
 
   const handlePress = () => {
     Animated.sequence([
-      Animated.timing(scale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, mass: 1, damping: 12, stiffness: 200 }),
+      Animated.timing(scale, { toValue: 0.85, duration: 80, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, mass: 1, damping: 10, stiffness: 220 }),
     ]).start();
     if (active) {
       // 既にアクティブなタブを再タップ → リセット
@@ -101,17 +104,71 @@ function TabItem({
 
 export default function TabBar({ homeView, onChangeView, onReset, insets }: Props) {
   const bottomOffset = Math.max(insets.bottom, 8) + 16;
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const tabW  = size.w > 0 ? (size.w - PAD_H * 2) / TABS.length : 0;
+  const blobW = Math.min(64, tabW * 0.82);
+  const idx   = Math.max(0, TABS.findIndex(t => t.key === homeView));
+
+  const tx = useRef(new Animated.Value(0)).current; // ブロブの横位置
+  const sx = useRef(new Animated.Value(1)).current; // ドゥるん用 横伸び
+  const sy = useRef(new Animated.Value(1)).current; // ドゥるん用 縦つぶれ
+  const ready = useRef(false);
+
+  useEffect(() => {
+    if (tabW <= 0) return;
+    const to = idx * tabW;
+    if (!ready.current) {
+      // 初回はアニメなしで配置
+      tx.setValue(to);
+      ready.current = true;
+      return;
+    }
+    // 位置: オーバーシュート気味のスプリングで追従
+    Animated.spring(tx, {
+      toValue: to, useNativeDriver: true, mass: 0.9, damping: 11, stiffness: 140,
+    }).start();
+    // 形: 横にびよーんと伸びて縦がつぶれ、ぷるんと戻る（squash & stretch）
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(sx, { toValue: 1.4,  duration: 110, useNativeDriver: true }),
+        Animated.timing(sy, { toValue: 0.72, duration: 110, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.spring(sx, { toValue: 1, useNativeDriver: true, mass: 1, damping: 7, stiffness: 170 }),
+        Animated.spring(sy, { toValue: 1, useNativeDriver: true, mass: 1, damping: 7, stiffness: 170 }),
+      ]),
+    ]).start();
+  }, [idx, tabW]);
+
   return (
     <View style={[s.container, { bottom: bottomOffset }]}>
       <BlurView
-        intensity={80}
+        intensity={90}
         tint="light"
         experimentalBlurMethod="dimezisBlurView"
         style={StyleSheet.absoluteFill}
       />
-      {/* 薄い白オーバーレイ（ガラスの曇り） */}
+      {/* ごく薄い白（ガラスの曇り） */}
       <View style={s.overlay} />
-      <View style={s.inner}>
+      <View
+        style={s.inner}
+        onLayout={e => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+      >
+        {/* 液体ガラスブロブ — アクティブタブの背後をドゥるんと移動 */}
+        {tabW > 0 && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              s.blob,
+              {
+                width: blobW,
+                left: PAD_H + (tabW - blobW) / 2,
+                top: (size.h - BLOB_H) / 2,
+                transform: [{ translateX: tx }, { scaleX: sx }, { scaleY: sy }],
+              },
+            ]}
+          />
+        )}
         {TABS.map(({ key, Icon }) => (
           <TabItem
             key={key}
@@ -141,20 +198,28 @@ const s = StyleSheet.create({
     elevation: 8,
     borderWidth: 1,
     // ガラスのエッジ（白いハイライト）
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // Androidの実ブラーは弱めなので、白をわずかに足して視認性を担保
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.40)' : 'rgba(255,255,255,0.55)',
+    // Androidの実ブラーは弱めなので、白を少し足して視認性を担保
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.30)',
   },
   inner: {
     flexDirection: 'row',
     paddingVertical: 15,
-    paddingHorizontal: 12,
+    paddingHorizontal: PAD_H,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
+  },
+  blob: {
+    position: 'absolute',
+    height: BLOB_H,
+    borderRadius: BLOB_H / 2,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
   },
 });
