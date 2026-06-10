@@ -244,6 +244,40 @@ async function fetchApprovedSuggestions(): Promise<ApprovedSuggestion[]> {
   }
 }
 
+// タグ別キュレーションスポット（curated_spots テーブル）を取得し、
+// admin転載と同じ ApprovedSuggestion 形に正規化して返す。テーブル未作成時は空配列。
+async function fetchCuratedSpots(): Promise<ApprovedSuggestion[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from("curated_spots")
+      .select("name, address, lat, lng, google_place_id, tags, description, image_url, photo_urls, station_info, is_active")
+      .eq("is_active", true)
+      .limit(2000);
+    if (error || !data) return [];   // 未作成(42P01)等は空で素通り
+    return (data as Array<Record<string, unknown>>).map(r => ({
+      spot_name: String(r.name ?? ""),
+      description: (r.description as string | null) ?? null,
+      address: (r.address as string | null) ?? null,
+      lat: typeof r.lat === "number" ? r.lat : null,
+      lng: typeof r.lng === "number" ? r.lng : null,
+      google_place_name: String(r.name ?? ""),
+      google_maps_uri: null,
+      auto_tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+      station_info: (r.station_info as string | null) ?? null,
+      image_urls: Array.isArray(r.photo_urls) ? (r.photo_urls as string[])
+        : (r.image_url ? [String(r.image_url)] : []),
+      source: "admin",     // 注入ロジックで admin転載と同じ扱い（優先表示）
+      is_chain: false,
+      chain_search_query: null,
+      available_from: null,   // 期間制限なし（常時表示）
+      available_until: null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 
 // ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
 // 5段階評価(1-5)を比率に変換し、Wilson下限(95%)を計算。
@@ -5437,11 +5471,18 @@ async function handleRecommend(request: Request) {
     // Supabaseの学習データを取得（全属性で類似ユーザーを特定）
     const { context: globalStatsContext, engagedPlaces, goodVisitedPlaces, badVisitedPlaces } = await fetchGlobalStats(answers);
 
-    // 承認済みユーザー投稿スポットを取得
-    const approvedSuggestions = await fetchApprovedSuggestions();
+    // 承認済みユーザー投稿スポット＋タグ別キュレーションスポットを取得
+    const [approvedSuggestions, curatedSpots] = await Promise.all([
+      fetchApprovedSuggestions(),
+      fetchCuratedSpots(),
+    ]);
 
-    // 管理者が直接追加したスポット（通常スポット vs チェーン店で分離）
-    const adminSpots = approvedSuggestions.filter((s) => s.source === "admin" && !s.is_chain);
+    // 管理者が直接追加したスポット（通常スポット vs チェーン店で分離）。
+    // curated_spots（タグ別保管）も admin転載と同じ優先注入対象に含める。
+    const adminSpots = [
+      ...approvedSuggestions.filter((s) => s.source === "admin" && !s.is_chain),
+      ...curatedSpots,
+    ];
     const chainSpots = approvedSuggestions.filter((s) => s.source === "admin" && s.is_chain && s.chain_search_query);
 
     // スポット名 + Googleマップ名の両方でマッチできるようにする
