@@ -59,7 +59,7 @@ const TAG_DRILL: Record<string, string[]> = {
 };
 
 // 補足タグ（#穴場スポットは投稿時に自動付与されるためここには出さない）
-const EXTRA_TAGS = ['#無料駐車場', '#有料駐車場', '#カラオケ', '#ダーツ', '#ビリヤード', '#ボウリング', '#おすすめ'];
+const EXTRA_TAGS = ['#無料駐車場', '#有料駐車場', '#カラオケ', '#ダーツ', '#ビリヤード', '#ボウリング', '#おすすめ', '#期間限定'];
 
 // ─── Design tokens (MoodGo統一) ──────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -214,6 +214,9 @@ export default function SuggestScreen() {
   // 価格帯
   const [priceChip, setPriceChip]       = useState<string>('');   // 選択済みチップ
   const [priceNote, setPriceNote]       = useState('');            // 自由記入
+  // 公開期間（任意）。何も入力されなければ無期限保存。期間を設けると期間外は検索結果に出ない
+  const [availableFrom, setAvailableFrom]   = useState('');        // YYYY-MM-DD
+  const [availableUntil, setAvailableUntil] = useState('');        // YYYY-MM-DD
   // 星評価（おすすめ度）
   const [rating, setRating]             = useState(0);             // 1〜5、0=未評価
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
@@ -302,7 +305,16 @@ export default function SuggestScreen() {
       if (lat !== null) fd.append('lat', String(lat));
       if (lng !== null) fd.append('lng', String(lng));
       if (rating > 0)  fd.append('rating', String(rating));
-      if (selectedTags.length > 0) fd.append('autoTags', JSON.stringify(selectedTags));
+      // 公開期間（任意）。設定時は #期間限定 タグを自動付与し、期間外は検索結果から自動で外れる
+      const from = availableFrom.trim();
+      const until = availableUntil.trim();
+      const hasPeriod = Boolean(from || until);
+      const tagsToSend = hasPeriod && !selectedTags.includes('#期間限定')
+        ? [...selectedTags, '#期間限定']
+        : selectedTags;
+      if (from)  fd.append('availableFrom', from);
+      if (until) fd.append('availableUntil', until);
+      if (tagsToSend.length > 0) fd.append('autoTags', JSON.stringify(tagsToSend));
 
       // 画像: base64 → Blob → File として添付（React Native FormData 形式）
       for (let i = 0; i < images.length; i++) {
@@ -428,6 +440,52 @@ export default function SuggestScreen() {
               placeholderTextColor="#C4B5FD"
               style={[s.input, { marginTop: 10, height: 46, fontSize: 13 }]}
             />
+
+            {/* ── 公開期間（任意）── */}
+            <Text style={[s.label, { marginTop: 18 }]}>
+              公開期間 <Text style={s.optional}>（任意）</Text>
+            </Text>
+            <Text style={s.hint}>
+              期間限定スポットの場合に設定。何も入力しなければ無期限で保存されます。期間を設けると、期間外は検索結果に出ません（みんなの穴場には残ります）。
+            </Text>
+            <View style={s.periodRow}>
+              <View style={s.periodCol}>
+                <Text style={s.periodLabel}>開始日</Text>
+                <TextInput
+                  value={availableFrom}
+                  onChangeText={setAvailableFrom}
+                  placeholder="2026-06-10"
+                  placeholderTextColor="#C4B5FD"
+                  keyboardType="numbers-and-punctuation"
+                  style={[s.input, { height: 46, fontSize: 14 }]}
+                />
+              </View>
+              <View style={s.periodCol}>
+                <Text style={s.periodLabel}>終了日</Text>
+                <TextInput
+                  value={availableUntil}
+                  onChangeText={setAvailableUntil}
+                  placeholder="2026-06-30"
+                  placeholderTextColor="#C4B5FD"
+                  keyboardType="numbers-and-punctuation"
+                  style={[s.input, { height: 46, fontSize: 14 }]}
+                />
+              </View>
+            </View>
+            {(availableFrom || availableUntil) ? (
+              <View style={s.periodNotice}>
+                <Text style={s.periodNoticeText}>
+                  🗓 {availableFrom || '即日'} 〜 {availableUntil || '無期限'} の間だけ検索結果に表示されます（#期間限定 が自動で付きます）
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setAvailableFrom(''); setAvailableUntil(''); }}
+                  activeOpacity={0.7}
+                  style={s.periodClearBtn}
+                >
+                  <Text style={s.periodClearText}>期間をクリア（無期限に戻す）</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             {/* ── おすすめ度（星評価）── */}
             <Text style={[s.label, { marginTop: 18 }]}>
@@ -703,6 +761,18 @@ const s = StyleSheet.create({
   priceChipTextActive: {
     fontSize: 13, fontWeight: '800', color: '#fff',
   },
+
+  // Period (公開期間)
+  periodRow:   { flexDirection: 'row', gap: 10 },
+  periodCol:   { flex: 1 },
+  periodLabel: { fontSize: 11, fontWeight: '700', color: '#A78BFA', marginBottom: 4 },
+  periodNotice: {
+    marginTop: 10, backgroundColor: '#FEF3C7', borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 12,
+  },
+  periodNoticeText: { fontSize: 12, fontWeight: '700', color: '#92600E', lineHeight: 18 },
+  periodClearBtn: { marginTop: 8, alignSelf: 'flex-start' },
+  periodClearText: { fontSize: 12, fontWeight: '800', color: '#B45309', textDecorationLine: 'underline' },
 
   // Rating (star)
   ratingWrap: {

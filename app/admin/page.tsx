@@ -1890,7 +1890,12 @@ export default function AdminPage() {
       fd.append("manualMapUrl", newSpot.mapUrl.trim());
       fd.append("source", "admin");
       fd.append("secret", ADMIN_PASSWORD);
-      fd.append("autoTags", JSON.stringify(newSpotTags));
+      // 公開期間が設定されている場合は #期間限定 タグを自動付与
+      const hasPeriod = Boolean(newSpotAvailableFrom || newSpotAvailableUntil);
+      const tagsToSend = hasPeriod && !newSpotTags.includes("#期間限定")
+        ? [...newSpotTags, "#期間限定"]
+        : newSpotTags;
+      fd.append("autoTags", JSON.stringify(tagsToSend));
       fd.append("isChain", String(isChain));
       if (isChain && chainSearchQuery.trim()) fd.append("chainSearchQuery", chainSearchQuery.trim());
       if (newSpotAvailableFrom) fd.append("availableFrom", newSpotAvailableFrom);
@@ -2454,7 +2459,12 @@ export default function AdminPage() {
       fd.append("description", editSpotForm.description.trim() || "");
       fd.append("address", editSpotForm.address.trim() || "");
       fd.append("stationInfo", editSpotForm.stationInfo.trim() || "");
-      fd.append("autoTags", JSON.stringify(editSpotForm.tags));
+      // 公開期間が設定されている場合は #期間限定 タグを自動付与
+      const editHasPeriod = Boolean(editSpotForm.availableFrom || editSpotForm.availableUntil);
+      const editTagsToSend = editHasPeriod && !editSpotForm.tags.includes("#期間限定")
+        ? [...editSpotForm.tags, "#期間限定"]
+        : editSpotForm.tags;
+      fd.append("autoTags", JSON.stringify(editTagsToSend));
       fd.append("isChain", String(editSpotForm.isChain));
       fd.append("chainSearchQuery", editSpotForm.isChain ? (editSpotForm.chainSearchQuery.trim() || "") : "");
       fd.append("availableFrom", editSpotForm.availableFrom || "");
@@ -2472,7 +2482,7 @@ export default function AdminPage() {
           spot_name: editSpotForm.name.trim(),
           description: editSpotForm.description.trim() || null,
           address: editSpotForm.address.trim() || null,
-          auto_tags: editSpotForm.tags,
+          auto_tags: editTagsToSend,
           is_chain: editSpotForm.isChain,
           available_from: editSpotForm.availableFrom || null,
           available_until: editSpotForm.availableUntil || null,
