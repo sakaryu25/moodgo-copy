@@ -242,10 +242,10 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
   '楽しみたい': {
     title: 'どう楽しみたい？',
     options: [
-      { key: '王道で遊ぶ',       label: '王道で遊ぶ',       sub: 'テーマパーク・カラオケ・ラボ', Icon: Star },
-      { key: 'アクティブに遊ぶ', label: 'アクティブに遊ぶ', sub: 'ゲーセン・ボウリング・脱出', Icon: Gamepad2 },
-      { key: '観て楽しむ',       label: '観て楽しむ',       sub: '水族館・映画・ミュージアム',   Icon: Camera },
-      { key: 'つくる・体験',     label: 'つくる・体験',     sub: 'ものづくり・工場見学',         Icon: ChefHat },
+      { key: '王道で遊ぶ',       label: '定番あそび', sub: '遊園地・カラオケ', Icon: Star },
+      { key: 'アクティブに遊ぶ', label: 'アクティブ', sub: 'ゲーセン・脱出',   Icon: Gamepad2 },
+      { key: '観て楽しむ',       label: '観て楽しむ', sub: '水族館・映画館',   Icon: Camera },
+      { key: 'つくる・体験',     label: 'つくる体験', sub: '陶芸・工場見学',   Icon: ChefHat },
       { key: 'こだわらない',     label: 'こだわらない',     sub: 'なんでもOK',                   Icon: Shuffle },
     ],
   },
