@@ -18,7 +18,7 @@ type Props = {
 };
 
 const ACTIVE   = '#A855F7'; // purple-500
-const INACTIVE = '#8E8E93'; // iOS systemGray（透けても見える濃さ）
+const INACTIVE = '#6E6E73'; // 濃いめグレー（素通しでも見える濃さ）
 
 const PAD_H  = 12; // inner の左右 padding
 const BLOB_H = 46; // ガラスブロブの高さ
@@ -143,7 +143,7 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
   return (
     <View style={[s.container, { bottom: bottomOffset }]}>
       <BlurView
-        intensity={90}
+        intensity={55}
         tint="light"
         experimentalBlurMethod="dimezisBlurView"
         style={StyleSheet.absoluteFill}
@@ -198,12 +198,12 @@ const s = StyleSheet.create({
     elevation: 8,
     borderWidth: 1,
     // ガラスのエッジ（白いハイライト）
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: 'rgba(255,255,255,0.45)',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // Androidの実ブラーは弱めなので、白を少し足して視認性を担保
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.30)',
+    // Androidの実ブラーは弱めなので、白をわずかに足して視認性を担保
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.16)',
   },
   inner: {
     flexDirection: 'row',
@@ -218,8 +218,8 @@ const s = StyleSheet.create({
     position: 'absolute',
     height: BLOB_H,
     borderRadius: BLOB_H / 2,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.38)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
+    borderColor: 'rgba(255,255,255,0.6)',
   },
 });
