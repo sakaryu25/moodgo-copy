@@ -180,31 +180,31 @@ export default function TabBar({ homeView, onChangeView, onReset, insets, lang =
 const s = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 20,
-    right: 20,
+    left: 24,
+    right: 24,
     zIndex: 200,
     borderRadius: 32,
     overflow: 'hidden',
-    shadowColor: '#8B5CF6',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.10,
     shadowRadius: 20,
     elevation: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: 'rgba(255,255,255,0.6)',
   },
   blur: {
     borderRadius: 32,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.60)',
+    backgroundColor: 'rgba(255,255,255,0.75)',
     borderRadius: 32,
   },
   inner: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   tab: {
     flex: 1,
