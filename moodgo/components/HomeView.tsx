@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AiChatFab from './AiChatFab';
 import CommunityFeed from './CommunityFeed';
+import PuniPressable from './PuniPressable';
 import Svg, {
   Defs,
   G,
@@ -143,9 +144,6 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
-  const startScale = useRef(new Animated.Value(1)).current;
-  const pressIn  = () => Animated.spring(startScale, { toValue: 0.96, tension: 300, friction: 10, useNativeDriver: true }).start();
-  const pressOut = () => Animated.spring(startScale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
 
   // フェードイン
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -179,20 +177,19 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
       {/* ── Header ── */}
       <View style={s.header}>
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <TouchableOpacity
+          <PuniPressable
             style={s.suggestPill}
-            activeOpacity={0.78}
             onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <MapPin size={13} color={PINK} strokeWidth={2.5} />
               <Text style={s.suggestText}>{lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
             </View>
-          </TouchableOpacity>
+          </PuniPressable>
         </Animated.View>
-        <TouchableOpacity style={s.settingsBtn} onPress={onShowSettings} activeOpacity={0.72}>
+        <PuniPressable style={s.settingsBtn} onPress={onShowSettings}>
           <Settings size={20} color="#888" strokeWidth={2} />
-        </TouchableOpacity>
+        </PuniPressable>
       </View>
 
       {/* ── Scrollable body ── */}
@@ -217,22 +214,17 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
           </View>
 
           {/* ── START button ── */}
-          <Animated.View style={[s.startWrap, { transform: [{ scale: startScale }] }]}>
+          <PuniPressable onPress={handleStart} haptic={false} style={s.startWrap}>
             {/*
               ポイント: iOS では overflow:'hidden' があると shadow が外にはみ出せずクリップされる。
               → 3層に分離する
                 1. startShadow  … shadow のみ担当（overflow なし・backgroundColor 必須）
-                2. TouchableOpacity … overflow:'hidden' でグラデをクリップ
+                2. View … overflow:'hidden' でグラデをクリップ
                 3. LinearGradient … 実際のグラデーション
+              押下アニメは PuniPressable（ぷにん）が担当
             */}
             <View style={s.startShadow}>
-              <TouchableOpacity
-                onPress={handleStart}
-                onPressIn={pressIn}
-                onPressOut={pressOut}
-                activeOpacity={1}
-                style={s.startTouchable}
-              >
+              <View style={s.startTouchable}>
                 <LinearGradient
                   colors={GRAD}
                   start={{ x: 0, y: 0 }}
@@ -241,9 +233,9 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                 >
                   <Text style={s.startText}>✦  START  →</Text>
                 </LinearGradient>
-              </TouchableOpacity>
+              </View>
             </View>
-          </Animated.View>
+          </PuniPressable>
 
           {/* ── Featured card ── */}
           <View style={s.featuredCard}>
@@ -262,15 +254,15 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                   <Text style={s.featuredTitle}>
                     {lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
                   </Text>
-                  <TouchableOpacity
+                  <PuniPressable
                     style={s.featuredBtn}
-                    activeOpacity={0.82}
+                    containerStyle={{ alignSelf: 'flex-start' }}
                     onPress={onShowFeatured}
                   >
                     <Text style={s.featuredBtnText}>
                       {lang === 'en' ? "See what's inside →" : '何があるか見てみる　→'}
                     </Text>
-                  </TouchableOpacity>
+                  </PuniPressable>
                 </View>
               </LinearGradient>
             </ImageBackground>

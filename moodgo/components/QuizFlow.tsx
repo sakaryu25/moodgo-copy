@@ -29,6 +29,7 @@ import {
   Navigation, Camera, Building2, Car,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
+import PuniPressable from './PuniPressable';
 import {
   Animated, Dimensions, Easing, PanResponder,
   ScrollView, StyleSheet, Text, TextInput,
@@ -1238,10 +1239,10 @@ export default function QuizFlow(props: Props) {
       <Animated.View style={[s.flex, { transform: [{ translateX: swipeDragX }] }]}>
         {/* Nav row */}
         <View style={s.topBar}>
-          <TouchableOpacity onPress={handleBack} style={s.backCircle} activeOpacity={0.7}
+          <PuniPressable onPress={handleBack} style={s.backCircle}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
-          </TouchableOpacity>
+          </PuniPressable>
           <View style={s.dots}>
             {STEP_SEQ.map((_, i) => {
               const done = i < dotIdx; const cur = i === dotIdx;
@@ -1287,11 +1288,11 @@ export default function QuizFlow(props: Props) {
 
         {/* Fixed Next button */}
         <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-          <TouchableOpacity onPress={handleNext} activeOpacity={0.88} style={s.nextWrap}>
+          <PuniPressable onPress={handleNext} style={s.nextWrap}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.nextBtn}>
               <Text style={s.nextTxt}>{nextLabel}</Text>
             </LinearGradient>
-          </TouchableOpacity>
+          </PuniPressable>
         </View>
       </Animated.View>
     </View>

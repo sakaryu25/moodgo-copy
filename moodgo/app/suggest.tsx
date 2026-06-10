@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import PuniPressable from '@/components/PuniPressable';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 // ─── Tag hierarchy ────────────────────────────────────────────────────────────
@@ -528,11 +529,11 @@ export default function SuggestScreen() {
         <View style={s.successWrap}>
           <Text style={s.successTitle}>{t.successTitle}</Text>
           <Text style={s.successBody}>{t.successBody}</Text>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.85} style={s.successBtnWrap}>
+          <PuniPressable onPress={() => router.back()} style={s.successBtnWrap}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.successBtn}>
               <Text style={s.successBtnText}>{t.successBtn}</Text>
             </LinearGradient>
-          </TouchableOpacity>
+          </PuniPressable>
         </View>
       </View>
     );
@@ -544,9 +545,9 @@ export default function SuggestScreen() {
 
         {/* ── ヘッダー ── */}
         <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backCircle} activeOpacity={0.7}>
+          <PuniPressable onPress={() => router.back()} style={s.backCircle}>
             <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
-          </TouchableOpacity>
+          </PuniPressable>
           <Text style={s.headerTitle}>{t.headerTitle}</Text>
           <View style={{ width: 40 }} />
         </View>
@@ -716,7 +717,7 @@ export default function SuggestScreen() {
 
             {/* 位置情報 */}
             <Text style={[s.label, { marginTop: 18 }]}>{t.labelLocation}</Text>
-            <TouchableOpacity onPress={handleGetLocation} disabled={isLocating} activeOpacity={0.85} style={s.locWrap}>
+            <PuniPressable onPress={handleGetLocation} disabled={isLocating} style={s.locWrap}>
               <LinearGradient
                 colors={lat ? ['#D1FAE5', '#A7F3D0'] : GRAD}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -727,7 +728,7 @@ export default function SuggestScreen() {
                   {isLocating ? t.locating : lat ? t.locateDone : t.locateBtn}
                 </Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </PuniPressable>
             <TextInput
               value={address} onChangeText={setAddress}
               placeholder={t.placeholderAddr} placeholderTextColor="#C4B5FD"
@@ -747,12 +748,12 @@ export default function SuggestScreen() {
             <Text style={s.hint}>{t.hintPhotos}</Text>
             {/* 写真選択ボタン（3枚未満のときのみ表示）*/}
             {images.length < 3 && (
-              <TouchableOpacity onPress={handlePickImages} activeOpacity={0.85} style={s.imagePicker}>
+              <PuniPressable onPress={handlePickImages} style={s.imagePicker}>
                 <Camera size={20} color="#A78BFA" strokeWidth={1.8} />
                 <Text style={s.imagePickerText}>
                   {images.length === 0 ? t.photoBtn : `写真を追加（あと${3 - images.length}枚）`}
                 </Text>
-              </TouchableOpacity>
+              </PuniPressable>
             )}
             {images.length > 0 && (
               <View style={s.imageRow}>
@@ -862,17 +863,16 @@ export default function SuggestScreen() {
           ) : null}
 
           {/* 投稿ボタン */}
-          <TouchableOpacity
+          <PuniPressable
             onPress={handleSubmit}
             disabled={isSubmitting || !spotName.trim()}
-            activeOpacity={0.85}
             style={[s.submitWrap, { opacity: spotName.trim() ? 1 : 0.5 }]}
           >
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submitBtn}>
               <Send size={18} color="#fff" strokeWidth={2} />
               <Text style={s.submitText}>{isSubmitting ? t.submitting : t.submit}</Text>
             </LinearGradient>
-          </TouchableOpacity>
+          </PuniPressable>
 
         </ScrollView>
       </View>
