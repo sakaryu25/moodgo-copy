@@ -657,6 +657,30 @@ function MarqueeText({ text, style, speed = MQ_SPEED, delay = MQ_DELAY, containe
   );
 }
 
+// ─── ぷにん（選択した瞬間、むにっと潰れてぷるんと戻る） ─────────────────────────
+
+function usePunin(active: boolean) {
+  const puniX = useRef(new Animated.Value(1)).current;
+  const puniY = useRef(new Animated.Value(1)).current;
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) {
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(puniX, { toValue: 1.10, duration: 90, useNativeDriver: true }),
+          Animated.timing(puniY, { toValue: 0.86, duration: 90, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.spring(puniX, { toValue: 1, useNativeDriver: true, mass: 0.8, damping: 6, stiffness: 180 }),
+          Animated.spring(puniY, { toValue: 1, useNativeDriver: true, mass: 0.8, damping: 6, stiffness: 180 }),
+        ]),
+      ]).start();
+    }
+    wasActive.current = active;
+  }, [active]);
+  return { puniX, puniY };
+}
+
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
 function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }: {
@@ -680,13 +704,14 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
   const pressScale = useRef(new Animated.Value(1)).current;
   const pIn  = () => Animated.spring(pressScale, { toValue: 0.95, tension: 300, friction: 10, useNativeDriver: true }).start();
   const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 300, friction: 10, useNativeDriver: true }).start();
+  const { puniX, puniY } = usePunin(active);
 
   return (
     <Animated.View style={{
       width: cardWidth, opacity: entryOp,
       transform: [{ translateY: entryY }, { scale: entryScale }],
     }}>
-      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+      <Animated.View style={{ transform: [{ scale: pressScale }, { scaleX: puniX }, { scaleY: puniY }] }}>
         <TouchableOpacity
           onPress={onPress}
           onPressIn={pIn}
@@ -772,10 +797,11 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
   const pressScale = useRef(new Animated.Value(1)).current;
   const pIn  = () => Animated.spring(pressScale, { toValue: 0.90, tension: 350, friction: 14, useNativeDriver: true }).start();
   const pOut = () => Animated.spring(pressScale, { toValue: 1,    tension: 350, friction: 14, useNativeDriver: true }).start();
+  const { puniX, puniY } = usePunin(active);
 
   return (
     <Animated.View style={{ width, height, opacity: entryOp, transform: [{ translateY: entryY }, { scale: entryScale }] }}>
-      <Animated.View style={{ flex: 1, transform: [{ scale: pressScale }] }}>
+      <Animated.View style={{ flex: 1, transform: [{ scale: pressScale }, { scaleX: puniX }, { scaleY: puniY }] }}>
         <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
           style={[oc.card, { width, height }, active && oc.cardActive]}>
           {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
