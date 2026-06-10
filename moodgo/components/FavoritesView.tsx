@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FavoriteItem } from '@/types/app';
+import PuniPressable from './PuniPressable';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -154,23 +155,24 @@ export default function FavoritesView({
               ) : null}
               <View style={s.cardActions}>
                 {item.mapUrl ? (
-                  <TouchableOpacity
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(item.mapUrl!); }}
-                    style={s.mapBtn} activeOpacity={0.85}
+                  <PuniPressable
+                    onPress={() => Linking.openURL(item.mapUrl!)}
+                    style={s.mapBtn}
                   >
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
                       <MapPin size={12} color="#fff" strokeWidth={2.5} />
                       <Text style={s.mapBtnText}>{t.map}</Text>
                     </LinearGradient>
-                  </TouchableOpacity>
+                  </PuniPressable>
                 ) : null}
-                <TouchableOpacity
+                <PuniPressable
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item.title); }}
-                  style={s.deleteBtn} activeOpacity={0.8}
+                  haptic={false}
+                  style={s.deleteBtn}
                 >
                   <Trash2 size={13} color="#F43F5E" strokeWidth={2} />
                   <Text style={s.deleteBtnText}>{t.remove}</Text>
-                </TouchableOpacity>
+                </PuniPressable>
               </View>
             </View>
           </TouchableOpacity>

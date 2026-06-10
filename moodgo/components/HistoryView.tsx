@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
 import ReportModal from './ReportModal';
@@ -423,10 +424,10 @@ export default function HistoryView({
             <Text style={s.heroSub}>{t.sub}</Text>
           </View>
           {history.length > 0 && (
-            <TouchableOpacity onPress={onClearHistory} style={s.clearBtn} activeOpacity={0.8}>
+            <PuniPressable onPress={onClearHistory} style={s.clearBtn}>
               <Trash2 size={15} color="rgba(255,255,255,0.8)" />
               <Text style={s.clearText}>{t.clear}</Text>
-            </TouchableOpacity>
+            </PuniPressable>
           )}
         </View>
       </LinearGradient>

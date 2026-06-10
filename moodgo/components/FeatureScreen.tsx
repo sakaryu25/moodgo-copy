@@ -81,6 +81,7 @@ import {
 } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { SAMPLE_FEATURE, type SampleTab } from "./featureSampleData";
+import PuniPressable from "./PuniPressable";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens
@@ -867,11 +868,11 @@ type RegionButtonProps = {
 function RegionButton({ id, label, color, onPress }: RegionButtonProps) {
   const Icon = REGION_ICON_MAP[id] ?? MapPin;
   return (
-    <TouchableOpacity style={s.regionBtn} onPress={onPress} activeOpacity={0.72}>
+    <PuniPressable style={s.regionBtn} onPress={onPress}>
       <Icon size={15} color={color} strokeWidth={2} />
       <Text style={s.regionLabel}>{label}</Text>
       <ChevronRight size={16} color={C.subText} />
-    </TouchableOpacity>
+    </PuniPressable>
   );
 }
 

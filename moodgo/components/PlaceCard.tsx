@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check, Clock, Flame, Heart, Map, MapPin, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import PuniPressable from './PuniPressable';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
@@ -383,9 +384,8 @@ export default function PlaceCard({
         {/* ── アクションボタン: Googleマップ + 行った！ ── */}
         <View style={s.actions}>
           {item.mapUrl ? (
-            <TouchableOpacity
+            <PuniPressable
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 if (Platform.OS === 'ios') {
                   const query = encodeURIComponent(item.title || '');
                   Linking.openURL(`comgooglemaps://?q=${query}`).catch(() => Linking.openURL(item.mapUrl!));
@@ -394,36 +394,34 @@ export default function PlaceCard({
                 }
               }}
               style={s.mapBtn}
-              activeOpacity={0.88}
             >
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
                 <MapPin size={15} color="#fff" strokeWidth={2.5} />
                 <Text style={s.mapBtnText}>{t.mapBtn}</Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </PuniPressable>
           ) : null}
           {onMarkVisited ? (
-            <TouchableOpacity
-              onPress={isVisited ? undefined : onMarkVisited}
+            <PuniPressable
+              onPress={onMarkVisited}
+              disabled={isVisited}
               style={[s.visitedBtn, isVisited && s.visitedBtnDone]}
-              activeOpacity={0.8}
             >
               {isVisited
                 ? <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
                 : <><Map size={13} color="#6B7280" strokeWidth={2} /><Text style={s.visitedBtnText}>{t.visited}</Text></>}
-            </TouchableOpacity>
+            </PuniPressable>
           ) : null}
 
           {/* ホットペッパー */}
           {item.hotpepperUrl ? (
-            <TouchableOpacity
+            <PuniPressable
               onPress={() => Linking.openURL(item.hotpepperUrl!)}
               style={s.hotpepperBtn}
-              activeOpacity={0.8}
             >
               <Flame size={13} color="#EF4444" strokeWidth={2} />
               <Text style={s.hotpepperText}>ホットペッパー</Text>
-            </TouchableOpacity>
+            </PuniPressable>
           ) : null}
         </View>
 
@@ -446,22 +444,14 @@ export default function PlaceCard({
               </View>
             ) : (
               <View style={s.moodRow}>
-                <TouchableOpacity
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMoodMatch?.(); }}
-                  style={s.moodMatchBtn}
-                  activeOpacity={0.8}
-                >
+                <PuniPressable onPress={() => onMoodMatch?.()} style={s.moodMatchBtn}>
                   <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
                   <Text style={s.moodMatchText}>{t.moodMatch}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMoodNotMatch?.(); }}
-                  style={s.moodNotMatchBtn}
-                  activeOpacity={0.8}
-                >
+                </PuniPressable>
+                <PuniPressable onPress={() => onMoodNotMatch?.()} style={s.moodNotMatchBtn}>
                   <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />
                   <Text style={s.moodNotMatchText}>{t.moodNotMatch}</Text>
-                </TouchableOpacity>
+                </PuniPressable>
               </View>
             )}
           </>
@@ -482,20 +472,20 @@ export default function PlaceCard({
 
         {/* フッター */}
         <View style={s.footRow}>
-          <TouchableOpacity onPress={handleShare} style={s.footBtnShare}>
+          <PuniPressable onPress={handleShare} style={s.footBtnShare}>
             <Share2 size={12} color={COLORS.textMuted} strokeWidth={2} />
             <Text style={s.footBtnText}>{t.share}</Text>
-          </TouchableOpacity>
+          </PuniPressable>
           <View style={s.footRight}>
             {onBlock && (
-              <TouchableOpacity onPress={onBlock} style={s.footBtn}>
+              <PuniPressable onPress={onBlock} style={s.footBtn}>
                 <Text style={s.footBtnText}>{t.hide}</Text>
-              </TouchableOpacity>
+              </PuniPressable>
             )}
             {onReport && (
-              <TouchableOpacity onPress={onReport} style={s.footBtn}>
+              <PuniPressable onPress={onReport} style={s.footBtn}>
                 <Text style={s.footBtnText}>{t.report}</Text>
-              </TouchableOpacity>
+              </PuniPressable>
             )}
           </View>
         </View>

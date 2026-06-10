@@ -18,6 +18,7 @@ import {
   Eye, List, MapPin, MessageSquare, Navigation,
   Search, Shuffle, Sparkles, Star, Tag, Users, X,
 } from 'lucide-react-native';
+import PuniPressable from './PuniPressable';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
@@ -376,9 +377,9 @@ export default function ResultsView(props: Props) {
           </View>
           <View style={s.navRight}>
             {onShuffle && !isLoading && (
-              <TouchableOpacity onPress={onShuffle} style={s.shuffleBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <PuniPressable onPress={onShuffle} style={s.shuffleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Shuffle size={20} color={BRAND} strokeWidth={2} />
-              </TouchableOpacity>
+              </PuniPressable>
             )}
           </View>
         </View>
@@ -574,15 +575,14 @@ export default function ResultsView(props: Props) {
 
         {/* Load more */}
         {!isLoading && visibleCount < facilityItems.length && (
-          <TouchableOpacity
+          <PuniPressable
             onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
             style={[s.loadMoreBtn, { borderColor: accentColor }]}
-            activeOpacity={0.75}
           >
             <Text style={[s.loadMoreText, { color: accentColor }]}>
               {t.loadMore(facilityItems.length - visibleCount)}
             </Text>
-          </TouchableOpacity>
+          </PuniPressable>
         )}
 
         {/* Empty state */}
@@ -608,10 +608,9 @@ export default function ResultsView(props: Props) {
               multiline
               style={s.refinementInput}
             />
-            <TouchableOpacity
+            <PuniPressable
               onPress={onRefine}
               disabled={isRefining || !refinementText.trim()}
-              activeOpacity={0.75}
               style={[s.refinementBtn, (isRefining || !refinementText.trim()) && s.refinementBtnDisabled]}
             >
               {!(isRefining || !refinementText.trim()) ? (
@@ -620,7 +619,7 @@ export default function ResultsView(props: Props) {
               <Text style={s.refinementBtnText}>
                 {isRefining ? t.searching : t.searchAgain}
               </Text>
-            </TouchableOpacity>
+            </PuniPressable>
           </View>
         )}
 
@@ -640,14 +639,14 @@ export default function ResultsView(props: Props) {
                 </View>
                 <View style={s.stars}>
                   {[1, 2, 3, 4, 5].map((n) => (
-                    <TouchableOpacity key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn} activeOpacity={0.7}>
+                    <PuniPressable key={n} onPress={() => onSubmitFeedback(n)} style={s.starBtn}>
                       <Star
                         size={32}
                         color="#FF9F0A"
                         fill={feedbackRating !== null && n <= (feedbackRating ?? 0) ? '#FF9F0A' : 'none'}
                         strokeWidth={1.8}
                       />
-                    </TouchableOpacity>
+                    </PuniPressable>
                   ))}
                 </View>
               </>
@@ -658,14 +657,14 @@ export default function ResultsView(props: Props) {
         {/* ── 条件を見直す / ホームに戻る ──────────── */}
         {!isLoading && (
           <View style={s.bottomBtns}>
-            <TouchableOpacity onPress={onReviewConditions ?? onReset} style={s.reviewBtn} activeOpacity={0.8}>
+            <PuniPressable onPress={onReviewConditions ?? onReset} style={s.reviewBtn}>
               <Text style={s.reviewBtnText}>条件を見直す</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onReset} style={s.homeBtn} activeOpacity={0.85}>
+            </PuniPressable>
+            <PuniPressable onPress={onReset} style={s.homeBtn}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.homeBtnInner}>
                 <Text style={s.homeBtnText}>ホームに戻る</Text>
               </LinearGradient>
-            </TouchableOpacity>
+            </PuniPressable>
           </View>
         )}
       </ScrollView>
@@ -679,9 +678,9 @@ export default function ResultsView(props: Props) {
             <Text style={s.visitModalSub}>{t.visitModalSub}</Text>
             <View style={s.stars}>
               {[1, 2, 3, 4, 5].map((n) => (
-                <TouchableOpacity key={n} onPress={() => setVisitingRating(n)} style={s.starBtn} activeOpacity={0.7}>
+                <PuniPressable key={n} onPress={() => setVisitingRating(n)} style={s.starBtn}>
                   <Star size={28} color="#FF9F0A" fill={visitingRating >= n ? '#FF9F0A' : 'none'} strokeWidth={1.8} />
-                </TouchableOpacity>
+                </PuniPressable>
               ))}
             </View>
             <View style={s.modalBtns}>

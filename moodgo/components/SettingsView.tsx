@@ -14,6 +14,7 @@ import Svg, {
 } from 'react-native-svg';
 import AppBackground from './AppBackground';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
+import PuniPressable from './PuniPressable';
 
 // ─── tokens ──────────────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -249,14 +250,14 @@ export default function SettingsView({
             </View>
 
             {/* 保存ボタン */}
-            <TouchableOpacity onPress={handleSave} activeOpacity={0.88} style={s.saveWrap}>
+            <PuniPressable onPress={handleSave} style={s.saveWrap}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
                 {saved
                   ? <Check size={22} color="#fff" strokeWidth={2.5} />
                   : <Text style={s.saveBtnText}>{lang === 'ja' ? '保存する' : 'Save'}</Text>
                 }
               </LinearGradient>
-            </TouchableOpacity>
+            </PuniPressable>
 
             {/* ── 言語 ── */}
             <SectionHeader
