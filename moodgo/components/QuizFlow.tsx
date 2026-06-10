@@ -665,14 +665,16 @@ function usePunin(active: boolean) {
   const wasActive = useRef(active);
   useEffect(() => {
     if (active && !wasActive.current) {
+      // 拡大は控えめ（1.04まで）にして縮み主体のぷにんに。
+      // 100%超の拡大はラスタライズ画像の引き伸ばしになり文字が荒れるため
       Animated.sequence([
         Animated.parallel([
-          Animated.timing(puniX, { toValue: 1.10, duration: 90, useNativeDriver: true }),
-          Animated.timing(puniY, { toValue: 0.86, duration: 90, useNativeDriver: true }),
+          Animated.timing(puniX, { toValue: 1.04, duration: 90, useNativeDriver: true }),
+          Animated.timing(puniY, { toValue: 0.90, duration: 90, useNativeDriver: true }),
         ]),
         Animated.parallel([
-          Animated.spring(puniX, { toValue: 1, useNativeDriver: true, mass: 0.8, damping: 6, stiffness: 180 }),
-          Animated.spring(puniY, { toValue: 1, useNativeDriver: true, mass: 0.8, damping: 6, stiffness: 180 }),
+          Animated.spring(puniX, { toValue: 1, useNativeDriver: true, mass: 0.7, damping: 9, stiffness: 240 }),
+          Animated.spring(puniY, { toValue: 1, useNativeDriver: true, mass: 0.7, damping: 9, stiffness: 240 }),
         ]),
       ]).start();
     }
