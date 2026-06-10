@@ -723,7 +723,7 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
             <LinearGradient
               colors={['#EC4899', '#A855F7', '#3B82F6']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
+              style={mc.fill}
             />
           )}
           {active && (
@@ -758,6 +758,8 @@ const mc = StyleSheet.create({
     shadowColor: '#A855F7', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.30, shadowRadius: 14, elevation: 8,
   },
+  // 枠線(2px)の下まで広げて、フチまでぴったり塗る
+  fill: { position: 'absolute', top: -2, left: -2, right: -2, bottom: -2 },
   checkWrap: { position: 'absolute', top: 6, right: 6 },
   checkCircle: {
     width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff',
@@ -804,7 +806,7 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
       <Animated.View style={{ flex: 1, transform: [{ scale: pressScale }, { scaleX: puniX }, { scaleY: puniY }] }}>
         <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
           style={[oc.card, { width, height }, active && oc.cardActive]}>
-          {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />}
+          {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={oc.fill} />}
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}
           <Icon size={26} color={active ? '#fff' : '#A78BFA'} strokeWidth={1.8} />
           <MarqueeText text={label} style={[oc.lbl, active && oc.lblA]} containerWidth={width - 16} />
@@ -829,6 +831,8 @@ const oc = StyleSheet.create({
     borderColor: 'transparent',
     shadowColor: '#C084FC', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 14, elevation: 8,
   },
+  // 枠線(1.5px)の下まで広げて、フチまでぴったり塗る
+  fill: { position: 'absolute', top: -2, left: -2, right: -2, bottom: -2 },
   badge: {
     position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9,
     backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center',
