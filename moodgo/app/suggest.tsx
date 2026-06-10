@@ -1,12 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, Check, ChevronLeft, MapPin, Send, Star, Tag, X } from 'lucide-react-native';
-import React, { useState } from 'react';
+import { CalendarDays, Camera, Check, ChevronLeft, ChevronRight, MapPin, Send, Star, Tag, X } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
 import { Linking } from 'react-native';
 import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -196,6 +197,150 @@ const tss = StyleSheet.create({
   textMoodActive:    { color: '#BE185D' },
 });
 
+// ─── カレンダーシート（公開期間の日付選択） ──────────────────────────────────
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const ymd = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const parseYmd = (s: string): { y: number; m: number; d: number } | null => {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s.trim());
+  return m ? { y: +m[1], m: +m[2] - 1, d: +m[3] } : null;
+};
+
+function CalendarSheet({ visible, title, selected, rangeFrom, rangeUntil, onPick, onClear, onClose }: {
+  visible: boolean;
+  title: string;
+  selected: string;    // 編集中フィールドの現在値（YYYY-MM-DD）
+  rangeFrom: string;
+  rangeUntil: string;
+  onPick: (v: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const now = new Date();
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
+
+  useEffect(() => {
+    if (visible) {
+      const init = parseYmd(selected) ?? parseYmd(rangeFrom) ?? { y: now.getFullYear(), m: now.getMonth() };
+      setYm({ y: init.y, m: init.m });
+    }
+  }, [visible]);
+
+  const prevMonth = () => setYm(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }));
+  const nextMonth = () => setYm(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }));
+
+  // 月のセル（先頭は曜日ぶん空白、末尾は7の倍数まで詰める）
+  const firstDow = new Date(ym.y, ym.m, 1).getDay();
+  const daysIn   = new Date(ym.y, ym.m + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array<null>(firstDow).fill(null),
+    ...Array.from({ length: daysIn }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  const todayStr = ymd(now.getFullYear(), now.getMonth(), now.getDate());
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={cal.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} style={cal.sheet} onPress={() => {}}>
+          <View style={cal.handle} />
+          <Text style={cal.title}>{title}</Text>
+          {/* 月ナビ */}
+          <View style={cal.nav}>
+            <TouchableOpacity onPress={prevMonth} style={cal.navBtn} activeOpacity={0.7}>
+              <ChevronLeft size={20} color="#7C3AED" />
+            </TouchableOpacity>
+            <Text style={cal.navTitle}>{ym.y}年{ym.m + 1}月</Text>
+            <TouchableOpacity onPress={nextMonth} style={cal.navBtn} activeOpacity={0.7}>
+              <ChevronRight size={20} color="#7C3AED" />
+            </TouchableOpacity>
+          </View>
+          {/* 曜日 */}
+          <View style={cal.week}>
+            {WEEKDAYS.map((w, i) => (
+              <Text key={w} style={[cal.weekday, i === 0 && { color: '#F87171' }, i === 6 && { color: '#60A5FA' }]}>{w}</Text>
+            ))}
+          </View>
+          {/* 日グリッド */}
+          {weeks.map((week, wi) => (
+            <View key={wi} style={cal.week}>
+              {week.map((d, di) => {
+                if (!d) return <View key={di} style={cal.day} />;
+                const ds      = ymd(ym.y, ym.m, d);
+                const isSel   = ds === rangeFrom || ds === rangeUntil;
+                const inRange = !isSel && rangeFrom && rangeUntil && ds > rangeFrom && ds < rangeUntil;
+                const isToday = ds === todayStr;
+                return (
+                  <TouchableOpacity key={di} style={cal.day} activeOpacity={0.6} onPress={() => onPick(ds)}>
+                    <View style={[
+                      cal.dayCircle,
+                      inRange ? cal.dayInRange : null,
+                      isToday && !isSel ? cal.dayToday : null,
+                      isSel ? cal.daySelected : null,
+                    ]}>
+                      <Text style={[cal.dayText, isSel ? cal.dayTextSelected : null]}>{d}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+          {/* フッター */}
+          <View style={cal.footer}>
+            <TouchableOpacity onPress={() => onPick(todayStr)} style={cal.todayBtn} activeOpacity={0.8}>
+              <Text style={cal.todayBtnText}>今日にする</Text>
+            </TouchableOpacity>
+            {selected ? (
+              <TouchableOpacity onPress={onClear} style={cal.clearBtn} activeOpacity={0.8}>
+                <Text style={cal.clearBtnText}>クリア</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const cal = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(30,7,83,0.35)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 34,
+  },
+  handle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', marginBottom: 12 },
+  title: { fontSize: 14, fontWeight: '900', color: '#7C3AED', textAlign: 'center', marginBottom: 8 },
+  nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  navBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#F5F3FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  navTitle: { fontSize: 16, fontWeight: '800', color: '#1E0753' },
+  week: { flexDirection: 'row' },
+  weekday: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#A78BFA', paddingVertical: 4 },
+  day: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 },
+  dayCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  dayToday: { borderWidth: 1.5, borderColor: '#C4B5FD' },
+  dayInRange: { backgroundColor: 'rgba(168,85,247,0.10)' },
+  daySelected: { backgroundColor: '#A855F7' },
+  dayText: { fontSize: 14, fontWeight: '700', color: '#1E0753' },
+  dayTextSelected: { color: '#fff', fontWeight: '900' },
+  footer: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  todayBtn: {
+    flex: 1, height: 44, borderRadius: 14, backgroundColor: '#F5F3FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  todayBtnText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  clearBtn: {
+    flex: 1, height: 44, borderRadius: 14, backgroundColor: '#FEF2F2',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  clearBtnText: { fontSize: 13, fontWeight: '800', color: '#DC2626' },
+});
+
 export default function SuggestScreen() {
   const insets = useSafeAreaInsets();
   const { lang: langParam } = useLocalSearchParams<{ lang?: string }>();
@@ -217,6 +362,7 @@ export default function SuggestScreen() {
   // 公開期間（任意）。何も入力されなければ無期限保存。期間を設けると期間外は検索結果に出ない
   const [availableFrom, setAvailableFrom]   = useState('');        // YYYY-MM-DD
   const [availableUntil, setAvailableUntil] = useState('');        // YYYY-MM-DD
+  const [calOpen, setCalOpen]               = useState<null | 'from' | 'until'>(null); // カレンダー表示中のフィールド
   // 星評価（おすすめ度）
   const [rating, setRating]             = useState(0);             // 1〜5、0=未評価
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
@@ -285,6 +431,38 @@ export default function SuggestScreen() {
 
   const toggleTag = (tag: string) =>
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(x => x !== tag) : [...prev, tag]);
+
+  // カレンダーで日付選択。開始＞終了になったら自動で入れ替えて常に正しい期間にする
+  const handlePickDate = (v: string) => {
+    if (calOpen === 'from') {
+      if (availableUntil && v > availableUntil) {
+        setAvailableFrom(availableUntil);
+        setAvailableUntil(v);
+      } else {
+        setAvailableFrom(v);
+      }
+    } else if (calOpen === 'until') {
+      if (availableFrom && v < availableFrom) {
+        setAvailableUntil(availableFrom);
+        setAvailableFrom(v);
+      } else {
+        setAvailableUntil(v);
+      }
+    }
+    setCalOpen(null);
+  };
+
+  const handleClearDate = () => {
+    if (calOpen === 'from') setAvailableFrom('');
+    else if (calOpen === 'until') setAvailableUntil('');
+    setCalOpen(null);
+  };
+
+  // 表示用: 2026-06-10 → 2026/6/10
+  const fmtDateLabel = (s: string) => {
+    const p = parseYmd(s);
+    return p ? `${p.y}/${p.m + 1}/${p.d}` : s;
+  };
 
   const handleSubmit = async () => {
     if (!spotName.trim()) { setError(t.errName); return; }
@@ -451,27 +629,41 @@ export default function SuggestScreen() {
             <View style={s.periodRow}>
               <View style={s.periodCol}>
                 <Text style={s.periodLabel}>開始日</Text>
-                <TextInput
-                  value={availableFrom}
-                  onChangeText={setAvailableFrom}
-                  placeholder="2026-06-10"
-                  placeholderTextColor="#C4B5FD"
-                  keyboardType="numbers-and-punctuation"
-                  style={[s.input, { height: 46, fontSize: 14 }]}
-                />
+                <TouchableOpacity
+                  onPress={() => setCalOpen('from')}
+                  activeOpacity={0.75}
+                  style={[s.input, s.dateField]}
+                >
+                  <CalendarDays size={16} color="#A78BFA" />
+                  <Text style={availableFrom ? s.dateText : s.datePlaceholder}>
+                    {availableFrom ? fmtDateLabel(availableFrom) : '日付を選ぶ'}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View style={s.periodCol}>
                 <Text style={s.periodLabel}>終了日</Text>
-                <TextInput
-                  value={availableUntil}
-                  onChangeText={setAvailableUntil}
-                  placeholder="2026-06-30"
-                  placeholderTextColor="#C4B5FD"
-                  keyboardType="numbers-and-punctuation"
-                  style={[s.input, { height: 46, fontSize: 14 }]}
-                />
+                <TouchableOpacity
+                  onPress={() => setCalOpen('until')}
+                  activeOpacity={0.75}
+                  style={[s.input, s.dateField]}
+                >
+                  <CalendarDays size={16} color="#A78BFA" />
+                  <Text style={availableUntil ? s.dateText : s.datePlaceholder}>
+                    {availableUntil ? fmtDateLabel(availableUntil) : '日付を選ぶ'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
+            <CalendarSheet
+              visible={calOpen !== null}
+              title={calOpen === 'from' ? '開始日を選択' : '終了日を選択'}
+              selected={calOpen === 'from' ? availableFrom : availableUntil}
+              rangeFrom={availableFrom}
+              rangeUntil={availableUntil}
+              onPick={handlePickDate}
+              onClear={handleClearDate}
+              onClose={() => setCalOpen(null)}
+            />
             {(availableFrom || availableUntil) ? (
               <View style={s.periodNotice}>
                 <Text style={s.periodNoticeText}>
@@ -766,6 +958,9 @@ const s = StyleSheet.create({
   periodRow:   { flexDirection: 'row', gap: 10 },
   periodCol:   { flex: 1 },
   periodLabel: { fontSize: 11, fontWeight: '700', color: '#A78BFA', marginBottom: 4 },
+  dateField:   { height: 46, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateText:    { fontSize: 14, fontWeight: '700', color: '#1E0753' },
+  datePlaceholder: { fontSize: 14, color: '#C4B5FD' },
   periodNotice: {
     marginTop: 10, backgroundColor: '#FEF3C7', borderRadius: 12,
     paddingVertical: 10, paddingHorizontal: 12,
