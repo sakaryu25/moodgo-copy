@@ -64,7 +64,7 @@ type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWid
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
+const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon; dark?: boolean }[] = [
   { key: 'お腹すいた', label: 'お腹すいた', sub: '絶品グルメ',  Icon: UtensilsCrossed },
   { key: 'まったり',   label: 'まったり',   sub: '癒やし',      Icon: Coffee },
   { key: '自然',       label: '自然',       sub: '絶景',        Icon: Leaf },
@@ -75,6 +75,18 @@ const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon }[] = [
   { key: '旅行',       label: '旅行・観光', sub: '小旅行',      Icon: Plane },
   { key: 'ショッピング', label: 'ショッピング', sub: 'お買い物', Icon: ShoppingBag },
   { key: '時間潰し',   label: '時間潰し',   sub: 'のんびり',    Icon: Shuffle },
+  // 遊び心枠: 夜カラーの特別カード。選ぶとお疲れさまコメントが出る
+  { key: '疲れた・眠い', label: '疲れた・眠い', sub: 'おつかれさま', Icon: Moon, dark: true },
+];
+
+// 「疲れた・眠い」を選んだときのねぎらいコメント（ランダム表示）
+const TIRED_KEY = '疲れた・眠い';
+const TIRED_MESSAGES = [
+  '今日もおつかれさま🌙 よくがんばったね',
+  'むりは禁物だよ〜 ゆっくり休めるとこ探そ☕️',
+  'がんばったね、えらい！今日は自分を甘やかそ🛋️',
+  'おつかれさま✨ いっしょに癒やされに行こ',
+  'ねむいよね…わかる…🌙 のんびりできる場所いこ',
 ];
 
 const COMPANIONS: { key: string; label: string; Icon: LucideIcon }[] = [
@@ -684,11 +696,52 @@ function usePunin(active: boolean) {
   return { puniX, puniY };
 }
 
+// ─── おつかれさま吹き出し（疲れた・眠い選択時） ────────────────────────────────
+
+function TiredComfortBubble() {
+  // 表示のたびにランダムで1つ選ぶ
+  const msg = useRef(TIRED_MESSAGES[Math.floor(Math.random() * TIRED_MESSAGES.length)]).current;
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, { toValue: 1, damping: 9, stiffness: 160, useNativeDriver: true }).start();
+  }, []);
+  return (
+    <Animated.View style={[
+      tb.bubble,
+      {
+        opacity: anim,
+        transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+      },
+    ]}>
+      <Text style={tb.text}>{msg}</Text>
+      <View style={tb.tail} />
+    </Animated.View>
+  );
+}
+
+const tb = StyleSheet.create({
+  bubble: {
+    alignSelf: 'center',
+    backgroundColor: '#1E1B4B',
+    borderRadius: 18,
+    paddingHorizontal: 18, paddingVertical: 11,
+    marginBottom: 14,
+    shadowColor: '#1E1B4B', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30, shadowRadius: 10, elevation: 6,
+  },
+  text: { color: '#E0E7FF', fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  tail: {
+    position: 'absolute', bottom: -6, alignSelf: 'center',
+    width: 12, height: 12, backgroundColor: '#1E1B4B',
+    transform: [{ rotate: '45deg' }], borderRadius: 2,
+  },
+});
+
 // ─── Mood Card (Step 1 専用) ──────────────────────────────────────────────────
 
-function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }: {
+function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3, dark = false }: {
   label: string; sub?: string; Icon: LucideIcon;
-  active: boolean; onPress: () => void; index: number; cardWidth?: number;
+  active: boolean; onPress: () => void; index: number; cardWidth?: number; dark?: boolean;
 }) {
   const entryAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -720,11 +773,13 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
           onPressIn={pIn}
           onPressOut={pOut}
           activeOpacity={1}
-          style={[mc.card, active && mc.cardActive]}
+          style={[mc.card, dark && mc.cardDark, active && (dark ? mc.cardActiveDark : mc.cardActive)]}
         >
           {active && (
             <LinearGradient
-              colors={['#EC4899', '#A855F7', '#3B82F6']}
+              colors={dark
+                ? ['#0F172A', '#1E1B4B', '#312E81']   // 夜空グラデ（疲れた・眠い用）
+                : ['#EC4899', '#A855F7', '#3B82F6']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               style={mc.fill}
             />
@@ -732,15 +787,19 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3 }:
           {active && (
             <View style={mc.checkWrap}>
               <View style={mc.checkCircle}>
-                <Check size={10} color="#7C3AED" strokeWidth={3} />
+                <Check size={10} color={dark ? '#312E81' : '#7C3AED'} strokeWidth={3} />
               </View>
             </View>
           )}
-          <View style={[mc.iconCircle, active && mc.iconCircleA]}>
-            <Icon size={24} color={active ? '#fff' : '#374151'} strokeWidth={1.8} />
+          <View style={[mc.iconCircle, dark && mc.iconCircleDark, active && mc.iconCircleA]}>
+            <Icon
+              size={24}
+              color={dark ? (active ? '#FDE68A' : '#C7D2FE') : (active ? '#fff' : '#374151')}
+              strokeWidth={1.8}
+            />
           </View>
-          <MarqueeText text={label} style={[mc.label, active && mc.labelA]} containerWidth={cardWidth - 24} />
-          {sub ? <MarqueeText text={sub} style={[mc.sublabel, active && mc.sublabelA]} containerWidth={cardWidth - 24} /> : null}
+          <MarqueeText text={label} style={[mc.label, dark && mc.labelDark, active && mc.labelA]} containerWidth={cardWidth - 24} />
+          {sub ? <MarqueeText text={sub} style={[mc.sublabel, dark && mc.sublabelDark, active && mc.sublabelA]} containerWidth={cardWidth - 24} /> : null}
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -761,6 +820,19 @@ const mc = StyleSheet.create({
     shadowColor: '#A855F7', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.30, shadowRadius: 14, elevation: 8,
   },
+  // 夜カラー（疲れた・眠い用）
+  cardDark: {
+    backgroundColor: '#1E1B4B', borderColor: '#312E81',
+    shadowColor: '#1E1B4B',
+  },
+  cardActiveDark: {
+    borderColor: 'transparent',
+    shadowColor: '#312E81', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45, shadowRadius: 14, elevation: 8,
+  },
+  iconCircleDark: { backgroundColor: 'rgba(199,210,254,0.12)' },
+  labelDark:      { color: '#E0E7FF' },
+  sublabelDark:   { color: '#A5B4FC' },
   // 枠線(2px)の下まで広げて、フチまでぴったり塗る
   fill: { position: 'absolute', top: -2, left: -2, right: -2, bottom: -2 },
   checkWrap: { position: 'absolute', top: 6, right: 6 },
@@ -1014,19 +1086,23 @@ export default function QuizFlow(props: Props) {
 
   const renderContent = () => {
     if (step === 1) return (
-      <View style={s.grid}>
-        {MOODS.map((m, i) => (
-          <MoodCard
-            key={m.key}
-            label={m.label}
-            sub={m.sub}
-            Icon={m.Icon}
-            active={selectedMood === m.key}
-            index={i}
-            onPress={() => onSelectMood(m.key)}
-          />
-        ))}
-      </View>
+      <>
+        {selectedMood === TIRED_KEY && <TiredComfortBubble />}
+        <View style={s.grid}>
+          {MOODS.map((m, i) => (
+            <MoodCard
+              key={m.key}
+              label={m.label}
+              sub={m.sub}
+              Icon={m.Icon}
+              dark={m.dark}
+              active={selectedMood === m.key}
+              index={i}
+              onPress={() => onSelectMood(m.key)}
+            />
+          ))}
+        </View>
+      </>
     );
 
     if (step === 2) return (

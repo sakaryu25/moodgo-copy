@@ -3940,6 +3940,7 @@ async function fetchGooglePlacesSupplement(
       "ショッピング":       ["shopping_mall", "clothing_store", "store"],  // 追加（従来 tourist_attraction に誤フォールバックしていた）
       // クイズ短縮キー（同じマッピング）
       "まったり":   ["spa", "cafe", "park"],
+      "疲れた・眠い": ["spa", "cafe", "park"],   // 遊び心枠: 癒やし寄りの検索にマップ
       "わいわい":   ["amusement_park", "bowling_alley", "karaoke"],
       "自然":       ["park", "national_park", "nature_park"],
       "ドライブ":   ["tourist_attraction"],
@@ -4409,6 +4410,7 @@ async function fetchYahooSupplement(
   const MOOD_KW: Record<string, string> = {
     "お腹すいた":         "レストラン グルメ",
     "まったり":           "カフェ 温泉 公園 映画館",
+    "疲れた・眠い":       "温泉 スパ カフェ",
     "わいわい":           "カラオケ ボウリング アミューズメント",
     "自然":               "公園 自然 景勝地",
     "ドライブ":           "道の駅 展望台 景勝地",
