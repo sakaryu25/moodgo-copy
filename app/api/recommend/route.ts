@@ -7776,21 +7776,12 @@ async function handleRecommend(request: Request) {
       };
     });
 
-    const warningNotes: string[] = [];
-    if (!aiPlans) {
-      warningNotes.push("AIによる検索最適化にはOPENAI_API_KEYが必要です。");
-    }
-    if (!hasOrigin || !travelMode) {
-      warningNotes.push("現在地や交通手段によっては距離・所要時間が出ないことがあります。");
-    }
-    if (!weather.weatherCode && typeof answers.originLat !== "number") {
-      warningNotes.push("現在地未使用の場合、天気連動は弱めになります。");
-    }
-
+    // ユーザー向けの内部仕様カゲ（OPENAI_API_KEY/天気連動 等）の警告バナーは非表示にする。
+    //   （実装上の注意書きはエンドユーザーには不要なため）
     return json({
       recommendations: finalResults,
       usedAI: !!aiPlans,
-      warning: warningNotes.join(" "),
+      warning: "",
     });
   } catch (error) {
     console.error(error);
