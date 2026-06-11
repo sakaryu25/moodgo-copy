@@ -150,9 +150,14 @@ export default function PlaceCard({
   moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail,
 }: Props) {
   const t = T[lang];
-  const photos = (item.photoUrls ?? []).length > 0
+  const rawPhotos = (item.photoUrls ?? []).length > 0
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
+  // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
+  const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
+  const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
+  const onImgError = (uri: string) =>
+    setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
   const [photoWidth, setPhotoWidth] = useState(0);
@@ -235,17 +240,18 @@ export default function PlaceCard({
           >
             {photos.map((uri, i) => (
               <Image
-                key={i}
+                key={uri + i}
                 source={{ uri }}
                 style={{ width: photoWidth, height: 220 }}
                 contentFit="cover"
                 transition={200}
+                onError={() => onImgError(uri)}
               />
             ))}
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
-          <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} />
+          <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color={BRAND} strokeWidth={1.5} />
