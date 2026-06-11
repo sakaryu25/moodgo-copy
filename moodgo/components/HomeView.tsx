@@ -11,7 +11,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { MapPin, Settings, Users } from 'lucide-react-native';
+import { MapPin, Settings } from 'lucide-react-native';
 import React, { useEffect, useRef } from 'react';
 import {
   Animated,
@@ -187,15 +187,9 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
             </View>
           </PuniPressable>
         </Animated.View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* 仲良しグループで気分をつぶやく */}
-          <PuniPressable style={s.settingsBtn} onPress={() => router.push('/groups')}>
-            <Users size={20} color="#9B6BFF" strokeWidth={2} />
-          </PuniPressable>
-          <PuniPressable style={s.settingsBtn} onPress={onShowSettings}>
-            <Settings size={20} color="#888" strokeWidth={2} />
-          </PuniPressable>
-        </View>
+        <PuniPressable style={s.settingsBtn} onPress={onShowSettings}>
+          <Settings size={20} color="#888" strokeWidth={2} />
+        </PuniPressable>
       </View>
 
       {/* ── Scrollable body ── */}

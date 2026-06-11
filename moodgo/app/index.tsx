@@ -66,6 +66,7 @@ import TabBar           from '@/components/TabBar';
 import HistoryView      from '@/components/HistoryView';
 import FavoritesView    from '@/components/FavoritesView';
 import FeatureScreen    from '@/components/FeatureScreen';
+import GroupsView       from '@/components/GroupsView';
 import ProfileSetup     from '@/components/ProfileSetup';
 import QuizFlow         from '@/components/QuizFlow';
 import ResultsView      from '@/components/ResultsView';
@@ -94,8 +95,10 @@ export default function Home() {
   // ── Navigation ───────────────────────────────────────────────────────────
   const [started,    setStarted]    = useState(false);
   const [step,       setStep]       = useState(1);
-  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'featured'>('home');
-  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0 });
+  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'featured' | 'groups'>('home');
+  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0, groups: 0 });
+  // グループチャット表示中はタブバーを隠す（没入モード）
+  const [groupChatOpen, setGroupChatOpen] = useState(false);
 
   // ── Quiz state ───────────────────────────────────────────────────────────
   const [selectedMood,       setSelectedMood]       = useState('');
@@ -992,6 +995,13 @@ export default function Home() {
         );
       case 'featured':
         return <FeatureScreen />;
+      case 'groups':
+        return (
+          <GroupsView
+            resetKey={tabResetKeys.groups}
+            onChatOpenChange={setGroupChatOpen}
+          />
+        );
       default:
         return (
           <HomeView
@@ -1019,16 +1029,18 @@ export default function Home() {
       <Animated.View style={{ flex: 1, opacity: tabFade }}>
         {renderContent()}
       </Animated.View>
-      <TabBar
-        lang={lang}
-        homeView={homeView}
-        onChangeView={(v) => setHomeView(v)}
-        onReset={(v) => {
-          setTabResetKeys(prev => ({ ...prev, [v]: prev[v] + 1 }));
-          if (v === 'home') resetQuiz();
-        }}
-        insets={insets}
-      />
+      {!groupChatOpen && (
+        <TabBar
+          lang={lang}
+          homeView={homeView}
+          onChangeView={(v) => setHomeView(v)}
+          onReset={(v) => {
+            setTabResetKeys(prev => ({ ...prev, [v]: prev[v] + 1 }));
+            if (v === 'home') resetQuiz();
+          }}
+          insets={insets}
+        />
+      )}
       <SettingsView
         visible={showSettings}
         onClose={() => setShowSettings(false)}

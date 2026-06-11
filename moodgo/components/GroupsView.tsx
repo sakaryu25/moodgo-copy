@@ -1,16 +1,15 @@
 /**
- * groups.tsx — 仲良しグループで「今の気分」をつぶやく
- * - 招待コード制（アカウント不要・端末ID＋ニックネーム）
- * - グループ一覧 → 作成 / コード参加
- * - グループ内: 気分チップ＋一言でつぶやき、メンバーのフィード表示
+ * GroupsView.tsx — 仲良しグループで「今の気分」をつぶやく（チャット形式）
+ * - タブとして表示。グループを開くとチャット画面（タブバーは親側で非表示に）
+ * - 自分のつぶやき: 右側の紫グラデバブル / メンバー: 左側の白バブル＋アバター
+ * - 15秒ごとにフィード自動更新＋新着で自動スクロール
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import {
-  ChevronLeft, ChevronRight, Copy, LogOut, Moon, Plus, Send, Users,
+  ChevronLeft, ChevronRight, Copy, LogOut, MessageCircle, Plus, Send, Users,
 } from 'lucide-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
   RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View,
@@ -29,6 +28,7 @@ const BG     = '#F5F0FF';
 const INK    = '#1E0753';
 
 const NICKNAME_KEY = 'moodgo-group-nickname';
+const POLL_MS = 15000; // チャット表示中の自動更新間隔
 
 // つぶやき用の気分チップ（クイズの気分と同じキー）
 const MOOD_CHIPS: { key: string; emoji: string }[] = [
@@ -42,7 +42,7 @@ const MOOD_CHIPS: { key: string; emoji: string }[] = [
   { key: '旅行',         emoji: '✈️' },
   { key: 'ショッピング', emoji: '🛍️' },
   { key: '時間潰し',     emoji: '🎲' },
-  { key: '疲れた・眠い', emoji: '🌙', },
+  { key: '疲れた・眠い', emoji: '🌙' },
 ];
 const moodEmoji = (key: string) => MOOD_CHIPS.find(m => m.key === key)?.emoji ?? '💭';
 
@@ -50,7 +50,7 @@ type Group = { id: string; name: string; invite_code: string; member_count?: num
 type Post  = { id: string; device_id: string; nickname: string; mood: string; comment: string | null; created_at: string };
 type Member = { device_id: string; nickname: string };
 
-// 相対時刻（3分前 / 2時間前 / 昨日 / 6/8）
+// 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime();
   const diff = Date.now() - t;
@@ -66,15 +66,22 @@ function timeAgo(iso: string): string {
   return `${dt.getMonth() + 1}/${dt.getDate()}`;
 }
 
-export default function GroupsScreen() {
+type Props = {
+  /** アクティブタブ再タップでチャットを閉じて一覧に戻す */
+  resetKey?: number;
+  /** チャット画面の開閉を親へ通知（タブバーの表示/非表示用） */
+  onChatOpenChange?: (open: boolean) => void;
+};
+
+export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const insets = useSafeAreaInsets();
 
   const [deviceId, setDeviceId]   = useState('');
   const [nickname, setNickname]   = useState('');
   const [nickDraft, setNickDraft] = useState('');
 
-  const [groups, setGroups]       = useState<Group[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [groups, setGroups]         = useState<Group[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // 作成・参加フォーム
@@ -82,13 +89,14 @@ export default function GroupsScreen() {
   const [joinCode, setJoinCode]         = useState('');
   const [busy, setBusy]                 = useState(false);
 
-  // グループ詳細
+  // チャット（グループ詳細）
   const [active, setActive]   = useState<Group | null>(null);
-  const [posts, setPosts]     = useState<Post[]>([]);
+  const [posts, setPosts]     = useState<Post[]>([]);   // 新しい順で保持・表示時に反転
   const [members, setMembers] = useState<Member[]>([]);
   const [selMood, setSelMood] = useState('');
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   // ── 初期化 ──
   useEffect(() => {
@@ -102,6 +110,21 @@ export default function GroupsScreen() {
       setLoading(false);
     })();
   }, []);
+
+  // タブ再タップ → チャットを閉じて一覧へ
+  useEffect(() => {
+    if (resetKey > 0) closeChat();
+  }, [resetKey]);
+
+  // アンマウント時はタブバーを戻す
+  useEffect(() => () => onChatOpenChange?.(false), []);
+
+  // チャット表示中は定期的に新着を取得
+  useEffect(() => {
+    if (!active || !deviceId) return;
+    const t = setInterval(() => fetchGroupDetail(active, deviceId), POLL_MS);
+    return () => clearInterval(t);
+  }, [active, deviceId]);
 
   const fetchGroups = async (id: string) => {
     try {
@@ -173,7 +196,13 @@ export default function GroupsScreen() {
 
   const openGroup = (g: Group) => {
     setActive(g); setPosts([]); setMembers([]); setSelMood(''); setComment('');
+    onChatOpenChange?.(true);
     fetchGroupDetail(g, deviceId);
+  };
+
+  const closeChat = () => {
+    setActive(null);
+    onChatOpenChange?.(false);
   };
 
   // ── つぶやく ──
@@ -207,7 +236,7 @@ export default function GroupsScreen() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'leave', groupId: active.id, deviceId }),
           }).catch(() => {});
-          setActive(null);
+          closeChat();
           fetchGroups(deviceId);
         },
       },
@@ -224,15 +253,16 @@ export default function GroupsScreen() {
     setRefreshing(false);
   };
 
-  // ─── グループ詳細画面 ────────────────────────────────────────────────────────
+  // ─── チャット画面 ────────────────────────────────────────────────────────────
   if (active) {
     const canPost = !!selMood && !posting;
+    const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[s.root, { paddingTop: insets.top }]}>
           {/* ヘッダー */}
           <View style={s.header}>
-            <PuniPressable onPress={() => setActive(null)} style={s.backCircle}>
+            <PuniPressable onPress={closeChat} style={s.backCircle}>
               <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
             </PuniPressable>
             <View style={{ flex: 1, alignItems: 'center' }}>
@@ -254,29 +284,50 @@ export default function GroupsScreen() {
             </Text>
           )}
 
-          {/* フィード */}
+          {/* チャットタイムライン */}
           <ScrollView
+            ref={chatScrollRef}
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, paddingBottom: 12 }}
+            contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
+            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
           >
-            {posts.length === 0 ? (
+            {timeline.length === 0 ? (
               <View style={s.emptyBox}>
-                <Moon size={36} color="#C4B5FD" strokeWidth={1.5} />
+                <MessageCircle size={36} color="#C4B5FD" strokeWidth={1.5} />
                 <Text style={s.emptyText}>まだつぶやきがないよ{'\n'}最初の気分をつぶやいてみて！</Text>
               </View>
-            ) : posts.map(p => {
+            ) : timeline.map(p => {
               const mine = p.device_id === deviceId;
-              return (
-                <View key={p.id} style={[s.post, mine && s.postMine]}>
-                  <Text style={s.postEmoji}>{moodEmoji(p.mood)}</Text>
-                  <View style={{ flex: 1 }}>
-                    <View style={s.postHead}>
-                      <Text style={s.postNick}>{mine ? `${p.nickname}（自分）` : p.nickname}</Text>
-                      <Text style={s.postTime}>{timeAgo(p.created_at)}</Text>
+              if (mine) {
+                // 自分: 右側の紫グラデバブル
+                return (
+                  <View key={p.id} style={s.rowMine}>
+                    <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
+                    <View style={s.bubbleMineWrap}>
+                      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bubbleMine}>
+                        <Text style={s.bubbleMineMood}>{moodEmoji(p.mood)} {p.mood}</Text>
+                        {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
+                      </LinearGradient>
                     </View>
-                    <Text style={s.postMood}>いまの気分: {p.mood}</Text>
-                    {p.comment ? <Text style={s.postComment}>{p.comment}</Text> : null}
+                  </View>
+                );
+              }
+              // メンバー: 左側の白バブル＋アバター
+              return (
+                <View key={p.id} style={s.rowOther}>
+                  <View style={s.avatar}>
+                    <Text style={s.avatarText}>{p.nickname.slice(0, 1)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.otherNick}>{p.nickname}</Text>
+                    <View style={s.rowOtherBubbleLine}>
+                      <View style={s.bubbleOther}>
+                        <Text style={s.bubbleOtherMood}>{moodEmoji(p.mood)} {p.mood}</Text>
+                        {p.comment ? <Text style={s.bubbleOtherText}>{p.comment}</Text> : null}
+                      </View>
+                      <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
+                    </View>
                   </View>
                 </View>
               );
@@ -322,20 +373,18 @@ export default function GroupsScreen() {
     );
   }
 
-  // ─── グループ一覧画面 ────────────────────────────────────────────────────────
+  // ─── グループ一覧画面（タブ表示） ────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[s.root, { paddingTop: insets.top }]}>
         <View style={s.header}>
-          <PuniPressable onPress={() => router.back()} style={s.backCircle}>
-            <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
-          </PuniPressable>
+          <View style={{ width: 40 }} />
           <Text style={s.headerTitle}>気分をつぶやく</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView
-          contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 30 }}
+          contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 110 }}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
         >
@@ -370,7 +419,7 @@ export default function GroupsScreen() {
           ) : groups.map(g => (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
               <View style={s.groupIconCircle}>
-                <Users size={18} color="#7C3AED" strokeWidth={2} />
+                <MessageCircle size={18} color="#7C3AED" strokeWidth={2} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={s.groupName}>{g.name}</Text>
@@ -483,19 +532,38 @@ const s = StyleSheet.create({
   emptyBox: { alignItems: 'center', gap: 10, paddingVertical: 28 },
   emptyText: { fontSize: 13, color: '#A78BFA', textAlign: 'center', lineHeight: 20 },
 
-  post: {
-    flexDirection: 'row', gap: 10, backgroundColor: '#fff',
-    borderRadius: 16, padding: 13, marginBottom: 10,
-    borderWidth: 1.5, borderColor: '#EDE9FE',
+  // ── チャットバブル ──
+  rowMine: {
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end',
+    gap: 6, marginBottom: 10,
   },
-  postMine: { borderColor: '#C4B5FD', backgroundColor: '#FCFAFF' },
-  postEmoji: { fontSize: 26 },
-  postHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  postNick: { fontSize: 13, fontWeight: '800', color: INK },
-  postTime: { fontSize: 11, color: '#C4B5FD' },
-  postMood: { fontSize: 12, fontWeight: '700', color: '#7C3AED', marginTop: 2 },
-  postComment: { fontSize: 13, color: '#4C3575', marginTop: 4, lineHeight: 19 },
+  bubbleMineWrap: { maxWidth: '76%', borderRadius: 18, overflow: 'hidden' },
+  bubbleMine: {
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 18, borderBottomRightRadius: 4,
+  },
+  bubbleMineMood: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  bubbleMineText: { fontSize: 13, color: 'rgba(255,255,255,0.95)', marginTop: 3, lineHeight: 19 },
 
+  rowOther: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  avatar: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#DDD6FE',
+    alignItems: 'center', justifyContent: 'center', marginTop: 16,
+  },
+  avatarText: { fontSize: 14, fontWeight: '800', color: '#7C3AED' },
+  otherNick: { fontSize: 10, fontWeight: '700', color: '#A78BFA', marginBottom: 2, marginLeft: 4 },
+  rowOtherBubbleLine: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+  bubbleOther: {
+    maxWidth: '78%', backgroundColor: '#fff',
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 18, borderBottomLeftRadius: 4,
+    borderWidth: 1, borderColor: '#EDE9FE',
+  },
+  bubbleOtherMood: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  bubbleOtherText: { fontSize: 13, color: INK, marginTop: 3, lineHeight: 19 },
+  bubbleTime: { fontSize: 9, color: '#C4B5FD', marginBottom: 2 },
+
+  // ── コンポーザー ──
   composer: {
     backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingTop: 10, paddingHorizontal: 12,
