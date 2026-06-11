@@ -2242,7 +2242,9 @@ export default function AdminPage() {
   const [moodRatings, setMoodRatings] = useState<Array<{ place_name: string; mood: string; sub_category: string; good: number; bad: number; last_bad_at: string }>>([]);
   const [moodRatingsLoading, setMoodRatingsLoading] = useState(false);
   const [moodRatingsError, setMoodRatingsError] = useState("");
-  const [moodRatingsThreshold, setMoodRatingsThreshold] = useState(20);
+  const [moodRatingsThreshold, setMoodRatingsThreshold] = useState(0);   // 既定=全件表示（少件数でも反映されるように）
+  // 並び替え: 合わない件数順 / 評価総数順
+  const [moodRatingsSort, setMoodRatingsSort] = useState<"bad" | "total" | "good">("total");
 
   useEffect(() => {
     if (!authed || tab !== "mood_ratings") return;
@@ -2756,7 +2758,7 @@ export default function AdminPage() {
             { key: "import", label: "🔍 一括取り込み" },
             { key: "visited", label: "🚶 訪問学習データ" },
             { key: "reports", label: "⚠ 不適切報告" },
-            { key: "mood_ratings", label: "👎 合わない集計" },
+            { key: "mood_ratings", label: "🎭 気分フィードバック" },
             { key: "featured", label: "⭐ 特集ページ" },
             { key: "devlog", label: "📋 開発ログ" },
             { key: "geocode", label: "📍 座標登録" },
@@ -6206,10 +6208,37 @@ export default function AdminPage() {
         {tab === "mood_ratings" && (
           <div>
             <div style={{ ...card, marginBottom: "24px" }}>
-              <div style={{ ...titleStyle, marginBottom: "16px" }}>👎 気分に合わない集計</div>
+              <div style={{ ...titleStyle, marginBottom: "16px" }}>🎭 気分フィードバック（合う / 合わない）集計</div>
               <div style={{ fontSize: "13px", color: "#7a5860", marginBottom: "16px" }}>
-                ユーザーが「この気分には合わない」を押したスポットの集計です。<br />
-                合わない件数が多いスポットはタグを見直すか削除を検討してください。
+                検索結果でユーザーが押した「この気分に合う 👍 / 合わない 👎」の集計です。<br />
+                合わない率が高いスポットはタグを見直すか削除を検討してください。
+              </div>
+
+              {/* 合計サマリー */}
+              {(() => {
+                const tGood = moodRatings.reduce((s, r) => s + r.good, 0);
+                const tBad = moodRatings.reduce((s, r) => s + r.bad, 0);
+                return (
+                  <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                    <span style={{ padding: "8px 16px", borderRadius: "12px", background: "#f0fdf4", color: "#16a34a", fontWeight: 800, fontSize: "13px" }}>👍 合う 合計 {tGood}件</span>
+                    <span style={{ padding: "8px 16px", borderRadius: "12px", background: "#fef2f2", color: "#ef4444", fontWeight: 800, fontSize: "13px" }}>👎 合わない 合計 {tBad}件</span>
+                    <span style={{ padding: "8px 16px", borderRadius: "12px", background: "#f3f4f6", color: "#374151", fontWeight: 800, fontSize: "13px" }}>📍 スポット {moodRatings.length}件</span>
+                  </div>
+                );
+              })()}
+
+              {/* 並び替え */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+                <label style={{ fontSize: "13px", fontWeight: 700, color: "#4a3034" }}>並び替え：</label>
+                {([["total", "評価が多い順"], ["bad", "合わない順"], ["good", "合う順"]] as [typeof moodRatingsSort, string][]).map(([key, lbl]) => (
+                  <button
+                    key={key}
+                    onClick={() => setMoodRatingsSort(key)}
+                    style={{ padding: "6px 14px", borderRadius: "999px", border: "none", fontSize: "12px", fontWeight: 700, cursor: "pointer", background: moodRatingsSort === key ? "#9061f9" : "#f3f4f6", color: moodRatingsSort === key ? "#fff" : "#374151" }}
+                  >
+                    {lbl}
+                  </button>
+                ))}
               </div>
 
               {/* しきい値フィルター */}
@@ -6217,7 +6246,7 @@ export default function AdminPage() {
                 <label style={{ fontSize: "13px", fontWeight: 700, color: "#4a3034" }}>
                   合わない件数フィルター：
                 </label>
-                {[0, 5, 10, 20, 50].map(n => (
+                {[0, 1, 5, 10, 20].map(n => (
                   <button
                     key={n}
                     onClick={() => setMoodRatingsThreshold(n)}
@@ -6238,10 +6267,16 @@ export default function AdminPage() {
               {moodRatingsError && <div style={{ color: "#ef4444", padding: "12px", borderRadius: "8px", background: "#fef2f2" }}>{moodRatingsError}</div>}
 
               {!moodRatingsLoading && !moodRatingsError && (() => {
-                const filtered = moodRatings.filter(r => r.bad >= moodRatingsThreshold);
+                const filtered = moodRatings
+                  .filter(r => r.bad >= moodRatingsThreshold)
+                  .sort((a, b) =>
+                    moodRatingsSort === "good" ? b.good - a.good
+                    : moodRatingsSort === "total" ? (b.good + b.bad) - (a.good + a.bad)
+                    : b.bad - a.bad
+                  );
                 if (filtered.length === 0) return (
                   <div style={{ textAlign: "center", padding: "40px", color: "#9ca3af" }}>
-                    {moodRatingsThreshold > 0 ? `合わない${moodRatingsThreshold}件以上のスポットはありません` : "データがありません"}
+                    {moodRatingsThreshold > 0 ? `合わない${moodRatingsThreshold}件以上のスポットはありません` : "まだフィードバックがありません"}
                   </div>
                 );
                 return (
