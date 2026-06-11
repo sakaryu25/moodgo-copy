@@ -494,6 +494,24 @@ function isFoodAllowedContext(mood: string | undefined, deepDive: string | undef
 const RESTAURANT_NAME_RE = /(マクドナルド|モスバーガー|ケンタッキー|ロッテリア|バーガーキング|サブウェイ|スターバックス|スタバ|ドトール|タリーズ|コメダ|サンマルク|プロント|ベローチェ|ブルーボトル|ブルーボトルコーヒー|ハーブス|HARBS|不二家|シャトレーゼ|コージーコーナー|ミスタードーナツ|ミスド|クリスピークリーム|サイゼリヤ|ガスト|ジョナサン|デニーズ|ロイヤルホスト|びっくりドンキー|タピオカ|タピ|居酒屋|焼肉|焼き肉|ホルモン|寿司|鮨|回転寿司|ラーメン|らーめん|拉麺|つけ麺|うどん|そば|蕎麦|食堂|レストラン|ダイニング|ビストロ|トラットリア|バル|酒場|焼鳥|焼き鳥|餃子|カレー|定食|牛丼|丼|お好み焼き|もんじゃ|たこ焼き|ハンバーガー|バーガー|ピザ|ピッツ|パスタ|ベーカリー|パン屋|パンケーキ|パフェ|スイーツ|喫茶|珈琲|コーヒー|coffee|cafe|カフェ|kitchen|グリル|ステーキ|しゃぶしゃぶ|すき焼き|串カツ|天ぷら|うなぎ|鰻)/i;
 // 飲食店名でも“残したい”レジャー/温浴/観光施設のキーワード（誤除外防止）。
 const LEISURE_KEEP_RE = /(温泉|サウナ|岩盤浴|スパ|spa|銭湯|湯|健康ランド|水族館|動物園|植物園|美術館|博物館|科学館|公園|遊園地|テーマパーク|ボウリング|カラオケ|ビリヤード|ゲーセン|展望|タワー|神社|寺|大社|城|ホテル|旅館|温浴|プラネタリウム|劇場|映画|ミュージアム)/i;
+// ── 気分名の正規化（アプリは短キー"ドライブ"等を送るが、スコア/bucket分岐は長形で
+//    書かれていて発火しないため、表記ゆれを意味グループに正規化して判定する）──────────
+//   グループ: food / relax / nature / play / drive / focus / sport / travel / shopping
+const MOOD_GROUP: Record<string, string> = {
+  "お腹すいた": "food",
+  "まったり": "relax", "まったりしたい": "relax", "ゆっくりしたい": "relax", "時間潰し": "relax",
+  "自然": "nature", "自然感じたい": "nature",
+  "楽しみたい": "play", "わいわい": "play", "わいわい楽しみたい": "play",
+  "ドライブ": "drive", "ドライブしたい": "drive",
+  "集中": "focus", "集中したい": "focus",
+  "運動": "sport", "体を動かしたい": "sport", "体動かしたい": "sport",
+  "旅行": "travel", "遠くに行きたい": "travel",
+  "ショッピング": "shopping", "ショッピングしたい": "shopping",
+};
+function moodGroup(m: string | undefined): string {
+  return MOOD_GROUP[(m ?? "").trim()] ?? "";
+}
+
 function isRestaurantName(name: string): boolean {
   if (!name) return false;
   if (LEISURE_KEEP_RE.test(name)) return false;   // レジャー/温浴/観光名を含むものは残す
@@ -1586,7 +1604,7 @@ function getNonDriveTravelRadiusContext(
   time?: string
 ): string | null {
   if (!time) return null;
-  if (mood === "ドライブしたい" || mood === "遠くに行きたい") return null;
+  if (moodGroup(mood) === "drive" || moodGroup(mood) === "travel") return null;
 
   const transports = getTransports(transport);
   const hasCar   = transports.includes("車");
@@ -1674,7 +1692,7 @@ function getNonDriveTravelRadiusContext(
 }
 
 function mapTransportToTravelMode(transport?: string | string[], mood?: string): string | undefined {
-  if (mood === "ドライブしたい") return "DRIVE";
+  if (moodGroup(mood) === "drive") return "DRIVE";
   const transports = getTransports(transport);
   if (transports.length === 0 || transports.includes("なんでも")) return undefined;
   // 車が含まれていればDRIVE（最も到達範囲が広い）
@@ -1997,7 +2015,7 @@ function buildSearchPlans(answers: Answers): SearchPlan[] {
     if (t.includes("徒歩")) return "近所 徒歩圏内";
     if (t.includes("自転車")) return "自転車で行ける";
     if (t.includes("電車") || t.includes("バス")) return "駅近 アクセス良好";
-    if (t.includes("車") || answers.mood === "ドライブしたい") return "ドライブ 車でアクセス";
+    if (t.includes("車") || moodGroup(answers.mood) === "drive") return "ドライブ 車でアクセス";
     return "";
   })();
   const selectedTransports = getTransports(answers.transport);
@@ -2771,11 +2789,12 @@ function scoreExternalItem(
   if (answers.companion === "家族" && (text.includes("家族") || text.includes("子連れ") || text.includes("キッズ"))) score += 6;
   if (answers.companion === "友達" && (text.includes("グループ") || text.includes("みんな") || text.includes("わいわい"))) score += 5;
 
-  // mood ボーナス
-  if (answers.mood === "ドライブしたい" && (text.includes("絶景") || text.includes("展望"))) score += 8;
-  if (answers.mood === "体を動かしたい" && (text.includes("スポーツ") || text.includes("アクティビティ") || text.includes("運動"))) score += 8;
-  if (answers.mood === "自然感じたい" && (text.includes("自然") || text.includes("公園") || text.includes("緑") || text.includes("景色"))) score += 10;
-  if (answers.mood === "自然感じたい" && (text.includes("カフェ") || text.includes("飲食"))) score -= 5;
+  // mood ボーナス（短キー/長形どちらでも moodGroup で判定）
+  const mgBonus = moodGroup(answers.mood);
+  if (mgBonus === "drive" && (text.includes("絶景") || text.includes("展望"))) score += 8;
+  if (mgBonus === "sport" && (text.includes("スポーツ") || text.includes("アクティビティ") || text.includes("運動"))) score += 8;
+  if (mgBonus === "nature" && (text.includes("自然") || text.includes("公園") || text.includes("緑") || text.includes("景色"))) score += 10;
+  if (mgBonus === "nature" && (text.includes("カフェ") || text.includes("飲食"))) score -= 5;
 
   // 時間帯ボーナス（timeCtxを使う・未使用警告回避）
   if (timeCtx.isEvening && (text.includes("夜景") || text.includes("ディナー"))) score += 3;
@@ -2893,12 +2912,13 @@ async function fetchYahooLocalSearch(
       else if (/スポーツ|アウトドア/.test(gn)) bucket = "activity";
       else if (/自然|公園|景色/.test(gn)) bucket = "scenic";
       else {
-        // moodベースのフォールバック
-        if (answers.mood === "お腹すいた") bucket = "food";
-        else if (answers.mood === "ドライブしたい") bucket = "scenic";
-        else if (answers.mood === "体を動かしたい") bucket = "activity";
-        else if (answers.mood === "ゆっくりしたい") bucket = "relax";
-        else if (answers.mood === "楽しみたい") bucket = "activity";
+        // moodベースのフォールバック（短キー/長形どちらでも moodGroup で判定）
+        const mg = moodGroup(answers.mood);
+        if (mg === "food") bucket = "food";
+        else if (mg === "drive" || mg === "nature" || mg === "travel") bucket = "scenic";
+        else if (mg === "sport" || mg === "play") bucket = "activity";
+        else if (mg === "relax") bucket = "relax";
+        else if (mg === "focus") bucket = "indoor";
       }
 
       const editorialSummary = genreName;
@@ -3075,7 +3095,8 @@ function buildOverpassQuery(lat: number, lng: number, radiusM: number, mood: str
   const center = `${lat},${lng}`;
   let nodes = "";
 
-  if (mood === "ドライブしたい") {
+  const mgOsm = moodGroup(mood);
+  if (mgOsm === "drive") {
     nodes = [
       `node["tourism"="viewpoint"](around:${r},${center});`,
       `way["tourism"="viewpoint"](around:${r},${center});`,
@@ -3087,7 +3108,7 @@ function buildOverpassQuery(lat: number, lng: number, radiusM: number, mood: str
       `way["natural"="beach"](around:${r},${center});`,
       `node["amenity"="parking"]["fee"="no"](around:${r},${center});`,
     ].join("");
-  } else if (mood === "体を動かしたい") {
+  } else if (mgOsm === "sport") {
     nodes = [
       `node["leisure"="sports_centre"](around:${r},${center});`,
       `way["leisure"="sports_centre"](around:${r},${center});`,
@@ -3369,8 +3390,8 @@ function getModesToShow(
   transport: string | string[] | undefined,
   mood?: string
 ): Array<{ travelMode: string; icon: string }> {
-  if (mood === "ドライブしたい") return [{ travelMode: "DRIVE", icon: "🚗" }];
-  if (mood === "遠くに行きたい") return [{ travelMode: "TRANSIT", icon: "🚄" }];
+  if (moodGroup(mood) === "drive") return [{ travelMode: "DRIVE", icon: "🚗" }];
+  if (moodGroup(mood) === "travel") return [{ travelMode: "TRANSIT", icon: "🚄" }];
 
   const transports = getTransports(transport);
   const isNandemo = transports.length === 0 || transports.includes("なんでも");
@@ -3510,13 +3531,18 @@ function scorePlace(params: {
     score += Math.max(0, 18 - params.distanceMeters / 150);
   }
 
-  if (params.mood === "ゆっくりしたい" && (params.bucket === "spot" || params.bucket === "relax")) score += 10;
-  if (params.mood === "遠くに行きたい" && (params.bucket === "spot" || params.bucket === "scenic")) score += 10;
-  if (params.mood === "楽しみたい" && (params.bucket === "activity" || params.bucket === "spot")) score += 9;
-  if (params.mood === "ドライブしたい" && (params.bucket === "scenic" || params.bucket === "spot")) score += 10;
-  if (params.mood === "体を動かしたい" && (params.bucket === "activity" || params.bucket === "spot")) score += 10;
+  // 気分グループ別の関連性加点（短キー/長形どちらでも moodGroup で判定）
+  const mg = moodGroup(params.mood);
+  if (mg === "relax"   && (params.bucket === "spot" || params.bucket === "relax"))   score += 10;
+  if (mg === "travel"  && (params.bucket === "spot" || params.bucket === "scenic"))  score += 10;
+  if (mg === "play"    && (params.bucket === "activity" || params.bucket === "spot")) score += 9;
+  if (mg === "drive"   && (params.bucket === "scenic" || params.bucket === "spot"))  score += 10;
+  if (mg === "sport"   && (params.bucket === "activity" || params.bucket === "spot")) score += 10;
+  if (mg === "nature"  && (params.bucket === "scenic" || params.bucket === "spot"))  score += 10;
+  if (mg === "focus"   && (params.bucket === "indoor" || params.bucket === "relax")) score += 8;
+  if (mg === "shopping" && (params.bucket === "spot" || params.bucket === "indoor")) score += 8;
 
-  if (params.mood === "お腹すいた") {
+  if (mg === "food") {
     if (params.bucket === "food") score += 18;
     if (params.bucket === "scenic") score += 2;
     if (params.bucket === "indoor") score -= 2;
@@ -3545,8 +3571,8 @@ function scorePlace(params: {
     const transports = getTransports(params.transport);
     if (tags.includes("子連れOK") && params.companion === "家族") score += 12;
     if (tags.includes("ペット可") && params.companion === "友達") score += 5;
-    if (tags.includes("無料駐車場") && (transports.includes("車") || params.mood === "ドライブしたい")) score += 10;
-    if (tags.includes("駐車場あり") && (transports.includes("車") || params.mood === "ドライブしたい")) score += 6;
+    if (tags.includes("無料駐車場") && (transports.includes("車") || mg === "drive")) score += 10;
+    if (tags.includes("駐車場あり") && (transports.includes("車") || mg === "drive")) score += 6;
     if (tags.includes("テラス席") && !isRainLikeWeather(params.weather.weatherCode)) score += 5;
     if (tags.includes("コーヒーあり") && (params.bucket === "food" || params.bucket === "relax")) score += 4;
   }
@@ -3921,6 +3947,8 @@ async function fetchGooglePlacesSupplement(
       "運動":       ["gym", "sports_complex", "park"],
       "旅行":       ["tourist_attraction", "amusement_park"],
       "ショッピングしたい": ["shopping_mall", "clothing_store", "store"],
+      "楽しみたい": ["amusement_park", "bowling_alley", "karaoke"],   // アプリ送信の短キー
+      "時間潰し":   ["shopping_mall", "book_store", "movie_theater", "tourist_attraction"], // 暇つぶし=非飲食レジャー
     };
 
     // 深掘りタグが一致すればそちらを優先（より具体的な結果）
@@ -6582,8 +6610,8 @@ async function handleRecommend(request: Request) {
 
     // ── ここより下はお腹すいた以外のGoogle Places検索 ──────────────────────────
 
-    // ── まったりしたい: 単一textQuery → Places 1回 → シャッフル3件 ───────────────
-    if (answers.mood === "まったりしたい" && apiKey) {
+    // ── まったり/時間潰し(relax系): 単一textQuery → Places 1回 → シャッフル3件 ──────
+    if (moodGroup(answers.mood) === "relax" && apiKey) {
       const relaxWeather = await getWeatherContext(answers.originLat, answers.originLng);
       const relaxTimeCtx = getTimeContext();
 
