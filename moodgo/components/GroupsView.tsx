@@ -13,8 +13,9 @@ import {
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform,
-  RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Animated, Dimensions, KeyboardAvoidingView, Linking,
+  PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
+  TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from '@/components/PuniPressable';
@@ -105,6 +106,35 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
+
+  // ── 左端スワイプでチャットから一覧へ戻る ──
+  const SW = Dimensions.get('window').width;
+  const dragX = useRef(new Animated.Value(0)).current;
+  const closeChatRef = useRef<() => void>(() => {});
+  const chatSwipePan = useRef(
+    PanResponder.create({
+      // 画面の左端(40px以内)から右方向のドラッグで開始
+      onMoveShouldSetPanResponderCapture: (e, g) =>
+        e.nativeEvent.pageX - g.dx < 40 && g.dx > 12 && Math.abs(g.dy) < Math.abs(g.dx),
+      onPanResponderMove: (_e, g) => {
+        if (g.dx > 0) dragX.setValue(g.dx);
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (g.dx > SW / 3 || g.vx > 0.8) {
+          // しきい値超え → 画面外までスライドして閉じる
+          Animated.timing(dragX, { toValue: SW, duration: 160, useNativeDriver: true }).start(() => {
+            dragX.setValue(0);
+            closeChatRef.current();
+          });
+        } else {
+          Animated.spring(dragX, { toValue: 0, useNativeDriver: true, mass: 0.8, damping: 18, stiffness: 240 }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(dragX, { toValue: 0, useNativeDriver: true, mass: 0.8, damping: 18, stiffness: 240 }).start();
+      },
+    })
+  ).current;
 
   // ── 初期化 ──
   useEffect(() => {
@@ -212,6 +242,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     setActive(null);
     onChatOpenChange?.(false);
   };
+  closeChatRef.current = closeChat;
 
   // ── つぶやく ──
   const handlePost = async () => {
@@ -267,7 +298,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={[s.root, { paddingTop: insets.top }]}>
+        <Animated.View
+          style={[s.root, { paddingTop: insets.top, transform: [{ translateX: dragX }] }]}
+          {...chatSwipePan.panHandlers}
+        >
           {/* ヘッダー */}
           <View style={s.header}>
             <PuniPressable onPress={closeChat} style={s.backCircle}>
@@ -422,7 +456,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               </PuniPressable>
             </View>
           </View>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     );
   }
