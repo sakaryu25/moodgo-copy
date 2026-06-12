@@ -6492,7 +6492,10 @@ async function handleRecommend(request: Request) {
         //   各ソース内は近い順だが、ソース連結(sb+g+y+backfill)＋widen＋admin注入で
         //   遠い店が上位に来ることがある。食事は最寄り最優先なので最後に全体ソートする。
         //   （admin転載も食事では近い順に従わせる。営業中は同距離帯で優先）
-        if (isFoodMood) {
+        if (isFoodMood && !isDestinationFood) {
+          // ※ 高層ビル料理(目的地型)は近い順ソートを行わない。
+          //   3km設定等で「ジャンル一致(9km先のタワー)→混在補填(近所の定食屋)」の順に
+          //   組んだ結果を距離で再ソートすると、近所の一般店がタワーより上に来てしまうため。
           const kmOfRec = (r: { distanceKm?: number; distanceText?: string }): number => {
             if (typeof r.distanceKm === "number") return r.distanceKm;
             const m = (r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/);
