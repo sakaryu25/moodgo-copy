@@ -274,9 +274,11 @@ export default function Home() {
             body: JSON.stringify({ latitude: last.coords.latitude, longitude: last.coords.longitude }),
           });
           const d = await res.json();
-          const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
-          setSelectedArea(fullAddr); setLocationDisplayArea(fullAddr);
-        } catch { setSelectedArea('現在地'); setLocationDisplayArea('現在地'); }
+          // 住所が取れた時だけ入力欄へ。失敗時は欄を汚さずバッジ表示のみ「現在地」
+          const fullAddr = d?.ok ? (d.fullAddress ?? d.displayArea ?? d.area ?? '') : '';
+          if (fullAddr) { setSelectedArea(fullAddr); setLocationDisplayArea(fullAddr); }
+          else { setSelectedArea(''); setLocationDisplayArea('現在地'); }
+        } catch { setSelectedArea(''); setLocationDisplayArea('現在地'); }
         return;
       }
       const { latitude, longitude } = pos.coords;
@@ -292,11 +294,12 @@ export default function Home() {
         const d = await res.json();
         // 現在地はフル住所（丁目-番地まで）を入力欄・表示に使う。検索はGPS座標(originLat/Lng)を使うため
         // 表示を精密にしても検索精度は変わらない（むしろ利用者が現在地を確認しやすくなる）。
-        const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
-        setSelectedArea(fullAddr);
-        setLocationDisplayArea(fullAddr);
+        // 住所が取れなかった場合は入力欄を汚さず、バッジ表示のみ「現在地」にする
+        const fullAddr = d?.ok ? (d.fullAddress ?? d.displayArea ?? d.area ?? '') : '';
+        if (fullAddr) { setSelectedArea(fullAddr); setLocationDisplayArea(fullAddr); }
+        else { setSelectedArea(''); setLocationDisplayArea('現在地'); }
       } catch {
-        setSelectedArea('現在地');
+        setSelectedArea('');
         setLocationDisplayArea('現在地');
       }
     } catch (e) {
@@ -340,11 +343,12 @@ export default function Home() {
             body: JSON.stringify({ latitude, longitude }),
           });
           const d = await res.json();
-          const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
-          setSelectedArea(fullAddr);
-          setLocationDisplayArea(fullAddr);
+          const fullAddr = d?.ok ? (d.fullAddress ?? d.displayArea ?? d.area ?? '') : '';
+          if (fullAddr) { setSelectedArea(fullAddr); setLocationDisplayArea(fullAddr); }
+          else { setSelectedArea(''); setLocationDisplayArea('現在地'); }
         } catch {
-          setSelectedArea('現在地');
+          setSelectedArea('');
+          setLocationDisplayArea('現在地');
         }
         }
       }

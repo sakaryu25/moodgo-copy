@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { yahooReverseGeocode } from "@/lib/yahoo-reverse-geocode";
 
 type RequestBody = {
   latitude?: number;
@@ -118,7 +119,29 @@ function pickAreaFromResult(result?: GoogleGeocodeResult) {
 async function reverseGeocode(latitude: number, longitude: number) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
 
+  // Googleが使えない時のYahooフォールバック（成功時は同じレスポンス形で返す）
+  const tryYahoo = async () => {
+    const y = await yahooReverseGeocode(latitude, longitude);
+    if (!y) return null;
+    return NextResponse.json({
+      ok: true,
+      area: y.area,
+      displayArea: y.displayArea,
+      fullAddress: y.fullAddress,
+      locality: y.city,
+      ward: null,
+      neighborhood: y.oaza,
+      prefecture: y.prefecture,
+      formattedAddress: y.fullAddress,
+      latitude,
+      longitude,
+      source: "yahoo",
+    });
+  };
+
   if (!apiKey) {
+    const yahoo = await tryYahoo();
+    if (yahoo) return yahoo;
     return NextResponse.json(
       {
         ok: false,
@@ -143,6 +166,8 @@ async function reverseGeocode(latitude: number, longitude: number) {
     (await res.json().catch(() => null)) as GoogleGeocodeResponse | null;
 
   if (!res.ok) {
+    const yahoo = await tryYahoo();
+    if (yahoo) return yahoo;
     return NextResponse.json(
       {
         ok: false,
@@ -154,6 +179,9 @@ async function reverseGeocode(latitude: number, longitude: number) {
   }
 
   if (!data || data.status !== "OK" || !data.results?.length) {
+    // REQUEST_DENIED（課金未設定）等はYahooで救済
+    const yahoo = await tryYahoo();
+    if (yahoo) return yahoo;
     return NextResponse.json(
       {
         ok: false,
@@ -168,6 +196,8 @@ async function reverseGeocode(latitude: number, longitude: number) {
   const picked = pickAreaFromResult(data.results[0]);
 
   if (!picked?.area) {
+    const yahoo = await tryYahoo();
+    if (yahoo) return yahoo;
     return NextResponse.json(
       {
         ok: false,
