@@ -4851,13 +4851,13 @@ async function buildFreeWordRecommendations(
       .join("\n");
 
     const isAiChat = !!answers.aiChat;
-    const wantCount = isAiChat ? 15 : 10;
 
     // ── 人数・気分の制約をプロンプトに反映 ─────────────────────────────────────
     // 「7人で話せて食べれる場所」等の人数指定を抽出し、カウンター主体の
     // ファストフード/牛丼チェーンが提案されるのを防ぐ（大人数=個室/宴会/座敷必須）。
     const partyMatch = (answers.freeWord ?? "").match(/([0-9０-９]{1,2})\s*(?:人|名)/);
     const partySize = partyMatch ? parseInt(partyMatch[1].replace(/[０-９]/g, c => String("０１２３４５６７８９".indexOf(c))), 10) : 0;
+    const wantCount = isAiChat ? 15 : (partySize >= 4 ? 14 : 10);  // 人数指定時はフィルタ前提で多めに要求
     const partyBlock = partySize >= 4
       ? `\n【人数条件（最重要・厳守）】${partySize}人で利用する。${partySize}人が同じテーブル/個室で座って会話できる店のみ提案すること。\n- 適: 個室居酒屋・宴会対応の居酒屋/レストラン・座敷のある店・大テーブルのダイニング・食べ放題/コース対応店\n- 禁止: カウンター主体の店、牛丼/ファストフードチェーン（すき家・松屋・吉野家・マクドナルド・ケンタッキー等）、ラーメン店、立ち食い\n`
       : "";
@@ -5137,7 +5137,9 @@ ${ragBlock}
     const maxKm = radiusKm * 1.25;
     const seenKeys = new Set<string>();
     // 大人数時に不適切なカウンター主体チェーン（LLMが指示を無視した場合の保険）
-    const FASTFOOD_RE = /すき家|松屋|吉野家|なか卯|マクドナルド|ケンタッキー|モスバーガー|ロッテリア|バーガーキング|富士そば|ゆで太郎|小諸そば|立ち食い|日高屋|幸楽苑/;
+    const FASTFOOD_RE = /すき家|松屋|吉野家|なか卯|マクドナルド|ケンタッキー|モスバーガー|ロッテリア|バーガーキング|富士そば|ゆで太郎|小諸そば|立ち食い|日高屋|幸楽苑|ラーメン|らーめん|つけ麺|まぜそば/;
+    // 飲食店として誤通過しやすい非飲食施設（コワーキング等）
+    const NONFOOD_NAME_RE_FW = /コワーキング|貸会議|レンタルスペース|スタジオ|サロン|事務所|オフィス/;
     const validated = (results.filter((r) => r !== null) as Record<string, unknown>[])
       .filter((r) => {
         const dkm = r.distanceKm as number | undefined;
@@ -5154,6 +5156,7 @@ ${ragBlock}
             || types.some(t => FOOD_FAMILY_PRIMARY_TYPES.has(t))
             || isRestaurantName(name);
           if (!isFoodPlace) return false;
+          if (NONFOOD_NAME_RE_FW.test(name)) return false;  // コワーキング等の誤通過防止
         }
         // 大人数(4人以上): カウンター主体のチェーンを除外
         if (partySize >= 4 && FASTFOOD_RE.test(name)) return false;
@@ -5609,7 +5612,8 @@ async function handleRecommend(request: Request) {
         );
         // AI相談は構造化検索へのフォールバックが効かない（mood="AI相談"）ため1件でも返す。
         // 通常freeWordは検証後5件未満なら、freeWordを織り込んだ構造化検索に任せた方が高品質。
-        const fwMinCount = answers.aiChat ? 1 : 5;
+        const fwPartySize = ((answers.freeWord ?? "").match(/([0-9０-９]{1,2})\s*(?:人|名)/) ?? [])[1];
+        const fwMinCount = answers.aiChat ? 1 : (fwPartySize ? 3 : 5);  // 人数指定は構造化が解釈できないためAI結果を優先採用
         if (fwRecs.length >= fwMinCount) {
           return json({
             recommendations: fwRecs,
@@ -5694,7 +5698,12 @@ async function handleRecommend(request: Request) {
 
         // deepDiveL1 / L2 を dynamicQs から取得（Google/Yahoo 検索精度向上に使用）
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
-        const deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+        let deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+        // freeWordに人数指定があり食事系の場合、構造化検索のテキストクエリを宴会系に誘導
+        //   （AI経路が不調で構造化に落ちた際も「7人で話せる」を解釈できるように）
+        if (isFoodMood && !deepDiveL2 && /[4-9０-９]\s*(?:人|名)|[1-9][0-9]\s*(?:人|名)/.test(answers.freeWord ?? "")) {
+          deepDiveL2 = "個室 宴会できる居酒屋";
+        }
         // L2 がより具体的なカテゴリを指す場合（動物カフェ・波の音と海風 etc.）は L2 を優先
         // "こだわらない" は検索キーとして使えないので除外し、上位カテゴリにフォールバック
         const cleanL2 = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : "";
