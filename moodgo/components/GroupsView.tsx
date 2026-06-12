@@ -326,11 +326,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                 return (
                   <View key={p.id} style={s.rowMine}>
                     <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
-                    <View style={s.bubbleMineWrap}>
-                      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bubbleMine}>
-                        {moodTag('mine')}
-                        {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
-                      </LinearGradient>
+                    <View style={s.bubbleMine}>
+                      {moodTag('mine')}
+                      {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
                     </View>
                   </View>
                 );
@@ -559,8 +557,9 @@ const s = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-end',
     gap: 6, marginBottom: 10,
   },
-  bubbleMineWrap: { maxWidth: '76%', borderRadius: 18, overflow: 'hidden' },
   bubbleMine: {
+    maxWidth: '76%',
+    backgroundColor: '#8B5CF6',   // シンプルな単色（violet-500）
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 18, borderBottomRightRadius: 4,
   },
@@ -578,7 +577,6 @@ const s = StyleSheet.create({
     maxWidth: '78%', backgroundColor: '#fff',
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 18, borderBottomLeftRadius: 4,
-    borderWidth: 1, borderColor: '#EDE9FE',
   },
   bubbleOtherText: { fontSize: 13, color: INK, marginTop: 6, lineHeight: 19 },
   bubbleTime: { fontSize: 9, color: '#C4B5FD', marginBottom: 2 },
