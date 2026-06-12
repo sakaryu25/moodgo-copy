@@ -7,14 +7,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, BookOpen, Car, ChevronLeft, ChevronRight, Coffee, Copy, Leaf, LogOut,
+  Activity, BookOpen, Car, ChevronLeft, Coffee, Copy, Leaf, LogOut,
   MapPin, MessageCircle, Moon, Plane, Plus, Send, ShoppingBag, Shuffle, Sparkles,
-  UtensilsCrossed, Users,
+  UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, KeyboardAvoidingView, Linking,
-  PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
+  Modal, PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +27,6 @@ const PINK   = '#F56CB3';
 const PURPLE = '#9B6BFF';
 const BLUE   = '#4FA3FF';
 const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
-const BG     = '#F5F0FF';
 const INK    = '#1E0753';
 
 const NICKNAME_KEY = 'moodgo-group-nickname';
@@ -51,7 +50,14 @@ const MOOD_CHIPS: { key: string; Icon: MoodIcon }[] = [
 const moodIcon = (key: string): MoodIcon =>
   MOOD_CHIPS.find(m => m.key === key)?.Icon ?? MessageCircle;
 
-type Group = { id: string; name: string; invite_code: string; member_count?: number };
+type LastPost = {
+  nickname: string; mood: string; comment: string | null;
+  spot_name?: string | null; created_at: string;
+};
+type Group = {
+  id: string; name: string; invite_code: string; member_count?: number;
+  last_post?: LastPost | null;
+};
 type Post  = {
   id: string; device_id: string; nickname: string; mood: string; comment: string | null;
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
@@ -93,7 +99,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // 作成・参加フォーム
+  // 作成・参加フォーム（右上＋のモーダル内）
+  const [showAdd, setShowAdd]           = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [joinCode, setJoinCode]         = useState('');
   const [busy, setBusy]                 = useState(false);
@@ -187,19 +194,32 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     await AsyncStorage.setItem(NICKNAME_KEY, nick);
   };
 
+  // 入力中のニックネームを確定して返す（作成/参加時に自動保存）
+  const ensureNickname = async (): Promise<string> => {
+    const nick = nickDraft.trim().slice(0, 20) || nickname;
+    if (nick && nick !== nickname) {
+      setNickname(nick);
+      await AsyncStorage.setItem(NICKNAME_KEY, nick);
+    }
+    return nick;
+  };
+
   // ── グループ作成 ──
   const handleCreate = async () => {
     const name = newGroupName.trim();
-    if (!name || !nickname || busy) return;
+    if (!name || busy) return;
     setBusy(true);
     try {
+      const nick = await ensureNickname();
+      if (!nick) return;
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', name, nickname, deviceId }),
+        body: JSON.stringify({ action: 'create', name, nickname: nick, deviceId }),
       });
       const data = await res.json();
       if (!data.ok) { Alert.alert('エラー', data.error ?? '作成に失敗しました'); return; }
       setNewGroupName('');
+      setShowAdd(false);
       await fetchGroups(deviceId);
       Alert.alert(
         'グループを作ったよ🎉',
@@ -216,16 +236,19 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   // ── コードで参加 ──
   const handleJoin = async () => {
     const code = joinCode.trim().toUpperCase();
-    if (!code || !nickname || busy) return;
+    if (!code || busy) return;
     setBusy(true);
     try {
+      const nick = await ensureNickname();
+      if (!nick) return;
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'join', code, nickname, deviceId }),
+        body: JSON.stringify({ action: 'join', code, nickname: nick, deviceId }),
       });
       const data = await res.json();
       if (!data.ok) { Alert.alert('エラー', data.error ?? '参加に失敗しました'); return; }
       setJoinCode('');
+      setShowAdd(false);
       await fetchGroups(deviceId);
       openGroup(data.group);
     } catch { Alert.alert('エラー', '通信に失敗しました'); }
@@ -241,6 +264,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const closeChat = () => {
     setActive(null);
     onChatOpenChange?.(false);
+    if (deviceId) fetchGroups(deviceId); // 一覧の最新メッセージプレビューを更新
   };
   closeChatRef.current = closeChat;
 
@@ -461,115 +485,144 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     );
   }
 
-  // ─── グループ一覧画面（タブ表示） ────────────────────────────────────────────
+  // ─── グループ一覧画面（LINE風トーク一覧） ────────────────────────────────────
+  const canSubmitNick = !!(nickDraft.trim() || nickname);
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[s.root, { paddingTop: insets.top }]}>
-        <View style={s.header}>
-          <View style={{ width: 40 }} />
-          <Text style={s.headerTitle}>気分をつぶやく</Text>
-          <View style={{ width: 40 }} />
-        </View>
+    <View style={[s.root, { paddingTop: insets.top }]}>
+      <View style={s.header}>
+        <View style={{ width: 40 }} />
+        <Text style={s.headerTitle}>トーク</Text>
+        <PuniPressable onPress={() => setShowAdd(true)} style={s.addBtn}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.addBtnInner}>
+            <Plus size={20} color="#fff" strokeWidth={2.5} />
+          </LinearGradient>
+        </PuniPressable>
+      </View>
 
-        <ScrollView
-          contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 110 }}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
-        >
-          {/* ニックネーム */}
-          <Text style={s.label}>ニックネーム</Text>
-          <Text style={s.hint}>グループ内でこの名前が表示されます</Text>
-          <View style={s.inputRow}>
-            <TextInput
-              value={nickDraft}
-              onChangeText={setNickDraft}
-              placeholder="例: りゅうき"
-              placeholderTextColor="#C4B5FD"
-              style={[s.input, { flex: 1 }]}
-              maxLength={20}
-            />
-            {nickDraft.trim() !== nickname && (
-              <PuniPressable onPress={saveNickname} style={s.nickSaveBtn}>
-                <Text style={s.nickSaveText}>保存</Text>
-              </PuniPressable>
-            )}
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: insets.bottom + 110 }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
+      >
+        {loading ? (
+          <ActivityIndicator color={PURPLE} style={{ marginVertical: 20 }} />
+        ) : groups.length === 0 ? (
+          <View style={s.emptyBox}>
+            <Users size={34} color="#C4B5FD" strokeWidth={1.5} />
+            <Text style={s.emptyText}>まだグループがないよ{'\n'}右上の「＋」から作るか、招待コードで参加してね</Text>
           </View>
-
-          {/* 所属グループ */}
-          <Text style={[s.label, { marginTop: 24 }]}>マイグループ</Text>
-          {loading ? (
-            <ActivityIndicator color={PURPLE} style={{ marginVertical: 20 }} />
-          ) : groups.length === 0 ? (
-            <View style={s.emptyBox}>
-              <Users size={34} color="#C4B5FD" strokeWidth={1.5} />
-              <Text style={s.emptyText}>まだグループがないよ{'\n'}作るか、招待コードで参加してね</Text>
-            </View>
-          ) : groups.map(g => (
+        ) : groups.map(g => {
+          const lp = g.last_post;
+          const preview = lp
+            ? `${lp.nickname}: ${lp.spot_name ? `📍 ${lp.spot_name}` : `#${lp.mood}${lp.comment ? ` ${lp.comment}` : ''}`}`
+            : 'まだつぶやきがないよ';
+          return (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
               <View style={s.groupIconCircle}>
-                <MessageCircle size={18} color="#7C3AED" strokeWidth={2} />
+                <Text style={s.groupIconText}>{g.name.slice(0, 1)}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.groupName}>{g.name}</Text>
-                <Text style={s.groupMeta}>{g.member_count ?? 1}人 ・ コード {g.invite_code}</Text>
+                <View style={s.groupTopRow}>
+                  <Text style={s.groupName} numberOfLines={1}>
+                    {g.name}
+                    <Text style={s.groupCount}>（{g.member_count ?? 1}）</Text>
+                  </Text>
+                  {lp ? <Text style={s.groupTime}>{timeAgo(lp.created_at)}</Text> : null}
+                </View>
+                <Text style={[s.groupPreview, !lp && s.groupPreviewEmpty]} numberOfLines={1}>
+                  {preview}
+                </Text>
               </View>
-              <ChevronRight size={18} color="#C4B5FD" />
             </PuniPressable>
-          ))}
+          );
+        })}
+      </ScrollView>
 
-          {/* 作成 */}
-          <Text style={[s.label, { marginTop: 24 }]}>グループを作る</Text>
-          {!nickname && <Text style={s.warnText}>↑ 先にニックネームを保存してね</Text>}
-          <View style={s.inputRow}>
-            <TextInput
-              value={newGroupName}
-              onChangeText={setNewGroupName}
-              placeholder="グループ名（例: いつめん）"
-              placeholderTextColor="#C4B5FD"
-              style={[s.input, { flex: 1 }]}
-              maxLength={30}
-            />
-            <PuniPressable
-              onPress={handleCreate}
-              disabled={!newGroupName.trim() || !nickname || busy}
-              style={[s.actionBtn, (!newGroupName.trim() || !nickname || busy) && { opacity: 0.4 }]}
-            >
-              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtnInner}>
-                <Plus size={18} color="#fff" strokeWidth={2.5} />
-              </LinearGradient>
-            </PuniPressable>
-          </View>
+      {/* ＋モーダル: グループを作る / 招待コードで参加 */}
+      <Modal visible={showAdd} transparent animationType="fade" onRequestClose={() => setShowAdd(false)}>
+        <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.modalCard}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>グループを作る・参加</Text>
+              <PuniPressable onPress={() => setShowAdd(false)} style={s.modalClose}>
+                <X size={18} color="#7C3AED" strokeWidth={2.5} />
+              </PuniPressable>
+            </View>
 
-          {/* 参加 */}
-          <Text style={[s.label, { marginTop: 24 }]}>招待コードで参加</Text>
-          <View style={s.inputRow}>
-            <TextInput
-              value={joinCode}
-              onChangeText={t => setJoinCode(t.toUpperCase())}
-              placeholder="6桁コード（例: AB3XY9）"
-              placeholderTextColor="#C4B5FD"
-              autoCapitalize="characters"
-              style={[s.input, { flex: 1, letterSpacing: 2 }]}
-              maxLength={6}
-            />
-            <PuniPressable
-              onPress={handleJoin}
-              disabled={joinCode.trim().length !== 6 || !nickname || busy}
-              style={[s.actionBtn, (joinCode.trim().length !== 6 || !nickname || busy) && { opacity: 0.4 }]}
-            >
-              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtnInner}>
-                <Users size={18} color="#fff" strokeWidth={2.2} />
-              </LinearGradient>
-            </PuniPressable>
+            {/* ニックネーム */}
+            <Text style={s.label}>ニックネーム</Text>
+            <Text style={s.hint}>グループ内でこの名前が表示されます</Text>
+            <View style={s.inputRow}>
+              <TextInput
+                value={nickDraft}
+                onChangeText={setNickDraft}
+                placeholder="例: りゅうき"
+                placeholderTextColor="#C4B5FD"
+                style={[s.input, { flex: 1 }]}
+                maxLength={20}
+              />
+              {nickDraft.trim() !== nickname && nickDraft.trim() !== '' && (
+                <PuniPressable onPress={saveNickname} style={s.nickSaveBtn}>
+                  <Text style={s.nickSaveText}>保存</Text>
+                </PuniPressable>
+              )}
+            </View>
+            {!canSubmitNick && <Text style={s.warnText}>↑ 先にニックネームを入れてね</Text>}
+
+            {/* 作成 */}
+            <Text style={[s.label, { marginTop: 20 }]}>グループを作る</Text>
+            <View style={s.inputRow}>
+              <TextInput
+                value={newGroupName}
+                onChangeText={setNewGroupName}
+                placeholder="グループ名（例: いつめん）"
+                placeholderTextColor="#C4B5FD"
+                style={[s.input, { flex: 1 }]}
+                maxLength={30}
+              />
+              <PuniPressable
+                onPress={handleCreate}
+                disabled={!newGroupName.trim() || !canSubmitNick || busy}
+                style={[s.actionBtn, (!newGroupName.trim() || !canSubmitNick || busy) && { opacity: 0.4 }]}
+              >
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtnInner}>
+                  <Plus size={18} color="#fff" strokeWidth={2.5} />
+                </LinearGradient>
+              </PuniPressable>
+            </View>
+
+            {/* 参加 */}
+            <Text style={[s.label, { marginTop: 20 }]}>招待コードで参加</Text>
+            <View style={s.inputRow}>
+              <TextInput
+                value={joinCode}
+                onChangeText={t => setJoinCode(t.toUpperCase())}
+                placeholder="6桁コード（例: AB3XY9）"
+                placeholderTextColor="#C4B5FD"
+                autoCapitalize="characters"
+                style={[s.input, { flex: 1, letterSpacing: 2 }]}
+                maxLength={6}
+              />
+              <PuniPressable
+                onPress={handleJoin}
+                disabled={joinCode.trim().length !== 6 || !canSubmitNick || busy}
+                style={[s.actionBtn, (joinCode.trim().length !== 6 || !canSubmitNick || busy) && { opacity: 0.4 }]}
+              >
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.actionBtnInner}>
+                  <Users size={18} color="#fff" strokeWidth={2.2} />
+                </LinearGradient>
+              </PuniPressable>
+            </View>
           </View>
-        </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  // 背景は index.tsx の AppBackground（共通背景）を透過で見せる
+  root: { flex: 1, backgroundColor: 'transparent' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 10, gap: 8,
@@ -603,19 +656,43 @@ const s = StyleSheet.create({
   actionBtn: { borderRadius: 14, overflow: 'hidden' },
   actionBtnInner: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
 
+  addBtn: { borderRadius: 999, overflow: 'hidden' },
+  addBtnInner: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+
   groupCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#fff', borderRadius: 16, padding: 14, marginBottom: 10,
+    backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 10,
     borderWidth: 1.5, borderColor: '#EDE9FE',
     shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
   groupIconCircle: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F3FF',
+    width: 46, height: 46, borderRadius: 23, backgroundColor: '#EDE9FE',
     alignItems: 'center', justifyContent: 'center',
   },
-  groupName: { fontSize: 15, fontWeight: '800', color: INK },
-  groupMeta: { fontSize: 11, color: '#A78BFA', marginTop: 2 },
+  groupIconText: { fontSize: 18, fontWeight: '800', color: '#7C3AED' },
+  groupTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  groupName: { fontSize: 15, fontWeight: '800', color: INK, flexShrink: 1 },
+  groupCount: { fontSize: 12, fontWeight: '700', color: '#A78BFA' },
+  groupTime: { fontSize: 10, color: '#A78BFA' },
+  groupPreview: { fontSize: 12, color: '#8B7BB8', marginTop: 3 },
+  groupPreviewEmpty: { color: '#C4B5FD' },
+
+  // ── ＋モーダル ──
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(30,7,83,0.35)',
+    justifyContent: 'center', padding: 24,
+  },
+  modalCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20 },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: INK },
+  modalClose: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: '#F5F3FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   emptyBox: { alignItems: 'center', gap: 10, paddingVertical: 28 },
   emptyText: { fontSize: 13, color: '#A78BFA', textAlign: 'center', lineHeight: 20 },

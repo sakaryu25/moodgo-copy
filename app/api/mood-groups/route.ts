@@ -67,10 +67,32 @@ export async function GET(req: NextRequest) {
 
     const counts: Record<string, number> = {};
     for (const m of allMembers ?? []) counts[m.group_id] = (counts[m.group_id] ?? 0) + 1;
-    return NextResponse.json({
-      ok: true,
-      groups: (groups ?? []).map(g => ({ ...g, member_count: counts[g.id] ?? 0 })),
-    });
+
+    // 各グループの最新つぶやき（LINE風の一覧プレビュー用）
+    const sb = supabase;
+    const lastPosts = await Promise.all(ids.map(async (gid) => {
+      const { data } = await sb
+        .from("mood_group_posts")
+        .select("group_id, nickname, mood, comment, spot_name, created_at")
+        .eq("group_id", gid)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data;
+    }));
+    const lastByGroup: Record<string, (typeof lastPosts)[number]> = {};
+    for (const p of lastPosts) if (p) lastByGroup[p.group_id] = p;
+
+    const enriched = (groups ?? []).map(g => ({
+      ...g,
+      member_count: counts[g.id] ?? 0,
+      last_post: lastByGroup[g.id] ?? null,
+    }));
+    // 最新の動きがあるグループを上に
+    enriched.sort((a, b) =>
+      new Date(b.last_post?.created_at ?? b.created_at).getTime() -
+      new Date(a.last_post?.created_at ?? a.created_at).getTime());
+    return NextResponse.json({ ok: true, groups: enriched });
   } catch (e) {
     console.error("mood-groups GET error:", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
