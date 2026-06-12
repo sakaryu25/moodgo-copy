@@ -5076,35 +5076,42 @@ async function buildFreeWordRecommendations(
     let systemContent: string;
     let prompt: string;
 
-    if (isAiChat) {
-      // ── ② RAG: Supabaseの近隣・承認済みスポット（みんなの穴場）を参考資料として取得 ──
-      let ragBlock = "";
-      try {
-        if (supabase && typeof answers.originLat === "number" && typeof answers.originLng === "number") {
-          const { data: sgs } = await supabase
-            .from("suggestions")
-            .select("spot_name, google_place_name, address, auto_tags, lat, lng")
-            .eq("status", "approved")
-            .not("lat", "is", null)
-            .limit(60);
-          const oLat = answers.originLat, oLng = answers.originLng;
-          const near = (sgs ?? [])
-            .map((g) => {
-              const dkm = (typeof g.lat === "number" && typeof g.lng === "number")
-                ? haversineMeters(oLat, oLng, g.lat, g.lng) / 1000 : 9999;
-              return { g, dkm };
-            })
-            .filter((x) => x.dkm <= Math.max(radiusKm, 15))
-            .sort((a, b) => a.dkm - b.dkm)
-            .slice(0, 10);
-          if (near.length > 0) {
-            ragBlock = `\n# 参考：近隣の実在スポット（MoodGo内の人気/穴場データ）\n`
-              + `※ 要望に合うものがあれば優先的に活用してよい。ただしこれ「だけ」に限定せず、他にも条件に合う実在店があれば自由に加えること。\n`
-              + near.map((x) => `- ${x.g.google_place_name ?? x.g.spot_name}（${(x.g.address ?? "").replace(/^日本[、,]\s*/, "").slice(0, 24)} / 約${x.dkm.toFixed(1)}km）`).join("\n")
-              + "\n";
-          }
+    // ── ② RAG: Supabaseの近隣・承認済みスポット（みんなの穴場）を参考資料として取得 ──
+    //   AI相談・通常freeWordの両方で使用（穴場投稿が自由ワード検索でも候補に入るように）。
+    //   タグを併記してLLMが「要望に合う穴場」を選別できるようにする。
+    let ragBlock = "";
+    try {
+      if (supabase && typeof answers.originLat === "number" && typeof answers.originLng === "number") {
+        const { data: sgs } = await supabase
+          .from("suggestions")
+          .select("spot_name, google_place_name, address, auto_tags, lat, lng, description")
+          .eq("status", "approved")
+          .not("lat", "is", null)
+          .limit(200);
+        const oLat = answers.originLat, oLng = answers.originLng;
+        const near = (sgs ?? [])
+          .map((g) => {
+            const dkm = (typeof g.lat === "number" && typeof g.lng === "number")
+              ? haversineMeters(oLat, oLng, g.lat, g.lng) / 1000 : 9999;
+            return { g, dkm };
+          })
+          .filter((x) => x.dkm <= Math.max(radiusKm, 15))
+          .sort((a, b) => a.dkm - b.dkm)
+          .slice(0, 14);
+        if (near.length > 0) {
+          ragBlock = `\n# 参考：近隣の実在スポット（MoodGoユーザー投稿の穴場データ。タグ付き）\n`
+            + `※ 要望にタグや説明が合うものは優先的に含めること（穴場として価値が高い）。合わないものは無理に入れない。これ「だけ」に限定せず他の実在店も自由に加えること。\n`
+            + near.map((x) => {
+                const tg = (x.g.auto_tags ?? []).slice(0, 4).join(" ");
+                const desc = (x.g.description ?? "").replace(/\s+/g, " ").slice(0, 30);
+                return `- ${x.g.google_place_name ?? x.g.spot_name}（${(x.g.address ?? "").replace(/^日本[、,]\s*/, "").slice(0, 24)} / 約${x.dkm.toFixed(1)}km${tg ? " / " + tg : ""}${desc ? " / " + desc : ""}）`;
+              }).join("\n")
+            + "\n";
         }
-      } catch { /* RAG失敗は無視（通常提案にフォールバック）*/ }
+      }
+    } catch { /* RAG失敗は無視（通常提案にフォールバック）*/ }
+
+    if (isAiChat) {
 
       // ── ③ フィードバック: 過去に高評価/低評価だった場所を反映 ──
       const liked = pastFeedback.filter((f) => (f.rating ?? 0) >= 4 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
@@ -5129,6 +5136,7 @@ async function buildFreeWordRecommendations(
 # 検索エリア（厳守）
 ${areaDesc}
 - この範囲（${geoAnchor} 周辺）に実在するスポットのみ。範囲外は絶対に含めない。
+${typeof lat === "number" && typeof lng === "number" ? `- 現在地座標: ${lat.toFixed(3)},${lng.toFixed(3)}（この座標から${radiusKm}km圏内のみ）` : ""}
 
 # ユーザー情報
 ${profileLine ? profileLine + "\n" : ""}- 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "指定なし"}
@@ -5167,6 +5175,7 @@ ${profileLine ? profileLine + "\n" : ""}- 気分: ${answers.mood ?? "未設定"}
 - 同行者: ${answers.companion ?? "未設定"}
 - 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "未設定"}
 ${extraQs ? extraQs : ""}
+${ragBlock}
 
 【ルール】
 - 「${answers.freeWord}」の条件に合う施設のみ（関係ないスポットは除外）
@@ -5215,7 +5224,7 @@ ${extraQs ? extraQs : ""}
               "Content-Type": "application/json",
               "X-Goog-Api-Key": apiKey,
               // photos を最大10枚・location を追加取得
-              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location",
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.businessStatus",
             },
             body: JSON.stringify({
               textQuery: p.query || `${area} ${p.name}`,
@@ -5237,6 +5246,8 @@ ${extraQs ? extraQs : ""}
           const data = await res.json();
           const place = data.places?.[0];
           if (!place) return null;
+          // 閉店済みは除外（LLMが古い記憶で閉店店を出すケースの防止）
+          if (place.businessStatus === "CLOSED_PERMANENTLY") return null;
 
           const name = (place.displayName?.text as string | undefined) ?? p.name;
           if (showUnseenOnly && seenPlaces.includes(name)) return null;
@@ -5310,7 +5321,21 @@ ${extraQs ? extraQs : ""}
         }
       })
     );
-    return results.filter((r) => r !== null) as Record<string, unknown>[];
+    // ── 解決後の検証: 距離（半径厳守）＋重複排除 ───────────────────────────
+    //   LLMがエリア外の店を出す/同一店が複数名で重複するケースを排除する。
+    //   locationBiasは「優先」であって「制限」ではないため、ここで厳密に検証する。
+    const maxKm = radiusKm * 1.25;
+    const seenKeys = new Set<string>();
+    const validated = (results.filter((r) => r !== null) as Record<string, unknown>[])
+      .filter((r) => {
+        const dkm = r.distanceKm as number | undefined;
+        if (typeof dkm === "number" && dkm > maxKm) return false;   // エリア外（幻覚）を除外
+        const key = (r.placeId as string | undefined) || String(r.title ?? "").toLowerCase();
+        if (!key || seenKeys.has(key)) return false;                 // 重複除外
+        seenKeys.add(key);
+        return true;
+      });
+    return validated;
   } catch (e) {
     console.error("[recommend] freeWord OpenAI flow failed:", e);
     return [];
@@ -5699,6 +5724,10 @@ async function handleRecommend(request: Request) {
     const adminSpots = [
       ...approvedSuggestions.filter((s) => s.source === "admin" && !s.is_chain),
       ...curatedSpots,
+      // 承認済みユーザー投稿（穴場投稿）もタグ一致の優先注入対象に含める。
+      //   従来はadminのみ注入され、ユーザーの穴場はメイン検索に出る経路が無かった。
+      //   座標必須・#タグ一致・距離設定尊重は既存ロジックがそのまま効く。
+      ...approvedSuggestions.filter((s) => s.source !== "admin" && !s.is_chain),
     ];
     const chainSpots = approvedSuggestions.filter((s) => s.source === "admin" && s.is_chain && s.chain_search_query);
 
@@ -5727,7 +5756,10 @@ async function handleRecommend(request: Request) {
         const fwRecs = await buildFreeWordRecommendations(
           answers, apiKey, openai, seenPlaces, showUnseenOnly, pastFeedback
         );
-        if (fwRecs.length > 0) {
+        // AI相談は構造化検索へのフォールバックが効かない（mood="AI相談"）ため1件でも返す。
+        // 通常freeWordは検証後5件未満なら、freeWordを織り込んだ構造化検索に任せた方が高品質。
+        const fwMinCount = answers.aiChat ? 1 : 5;
+        if (fwRecs.length >= fwMinCount) {
           return json({
             recommendations: fwRecs,
             source: answers.aiChat ? "ai_chat" : "ai_freeword",
@@ -6349,8 +6381,8 @@ async function handleRecommend(request: Request) {
                 priceLevel: undefined,
                 placeId: undefined,
                 supabaseId: undefined,
-                source: "admin",
-                isUserSpot: false,
+                source: s.source ?? "admin",
+                isUserSpot: (s.source ?? "admin") !== "admin",   // ユーザー投稿穴場はバッジ表示
                 hasUserPhotos: imgs.length > 0,
                 userPhotoCount: imgs.length,
                 routesByMode: undefined,
