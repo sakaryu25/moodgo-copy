@@ -1105,6 +1105,7 @@ export default function Home() {
           <GroupsView
             resetKey={tabResetKeys.groups}
             onChatOpenChange={setGroupChatOpen}
+            favorites={favorites}
           />
         );
       default:

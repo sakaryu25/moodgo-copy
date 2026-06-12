@@ -9,21 +9,22 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, BookOpen, Camera, Car, ChevronLeft, Coffee, Copy, Leaf, LogOut,
-  MapPin, MessageCircle, Moon, Plane, Plus, Send, Settings, ShoppingBag,
+  Activity, BookOpen, Camera, Car, ChevronLeft, Coffee, Copy, Heart, Leaf, LogOut,
+  MapPin, MessageCircle, Moon, Navigation, Plane, Plus, Send, Settings, ShoppingBag,
   Shuffle, Sparkles, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Image, KeyboardAvoidingView,
-  Modal, PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
-  TextInput, View,
+  Modal, PanResponder, Platform, Pressable, RefreshControl, ScrollView, Share,
+  StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import type { FavoriteItem } from '@/types/app';
 
 // ─── tokens ───────────────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -92,9 +93,11 @@ type Props = {
   resetKey?: number;
   /** チャット画面の開閉を親へ通知（タブバーの表示/非表示用） */
   onChatOpenChange?: (open: boolean) => void;
+  /** いいねした場所・投稿（チャットからそのまま共有するため） */
+  favorites?: FavoriteItem[];
 };
 
-export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
+export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites = [] }: Props) {
   const insets = useSafeAreaInsets();
 
   const [deviceId, setDeviceId]   = useState('');
@@ -117,6 +120,50 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [iconBusy, setIconBusy] = useState(false);
+
+  // ── いいねから送るボトムシート ──
+  const SHEET_H = Math.round(Dimensions.get('window').height * 0.52);
+  const [showFavSheet, setShowFavSheet] = useState(false);
+  const [favTab, setFavTab] = useState(0);             // 0=場所, 1=投稿
+  const [sendingFav, setSendingFav] = useState(false);
+  const sheetY = useRef(new Animated.Value(SHEET_H)).current;
+  const favPagerRef = useRef<ScrollView>(null);
+
+  const openFavSheet = () => {
+    setFavTab(0);
+    setShowFavSheet(true);
+    sheetY.setValue(SHEET_H);
+    Animated.spring(sheetY, {
+      toValue: 0, useNativeDriver: true, mass: 0.7, damping: 16, stiffness: 180,
+    }).start();
+    requestAnimationFrame(() => favPagerRef.current?.scrollTo({ x: 0, animated: false }));
+  };
+  const closeFavSheet = () => {
+    Animated.timing(sheetY, { toValue: SHEET_H, duration: 180, useNativeDriver: true })
+      .start(() => setShowFavSheet(false));
+  };
+
+  // いいねした場所をこのグループにスポットカードとして送信
+  const sendFavoriteSpot = async (f: FavoriteItem) => {
+    if (!active || sendingFav) return;
+    setSendingFav(true);
+    try {
+      const res = await apiFetch('/api/mood-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'post', groupId: active.id, deviceId,
+          spotName: f.title,
+          spotAddress: f.address ?? f.area ?? '',
+          spotUrl: f.mapUrl ?? '',
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { Alert.alert('エラー', data.error ?? '送信に失敗しました'); return; }
+      setPosts(prev => [data.post, ...prev]);
+      closeFavSheet();
+    } catch { Alert.alert('エラー', '通信に失敗しました'); }
+    finally { setSendingFav(false); }
+  };
   const [selMood, setSelMood] = useState('');
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -315,6 +362,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const closeChat = () => {
     setActive(null);
     setShowGroupSettings(false);
+    setShowFavSheet(false);
     onChatOpenChange?.(false);
     if (deviceId) fetchGroups(deviceId); // 一覧の最新メッセージプレビューを更新
   };
@@ -368,10 +416,17 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     setRefreshing(false);
   };
 
+  const goFavTab = (i: number) => {
+    setFavTab(i);
+    favPagerRef.current?.scrollTo({ x: i * SW, animated: true });
+  };
+
   // ─── チャット画面 ────────────────────────────────────────────────────────────
   if (active) {
     const canPost = !!selMood && !posting;
     const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
+    const placeFavs = favorites.filter(f => f.kind !== 'post');
+    const postFavs  = favorites.filter(f => f.kind === 'post');
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Animated.View
@@ -529,6 +584,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               })}
             </ScrollView>
             <View style={s.inputRow}>
+              {/* いいねした場所をそのまま送る */}
+              <PuniPressable onPress={openFavSheet} style={s.favHeartBtn}>
+                <Heart size={18} color="#EC4899" fill="#FBCFE8" strokeWidth={2} />
+              </PuniPressable>
               <TextInput
                 value={comment}
                 onChangeText={setComment}
@@ -615,6 +674,114 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                   </PuniPressable>
                 </ScrollView>
               </View>
+            </View>
+          </Modal>
+
+          {/* いいねから送るボトムシート（画面下から半分までスライド） */}
+          <Modal visible={showFavSheet} transparent animationType="none" onRequestClose={closeFavSheet}>
+            <View style={{ flex: 1 }}>
+              <Animated.View
+                style={[
+                  s.sheetOverlay,
+                  { opacity: sheetY.interpolate({ inputRange: [0, SHEET_H], outputRange: [1, 0] }) },
+                ]}
+              >
+                <Pressable style={StyleSheet.absoluteFill} onPress={closeFavSheet} />
+              </Animated.View>
+
+              <Animated.View
+                style={[
+                  s.favSheet,
+                  { height: SHEET_H + insets.bottom, transform: [{ translateY: sheetY }] },
+                ]}
+              >
+                <View style={s.sheetHandle} />
+                <View style={s.sheetHeader}>
+                  <Heart size={15} color="#EC4899" fill="#FBCFE8" strokeWidth={2} />
+                  <Text style={s.sheetTitle}>いいねから送る</Text>
+                </View>
+
+                {/* 場所 / 投稿 セグメント */}
+                <View style={s.favSegRow}>
+                  {(['場所', '投稿'] as const).map((label, i) => {
+                    const count = i === 0 ? placeFavs.length : postFavs.length;
+                    const on = favTab === i;
+                    return (
+                      <PuniPressable
+                        key={label}
+                        onPress={() => goFavTab(i)}
+                        containerStyle={{ flex: 1 }}
+                        style={{ borderRadius: 999, overflow: 'hidden' }}
+                      >
+                        {on ? (
+                          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.favSegInner}>
+                            <Text style={s.favSegTextOn}>{label}（{count}）</Text>
+                          </LinearGradient>
+                        ) : (
+                          <View style={[s.favSegInner, s.favSegOff]}>
+                            <Text style={s.favSegText}>{label}（{count}）</Text>
+                          </View>
+                        )}
+                      </PuniPressable>
+                    );
+                  })}
+                </View>
+
+                {/* 横スワイプの2ページ（いいね欄と同じ仕組み） */}
+                <ScrollView
+                  ref={favPagerRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onMomentumScrollEnd={e => {
+                    const i = Math.round(e.nativeEvent.contentOffset.x / SW);
+                    if (i !== favTab) setFavTab(i);
+                  }}
+                >
+                  {[placeFavs, postFavs].map((list, i) => (
+                    <ScrollView
+                      key={i}
+                      style={{ width: SW }}
+                      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {list.length === 0 ? (
+                        <View style={s.favEmpty}>
+                          <Heart size={28} color="#FBCFE8" strokeWidth={1.5} />
+                          <Text style={s.favEmptyText}>
+                            {i === 0 ? 'まだいいねした場所がないよ' : 'まだいいねした投稿がないよ'}
+                          </Text>
+                        </View>
+                      ) : list.map(f => (
+                        <View key={f.title} style={s.favRow}>
+                          {f.photoUrl ? (
+                            <Image source={{ uri: f.photoUrl }} style={s.favThumb} />
+                          ) : (
+                            <View style={[s.favThumb, s.favThumbPh]}>
+                              <Navigation size={16} color="#C084FC" strokeWidth={1.8} />
+                            </View>
+                          )}
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.favTitle} numberOfLines={1}>{f.title}</Text>
+                            {(f.area || f.address) ? (
+                              <Text style={s.favArea} numberOfLines={1}>{f.area || f.address}</Text>
+                            ) : null}
+                          </View>
+                          <PuniPressable
+                            onPress={() => sendFavoriteSpot(f)}
+                            disabled={sendingFav}
+                            style={[s.favSendBtn, sendingFav && { opacity: 0.5 }]}
+                          >
+                            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.favSendInner}>
+                              <Send size={14} color="#fff" strokeWidth={2.2} />
+                            </LinearGradient>
+                          </PuniPressable>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ))}
+                </ScrollView>
+              </Animated.View>
             </View>
           </Modal>
         </Animated.View>
@@ -983,4 +1150,46 @@ const s = StyleSheet.create({
   },
   sendBtn: { borderRadius: 999, overflow: 'hidden' },
   sendBtnInner: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+
+  // ── いいねから送る（ハート＋ボトムシート） ──
+  favHeartBtn: {
+    width: 44, height: 44, borderRadius: 999,
+    backgroundColor: '#FDF2F8', borderWidth: 1.5, borderColor: '#FBCFE8',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30,7,83,0.35)' },
+  favSheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12, shadowRadius: 16, elevation: 20,
+  },
+  sheetHandle: {
+    alignSelf: 'center', width: 40, height: 5, borderRadius: 3,
+    backgroundColor: '#E9D5FF', marginTop: 10, marginBottom: 8,
+  },
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginBottom: 10,
+  },
+  sheetTitle: { fontSize: 15, fontWeight: '800', color: INK },
+  favSegRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 },
+  favSegInner: { paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  favSegOff: { backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#EDE9FE' },
+  favSegText: { fontSize: 12, fontWeight: '700', color: '#A78BFA' },
+  favSegTextOn: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  favEmpty: { alignItems: 'center', gap: 8, paddingVertical: 36 },
+  favEmptyText: { fontSize: 12, color: '#A78BFA' },
+  favRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FAF8FF', borderRadius: 16, padding: 10, marginBottom: 8,
+    borderWidth: 1, borderColor: '#F1EBFE',
+  },
+  favThumb: { width: 48, height: 48, borderRadius: 12 },
+  favThumbPh: { backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' },
+  favTitle: { fontSize: 14, fontWeight: '800', color: INK },
+  favArea: { fontSize: 11, color: '#A78BFA', marginTop: 2 },
+  favSendBtn: { borderRadius: 999, overflow: 'hidden' },
+  favSendInner: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 });
