@@ -2,10 +2,11 @@
  * SettingsView.tsx — 設定画面 (MoodGo UI統一)
  */
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, ChevronRight, EyeOff, Globe, MapPin, Trash2, UserRound } from 'lucide-react-native';
+import * as Location from 'expo-location';
+import { Check, ChevronRight, EyeOff, Globe, MapPin, Navigation, Trash2, UserRound } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, Dimensions, Modal, ScrollView,
+  Alert, Animated, Dimensions, Linking, Modal, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,6 +113,9 @@ export default function SettingsView({
   const [prefectureInput, setPrefectureInput] = useState(profilePrefecture);
   const [showPrefPicker, setShowPrefPicker]   = useState(false);
   const [saved, setSaved]                     = useState(false);
+  // 位置情報の許可状態
+  const [locStatus, setLocStatus] = useState<Location.PermissionStatus | null>(null);
+  const [locCanAsk, setLocCanAsk] = useState(true);
 
   useEffect(() => {
     if (visible) {
@@ -120,8 +124,25 @@ export default function SettingsView({
       setPrefectureInput(profilePrefecture);
       setSaved(false);
       setShowPrefPicker(false);
+      // 開くたびに最新の許可状態をチェック
+      Location.getForegroundPermissionsAsync()
+        .then(p => { setLocStatus(p.status); setLocCanAsk(p.canAskAgain); })
+        .catch(() => {});
     }
   }, [visible, profileAge, profileGender, profilePrefecture]);
+
+  const handleLocPermission = async () => {
+    // 許可済み or 再確認不可（一度拒否）→ 設定アプリへ。未設定ならその場でOSダイアログ
+    if (locStatus === 'granted' || (locStatus === 'denied' && !locCanAsk)) {
+      Linking.openSettings();
+      return;
+    }
+    try {
+      const p = await Location.requestForegroundPermissionsAsync();
+      setLocStatus(p.status);
+      setLocCanAsk(p.canAskAgain);
+    } catch { /* noop */ }
+  };
 
   const handleSave = () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
@@ -285,6 +306,42 @@ export default function SettingsView({
               </View>
             </View>
 
+            {/* ── 位置情報 ── */}
+            <SectionHeader
+              icon={<Navigation size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? '位置情報' : 'Location'}
+            />
+            <View style={s.card}>
+              <View style={s.locStatusRow}>
+                <View style={[s.locDot, {
+                  backgroundColor:
+                    locStatus === 'granted' ? '#10B981' :
+                    locStatus === 'denied'  ? '#EF4444' : '#F59E0B',
+                }]} />
+                <Text style={s.locStatusText}>
+                  {locStatus === 'granted'
+                    ? (lang === 'ja' ? '許可されています' : 'Allowed')
+                    : locStatus === 'denied'
+                      ? (lang === 'ja' ? '許可されていません' : 'Not allowed')
+                      : (lang === 'ja' ? '未設定' : 'Not set')}
+                </Text>
+              </View>
+              <Text style={s.locHint}>
+                {lang === 'ja'
+                  ? '現在地から近くのスポットを探すために使います'
+                  : 'Used to find spots near your current location.'}
+              </Text>
+              <PuniPressable onPress={handleLocPermission} style={s.locBtn}>
+                <Text style={s.locBtnText}>
+                  {locStatus === 'granted'
+                    ? (lang === 'ja' ? '設定アプリで変更する' : 'Change in Settings app')
+                    : locStatus === 'denied' && !locCanAsk
+                      ? (lang === 'ja' ? '設定アプリで許可する' : 'Allow in Settings app')
+                      : (lang === 'ja' ? '位置情報を許可する' : 'Allow location access')}
+                </Text>
+              </PuniPressable>
+            </View>
+
             {/* ── 非表示にしたスポット ── */}
             <SectionHeader
               icon={<EyeOff size={15} color={PURPLE} strokeWidth={2} />}
@@ -431,6 +488,18 @@ const s = StyleSheet.create({
   langSegmentActive: { borderColor: 'transparent', shadowColor: PURPLE, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
   langSegmentText:       { fontSize: 14, fontWeight: '700', color: '#9CA3AF' },
   langSegmentTextActive: { color: '#fff', fontWeight: '800' },
+
+  // 位置情報
+  locStatusRow:  { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  locDot:        { width: 9, height: 9, borderRadius: 4.5 },
+  locStatusText: { fontSize: 14, fontWeight: '800', color: '#1E0753' },
+  locHint:       { fontSize: 11, color: '#A78BFA', marginTop: 6, lineHeight: 16 },
+  locBtn: {
+    marginTop: 12, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F3EEFF', borderWidth: 1.5, borderColor: '#DDD6FE',
+  },
+  locBtnText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
 
   dangerRow: {
     paddingVertical: 4, alignItems: 'center',
