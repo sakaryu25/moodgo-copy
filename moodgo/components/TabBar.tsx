@@ -276,17 +276,17 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.14,
     shadowRadius: 18,
-    elevation: 8,
+    elevation: 10,
     borderWidth: 1,
     // ガラスのエッジ（白いハイライト）
-    borderColor: 'rgba(255,255,255,0.45)',
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // Androidの実ブラーは弱めなので、白をわずかに足して視認性を担保
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.16)',
+    // 背景と同化しないよう、うっすらグレーがかった曇りを足す
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(242,240,247,0.55)' : 'rgba(242,240,247,0.72)',
   },
   inner: {
     flexDirection: 'row',
