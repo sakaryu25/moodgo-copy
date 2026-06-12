@@ -28,11 +28,12 @@ import {
   Waves, Wine, Zap,
   Navigation, Camera, Building2, Car,
 } from 'lucide-react-native';
+import { BlurView } from 'expo-blur';
 import React, { useEffect, useRef, useState } from 'react';
 import PuniPressable from './PuniPressable';
 import {
   Animated, Dimensions, Easing, PanResponder,
-  ScrollView, StyleSheet, Text, TextInput,
+  Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1345,7 +1346,7 @@ export default function QuizFlow(props: Props) {
           </View>
           <ScrollView
             style={s.flex}
-            contentContainerStyle={s.scrollContent}
+            contentContainerStyle={[s.scrollContent, { paddingBottom: Math.max(insets.bottom, 20) + 100 }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={scrollEnabled}
@@ -1362,8 +1363,15 @@ export default function QuizFlow(props: Props) {
           </ScrollView>
         </Animated.View>
 
-        {/* Fixed Next button */}
+        {/* Fixed Next button — ガラスバー（タブバーと同じ世界観） */}
         <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+          <BlurView
+            intensity={55}
+            tint="light"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={s.bottomBarTint} />
           <PuniPressable onPress={handleNext} style={s.nextWrap}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.nextBtn}>
               <Text style={s.nextTxt}>{nextLabel}</Text>
@@ -1504,11 +1512,17 @@ const s = StyleSheet.create({
   freeWordTagTxt: { fontSize: 13, fontWeight: '600', color: '#374151' },
   freeWordTagTxtA: { color: '#fff', fontWeight: '800' },
   bottomBar: {
+    // コンテンツの上に浮かせて、背後がガラス越しに透ける
+    position: 'absolute', left: 0, right: 0, bottom: 0,
     paddingHorizontal: PAD, paddingTop: 12,
-    backgroundColor: 'rgba(245,240,255,0.97)',
+    overflow: 'hidden',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(167,139,250,0.25)',
-    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 10,
+    borderTopColor: 'rgba(255,255,255,0.65)',
+  },
+  bottomBarTint: {
+    ...StyleSheet.absoluteFillObject,
+    // タブバーと同じ白透明の曇り
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.72)',
   },
   nextWrap: {
     borderRadius: 18, overflow: 'hidden',
