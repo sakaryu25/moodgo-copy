@@ -559,11 +559,11 @@ const s = StyleSheet.create({
   },
   bubbleMine: {
     maxWidth: '76%',
-    backgroundColor: '#8B5CF6',   // シンプルな単色（violet-500）
+    backgroundColor: '#E4D9FF',   // LINE風: 自分は淡い色＋濃い文字
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 18, borderBottomRightRadius: 4,
   },
-  bubbleMineText: { fontSize: 13, color: 'rgba(255,255,255,0.95)', marginTop: 6, lineHeight: 19 },
+  bubbleMineText: { fontSize: 13, color: INK, marginTop: 6, lineHeight: 19 },
 
   rowOther: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   avatar: {
