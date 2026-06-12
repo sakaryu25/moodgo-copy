@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Heart, MapPin, Navigation, Trash2 } from 'lucide-react-native';
+import { Heart, MapPin, MessageCircle, Navigation, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FavoriteItem } from '@/types/app';
+import { shareSpotToGroup } from '@/lib/groupShare';
 import PuniPressable from './PuniPressable';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -166,6 +167,13 @@ export default function FavoritesView({
                     </LinearGradient>
                   </PuniPressable>
                 ) : null}
+                {/* 仲良しグループのチャットへ共有 */}
+                <PuniPressable
+                  onPress={() => shareSpotToGroup({ title: item.title, address: item.area, mapUrl: item.mapUrl })}
+                  style={s.groupBtn}
+                >
+                  <MessageCircle size={13} color="#7C3AED" strokeWidth={2} />
+                </PuniPressable>
                 <PuniPressable
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item.title); }}
                   haptic={false}
@@ -331,6 +339,12 @@ const s = StyleSheet.create({
     gap: 4, paddingVertical: 7, paddingHorizontal: 10,
   },
   mapBtnText:    { fontSize: 12, fontWeight: '700', color: '#fff' },
+  groupBtn: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1, borderColor: '#DDD6FE',
+  },
   deleteBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
