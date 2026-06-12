@@ -7,11 +7,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ChevronLeft, ChevronRight, Copy, LogOut, MessageCircle, Plus, Send, Users,
+  ChevronLeft, ChevronRight, Copy, LogOut, MapPin, MessageCircle, Plus, Send, Users,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform,
   RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,7 +47,11 @@ const MOOD_CHIPS: { key: string; emoji: string }[] = [
 const moodEmoji = (key: string) => MOOD_CHIPS.find(m => m.key === key)?.emoji ?? '💭';
 
 type Group = { id: string; name: string; invite_code: string; member_count?: number };
-type Post  = { id: string; device_id: string; nickname: string; mood: string; comment: string | null; created_at: string };
+type Post  = {
+  id: string; device_id: string; nickname: string; mood: string; comment: string | null;
+  spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
+  created_at: string;
+};
 type Member = { device_id: string; nickname: string };
 
 // 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
@@ -300,6 +304,24 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
             ) : timeline.map(p => {
               const mine = p.device_id === deviceId;
               const darkMood = p.mood === '疲れた・眠い';
+              const isSpot = !!p.spot_name;
+              // スポット共有: 📍カード（タップで地図を開く）
+              const spotCard = () => (
+                <PuniPressable
+                  onPress={() => { if (p.spot_url) Linking.openURL(p.spot_url); }}
+                  style={[s.spotCard, mine ? s.spotCardMine : null]}
+                >
+                  <Text style={s.spotCardLabel}>📍 おすすめスポット</Text>
+                  <Text style={s.spotCardName}>{p.spot_name}</Text>
+                  {p.spot_address ? <Text style={s.spotCardAddr} numberOfLines={1}>{p.spot_address}</Text> : null}
+                  {p.spot_url ? (
+                    <View style={s.spotCardLinkRow}>
+                      <MapPin size={11} color="#7C3AED" strokeWidth={2.2} />
+                      <Text style={s.spotCardLink}>地図で見る</Text>
+                    </View>
+                  ) : null}
+                </PuniPressable>
+              );
               // 値札タグ風の気分バッジ（尖った先端＋紐穴）
               const moodTag = (variant: 'mine' | 'other') => {
                 const c = darkMood
@@ -327,7 +349,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                   <View key={p.id} style={s.rowMine}>
                     <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
                     <View style={s.bubbleMine}>
-                      {moodTag('mine')}
+                      {isSpot ? spotCard() : moodTag('mine')}
                       {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
                     </View>
                   </View>
@@ -343,7 +365,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                     <Text style={s.otherNick}>{p.nickname}</Text>
                     <View style={s.rowOtherBubbleLine}>
                       <View style={s.bubbleOther}>
-                        {moodTag('other')}
+                        {isSpot ? spotCard() : moodTag('other')}
                         {p.comment ? <Text style={s.bubbleOtherText}>{p.comment}</Text> : null}
                       </View>
                       <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
@@ -605,6 +627,20 @@ const s = StyleSheet.create({
   },
   moodTagEmoji: { fontSize: 12 },
   moodTagText: { fontSize: 12, fontWeight: '800' },
+
+  // ── スポット共有カード ──
+  spotCard: {
+    backgroundColor: '#fff', borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 9,
+    borderWidth: 1, borderColor: '#EDE9FE',
+    minWidth: 170,
+  },
+  spotCardMine: { borderColor: '#D4C5FF' },
+  spotCardLabel: { fontSize: 9, fontWeight: '800', color: '#A78BFA', marginBottom: 2 },
+  spotCardName: { fontSize: 13, fontWeight: '800', color: INK, lineHeight: 18 },
+  spotCardAddr: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
+  spotCardLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
+  spotCardLink: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
 
   // ── コンポーザー ──
   composer: {

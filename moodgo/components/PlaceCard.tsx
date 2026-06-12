@@ -3,8 +3,9 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Clock, Flame, Heart, Map, MapPin, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
 import PuniPressable from './PuniPressable';
+import { shareSpotToGroup } from '@/lib/groupShare';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
@@ -479,10 +480,20 @@ export default function PlaceCard({
 
         {/* フッター */}
         <View style={s.footRow}>
-          <PuniPressable onPress={handleShare} style={s.footBtnShare}>
-            <Share2 size={12} color={COLORS.textMuted} strokeWidth={2} />
-            <Text style={s.footBtnText}>{t.share}</Text>
-          </PuniPressable>
+          <View style={s.footLeft}>
+            <PuniPressable onPress={handleShare} style={s.footBtnShare}>
+              <Share2 size={12} color={COLORS.textMuted} strokeWidth={2} />
+              <Text style={s.footBtnText}>{t.share}</Text>
+            </PuniPressable>
+            {/* 仲良しグループのチャットへ共有 */}
+            <PuniPressable
+              onPress={() => shareSpotToGroup({ title: item.title, address: item.address, mapUrl: item.mapUrl })}
+              style={s.footBtnShare}
+            >
+              <MessageCircle size={12} color={COLORS.textMuted} strokeWidth={2} />
+              <Text style={s.footBtnText}>グループ</Text>
+            </PuniPressable>
+          </View>
           <View style={s.footRight}>
             {onBlock && (
               <PuniPressable onPress={onBlock} style={s.footBtn}>
@@ -657,6 +668,7 @@ const s = StyleSheet.create({
 
   // フッター
   footRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  footLeft:     { flexDirection: 'row', alignItems: 'center', gap: 14 },
   footBtnShare: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
   footRight:    { flexDirection: 'row', gap: 14, marginRight: 16 },
   footBtn:      { paddingVertical: 2 },

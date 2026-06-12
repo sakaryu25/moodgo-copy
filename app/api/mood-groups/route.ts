@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         await Promise.all([
           supabase.from("mood_groups").select("id, name, invite_code, created_at").eq("id", groupId).single(),
           supabase.from("mood_group_members").select("device_id, nickname, joined_at").eq("group_id", groupId).order("joined_at"),
-          supabase.from("mood_group_posts").select("id, device_id, nickname, mood, comment, created_at")
+          supabase.from("mood_group_posts").select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
             .eq("group_id", groupId).order("created_at", { ascending: false }).limit(50),
         ]);
       if (gErr) throw gErr;
@@ -132,10 +132,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, group });
     }
 
-    // ── 気分をつぶやく ──
+    // ── 気分をつぶやく / スポットを共有 ──
     if (body.action === "post") {
-      const groupId = String(body.groupId ?? "").trim();
-      const mood    = String(body.mood ?? "").trim().slice(0, 20);
+      const groupId     = String(body.groupId ?? "").trim();
+      const spotName    = String(body.spotName ?? "").trim().slice(0, 100);
+      const spotAddress = String(body.spotAddress ?? "").trim().slice(0, 200);
+      const spotUrl     = String(body.spotUrl ?? "").trim().slice(0, 500);
+      // スポット共有時は気分なしでもOK
+      const mood = String(body.mood ?? "").trim().slice(0, 20) || (spotName ? "スポット共有" : "");
       const comment = String(body.comment ?? "").trim().slice(0, 200);
       if (!groupId || !mood) return NextResponse.json({ ok: false, error: "groupIdとmoodは必須です" }, { status: 400 });
 
@@ -149,8 +153,14 @@ export async function POST(req: NextRequest) {
 
       const { data: post, error: pErr } = await supabase
         .from("mood_group_posts")
-        .insert({ group_id: groupId, device_id: deviceId, nickname: me.nickname, mood, comment: comment || null })
-        .select("id, device_id, nickname, mood, comment, created_at")
+        .insert({
+          group_id: groupId, device_id: deviceId, nickname: me.nickname, mood,
+          comment: comment || null,
+          spot_name: spotName || null,
+          spot_address: spotAddress || null,
+          spot_url: spotUrl || null,
+        })
+        .select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
         .single();
       if (pErr) throw pErr;
       return NextResponse.json({ ok: true, post });
