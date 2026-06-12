@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
     //   AI提案(freeWord/AI相談)由来の当たりスポットも、これで構造化検索の資産になる。
     //   fire-and-forget（失敗しても評価記録には影響しない）
     if (verdict === "good" && mood) {
-      void (async () => {
+      // ※ Vercelサーバーレスはレスポンス返却後に凍結されるため、fire-and-forgetではなく
+      //   レスポンス前にawaitする（Google1回+insert=数百msなので体感影響なし）
+      await (async () => {
         try {
           const { MOOD_SHORT_KEY_TO_TAG } = await import("@/lib/predefined-tags");
           const moodTag = (MOOD_SHORT_KEY_TO_TAG as Record<string, string>)[mood]
