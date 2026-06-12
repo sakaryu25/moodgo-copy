@@ -3737,7 +3737,7 @@ async function ltCachePut(key: string, data: unknown, ttlMs: number = LT_CACHE_T
   } catch { /* 無視 */ }
 }
 // enr: キャッシュの形（部分的でよい。あるフィールドだけ利用）
-type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[] };
+type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[]; checked?: boolean };
 
 // ─── Google Places 補足検索 ─────────────────────────────────────────────────
 // Supabase 結果を補うために Google Places Nearby Search で 10 件追加取得
@@ -6520,9 +6520,14 @@ async function handleRecommend(request: Request) {
             const needPhotos = photoUrls.length < 10;
             const needHours = rec.openNow === undefined || !rec.openingHoursText;
             if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
-            // キャッシュ済み（写真3枚以上 or 営業時間あり）の項目は再取得しない
+            // 確認済み（過去30日にGoogleへ問い合わせ済み）の店は再取得しない。
+            //   写真が十分(3枚+) or そもそもGoogleに写真/営業時間が無い店＝聞き直しても同じ
             const cVal = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
-            if (cVal && (cVal.photoUrls?.length ?? 0) >= 3 && cVal.periods) return;
+            if (cVal?.checked) {
+              const photosOk = photoUrls.length >= 3 || !cVal.photoUrls;  // 充足 or 元から無し
+              const hoursOk  = !!(cVal.periods || cVal.weekday) || rec.openingHoursText || true;  // 確認済み=これ以上増えない
+              if (photosOk && hoursOk) return;
+            }
             try {
               const q = rec.address ? `${rec.title} ${rec.address}` : rec.title ?? "";
               if (!q.trim()) return;
@@ -6539,7 +6544,10 @@ async function handleRecommend(request: Request) {
               if (!er.ok) return;
               const ed = await er.json().catch(() => null);
               const place = ed?.places?.[0];
-              if (!place) return;
+              if (!place) {
+                await ltCachePut(`enr:${(rec.title ?? "").slice(0, 80)}`, { checked: true });  // 解決不能も記憶
+                return;
+              }
               // 写真を最大10枚補完
               const enrSave: EnrichCacheVal = {};
               if (needPhotos) {
@@ -6565,11 +6573,10 @@ async function handleRecommend(request: Request) {
                 if (periods) enrSave.periods = periods;
                 if (wd?.length) enrSave.weekday = wd;
               }
-              // 長期キャッシュへ保存（次回以降この店のGoogle呼び出しが不要に）
-              if (enrSave.photoUrls || enrSave.periods) {
-                const prev = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
-                await ltCachePut(`enr:${(rec.title ?? "").slice(0, 80)}`, { ...prev, ...enrSave });
-              }
+              // 長期キャッシュへ保存。データが無い店も checked:true を記憶し
+              //   「聞いても無い店」への再問い合わせを止める（次回以降call0）
+              const prev = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
+              await ltCachePut(`enr:${(rec.title ?? "").slice(0, 80)}`, { ...prev, ...enrSave, checked: true });
             } catch { /* 補完失敗は無視 */ }
           }));
         }
