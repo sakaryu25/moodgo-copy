@@ -529,6 +529,8 @@ const GENRE_POSITIVE_REQUIRED: Record<string, RegExp> = {
   "絶景スポット":   /展望|景|タワー|夜景|岬|山|丘|崎|峠|灯台|デッキ|スカイ|sky|見晴|眺|富士|高台|橋|渓|湖|滝|海|テラス|サンセット|パノラマ/i,
   // 集中: カフェ作業（地区センター等の非カフェ施設を除外。doc準拠でマクド/ファミレスは許容）
   "カフェで作業・勉強したい": /カフェ|珈琲|喫茶|coffee|cafe|スタバ|スターバックス|タリーズ|ドトール|コメダ|サンマルク|プロント|ベローチェ|エクセルシオール|マクドナルド|ミスタードーナツ|ミスド|ガスト|ジョナサン|デニーズ|サイゼリヤ|ロイヤルホスト|ラウンジ|ワーク/i,
+  // ドライブ: 道の駅（一般ファミレス・チェーンの混入防止。直売/市場/ご当地系語を必須）
+  "道の駅でご当地グルメ": /道の駅|直売|市場|マルシェ|物産|漁|港|農園|ファーム|ご当地|名物|海鮮|食堂|本舗/i,
   // お腹すいた: 高層ビル料理（近所の一般飲食店の混入防止。展望/スカイ/ホテル系語を必須）
   "高層ビル料理": /展望|スカイ|sky|タワー|tower|ルーフ|roof|ラウンジ|lounge|高層|夜景|天空|空中|トップ|top|テラス|ホテル|hotel|クルーズ|ビュー|view|[0-9０-９]+階|[0-9]+F|シーバス|リバー|サミット|エックス|XEX|ヒルズ|ガーデン/i,
   // 旅行: 知らない街（神社・スーパー・直売所の混入防止。街歩き語を必須）
@@ -6502,6 +6504,10 @@ async function handleRecommend(request: Request) {
             return m ? parseFloat(m[1]) : 9999;
           };
           recommendations = [...recommendations].sort((a, b) => {
+            // ジャンル一致を最優先（混在補填の一般店がジャンル一致より上に来ないように）
+            const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
+            const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
+            if (ga !== gb) return ga - gb;
             const ka = kmOfRec(a), kb = kmOfRec(b);
             if (Math.abs(ka - kb) < 0.4) {            // 同距離帯は営業中を優先
               if (a.openNow === true && b.openNow !== true) return -1;
@@ -6522,7 +6528,13 @@ async function handleRecommend(request: Request) {
           };
           const jitterKm = Math.min(radiusKm * 0.12, 12);
           recommendations = [...recommendations]
-            .sort((a, b) => (kmOfRec(a) - kmOfRec(b)) + (Math.random() - 0.5) * jitterKm * 2)
+            .sort((a, b) => {
+              // ジャンル一致を最優先（混在補填の異ジャンルがジャンル一致より上に来ないように）
+              const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
+              const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
+              if (ga !== gb) return ga - gb;
+              return (kmOfRec(a) - kmOfRec(b)) + (Math.random() - 0.5) * jitterKm * 2;
+            })
             .slice(0, 15);
         }
 
