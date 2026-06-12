@@ -15,7 +15,7 @@ import {
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Dimensions, Image, KeyboardAvoidingView, Linking,
+  ActivityIndicator, Alert, Animated, Dimensions, Image, KeyboardAvoidingView,
   Modal, PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { openInGoogleMaps } from '@/lib/openMaps';
 
 // ─── tokens ───────────────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -427,7 +428,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               // スポット共有: 📍カード（タップで地図を開く）
               const spotCard = () => (
                 <PuniPressable
-                  onPress={() => { if (p.spot_url) Linking.openURL(p.spot_url); }}
+                  onPress={() => {
+                    if (!p.spot_name && !p.spot_url) return;
+                    // Safariを介さずGoogle Mapsアプリを直接開く（未インストール時はURLへ）
+                    openInGoogleMaps({
+                      query: [p.spot_name, p.spot_address].filter(Boolean).join(' '),
+                      mapsUri: p.spot_url ?? undefined,
+                    });
+                  }}
                   style={[s.spotCard, mine ? s.spotCardMine : null]}
                 >
                   <Text style={s.spotCardLabel}>📍 おすすめスポット</Text>

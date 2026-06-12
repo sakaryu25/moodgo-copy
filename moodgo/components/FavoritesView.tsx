@@ -6,7 +6,6 @@ import { Heart, MapPin, MessageCircle, Navigation, Trash2 } from 'lucide-react-n
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
-  Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -18,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FavoriteItem } from '@/types/app';
 import { shareSpotToGroup } from '@/lib/groupShare';
+import { openInGoogleMaps } from '@/lib/openMaps';
 import PuniPressable from './PuniPressable';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -48,6 +48,7 @@ const T = {
     empty:  'まだ保存した場所はありません',
     emptySub: '気に入った場所をハートで保存しよう！',
     map:    'Googleマップ',
+    talk:   'トーク',
     remove: '削除',
     count:  (n: number) => `${n}件保存中`,
     tabPlace: '場所',
@@ -64,6 +65,7 @@ const T = {
     empty:  'No saved places yet',
     emptySub: 'Save places you like with the heart button!',
     map:    'Google Maps',
+    talk:   'Talk',
     remove: 'Remove',
     count:  (n: number) => `${n} saved`,
     tabPlace: 'Places',
@@ -157,7 +159,10 @@ export default function FavoritesView({
               <View style={s.cardActions}>
                 {item.mapUrl ? (
                   <PuniPressable
-                    onPress={() => Linking.openURL(item.mapUrl!)}
+                    onPress={() => openInGoogleMaps({
+                      query: [item.title, item.area].filter(Boolean).join(' '),
+                      mapsUri: item.mapUrl,
+                    })}
                     style={s.mapBtn}
                     containerStyle={{ flex: 1 }}
                   >
@@ -173,6 +178,7 @@ export default function FavoritesView({
                   style={s.groupBtn}
                 >
                   <MessageCircle size={13} color="#7C3AED" strokeWidth={2} />
+                  <Text style={s.groupBtnText}>{t.talk}</Text>
                 </PuniPressable>
                 <PuniPressable
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item.title); }}
@@ -339,12 +345,14 @@ const s = StyleSheet.create({
     gap: 4, paddingVertical: 7, paddingHorizontal: 10,
   },
   mapBtnText:    { fontSize: 12, fontWeight: '700', color: '#fff' },
+  // 削除ボタンと同じ作りの紫バージョン（並びに馴染ませる）
   groupBtn: {
-    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
     backgroundColor: '#F5F3FF',
     borderWidth: 1, borderColor: '#DDD6FE',
   },
+  groupBtnText: { fontSize: 12, fontWeight: '600', color: '#7C3AED' },
   deleteBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
