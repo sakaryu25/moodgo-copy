@@ -3,13 +3,15 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown } from 'lucide-react-native';
+import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
 import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import React, { useRef, useState } from 'react';
 import {
   Animated,
+  Dimensions,
   Linking,
+  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -127,6 +129,69 @@ const T = {
   },
 };
 
+// ── 全画面フォトビューア ──────────────────────────────────────────────────
+// タップで拡大表示。横スワイプで写真切替、ピンチでズーム（iOS）
+function PhotoViewer({ photos, initialIdx, onClose }: {
+  photos: string[]; initialIdx: number; onClose: () => void;
+}) {
+  const { width: SW, height: SH } = Dimensions.get('window');
+  const [idx, setIdx] = useState(initialIdx);
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={pv.root}>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          contentOffset={{ x: initialIdx * SW, y: 0 }}
+          onMomentumScrollEnd={e => setIdx(Math.round(e.nativeEvent.contentOffset.x / SW))}
+        >
+          {photos.map((uri, i) => (
+            <ScrollView
+              key={uri + i}
+              style={{ width: SW, height: SH }}
+              contentContainerStyle={{ width: SW, height: SH }}
+              maximumZoomScale={3}
+              minimumZoomScale={1}
+              bouncesZoom
+              centerContent
+            >
+              <Image source={{ uri }} style={{ width: SW, height: SH }} contentFit="contain" transition={150} />
+            </ScrollView>
+          ))}
+        </ScrollView>
+        {/* 閉じる */}
+        <TouchableOpacity onPress={onClose} style={pv.closeBtn} activeOpacity={0.8}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <X size={22} color="#fff" strokeWidth={2.5} />
+        </TouchableOpacity>
+        {/* カウンター */}
+        {photos.length > 1 && (
+          <View style={pv.counter}>
+            <Text style={pv.counterText}>{idx + 1} / {photos.length}</Text>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const pv = StyleSheet.create({
+  root: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
+  closeBtn: {
+    position: 'absolute', top: 56, right: 18,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  counter: {
+    position: 'absolute', top: 64, alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 4,
+  },
+  counterText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+});
+
 type Props = {
   item: Recommendation;
   isFavorited: boolean;
@@ -162,6 +227,8 @@ export default function PlaceCard({
   const [photoIdx, setPhotoIdx] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
   const [photoWidth, setPhotoWidth] = useState(0);
+  // タップで全画面拡大するビューア（null = 非表示）
+  const [viewerIdx, setViewerIdx] = useState<number | null>(null);
 
   // ページングScrollView: スクロール終了時にインデックス更新
   const onPhotoScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -240,19 +307,26 @@ export default function PlaceCard({
             style={{ width: photoWidth, height: 220 }}
           >
             {photos.map((uri, i) => (
-              <Image
+              <TouchableOpacity
                 key={uri + i}
-                source={{ uri }}
-                style={{ width: photoWidth, height: 220 }}
-                contentFit="cover"
-                transition={200}
-                onError={() => onImgError(uri)}
-              />
+                activeOpacity={0.92}
+                onPress={() => setViewerIdx(i)}
+              >
+                <Image
+                  source={{ uri }}
+                  style={{ width: photoWidth, height: 220 }}
+                  contentFit="cover"
+                  transition={200}
+                  onError={() => onImgError(uri)}
+                />
+              </TouchableOpacity>
             ))}
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
-          <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
+          <TouchableOpacity activeOpacity={0.92} onPress={() => setViewerIdx(0)}>
+            <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
+          </TouchableOpacity>
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color={BRAND} strokeWidth={1.5} />
@@ -508,6 +582,15 @@ export default function PlaceCard({
           </View>
         </View>
       </View>
+
+      {/* 写真の全画面ビューア */}
+      {viewerIdx !== null && photos.length > 0 && (
+        <PhotoViewer
+          photos={photos}
+          initialIdx={Math.min(viewerIdx, photos.length - 1)}
+          onClose={() => setViewerIdx(null)}
+        />
+      )}
     </Animated.View>
   );
 }
