@@ -7,7 +7,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ChevronLeft, ChevronRight, Copy, LogOut, MapPin, MessageCircle, Plus, Send, Users,
+  Activity, BookOpen, Car, ChevronLeft, ChevronRight, Coffee, Copy, Leaf, LogOut,
+  MapPin, MessageCircle, Moon, Plane, Plus, Send, ShoppingBag, Shuffle, Sparkles,
+  UtensilsCrossed, Users,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -30,21 +32,23 @@ const INK    = '#1E0753';
 const NICKNAME_KEY = 'moodgo-group-nickname';
 const POLL_MS = 15000; // チャット表示中の自動更新間隔
 
-// つぶやき用の気分チップ（クイズの気分と同じキー）
-const MOOD_CHIPS: { key: string; emoji: string }[] = [
-  { key: 'お腹すいた',   emoji: '🍜' },
-  { key: 'まったり',     emoji: '☕️' },
-  { key: '自然',         emoji: '🌿' },
-  { key: '楽しみたい',   emoji: '🎉' },
-  { key: 'ドライブ',     emoji: '🚗' },
-  { key: '集中',         emoji: '📚' },
-  { key: '運動',         emoji: '💪' },
-  { key: '旅行',         emoji: '✈️' },
-  { key: 'ショッピング', emoji: '🛍️' },
-  { key: '時間潰し',     emoji: '🎲' },
-  { key: '疲れた・眠い', emoji: '🌙' },
+// つぶやき用の気分チップ（クイズの気分カードと同じSVGアイコン）
+type MoodIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+const MOOD_CHIPS: { key: string; Icon: MoodIcon }[] = [
+  { key: 'お腹すいた',   Icon: UtensilsCrossed },
+  { key: 'まったり',     Icon: Coffee },
+  { key: '自然',         Icon: Leaf },
+  { key: '楽しみたい',   Icon: Sparkles },
+  { key: 'ドライブ',     Icon: Car },
+  { key: '集中',         Icon: BookOpen },
+  { key: '運動',         Icon: Activity },
+  { key: '旅行',         Icon: Plane },
+  { key: 'ショッピング', Icon: ShoppingBag },
+  { key: '時間潰し',     Icon: Shuffle },
+  { key: '疲れた・眠い', Icon: Moon },
 ];
-const moodEmoji = (key: string) => MOOD_CHIPS.find(m => m.key === key)?.emoji ?? '💭';
+const moodIcon = (key: string): MoodIcon =>
+  MOOD_CHIPS.find(m => m.key === key)?.Icon ?? MessageCircle;
 
 type Group = { id: string; name: string; invite_code: string; member_count?: number };
 type Post  = {
@@ -329,13 +333,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                   : variant === 'mine'
                     ? { bg: '#fff', border: '#fff', text: '#7C3AED', hole: '#C084FC' }
                     : { bg: '#EDE9FE', border: '#DDD6FE', text: '#7C3AED', hole: '#fff' };
+                const TagIcon = moodIcon(p.mood);
                 return (
                   <View style={s.tagRow}>
                     {/* 先端（回転させた正方形でタグの尖り） */}
                     <View style={[s.tagPoint, { backgroundColor: c.bg, borderColor: c.border }]} />
                     {/* 本体 */}
                     <View style={[s.tagBody, { backgroundColor: c.bg, borderColor: c.border }]}>
-                      <Text style={s.moodTagEmoji}>{moodEmoji(p.mood)}</Text>
+                      <TagIcon size={12} color={c.text} strokeWidth={2.2} />
                       <Text style={[s.moodTagText, { color: c.text }]}>#{p.mood}</Text>
                     </View>
                     {/* 紐穴 */}
@@ -382,13 +387,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               {MOOD_CHIPS.map(m => {
                 const on = selMood === m.key;
                 const dark = m.key === '疲れた・眠い';
+                const iconColor = on ? '#fff' : dark ? '#C7D2FE' : '#7C3AED';
                 return (
                   <PuniPressable
                     key={m.key}
                     onPress={() => setSelMood(on ? '' : m.key)}
                     style={[s.chip, dark && s.chipDark, on && (dark ? s.chipOnDark : s.chipOn)]}
                   >
-                    <Text style={s.chipEmoji}>{m.emoji}</Text>
+                    <m.Icon size={13} color={iconColor} strokeWidth={2.2} />
                     <Text style={[s.chipText, dark && s.chipTextDark, on && s.chipTextOn]}>{m.key}</Text>
                   </PuniPressable>
                 );
@@ -625,7 +631,6 @@ const s = StyleSheet.create({
     position: 'absolute', left: 5.5, top: '50%', marginTop: -2.5,
     width: 5, height: 5, borderRadius: 2.5,
   },
-  moodTagEmoji: { fontSize: 12 },
   moodTagText: { fontSize: 12, fontWeight: '800' },
 
   // ── スポット共有カード ──
@@ -658,7 +663,6 @@ const s = StyleSheet.create({
   chipOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   chipDark: { backgroundColor: '#1E1B4B', borderColor: '#312E81' },
   chipOnDark: { backgroundColor: '#312E81', borderColor: '#6366F1' },
-  chipEmoji: { fontSize: 14 },
   chipText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
   chipTextDark: { color: '#C7D2FE' },
   chipTextOn: { color: '#fff' },
