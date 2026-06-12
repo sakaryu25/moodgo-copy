@@ -4852,6 +4852,20 @@ async function buildFreeWordRecommendations(
 
     const isAiChat = !!answers.aiChat;
     const wantCount = isAiChat ? 15 : 10;
+
+    // ── 人数・気分の制約をプロンプトに反映 ─────────────────────────────────────
+    // 「7人で話せて食べれる場所」等の人数指定を抽出し、カウンター主体の
+    // ファストフード/牛丼チェーンが提案されるのを防ぐ（大人数=個室/宴会/座敷必須）。
+    const partyMatch = (answers.freeWord ?? "").match(/([0-9０-９]{1,2})\s*(?:人|名)/);
+    const partySize = partyMatch ? parseInt(partyMatch[1].replace(/[０-９]/g, c => String("０１２３４５６７８９".indexOf(c))), 10) : 0;
+    const partyBlock = partySize >= 4
+      ? `\n【人数条件（最重要・厳守）】${partySize}人で利用する。${partySize}人が同じテーブル/個室で座って会話できる店のみ提案すること。\n- 適: 個室居酒屋・宴会対応の居酒屋/レストラン・座敷のある店・大テーブルのダイニング・食べ放題/コース対応店\n- 禁止: カウンター主体の店、牛丼/ファストフードチェーン（すき家・松屋・吉野家・マクドナルド・ケンタッキー等）、ラーメン店、立ち食い\n`
+      : "";
+    // 気分=お腹すいた（または食事系深掘り）は飲食店のみ
+    const isFoodMoodFw = (answers.mood ?? "") === "お腹すいた";
+    const foodOnlyBlock = isFoodMoodFw
+      ? `\n【カテゴリ条件（厳守）】食事が目的。レストラン・居酒屋・食堂など「食事ができる飲食店」のみ。公園・観光地・商業施設・娯楽施設は1件も含めないこと。\n`
+      : "";
     // 年齢・性別（AI相談時はプロンプトに反映して提案精度を上げる）
     const profileLine = (answers.age || answers.gender)
       ? `- ユーザー属性: ${[answers.age, answers.gender].filter(Boolean).join("・")}`
@@ -4927,7 +4941,7 @@ ${areaDesc}
 - この範囲（${geoAnchor} 周辺）に実在するスポットのみ。範囲外は絶対に含めない。
 ${typeof lat === "number" && typeof lng === "number" ? `- 現在地座標: ${lat.toFixed(3)},${lng.toFixed(3)}（この座標から${radiusKm}km圏内のみ）` : ""}
 
-# ユーザー情報
+${partyBlock}${foodOnlyBlock}# ユーザー情報
 ${profileLine ? profileLine + "\n" : ""}- 予算: ${answers.budget ? `〜¥${answers.budget.toLocaleString()}` : "指定なし"}
 ${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}${ragBlock}${fbBlock}
 # 良い回答例（Few-shot）
@@ -4958,6 +4972,10 @@ ${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}${ragBlock}${fb
 1. エリア: ${areaDesc}
 2. カテゴリ: ${deepDiveDesc}
 3. 希望キーワード（最優先）: ${answers.freeWord}
+${partyBlock}${foodOnlyBlock}
+【良い回答例】
+- 「7人で話せて食べれる場所」→ 良い: 個室居酒屋・宴会コースのある和食店・大テーブルのダイニング / 悪い: すき家・カウンターのラーメン店・公園
+- 「子連れでゆっくりランチ」→ 良い: 座敷/キッズスペースのあるレストラン / 悪い: バー・立ち食い
 
 【参考条件】
 ${profileLine ? profileLine + "\n" : ""}- 気分: ${answers.mood ?? "未設定"}
@@ -5013,7 +5031,7 @@ ${ragBlock}
               "Content-Type": "application/json",
               "X-Goog-Api-Key": apiKey,
               // photos を最大10枚・location を追加取得
-              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.businessStatus",
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.businessStatus,places.primaryType,places.types",
             },
             body: JSON.stringify({
               textQuery: p.query || `${area} ${p.name}`,
@@ -5104,6 +5122,9 @@ ${ragBlock}
             hasUserPhotos: false,
             userPhotoCount: 0,
             routesByMode: undefined,
+            // 解決後の飲食検証用（レスポンス前に削除はしない＝無害な追加フィールド）
+            primaryType: (place.primaryType as string | undefined) ?? "",
+            gTypes: (place.types as string[] | undefined) ?? [],
           };
         } catch {
           return null;
@@ -5115,6 +5136,8 @@ ${ragBlock}
     //   locationBiasは「優先」であって「制限」ではないため、ここで厳密に検証する。
     const maxKm = radiusKm * 1.25;
     const seenKeys = new Set<string>();
+    // 大人数時に不適切なカウンター主体チェーン（LLMが指示を無視した場合の保険）
+    const FASTFOOD_RE = /すき家|松屋|吉野家|なか卯|マクドナルド|ケンタッキー|モスバーガー|ロッテリア|バーガーキング|富士そば|ゆで太郎|小諸そば|立ち食い|日高屋|幸楽苑/;
     const validated = (results.filter((r) => r !== null) as Record<string, unknown>[])
       .filter((r) => {
         const dkm = r.distanceKm as number | undefined;
@@ -5122,6 +5145,18 @@ ${ragBlock}
         const key = (r.placeId as string | undefined) || String(r.title ?? "").toLowerCase();
         if (!key || seenKeys.has(key)) return false;                 // 重複除外
         seenKeys.add(key);
+        const name = String(r.title ?? "");
+        // お腹すいた: 飲食店のみ（Google型 or 飲食店名で判定。非飲食=公園/観光地等を除外）
+        if (isFoodMoodFw) {
+          const pt = String(r.primaryType ?? "");
+          const types = (r.gTypes as string[] | undefined) ?? [];
+          const isFoodPlace = FOOD_FAMILY_PRIMARY_TYPES.has(pt)
+            || types.some(t => FOOD_FAMILY_PRIMARY_TYPES.has(t))
+            || isRestaurantName(name);
+          if (!isFoodPlace) return false;
+        }
+        // 大人数(4人以上): カウンター主体のチェーンを除外
+        if (partySize >= 4 && FASTFOOD_RE.test(name)) return false;
         return true;
       });
     return validated;
