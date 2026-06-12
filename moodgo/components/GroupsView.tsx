@@ -300,23 +300,27 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
             ) : timeline.map(p => {
               const mine = p.device_id === deviceId;
               const darkMood = p.mood === '疲れた・眠い';
-              // ハッシュタグ風の気分バッジ
-              const moodTag = (variant: 'mine' | 'other') => (
-                <View style={[
-                  s.moodTag,
-                  variant === 'mine' ? s.moodTagMine : s.moodTagOther,
-                  darkMood && s.moodTagDark,
-                ]}>
-                  <Text style={s.moodTagEmoji}>{moodEmoji(p.mood)}</Text>
-                  <Text style={[
-                    s.moodTagText,
-                    variant === 'mine' ? s.moodTagTextMine : s.moodTagTextOther,
-                    darkMood && s.moodTagTextDark,
-                  ]}>
-                    #{p.mood}
-                  </Text>
-                </View>
-              );
+              // 値札タグ風の気分バッジ（尖った先端＋紐穴）
+              const moodTag = (variant: 'mine' | 'other') => {
+                const c = darkMood
+                  ? { bg: '#1E1B4B', border: '#4338CA', text: '#C7D2FE', hole: variant === 'mine' ? '#C084FC' : '#fff' }
+                  : variant === 'mine'
+                    ? { bg: '#fff', border: '#fff', text: '#7C3AED', hole: '#C084FC' }
+                    : { bg: '#EDE9FE', border: '#DDD6FE', text: '#7C3AED', hole: '#fff' };
+                return (
+                  <View style={s.tagRow}>
+                    {/* 先端（回転させた正方形でタグの尖り） */}
+                    <View style={[s.tagPoint, { backgroundColor: c.bg, borderColor: c.border }]} />
+                    {/* 本体 */}
+                    <View style={[s.tagBody, { backgroundColor: c.bg, borderColor: c.border }]}>
+                      <Text style={s.moodTagEmoji}>{moodEmoji(p.mood)}</Text>
+                      <Text style={[s.moodTagText, { color: c.text }]}>#{p.mood}</Text>
+                    </View>
+                    {/* 紐穴 */}
+                    <View style={[s.tagHole, { backgroundColor: c.hole }]} />
+                  </View>
+                );
+              };
               if (mine) {
                 // 自分: 右側の紫グラデバブル
                 return (
@@ -579,21 +583,30 @@ const s = StyleSheet.create({
   bubbleOtherText: { fontSize: 13, color: INK, marginTop: 6, lineHeight: 19 },
   bubbleTime: { fontSize: 9, color: '#C4B5FD', marginBottom: 2 },
 
-  // ── 気分のハッシュタグ風バッジ ──
-  moodTag: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 999, borderWidth: 1,
+  // ── 値札タグ風の気分バッジ（先端の尖り＋紐穴） ──
+  tagRow: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
+    marginLeft: 3,
+    transform: [{ rotate: '-2deg' }],   // ちょっと傾けてしおり感
   },
-  moodTagMine:  { backgroundColor: 'rgba(255,255,255,0.22)', borderColor: 'rgba(255,255,255,0.45)' },
-  moodTagOther: { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' },
-  moodTagDark:  { backgroundColor: '#1E1B4B', borderColor: '#4338CA' },  // 疲れた・眠いは夜カラー
+  tagPoint: {
+    width: 17, height: 17, borderRadius: 4, borderWidth: 1,
+    transform: [{ rotate: '45deg' }],
+    marginRight: -12,
+  },
+  tagBody: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingLeft: 8, paddingRight: 11, paddingVertical: 4,
+    borderTopRightRadius: 9, borderBottomRightRadius: 9,
+    borderTopLeftRadius: 2, borderBottomLeftRadius: 2,
+    borderTopWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderLeftWidth: 0,
+  },
+  tagHole: {
+    position: 'absolute', left: 5.5, top: '50%', marginTop: -2.5,
+    width: 5, height: 5, borderRadius: 2.5,
+  },
   moodTagEmoji: { fontSize: 12 },
   moodTagText: { fontSize: 12, fontWeight: '800' },
-  moodTagTextMine:  { color: '#fff' },
-  moodTagTextOther: { color: '#7C3AED' },
-  moodTagTextDark:  { color: '#C7D2FE' },
 
   // ── コンポーザー ──
   composer: {
