@@ -6207,7 +6207,11 @@ async function handleRecommend(request: Request) {
             ]);
             // qualitySanitize を必ず通す（B2B=株式会社/合同会社/事業所などのゴミ除去）。
             //   従来この段だけ品質フィルタ無しで、Yahoo広域検索の無関係な会社が混入していた。
-            const widePool = sortOrShuffle(nonFoodSanitize(qualitySanitize(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[]))))));
+            const wideBase = nonFoodSanitize(qualitySanitize(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[])))));
+            // 広域補填でもジャンル一致を優先し、足りない分だけ混在許容（純度↑かつ15件保証）
+            const wideGenre = genreFidelityFilter(wideBase);
+            const wideRest  = wideBase.filter(r => !wideGenre.includes(r));
+            const widePool  = [...sortOrShuffle(wideGenre), ...sortOrShuffle(wideRest)];
             const { taken: topUp } = pickUnique(widePool, 15 - recommendations.length, seen);
             recommendations = [...recommendations, ...topUp];
           }
