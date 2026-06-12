@@ -247,19 +247,33 @@ export default function Home() {
       }
       // 位置サービスが無効ならクラッシュ前に既知位置でフォールバック
       const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
-      // getCurrentPositionAsync がハングしてアプリが固まる/落ちるのを防ぐためタイムアウト付き。
-      // ★レース内のPromiseには必ず .catch を付ける（タイムアウト後の遅延rejectで
-      //   未処理Promise拒否→クラッシュするのを防ぐ）
-      const pos = servicesOn ? await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
-      ]) : null;
-      if (!pos) {
-        // 取得できない時は最後の既知位置でフォールバック
-        const last = await Location.getLastKnownPositionAsync().catch(() => null);
-        if (!last) { setLocationError('位置情報を取得できませんでした'); return; }
+      // 高速化: まず既知位置(キャッシュ)を即座に採用 → 裏でBalanced精度のGPSで上書き。
+      //   従来はHigh精度のGPS確定(5〜12秒)を待ってから表示しており「取得が長い」原因だった。
+      //   検索はkm単位の半径なのでBalanced(〜100m)で十分。
+      // ★レース内のPromiseには必ず .catch を付ける（遅延rejectでのクラッシュ防止）
+      const last = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (last) {
+        // 既知位置で即時に画面を進める（後段のGPS確定で座標は上書きされる）
         setOriginLat(last.coords.latitude); setOriginLng(last.coords.longitude);
         setAreaMode('current_location');
+      }
+      const pos = servicesOn ? await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+      ]) : null;
+      if (!pos) {
+        if (!last) { setLocationError('位置情報を取得できませんでした'); return; }
+        // 既知位置のみで続行（住所表示も既知位置で解決）
+        try {
+          const res = await apiFetch('/api/location-to-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude: last.coords.latitude, longitude: last.coords.longitude }),
+          });
+          const d = await res.json();
+          const fullAddr = d.fullAddress ?? d.displayArea ?? d.area ?? '現在地';
+          setSelectedArea(fullAddr); setLocationDisplayArea(fullAddr);
+        } catch { setSelectedArea('現在地'); setLocationDisplayArea('現在地'); }
         return;
       }
       const { latitude, longitude } = pos.coords;
@@ -298,10 +312,18 @@ export default function Home() {
     try {      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         // ハング防止のタイムアウト付き（レース内に必ず.catch→遅延rejectでのクラッシュ防止）
+        // 高速化: 既知位置を先に使い、Balanced精度(6s)で上書き
+        const lastAi = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (lastAi) {
+          setOriginLat(lastAi.coords.latitude);
+          setOriginLng(lastAi.coords.longitude);
+          setAreaMode('current_location');
+          setAiHasLocation(true);
+        }
         const pos = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000)),
-        ]) ?? await Location.getLastKnownPositionAsync().catch(() => null);
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+        ]) ?? lastAi;
         if (pos) {
           const { latitude, longitude } = pos.coords;
           setOriginLat(latitude);
