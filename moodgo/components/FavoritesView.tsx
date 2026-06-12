@@ -47,7 +47,7 @@ const T = {
     byName: '名前順',
     empty:  'まだ保存した場所はありません',
     emptySub: '気に入った場所をハートで保存しよう！',
-    map:    'Googleマップ',
+    map:    'マップ',
     talk:   'トーク',
     remove: '削除',
     count:  (n: number) => `${n}件保存中`,
@@ -64,7 +64,7 @@ const T = {
     byName: 'By name',
     empty:  'No saved places yet',
     emptySub: 'Save places you like with the heart button!',
-    map:    'Google Maps',
+    map:    'Map',
     talk:   'Talk',
     remove: 'Remove',
     count:  (n: number) => `${n} saved`,
@@ -168,7 +168,7 @@ export default function FavoritesView({
                   >
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
                       <MapPin size={12} color="#fff" strokeWidth={2.5} />
-                      <Text style={s.mapBtnText}>{t.map}</Text>
+                      <Text style={s.mapBtnText} numberOfLines={1}>{t.map}</Text>
                     </LinearGradient>
                   </PuniPressable>
                 ) : null}
@@ -185,8 +185,7 @@ export default function FavoritesView({
                   haptic={false}
                   style={s.deleteBtn}
                 >
-                  <Trash2 size={13} color="#F43F5E" strokeWidth={2} />
-                  <Text style={s.deleteBtnText}>{t.remove}</Text>
+                  <Trash2 size={14} color="#F43F5E" strokeWidth={2} />
                 </PuniPressable>
               </View>
             </View>
@@ -345,19 +344,19 @@ const s = StyleSheet.create({
     gap: 4, paddingVertical: 7, paddingHorizontal: 10,
   },
   mapBtnText:    { fontSize: 12, fontWeight: '700', color: '#fff' },
-  // 削除ボタンと同じ作りの紫バージョン（並びに馴染ませる）
+  // マップと同じ高さ・角丸で並びを揃えた紫ボタン
   groupBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10,
     backgroundColor: '#F5F3FF',
     borderWidth: 1, borderColor: '#DDD6FE',
   },
-  groupBtnText: { fontSize: 12, fontWeight: '600', color: '#7C3AED' },
+  groupBtnText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
+  // 削除はアイコンのみの正方形（行を圧迫しない）
   deleteBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    width: 34, alignSelf: 'stretch', borderRadius: 10,
     backgroundColor: '#FFF5F6',
     borderWidth: 1, borderColor: '#FECDD3',
   },
-  deleteBtnText: { fontSize: 12, fontWeight: '600', color: '#F43F5E' },
 });
