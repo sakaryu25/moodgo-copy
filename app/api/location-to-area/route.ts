@@ -139,14 +139,13 @@ async function reverseGeocode(latitude: number, longitude: number) {
     });
   };
 
+  // コスト削減: Yahoo(無料)を一次に。失敗時のみGoogle(課金)で救済
+  const yahooFirst = await tryYahoo();
+  if (yahooFirst) return yahooFirst;
+
   if (!apiKey) {
-    const yahoo = await tryYahoo();
-    if (yahoo) return yahoo;
     return NextResponse.json(
-      {
-        ok: false,
-        error: "GOOGLE_MAPS_API_KEY が .env.local にありません。",
-      },
+      { ok: false, error: "逆ジオコーディング失敗（Yahoo不可・Google未設定）" },
       { status: 500 }
     );
   }

@@ -23,11 +23,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, address: y.fullAddress, fullAddress: y.fullAddress, source: "yahoo" });
   };
 
+  // コスト削減: Yahoo!リバースジオコーダ(無料)を一次に。失敗時のみGoogle(課金)で救済
+  const yahooFirst = await tryYahoo();
+  if (yahooFirst) return yahooFirst;
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    const yahoo = await tryYahoo();
-    if (yahoo) return yahoo;
-    return NextResponse.json({ ok: false, error: "GOOGLE_PLACES_API_KEY 未設定" }, { status: 503 });
+    return NextResponse.json({ ok: false, error: "逆ジオコーディング失敗（Yahoo不可・Google未設定）" }, { status: 503 });
   }
 
   try {

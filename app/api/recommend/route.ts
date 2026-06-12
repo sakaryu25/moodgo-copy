@@ -608,6 +608,32 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     const oldest = [..._stationCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
     if (oldest) _stationCache.delete(oldest[0]);
   }
+  // ── コスト削減: HeartRails Express(無料・キー不要・日本の駅特化)を一次に ──────
+  //   Google Nearby($32/1000=最高単価)は HeartRails 失敗時の救済のみ
+  try {
+    const hr = await fetch(
+      `https://express.heartrails.com/api/json?method=getStations&x=${lng}&y=${lat}`,
+      { cache: "no-store", signal: AbortSignal.timeout(4000) },
+    );
+    if (hr.ok) {
+      const hd = await hr.json().catch(() => null);
+      const st = hd?.response?.station?.[0];
+      if (st?.name && st?.distance) {
+        const distM = parseInt(String(st.distance).replace(/[^0-9]/g, ""), 10);
+        if (Number.isFinite(distM) && distM <= 2000) {
+          const val = `${st.name}駅から徒歩約${Math.max(1, Math.ceil(distM / 80))}分`;
+          _stationCache.set(ckey, { ts: Date.now(), val });
+          await ltCachePut(`st:${ckey}`, val);
+          return val;
+        }
+        // 2km超=最寄り駅なし扱い（従来のGoogle radius1500と同等の振る舞い）
+        _stationCache.set(ckey, { ts: Date.now(), val: "" });
+        await ltCachePut(`st:${ckey}`, "");
+        return "";
+      }
+    }
+  } catch { /* HeartRails失敗 → Googleへフォールバック */ }
+
   try {
     const res = await gfetch("https://places.googleapis.com/v1/places:searchNearby", {
       method: "POST",
@@ -5659,23 +5685,52 @@ async function handleRecommend(request: Request) {
           answers.originLat = geoCached.lat;
           answers.originLng = geoCached.lng;
         } else {
+        // コスト削減: 国土地理院(無料・キー不要)を一次に。住所はGoogleと同等精度。
+        // ランドマーク名等で解決できない場合のみGoogle(課金)へフォールバック
+        let loc: { lat: number; lng: number } | null = null;
+        try {
+          const gsiRes = await fetch(
+            `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(answers.area.trim())}`,
+            { cache: "no-store", signal: AbortSignal.timeout(4000) },
+          );
+          const gsi = await gsiRes.json().catch(() => null);
+          const coord = gsi?.[0]?.geometry?.coordinates;  // [lng, lat]
+          if (Array.isArray(coord) && typeof coord[1] === "number") {
+            loc = { lat: coord[1], lng: coord[0] };
+          }
+        } catch { /* GSI失敗 → Google */ }
+        if (!loc) {
         const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
           answers.area.trim()
         )}&language=ja&region=JP&key=${apiKey}`;
         const geoRes = await gfetch(geoUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
         const geoData = await geoRes.json().catch(() => null);
-        const loc = geoData?.status === "OK" ? geoData?.results?.[0]?.geometry?.location : null;
+        loc = geoData?.status === "OK" ? geoData?.results?.[0]?.geometry?.location : null;
+        }
         if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
           answers.originLat = loc.lat;
           answers.originLng = loc.lng;
           await ltCachePut(geoKey, { lat: loc.lat, lng: loc.lng });  // 永続(30日)
           console.log(`[recommend] 手動エリア「${answers.area}」→ ${loc.lat}, ${loc.lng}`);
         } else {
-          console.warn(`[recommend] 手動エリア「${answers.area}」のジオコーディング失敗: ${geoData?.status}`);
+          console.warn(`[recommend] 手動エリア「${answers.area}」のジオコーディング失敗（GSI/Google両方）`);
         }
         }
       } catch (e) {
         console.warn("[recommend] 手動エリアのジオコーディングエラー:", e);
+      }
+    }
+
+    // ── ④ 無料IPジオロケーション: GPS・エリア入力ともに無い場合の最終フォールバック ──
+    //   Vercelが無料で付与する x-vercel-ip-latitude/longitude を「だいたいの現在地」に使う
+    //   （市区レベル精度。位置なしでレガシー経路に落ちるよりはるかに良い結果になる）
+    if (!answers.originLat && !answers.originLng) {
+      const ipLat = parseFloat(request.headers.get("x-vercel-ip-latitude") ?? "");
+      const ipLng = parseFloat(request.headers.get("x-vercel-ip-longitude") ?? "");
+      if (Number.isFinite(ipLat) && Number.isFinite(ipLng) && ipLat > 20 && ipLat < 46) {  // 日本域チェック
+        answers.originLat = ipLat;
+        answers.originLng = ipLng;
+        console.log(`[recommend] IPジオロケーションを現在地フォールバックに使用: ${ipLat}, ${ipLng}`);
       }
     }
 

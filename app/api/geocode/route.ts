@@ -20,6 +20,18 @@ export async function GET(request: Request) {
   }
 
   try {
+    // コスト削減: 国土地理院(無料)を一次に
+    try {
+      const gsiRes = await fetch(
+        `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(area)}`,
+        { cache: "no-store", signal: AbortSignal.timeout(4000) },
+      );
+      const gsi = await gsiRes.json().catch(() => null);
+      const coord = gsi?.[0]?.geometry?.coordinates;
+      if (Array.isArray(coord) && typeof coord[1] === "number") {
+        return NextResponse.json({ ok: true, lat: coord[1], lng: coord[0], source: "gsi" });
+      }
+    } catch { /* GSI失敗 → Google */ }
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(area)}&language=ja&region=JP&key=${apiKey}`;
     const res = await fetch(url, { cache: "no-store" });
     const data = await res.json();
