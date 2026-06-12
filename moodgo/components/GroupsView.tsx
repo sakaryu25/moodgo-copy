@@ -299,6 +299,24 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               </View>
             ) : timeline.map(p => {
               const mine = p.device_id === deviceId;
+              const darkMood = p.mood === '疲れた・眠い';
+              // ハッシュタグ風の気分バッジ
+              const moodTag = (variant: 'mine' | 'other') => (
+                <View style={[
+                  s.moodTag,
+                  variant === 'mine' ? s.moodTagMine : s.moodTagOther,
+                  darkMood && s.moodTagDark,
+                ]}>
+                  <Text style={s.moodTagEmoji}>{moodEmoji(p.mood)}</Text>
+                  <Text style={[
+                    s.moodTagText,
+                    variant === 'mine' ? s.moodTagTextMine : s.moodTagTextOther,
+                    darkMood && s.moodTagTextDark,
+                  ]}>
+                    #{p.mood}
+                  </Text>
+                </View>
+              );
               if (mine) {
                 // 自分: 右側の紫グラデバブル
                 return (
@@ -306,7 +324,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                     <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
                     <View style={s.bubbleMineWrap}>
                       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.bubbleMine}>
-                        <Text style={s.bubbleMineMood}>{moodEmoji(p.mood)} {p.mood}</Text>
+                        {moodTag('mine')}
                         {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
                       </LinearGradient>
                     </View>
@@ -323,7 +341,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                     <Text style={s.otherNick}>{p.nickname}</Text>
                     <View style={s.rowOtherBubbleLine}>
                       <View style={s.bubbleOther}>
-                        <Text style={s.bubbleOtherMood}>{moodEmoji(p.mood)} {p.mood}</Text>
+                        {moodTag('other')}
                         {p.comment ? <Text style={s.bubbleOtherText}>{p.comment}</Text> : null}
                       </View>
                       <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
@@ -542,8 +560,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 18, borderBottomRightRadius: 4,
   },
-  bubbleMineMood: { fontSize: 13, fontWeight: '800', color: '#fff' },
-  bubbleMineText: { fontSize: 13, color: 'rgba(255,255,255,0.95)', marginTop: 3, lineHeight: 19 },
+  bubbleMineText: { fontSize: 13, color: 'rgba(255,255,255,0.95)', marginTop: 6, lineHeight: 19 },
 
   rowOther: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   avatar: {
@@ -559,9 +576,24 @@ const s = StyleSheet.create({
     borderRadius: 18, borderBottomLeftRadius: 4,
     borderWidth: 1, borderColor: '#EDE9FE',
   },
-  bubbleOtherMood: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
-  bubbleOtherText: { fontSize: 13, color: INK, marginTop: 3, lineHeight: 19 },
+  bubbleOtherText: { fontSize: 13, color: INK, marginTop: 6, lineHeight: 19 },
   bubbleTime: { fontSize: 9, color: '#C4B5FD', marginBottom: 2 },
+
+  // ── 気分のハッシュタグ風バッジ ──
+  moodTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 999, borderWidth: 1,
+  },
+  moodTagMine:  { backgroundColor: 'rgba(255,255,255,0.22)', borderColor: 'rgba(255,255,255,0.45)' },
+  moodTagOther: { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' },
+  moodTagDark:  { backgroundColor: '#1E1B4B', borderColor: '#4338CA' },  // 疲れた・眠いは夜カラー
+  moodTagEmoji: { fontSize: 12 },
+  moodTagText: { fontSize: 12, fontWeight: '800' },
+  moodTagTextMine:  { color: '#fff' },
+  moodTagTextOther: { color: '#7C3AED' },
+  moodTagTextDark:  { color: '#C7D2FE' },
 
   // ── コンポーザー ──
   composer: {
