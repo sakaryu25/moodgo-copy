@@ -30,6 +30,12 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "グループのアイコンに使う写真を選択します。"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

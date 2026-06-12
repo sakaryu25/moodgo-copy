@@ -5,15 +5,17 @@
  * - 15秒ごとにフィード自動更新＋新着で自動スクロール
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Activity, BookOpen, Car, ChevronLeft, Coffee, Copy, Leaf, LogOut,
-  MapPin, MessageCircle, Moon, Pencil, Plane, Plus, Send, Settings, ShoppingBag,
+  Activity, BookOpen, Camera, Car, ChevronLeft, Coffee, Copy, Leaf, LogOut,
+  MapPin, MessageCircle, Moon, Plane, Plus, Send, Settings, ShoppingBag,
   Shuffle, Sparkles, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Dimensions, KeyboardAvoidingView, Linking,
+  ActivityIndicator, Alert, Animated, Dimensions, Image, KeyboardAvoidingView, Linking,
   Modal, PanResponder, Platform, RefreshControl, ScrollView, Share, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
@@ -56,16 +58,11 @@ type LastPost = {
 };
 type Group = {
   id: string; name: string; invite_code: string; member_count?: number;
-  icon?: string | null;
+  icon?: string | null;   // アイコン写真の公開URL
   last_post?: LastPost | null;
 };
 
-// グループアイコンに選べる絵文字
-const ICON_EMOJIS = [
-  '🍜', '🍣', '☕️', '🍻', '🎮', '🎤', '🏖️', '⛰️',
-  '🚗', '✈️', '🛍️', '📚', '💪', '🌸', '🐶', '🐱',
-  '⚽️', '🎬', '🎵', '✨', '🔥', '💜', '🌙', '🏠',
-];
+const isIconUrl = (icon?: string | null): icon is string => !!icon && icon.startsWith('http');
 type Post  = {
   id: string; device_id: string; nickname: string; mood: string; comment: string | null;
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
@@ -118,7 +115,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const [posts, setPosts]     = useState<Post[]>([]);   // 新しい順で保持・表示時に反転
   const [members, setMembers] = useState<Member[]>([]);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
-  const [pickIcon, setPickIcon] = useState(false);
+  const [iconBusy, setIconBusy] = useState(false);
   const [selMood, setSelMood] = useState('');
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -271,30 +268,47 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
 
   const openGroup = (g: Group) => {
     setActive(g); setPosts([]); setMembers([]); setSelMood(''); setComment('');
-    setShowGroupSettings(false); setPickIcon(false);
+    setShowGroupSettings(false); setIconBusy(false);
     onChatOpenChange?.(true);
     fetchGroupDetail(g, deviceId);
   };
 
-  // ── アイコン変更（楽観更新＋失敗時ロールバック） ──
-  const handleSetIcon = async (emoji: string) => {
-    if (!active) return;
-    const prev = active.icon ?? null;
-    const next = emoji || null;
-    setActive(a => (a ? { ...a, icon: next } : a));
-    setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: next } : g)));
+  // ── アイコン変更（写真を選んで512pxに縮小→アップロード） ──
+  const handlePickIcon = async () => {
+    if (!active || iconBusy) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('写真へのアクセスが必要です', '設定アプリからMoodGoに写真の許可をしてね');
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,   // 正方形に切り抜き
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (picked.canceled || !picked.assets?.length) return;
+    setIconBusy(true);
     try {
+      const small = await ImageManipulator.manipulateAsync(
+        picked.assets[0].uri,
+        [{ resize: { width: 512 } }],
+        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'set_icon', groupId: active.id, deviceId, icon: emoji }),
+        body: JSON.stringify({
+          action: 'set_icon_photo', groupId: active.id, deviceId, imageBase64: small.base64,
+        }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? '変更に失敗しました');
+      const url = data.icon as string;
+      setActive(a => (a ? { ...a, icon: url } : a));
+      setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: url } : g)));
     } catch (e) {
-      setActive(a => (a ? { ...a, icon: prev } : a));
-      setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: prev } : g)));
       Alert.alert('エラー', e instanceof Error ? e.message : '変更に失敗しました');
-    }
+    } finally { setIconBusy(false); }
   };
 
   const closeChat = () => {
@@ -369,15 +383,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
             </PuniPressable>
             <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={s.headerTitle} numberOfLines={1}>
-                {active.icon ? `${active.icon} ` : ''}{active.name}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {isIconUrl(active.icon) && (
+                  <Image source={{ uri: active.icon }} style={s.headerIconImg} />
+                )}
+                <Text style={s.headerTitle} numberOfLines={1}>{active.name}</Text>
+              </View>
               <PuniPressable onPress={() => shareCode(active)} style={s.codeChip}>
                 <Copy size={10} color="#7C3AED" strokeWidth={2} />
                 <Text style={s.codeChipText}>{active.invite_code}</Text>
               </PuniPressable>
             </View>
-            <PuniPressable onPress={() => { setPickIcon(false); setShowGroupSettings(true); }} style={s.backCircle}>
+            <PuniPressable onPress={() => setShowGroupSettings(true)} style={s.backCircle}>
               <Settings size={18} color="#7C3AED" strokeWidth={2} />
             </PuniPressable>
           </View>
@@ -537,34 +554,26 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {/* アイコン＋グループ名 */}
+                  {/* アイコン（タップで写真を選択）＋グループ名 */}
                   <View style={{ alignItems: 'center' }}>
-                    <PuniPressable onPress={() => setPickIcon(v => !v)} style={s.bigIconCircle}>
-                      {active.icon
-                        ? <Text style={{ fontSize: 40 }}>{active.icon}</Text>
+                    <PuniPressable onPress={handlePickIcon} disabled={iconBusy} style={s.bigIconCircle}>
+                      {isIconUrl(active.icon)
+                        ? <Image source={{ uri: active.icon }} style={s.bigIconImg} />
                         : <Text style={s.bigIconLetter}>{active.name.slice(0, 1)}</Text>}
-                      <View style={s.iconEditBadge}>
-                        <Pencil size={11} color="#fff" strokeWidth={2.5} />
-                      </View>
+                      {iconBusy ? (
+                        <View style={s.iconBusyOverlay}>
+                          <ActivityIndicator color="#fff" />
+                        </View>
+                      ) : (
+                        <View style={s.iconEditBadge}>
+                          <Camera size={12} color="#fff" strokeWidth={2.5} />
+                        </View>
+                      )}
                     </PuniPressable>
+                    <Text style={s.iconHint}>タップして写真を変更</Text>
                     <Text style={s.settingsGroupName} numberOfLines={1}>{active.name}</Text>
                     <Text style={s.settingsMeta}>メンバー {members.length}人</Text>
                   </View>
-
-                  {/* 絵文字ピッカー */}
-                  {pickIcon && (
-                    <View style={s.emojiGrid}>
-                      {ICON_EMOJIS.map(e => (
-                        <PuniPressable
-                          key={e}
-                          onPress={() => { handleSetIcon(e); setPickIcon(false); }}
-                          style={[s.emojiCell, active.icon === e && s.emojiCellOn]}
-                        >
-                          <Text style={{ fontSize: 22 }}>{e}</Text>
-                        </PuniPressable>
-                      ))}
-                    </View>
-                  )}
 
                   {/* 招待コード */}
                   <Text style={s.label}>招待コード</Text>
@@ -639,8 +648,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
           return (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
               <View style={s.groupIconCircle}>
-                {g.icon
-                  ? <Text style={{ fontSize: 22 }}>{g.icon}</Text>
+                {isIconUrl(g.icon)
+                  ? <Image source={{ uri: g.icon }} style={s.groupIconImg} />
                   : <Text style={s.groupIconText}>{g.name.slice(0, 1)}</Text>}
               </View>
               <View style={{ flex: 1 }}>
@@ -793,6 +802,8 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   groupIconText: { fontSize: 18, fontWeight: '800', color: '#7C3AED' },
+  groupIconImg: { width: 46, height: 46, borderRadius: 23 },
+  headerIconImg: { width: 22, height: 22, borderRadius: 11 },
   groupTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   groupName: { fontSize: 15, fontWeight: '800', color: INK, flexShrink: 1 },
   groupCount: { fontSize: 12, fontWeight: '700', color: '#A78BFA' },
@@ -822,24 +833,21 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
   bigIconLetter: { fontSize: 34, fontWeight: '800', color: '#7C3AED' },
+  bigIconImg: { width: 84, height: 84, borderRadius: 42 },
+  iconBusyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 42, backgroundColor: 'rgba(30,7,83,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   iconEditBadge: {
     position: 'absolute', right: 0, bottom: 0,
-    width: 24, height: 24, borderRadius: 12, backgroundColor: '#7C3AED',
+    width: 26, height: 26, borderRadius: 13, backgroundColor: '#7C3AED',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#fff',
   },
+  iconHint: { fontSize: 10, color: '#A78BFA', marginBottom: 8 },
   settingsGroupName: { fontSize: 18, fontWeight: '800', color: INK },
   settingsMeta: { fontSize: 12, color: '#A78BFA', marginTop: 2, marginBottom: 14 },
-  emojiGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
-    justifyContent: 'center', marginBottom: 14,
-  },
-  emojiCell: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: '#F5F3FF',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: '#EDE9FE',
-  },
-  emojiCellOn: { borderColor: '#7C3AED', backgroundColor: '#EDE9FE' },
   codeRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#F5F3FF', borderRadius: 14,

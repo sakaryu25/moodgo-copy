@@ -189,11 +189,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, post });
     }
 
-    // ── グループアイコン（絵文字）を設定 ──
-    if (body.action === "set_icon") {
+    // ── グループアイコン（写真）を設定 ──
+    // imageBase64(JPEG) → Supabase Storage(group-icons) → 公開URLを mood_groups.icon に保存
+    if (body.action === "set_icon_photo") {
       const groupId = String(body.groupId ?? "").trim();
-      const icon = String(body.icon ?? "").trim().slice(0, 8);
+      const imageBase64 = String(body.imageBase64 ?? "");
       if (!groupId) return NextResponse.json({ ok: false, error: "groupId必須" }, { status: 400 });
+      if (!imageBase64) return NextResponse.json({ ok: false, error: "imageBase64必須" }, { status: 400 });
+      if (imageBase64.length > 3_000_000) {
+        return NextResponse.json({ ok: false, error: "画像が大きすぎます" }, { status: 400 });
+      }
 
       const { data: me, error: meErr } = await supabase
         .from("mood_group_members")
@@ -203,9 +208,19 @@ export async function POST(req: NextRequest) {
       if (meErr) throw meErr;
       if (!me) return NextResponse.json({ ok: false, error: "このグループのメンバーではありません" }, { status: 403 });
 
+      const BUCKET = "group-icons";
+      await supabase.storage.createBucket(BUCKET, { public: true }); // 既存ならエラーが返るだけ（無視）
+      const path = `${groupId}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, Buffer.from(imageBase64, "base64"), { contentType: "image/jpeg", upsert: true });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Date.now()}`; // 同一パス上書きのためキャッシュバスター付与
+
       const { error } = await supabase
         .from("mood_groups")
-        .update({ icon: icon || null })
+        .update({ icon: url })
         .eq("id", groupId);
       if (error) {
         // icon列が未作成（supabase/group-icon.sql 未実行）の場合
@@ -214,7 +229,7 @@ export async function POST(req: NextRequest) {
         }
         throw error;
       }
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, icon: url });
     }
 
     // ── グループを抜ける ──
