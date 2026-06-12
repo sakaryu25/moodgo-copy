@@ -1198,7 +1198,7 @@ export default function QuizFlow(props: Props) {
                 style={[s.budgetChip, active && s.budgetChipA]}
               >
                 {active && (
-                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.budgetFill} />
                 )}
                 <Text style={[s.budgetChipTxt, active && s.budgetChipTxtA]}>{chip.label}</Text>
               </TouchableOpacity>
@@ -1444,6 +1444,8 @@ const s = StyleSheet.create({
     borderColor: 'transparent',
     shadowColor: '#C084FC', shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
+  // 枠線(1.5px)の下まで広げて、フチまでぴったり塗る
+  budgetFill: { position: 'absolute', top: -2, left: -2, right: -2, bottom: -2 },
   budgetChipTxt: { fontSize: 13, fontWeight: '700', color: '#1E0753' },
   budgetChipTxtA: { color: '#fff', fontWeight: '800' },
   locWrap: {
