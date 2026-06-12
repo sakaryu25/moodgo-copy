@@ -176,6 +176,7 @@ export default function FavoritesView({
                 <PuniPressable
                   onPress={() => shareSpotToGroup({ title: item.title, address: item.area, mapUrl: item.mapUrl })}
                   style={s.groupBtn}
+                  containerStyle={{ flex: 1 }}
                 >
                   <MessageCircle size={13} color="#7C3AED" strokeWidth={2} />
                   <Text style={s.groupBtnText}>{t.talk}</Text>
@@ -184,8 +185,10 @@ export default function FavoritesView({
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item.title); }}
                   haptic={false}
                   style={s.deleteBtn}
+                  containerStyle={{ flex: 1 }}
                 >
-                  <Trash2 size={14} color="#F43F5E" strokeWidth={2} />
+                  <Trash2 size={13} color="#F43F5E" strokeWidth={2} />
+                  <Text style={s.deleteBtnText}>{t.remove}</Text>
                 </PuniPressable>
               </View>
             </View>
@@ -340,23 +343,24 @@ const s = StyleSheet.create({
   cardActions: { flexDirection: 'row', gap: 7, marginTop: 2 },
   mapBtn:      { flex: 1, borderRadius: 10, overflow: 'hidden' },
   mapBtnGrad: {
+    // 枠線(1px)があるトーク/削除と総高さを揃えるため paddingVertical は+1
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, paddingVertical: 7, paddingHorizontal: 10,
+    gap: 4, paddingVertical: 8, paddingHorizontal: 10,
   },
   mapBtnText:    { fontSize: 12, fontWeight: '700', color: '#fff' },
-  // マップと同じ高さ・角丸で並びを揃えた紫ボタン
+  // マップ・トーク・削除を同じ幅（flex:1）・同じ高さで揃える
   groupBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 7, borderRadius: 10,
     backgroundColor: '#F5F3FF',
     borderWidth: 1, borderColor: '#DDD6FE',
   },
   groupBtnText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
-  // 削除はアイコンのみの正方形（行を圧迫しない）
   deleteBtn: {
-    alignItems: 'center', justifyContent: 'center',
-    width: 34, alignSelf: 'stretch', borderRadius: 10,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 7, borderRadius: 10,
     backgroundColor: '#FFF5F6',
     borderWidth: 1, borderColor: '#FECDD3',
   },
+  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#F43F5E' },
 });
