@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:search": "node scripts/verify-search.mjs",
+    "verify:search:quick": "node scripts/verify-search.mjs --quick"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

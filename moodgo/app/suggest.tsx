@@ -98,6 +98,7 @@ const T = {
     submit: '投稿する',
     submitting: '送信中...',
     errName: 'スポット名を入力してください',
+    errMoodTag: '気分タグを1つ以上選んでください（タグ選択から #まったりしたい 等）',
     errLocation: '位置情報の許可が必要です。',
     errLocationFail: '位置情報の取得に失敗しました。住所を手入力してください。',
     errPhoto: '写真へのアクセスを許可してください。',
@@ -132,6 +133,7 @@ const T = {
     submit: 'Submit',
     submitting: 'Sending...',
     errName: 'Please enter a spot name',
+    errMoodTag: 'Please pick at least one mood tag',
     errLocation: 'Location permission is required.',
     errLocationFail: 'Failed to get location. Please enter the address manually.',
     errPhoto: 'Please allow photo access.',
@@ -467,6 +469,12 @@ export default function SuggestScreen() {
 
   const handleSubmit = async () => {
     if (!spotName.trim()) { setError(t.errName); return; }
+    // 気分タグ必須: 気分タグの無い投稿は承認後も検索結果に出る経路が無い
+    if (!selectedTags.some(tag => MOODS.includes(tag))) {
+      setError(t.errMoodTag);
+      setTagPickerOpen(true);  // タグ選択を自動で開いて誘導
+      return;
+    }
     setIsSubmitting(true); setError('');
     try {
       // サーバーAPIは multipart/form-data のみ受け付けるため FormData を使用
@@ -777,7 +785,7 @@ export default function SuggestScreen() {
 
             {/* タグ */}
             <Text style={[s.label, { marginTop: 18 }]}>
-              {t.labelTags} <Text style={s.optional}>{t.optional}</Text>
+              {t.labelTags} <Text style={s.required}>*</Text>
             </Text>
             <TouchableOpacity onPress={() => setTagPickerOpen(p => !p)} activeOpacity={0.85} style={s.tagToggle}>
               <Tag size={16} color="#A78BFA" strokeWidth={1.8} />

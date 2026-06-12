@@ -2619,6 +2619,17 @@ export default function AdminPage() {
 
   // 承認（Googleマップ紐付けあり or なし）
   const handleApprove = async (s: Suggestion) => {
+    // 気分タグ未設定の警告: 気分タグが無い投稿は承認しても検索結果に出る経路が無い
+    const tagsToCheck = editableTags[s.id] ?? s.auto_tags ?? [];
+    const hasMoodTag = tagsToCheck.some((t) => MOOD_TAGS.includes(t));
+    if (!hasMoodTag) {
+      const ok = window.confirm(
+        "⚠️ 気分タグ（#まったりしたい 等）が設定されていません。\n" +
+        "気分タグが無いと、承認しても検索結果に一切表示されません。\n\n" +
+        "このまま承認しますか？（キャンセルしてタグを追加することを推奨）"
+      );
+      if (!ok) return;
+    }
     setActionLoading(s.id);
     const candidate = selectedCandidate[s.id];
     try {
