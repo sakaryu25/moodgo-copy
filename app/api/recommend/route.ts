@@ -6636,6 +6636,18 @@ async function handleRecommend(request: Request) {
           }));
         }
 
+        // ── 駅情報の全件付与（HeartRails無料化により可能になった品質向上）──────────
+        //   従来はSupabase出自のスポットのみ駅付きだった。無料なので全15件に付与する。
+        //   （lt永続キャッシュ st: が効くため2回目以降は外部呼び出しもゼロ）
+        await Promise.all(recommendations.map(async (rec, idx) => {
+          if (rec.stationText) return;
+          if (typeof rec.lat !== "number" || typeof rec.lng !== "number") return;
+          try {
+            const st = await findNearestStation(rec.lat, rec.lng, apiKey);
+            if (st) recommendations[idx] = { ...recommendations[idx], stationText: st };
+          } catch { /* 駅なしは無視 */ }
+        }));
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
