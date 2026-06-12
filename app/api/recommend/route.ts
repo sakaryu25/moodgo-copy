@@ -4424,7 +4424,8 @@ async function fetchYahooSupplement(
     "まったり":           "カフェ 温泉 公園 映画館",
     "疲れた・眠い":       "温泉 スパ カフェ",
     "わいわい":           "カラオケ ボウリング アミューズメント",
-    "自然":               "公園 自然 景勝地",
+    // ※「自然」単独はYahoo全文一致で事業所(自然堂/自然環境保全課等)を拾うため「自然公園」に
+    "自然":               "公園 自然公園 景勝地",
     "ドライブ":           "道の駅 展望台 景勝地",
     "集中":               "カフェ 図書館 自習室",
     "運動":               "スポーツ ジム 体育館",
@@ -6041,13 +6042,20 @@ async function handleRecommend(request: Request) {
         let widenedSearch = false;
         if (recommendations.length < 15 && hasLocation) {
           widenedSearch = recommendations.length < 8; // 8件未満なら「条件広げました」を表示
-          const wideRadiusKm = Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
+          // 補填半径: 通常は1.5倍拡大(上限50km)。ただし遠出意図(far-bias)時に50kmへ
+          //   縮小すると「小旅行(120km)なのに近場ゴミで補填」される逆転が起きるため、
+          //   minRadiusKm>0 のときは元の選択半径を維持する（far-biasは補填側でも有効）。
+          const wideRadiusKm = minRadiusKm > 0
+            ? radiusKm
+            : Math.min(Math.max(radiusKm * 1.5, radiusKm + 15), 50);
           const isFoodMoodTopUp = (answers.mood ?? "") === "お腹すいた";
           const hasGenreDef = !!(GENRE_POSITIVE_RE[effectiveDeepDive] || GENRE_NEGATIVE_RE[effectiveDeepDive]);
 
           // ── #2 第1段: ジャンルを保ったまま半径拡大して「同じジャンル」で補填する ──
           //   これにより「近くにラーメンが少ない」時でもアイス屋ではなく少し遠いラーメン屋が入る。
-          if (hasGenreDef) {
+          //   regex定義が無い深掘り(波の音と海風等)でも、深掘りキーワード/型で同カテゴリ補填する
+          //   （これが無いと第2段のジャンル無し検索に直行し、無関係な事業所等が混入していた）。
+          if (hasGenreDef || effectiveDeepDive) {
             const excludeG = [...sbNames, ...recommendations.map(r => r.title ?? "")];
             const [gGenre, yGenre] = await Promise.all([
               fetchGooglePlacesSupplement(
@@ -6093,7 +6101,9 @@ async function handleRecommend(request: Request) {
                     excludeNames, 20, minRadiusKm, apiKey,
                   ),
             ]);
-            const widePool = sortOrShuffle(nonFoodSanitize(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[])))));
+            // qualitySanitize を必ず通す（B2B=株式会社/合同会社/事業所などのゴミ除去）。
+            //   従来この段だけ品質フィルタ無しで、Yahoo広域検索の無関係な会社が混入していた。
+            const widePool = sortOrShuffle(nonFoodSanitize(qualitySanitize(seenFilter(foodSanitize(applyMallFilter([...gWide, ...gCafe, ...yWide] as Rec[]))))));
             const { taken: topUp } = pickUnique(widePool, 15 - recommendations.length, seen);
             recommendations = [...recommendations, ...topUp];
           }
@@ -6158,6 +6168,10 @@ async function handleRecommend(request: Request) {
                 if (!hasCoord) return null;
                 dkm = haversineMeters(answers.originLat!, answers.originLng!, s.lat as number, s.lng as number) / 1000;
                 if (dkm > ADMIN_MAX_KM) return null;
+                // 遠出意図(far-bias)を尊重: 「小旅行(96km〜)/県またぎ(56km〜)」等を選んだのに
+                // 8km先の転載スポットが先頭に出るのを防ぐ。minRadiusKm未満の近場転載はスキップ
+                // （転載上限40km以内なので、遠出設定では実質注入なし＝検索結果の意図を優先）。
+                if (minRadiusKm > 0 && dkm < minRadiusKm) return null;
               }
               return { s, dkm };
             })
