@@ -285,8 +285,8 @@ const s = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // 背景と同化しないよう、うっすらグレーがかった曇りを足す
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(242,240,247,0.55)' : 'rgba(242,240,247,0.72)',
+    // すりガラスは白透明（選択中ブロブのグレーとのコントラストで視認性を出す）
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.72)',
   },
   inner: {
     flexDirection: 'row',
@@ -301,8 +301,9 @@ const s = StyleSheet.create({
     position: 'absolute',
     height: BLOB_H,
     borderRadius: BLOB_H / 2,
-    backgroundColor: 'rgba(255,255,255,0.38)',
+    // 選択中はグレー（iOSセグメントコントロール風）
+    backgroundColor: 'rgba(120,120,128,0.20)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: 'rgba(120,120,128,0.10)',
   },
 });
