@@ -77,8 +77,8 @@ const TABS: { key: Tab; Icon: React.ComponentType<{ active: boolean }> }[] = [
   { key: 'home',      Icon: IconHome },
   { key: 'history',   Icon: IconHistory },
   { key: 'favorites', Icon: IconFavorites },
-  { key: 'featured',  Icon: IconFeatured },
   { key: 'groups',    Icon: IconChat },
+  { key: 'featured',  Icon: IconFeatured },
 ];
 
 const clampIdx = (i: number) => Math.min(N_TABS - 1, Math.max(0, i));
