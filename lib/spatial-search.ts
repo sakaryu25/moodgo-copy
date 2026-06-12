@@ -253,8 +253,14 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
         near.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
         rows = [...far, ...near];
       } else {
-        // minRadiusKm なし: 全件シャッフルで毎回異なる結果
-        shuffle(rows);
+        // minRadiusKm なし（手動エリア入力・お腹すいた等）: 完全シャッフルだと
+        //   半径内の遠方スポットが先頭に来て「距離ロジックが効いていない」ように見える。
+        //   → 近い順をベースに軽いランダムノイズを足し、近場優先しつつ毎回少し変える。
+        //   再検索(seenPlaces除外)時も、残りの中で最も近いスポットから提案される。
+        //   jitter は半径に比例（広い検索ほど入れ替わり幅を許容）。上限12km。
+        void shuffle; // 純シャッフルは廃止（近い順ベースに統一）
+        const jitterM = Math.min(radiusM * 0.12, 12000);
+        rows.sort((a, b) => (a.distance_m - b.distance_m) + (Math.random() - 0.5) * jitterM * 2);
       }
 
       const sliced = rows.slice(0, limit);

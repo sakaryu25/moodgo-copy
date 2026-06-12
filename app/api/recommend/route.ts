@@ -6286,6 +6286,21 @@ async function handleRecommend(request: Request) {
             }
             return ka - kb;
           }).slice(0, 15);
+        } else if (minRadiusKm === 0) {
+          // ── 非飲食・近距離設定/手動エリア（far-biasなし）: 最終表示順を近場優先に ──
+          //   ソース連結(sb+g+y)＋widenで遠方が先頭に来ると「距離ロジックが効いていない」
+          //   ように見える。近い順ベース＋ノイズで並べ、近場優先しつつ毎回少し変える。
+          //   再検索(seenPlaces除外)でも残りの中で最も近いスポットから提案される。
+          //   ※ far-bias時(minRadiusKm>0=遠出したい)はこのソートを行わず遠方優先のまま。
+          const kmOfRec = (r: { distanceKm?: number; distanceText?: string }): number => {
+            if (typeof r.distanceKm === "number") return r.distanceKm;
+            const m = (r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/);
+            return m ? parseFloat(m[1]) : 9999;
+          };
+          const jitterKm = Math.min(radiusKm * 0.12, 12);
+          recommendations = [...recommendations]
+            .sort((a, b) => (kmOfRec(a) - kmOfRec(b)) + (Math.random() - 0.5) * jitterKm * 2)
+            .slice(0, 15);
         }
 
         // ── 最終結果の補完エンリッチ（営業時間＋写真10枚）─────────────────────────
