@@ -299,6 +299,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
             contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
             onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+            keyboardShouldPersistTaps="handled"
           >
             {timeline.length === 0 ? (
               <View style={s.emptyBox}>
@@ -383,7 +384,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
 
           {/* つぶやき入力 */}
           <View style={[s.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.chipRow}
+              keyboardShouldPersistTaps="always"
+            >
               {MOOD_CHIPS.map(m => {
                 const on = selMood === m.key;
                 const dark = m.key === '疲れた・眠い';
