@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
 
       const [{ data: group, error: gErr }, { data: members, error: mErr }, { data: posts, error: pErr }] =
         await Promise.all([
-          supabase.from("mood_groups").select("id, name, invite_code, created_at").eq("id", groupId).single(),
+          // select("*"): icon列が未作成のDBでもエラーにならない
+          supabase.from("mood_groups").select("*").eq("id", groupId).single(),
           supabase.from("mood_group_members").select("device_id, nickname, joined_at").eq("group_id", groupId).order("joined_at"),
           supabase.from("mood_group_posts").select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
             .eq("group_id", groupId).order("created_at", { ascending: false }).limit(50),
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
     if (ids.length === 0) return NextResponse.json({ ok: true, groups: [] });
 
     const [{ data: groups, error: gErr }, { data: allMembers, error: amErr }] = await Promise.all([
-      supabase.from("mood_groups").select("id, name, invite_code, created_at").in("id", ids).order("created_at", { ascending: false }),
+      supabase.from("mood_groups").select("*").in("id", ids).order("created_at", { ascending: false }),
       supabase.from("mood_group_members").select("group_id").in("group_id", ids),
     ]);
     if (gErr) throw gErr;
@@ -186,6 +187,34 @@ export async function POST(req: NextRequest) {
         .single();
       if (pErr) throw pErr;
       return NextResponse.json({ ok: true, post });
+    }
+
+    // ── グループアイコン（絵文字）を設定 ──
+    if (body.action === "set_icon") {
+      const groupId = String(body.groupId ?? "").trim();
+      const icon = String(body.icon ?? "").trim().slice(0, 8);
+      if (!groupId) return NextResponse.json({ ok: false, error: "groupId必須" }, { status: 400 });
+
+      const { data: me, error: meErr } = await supabase
+        .from("mood_group_members")
+        .select("id")
+        .eq("group_id", groupId).eq("device_id", deviceId)
+        .maybeSingle();
+      if (meErr) throw meErr;
+      if (!me) return NextResponse.json({ ok: false, error: "このグループのメンバーではありません" }, { status: 403 });
+
+      const { error } = await supabase
+        .from("mood_groups")
+        .update({ icon: icon || null })
+        .eq("id", groupId);
+      if (error) {
+        // icon列が未作成（supabase/group-icon.sql 未実行）の場合
+        if (/icon/.test(String(error.message)) && /column|schema/i.test(String(error.message))) {
+          return NextResponse.json({ ok: false, error: "アイコン機能の準備中です（DB更新待ち）" }, { status: 400 });
+        }
+        throw error;
+      }
+      return NextResponse.json({ ok: true });
     }
 
     // ── グループを抜ける ──

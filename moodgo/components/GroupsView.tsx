@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Activity, BookOpen, Car, ChevronLeft, Coffee, Copy, Leaf, LogOut,
-  MapPin, MessageCircle, Moon, Plane, Plus, Send, ShoppingBag, Shuffle, Sparkles,
-  UtensilsCrossed, Users, X,
+  MapPin, MessageCircle, Moon, Pencil, Plane, Plus, Send, Settings, ShoppingBag,
+  Shuffle, Sparkles, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -56,8 +56,16 @@ type LastPost = {
 };
 type Group = {
   id: string; name: string; invite_code: string; member_count?: number;
+  icon?: string | null;
   last_post?: LastPost | null;
 };
+
+// グループアイコンに選べる絵文字
+const ICON_EMOJIS = [
+  '🍜', '🍣', '☕️', '🍻', '🎮', '🎤', '🏖️', '⛰️',
+  '🚗', '✈️', '🛍️', '📚', '💪', '🌸', '🐶', '🐱',
+  '⚽️', '🎬', '🎵', '✨', '🔥', '💜', '🌙', '🏠',
+];
 type Post  = {
   id: string; device_id: string; nickname: string; mood: string; comment: string | null;
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
@@ -109,6 +117,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
   const [active, setActive]   = useState<Group | null>(null);
   const [posts, setPosts]     = useState<Post[]>([]);   // 新しい順で保持・表示時に反転
   const [members, setMembers] = useState<Member[]>([]);
+  const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [pickIcon, setPickIcon] = useState(false);
   const [selMood, setSelMood] = useState('');
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
@@ -183,7 +193,11 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
     try {
       const res = await apiFetch(`/api/mood-groups?groupId=${encodeURIComponent(g.id)}&deviceId=${encodeURIComponent(id)}`);
       const data = await res.json();
-      if (data.ok) { setPosts(data.posts); setMembers(data.members); }
+      if (data.ok) {
+        setPosts(data.posts); setMembers(data.members);
+        // アイコンなど他メンバーの変更を反映
+        if (data.group) setActive(a => (a && a.id === data.group.id ? { ...a, ...data.group } : a));
+      }
     } catch { /* keep */ }
   }, []);
 
@@ -257,12 +271,35 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
 
   const openGroup = (g: Group) => {
     setActive(g); setPosts([]); setMembers([]); setSelMood(''); setComment('');
+    setShowGroupSettings(false); setPickIcon(false);
     onChatOpenChange?.(true);
     fetchGroupDetail(g, deviceId);
   };
 
+  // ── アイコン変更（楽観更新＋失敗時ロールバック） ──
+  const handleSetIcon = async (emoji: string) => {
+    if (!active) return;
+    const prev = active.icon ?? null;
+    const next = emoji || null;
+    setActive(a => (a ? { ...a, icon: next } : a));
+    setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: next } : g)));
+    try {
+      const res = await apiFetch('/api/mood-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_icon', groupId: active.id, deviceId, icon: emoji }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? '変更に失敗しました');
+    } catch (e) {
+      setActive(a => (a ? { ...a, icon: prev } : a));
+      setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: prev } : g)));
+      Alert.alert('エラー', e instanceof Error ? e.message : '変更に失敗しました');
+    }
+  };
+
   const closeChat = () => {
     setActive(null);
+    setShowGroupSettings(false);
     onChatOpenChange?.(false);
     if (deviceId) fetchGroups(deviceId); // 一覧の最新メッセージプレビューを更新
   };
@@ -332,14 +369,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
             </PuniPressable>
             <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={s.headerTitle} numberOfLines={1}>{active.name}</Text>
+              <Text style={s.headerTitle} numberOfLines={1}>
+                {active.icon ? `${active.icon} ` : ''}{active.name}
+              </Text>
               <PuniPressable onPress={() => shareCode(active)} style={s.codeChip}>
                 <Copy size={10} color="#7C3AED" strokeWidth={2} />
                 <Text style={s.codeChipText}>{active.invite_code}</Text>
               </PuniPressable>
             </View>
-            <PuniPressable onPress={handleLeave} style={s.backCircle}>
-              <LogOut size={17} color="#F43F5E" strokeWidth={2} />
+            <PuniPressable onPress={() => { setPickIcon(false); setShowGroupSettings(true); }} style={s.backCircle}>
+              <Settings size={18} color="#7C3AED" strokeWidth={2} />
             </PuniPressable>
           </View>
 
@@ -480,6 +519,87 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
               </PuniPressable>
             </View>
           </View>
+
+          {/* グループ設定モーダル: アイコン・招待コード・メンバー・退会 */}
+          <Modal
+            visible={showGroupSettings}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowGroupSettings(false)}
+          >
+            <View style={s.modalOverlay}>
+              <View style={[s.modalCard, { maxHeight: '78%' }]}>
+                <View style={s.modalHeader}>
+                  <Text style={s.modalTitle}>グループ設定</Text>
+                  <PuniPressable onPress={() => setShowGroupSettings(false)} style={s.modalClose}>
+                    <X size={18} color="#7C3AED" strokeWidth={2.5} />
+                  </PuniPressable>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {/* アイコン＋グループ名 */}
+                  <View style={{ alignItems: 'center' }}>
+                    <PuniPressable onPress={() => setPickIcon(v => !v)} style={s.bigIconCircle}>
+                      {active.icon
+                        ? <Text style={{ fontSize: 40 }}>{active.icon}</Text>
+                        : <Text style={s.bigIconLetter}>{active.name.slice(0, 1)}</Text>}
+                      <View style={s.iconEditBadge}>
+                        <Pencil size={11} color="#fff" strokeWidth={2.5} />
+                      </View>
+                    </PuniPressable>
+                    <Text style={s.settingsGroupName} numberOfLines={1}>{active.name}</Text>
+                    <Text style={s.settingsMeta}>メンバー {members.length}人</Text>
+                  </View>
+
+                  {/* 絵文字ピッカー */}
+                  {pickIcon && (
+                    <View style={s.emojiGrid}>
+                      {ICON_EMOJIS.map(e => (
+                        <PuniPressable
+                          key={e}
+                          onPress={() => { handleSetIcon(e); setPickIcon(false); }}
+                          style={[s.emojiCell, active.icon === e && s.emojiCellOn]}
+                        >
+                          <Text style={{ fontSize: 22 }}>{e}</Text>
+                        </PuniPressable>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* 招待コード */}
+                  <Text style={s.label}>招待コード</Text>
+                  <PuniPressable onPress={() => shareCode(active)} style={s.codeRow}>
+                    <Text style={s.codeRowText}>{active.invite_code}</Text>
+                    <View style={s.codeShareChip}>
+                      <Copy size={12} color="#7C3AED" strokeWidth={2.2} />
+                      <Text style={s.codeShareText}>共有</Text>
+                    </View>
+                  </PuniPressable>
+
+                  {/* メンバー一覧 */}
+                  <Text style={[s.label, { marginTop: 18 }]}>メンバー（{members.length}）</Text>
+                  {members.map(m => (
+                    <View key={m.device_id} style={s.memberRow}>
+                      <View style={s.memberAvatar}>
+                        <Text style={s.avatarText}>{m.nickname.slice(0, 1)}</Text>
+                      </View>
+                      <Text style={s.memberNick} numberOfLines={1}>{m.nickname}</Text>
+                      {m.device_id === deviceId && <Text style={s.meBadge}>自分</Text>}
+                    </View>
+                  ))}
+
+                  {/* 退会 */}
+                  <PuniPressable
+                    onPress={() => { setShowGroupSettings(false); handleLeave(); }}
+                    style={s.leaveBtn}
+                  >
+                    <LogOut size={15} color="#F43F5E" strokeWidth={2.2} />
+                    <Text style={s.leaveText}>グループを抜ける</Text>
+                  </PuniPressable>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
         </Animated.View>
       </KeyboardAvoidingView>
     );
@@ -519,7 +639,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange }: Props) {
           return (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
               <View style={s.groupIconCircle}>
-                <Text style={s.groupIconText}>{g.name.slice(0, 1)}</Text>
+                {g.icon
+                  ? <Text style={{ fontSize: 22 }}>{g.icon}</Text>
+                  : <Text style={s.groupIconText}>{g.name.slice(0, 1)}</Text>}
               </View>
               <View style={{ flex: 1 }}>
                 <View style={s.groupTopRow}>
@@ -693,6 +815,61 @@ const s = StyleSheet.create({
     width: 34, height: 34, borderRadius: 17, backgroundColor: '#F5F3FF',
     alignItems: 'center', justifyContent: 'center',
   },
+
+  // ── グループ設定モーダル ──
+  bigIconCircle: {
+    width: 84, height: 84, borderRadius: 42, backgroundColor: '#EDE9FE',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+  },
+  bigIconLetter: { fontSize: 34, fontWeight: '800', color: '#7C3AED' },
+  iconEditBadge: {
+    position: 'absolute', right: 0, bottom: 0,
+    width: 24, height: 24, borderRadius: 12, backgroundColor: '#7C3AED',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+  },
+  settingsGroupName: { fontSize: 18, fontWeight: '800', color: INK },
+  settingsMeta: { fontSize: 12, color: '#A78BFA', marginTop: 2, marginBottom: 14 },
+  emojiGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    justifyContent: 'center', marginBottom: 14,
+  },
+  emojiCell: {
+    width: 44, height: 44, borderRadius: 12, backgroundColor: '#F5F3FF',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#EDE9FE',
+  },
+  emojiCellOn: { borderColor: '#7C3AED', backgroundColor: '#EDE9FE' },
+  codeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#F5F3FF', borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1.5, borderColor: '#EDE9FE',
+  },
+  codeRowText: { fontSize: 16, fontWeight: '800', color: INK, letterSpacing: 2 },
+  codeShareChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#EDE9FE', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  codeShareText: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+  memberAvatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#DDD6FE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  memberNick: { fontSize: 14, fontWeight: '700', color: INK, flex: 1 },
+  meBadge: {
+    fontSize: 10, fontWeight: '800', color: '#7C3AED',
+    backgroundColor: '#EDE9FE', borderRadius: 999,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  leaveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 20, marginBottom: 6, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: '#FFF1F2', borderWidth: 1.5, borderColor: '#FECDD3',
+  },
+  leaveText: { fontSize: 13, fontWeight: '800', color: '#F43F5E' },
 
   emptyBox: { alignItems: 'center', gap: 10, paddingVertical: 28 },
   emptyText: { fontSize: 13, color: '#A78BFA', textAlign: 'center', lineHeight: 20 },
