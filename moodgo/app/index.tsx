@@ -151,6 +151,9 @@ export default function Home() {
   // ── Feedback ─────────────────────────────────────────────────────────────
   const [pastFeedback,        setPastFeedback]        = useState<FeedbackItem[]>([]);
   const [placeRatings,        setPlaceRatings]        = useState<Record<string, 'good' | 'bad'>>({});
+  // 「おすすめはいかがでしたか？」の星評価（検索結果全体へのフィードバック）
+  const [feedbackRating,      setFeedbackRating]      = useState<number | null>(null);
+  const [feedbackSubmitted,   setFeedbackSubmitted]   = useState(false);
   const [likedInSession,      setLikedInSession]      = useState<string[]>([]);
   const [mapClickedInSession, setMapClickedInSession] = useState<string[]>([]);
 
@@ -383,6 +386,8 @@ export default function Home() {
     if (!isRefinement) {
       setApiRecommendations([]);
       setPlaceRatings({});
+      setFeedbackRating(null);
+      setFeedbackSubmitted(false);
       setSelectedPrefecture('');
       setApiWarning('');
       setStep(11);
@@ -511,6 +516,43 @@ export default function Home() {
   // ─── Place rating (👍/👎) ─────────────────────────────────────────────────
   // Web版 submitPlaceRating() と同じ構造：
   //   ローカル state 更新 → pastFeedback に追加 → /api/feedback → /api/mood-rating
+
+  // ── 「おすすめはいかがでしたか？」全体評価（星1〜5）────────────────────────
+  //   星を即時に黄色く染めてから、少し見せた後にお礼表示へ切り替える
+  const submitOverallFeedback = (rating: number) => {
+    if (feedbackSubmitted || feedbackRating !== null) return;  // 二重送信防止
+    setFeedbackRating(rating);  // → 星が即時に黄色く染まる
+
+    const newFeedback: FeedbackItem = {
+      id:               `overall-${Date.now()}`,
+      answers:          { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
+      topRecommendations: apiRecommendations.slice(0, 3).map(r => r.title),
+      rating,
+      visitedPlace:     '',
+      createdAt:        new Date().toISOString(),
+    };
+    setPastFeedback(prev => [newFeedback, ...prev].slice(0, 50));
+
+    apiFetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mood:             selectedMood,
+        area:             selectedArea,
+        age:              profileAge,
+        gender:           profileGender,
+        companion:        selectedCompanion,
+        topRecommendations: apiRecommendations.slice(0, 3).map(r => r.title),
+        rating,
+        likedPlaces:      likedInSession,
+        mapClickedPlaces: mapClickedInSession,
+        variant:          abVariant,
+      }),
+    }).catch(() => {});
+
+    // 染まった星を0.9秒見せてからお礼表示へ
+    setTimeout(() => setFeedbackSubmitted(true), 900);
+  };
 
   const submitPlaceRating = async (placeTitle: string, verdict: 'good' | 'bad') => {
     setPlaceRatings(prev => ({ ...prev, [placeTitle]: verdict }));
@@ -910,9 +952,9 @@ export default function Home() {
             blockedPlaces={blockedPlaces}
             onBlockPlace={(title) => setBlockedPlaces(prev => [...prev, title])}
             // ── フィードバック ────────────────────────────────────────────────
-            feedbackRating={null}
-            feedbackSubmitted={false}
-            onSubmitFeedback={() => {}}
+            feedbackRating={feedbackRating}
+            feedbackSubmitted={feedbackSubmitted}
+            onSubmitFeedback={submitOverallFeedback}
             likedInSession={likedInSession}
             onSetLikedInSession={setLikedInSession}
             mapClickedInSession={mapClickedInSession}
