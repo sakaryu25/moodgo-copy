@@ -5695,7 +5695,11 @@ async function handleRecommend(request: Request) {
       // これがないと「今日は出かけたい(16km〜)」等で15〜18km先の店が優先され、
       // 一番近いラーメン店（例: 用心棒 本号）が出てこなくなる。
       const isFoodMood = answers.mood === "お腹すいた";
-      const minRadiusKm = (isFoodMood || answers.areaMode === 'manual' || !useQuizRadius)
+      // 遠端バイアス(minRadiusKm)は距離設定(distanceFeeling)を必ず尊重する。
+      //   ※ 以前は手動エリア入力(areaMode==='manual')で far-bias を無効化していたが、
+      //     「県またぎもあり」を選んでも近場(数km)が出る不具合になっていたため撤廃。
+      //     手動エリアでも、ジオコーディングした中心からの距離で far-bias を効かせる。
+      const minRadiusKm = (isFoodMood || !useQuizRadius)
         ? 0
         : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
@@ -5711,15 +5715,18 @@ async function handleRecommend(request: Request) {
       const isSnowyNow = isSnowLikeWeather(sbWeather.weatherCode);
       const isBadWeather = isRainyNow || isSnowyNow;
 
-      // Supabase 検索: 選択した距離を厳密な上限として使用（遠端バイアスなし）
-      // → "近場でいい(3km)" なら 3km 以内のみ、"どこでも行きたい(200km)" なら 200km 以内
+      // Supabase 検索: radiusKm を上限、minRadiusKm を遠端バイアスとして渡す。
+      // → "近場でいい(min0)" なら近い順、"県またぎもあり(min56)/小旅行(min96)" なら
+      //    その距離以上を優先（遠出したい意図を尊重）。お腹すいた・近距離設定は min0=近い順。
+      //   ※ 以前は minRadiusKm:0 をハードコードしていたため、距離設定に関わらず
+      //     Supabase結果が常に近場優先になり「距離ロジックが効かない」不具合だった。
       const sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbFallbackTags,  // 気分タグにフォールバック（深掘りタグが0件の場合）
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm: sbRadiusKm,  // A-4: 食事は近場キャップ適用
-        minRadiusKm: 0,  // Supabaseは厳密な上限のみ（遠端バイアスなし）
+        minRadiusKm,           // 距離設定に応じた遠端バイアス（県またぎ等で遠方優先）
         transport: answers.transport,
         limit: 20,  // コスト削減B: Supabaseが充足したらGoogle/Yahooをスキップするため多めに取得
         googleApiKey: apiKey,
