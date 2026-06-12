@@ -95,13 +95,32 @@ export async function GET(request: Request) {
             "X-Goog-FieldMask":
               "places.id,places.formattedAddress,places.location,places.photos,places.googleMapsUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.currentOpeningHours,places.rating,places.userRatingCount,places.reviews",
           },
-          body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1 }),
+          body: JSON.stringify({
+            textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1,
+            // 投稿に座標があれば近傍を優先（名前だけ一致の遠方店を拾わないように）
+            ...(typeof s.lat === "number" && typeof s.lng === "number"
+              ? { locationBias: { circle: { center: { latitude: s.lat, longitude: s.lng }, radius: 1000 } } }
+              : {}),
+          }),
           cache: "no-store",
           signal: AbortSignal.timeout(7000),
         });
         if (res.ok) {
           const d = await res.json().catch(() => null);
-          const p = d?.places?.[0];
+          let p = d?.places?.[0];
+          // ── 住所（座標）ベースの一致検証 ──
+          // 名前一致だけで採用すると同名の別店（例: 別地域の "Chill Spot"）の写真・評価が混ざる。
+          // 投稿の座標から500m超、座標が無ければ市区不一致のGoogle結果は破棄する。
+          if (p) {
+            const gLat = p.location?.latitude, gLng = p.location?.longitude;
+            if (typeof s.lat === "number" && typeof s.lng === "number" &&
+                typeof gLat === "number" && typeof gLng === "number") {
+              if (haversineM(s.lat, s.lng, gLat, gLng) > 500) p = null;
+            } else {
+              const cityM = cleanAddr0.match(/^(?:東京都|北海道|大阪府|京都府|.{2,3}県)?(.+?[市区町村郡])/);
+              if (cityM && !(p.formattedAddress ?? "").includes(cityM[1])) p = null;
+            }
+          }
           if (p) {
             placeId = p.id;
             phone = p.nationalPhoneNumber ?? p.internationalPhoneNumber ?? "";

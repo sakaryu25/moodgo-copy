@@ -119,11 +119,18 @@ function UserRow({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) =
   );
 }
 
-// ─── StatusRow（星評価のみ）─────────────────────────────────────────────────
-function StatusRow() {
+// 説明文から投稿者のおすすめ度（【おすすめ度】★N）を取り出す
+function userRating(desc: string | null): number {
+  const m = desc?.match(/【おすすめ度】\s*★(\d)/);
+  return m ? Math.min(5, Math.max(1, Number(m[1]))) : 0;
+}
+
+// ─── StatusRow（投稿者のつけた星のみ。未記入なら非表示）────────────────────────
+function StatusRow({ rating }: { rating: number }) {
+  if (rating <= 0) return null;
   return (
     <View style={s.statusRow}>
-      <Stars n={5} />
+      <Stars n={rating} />
     </View>
   );
 }
@@ -184,7 +191,7 @@ function PhotoCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem)
             {item.description}
           </Text>
         )}
-        <StatusRow />
+        <StatusRow rating={userRating(item.description)} />
         <UserRow item={item} onReport={onReport} />
       </View>
     </TouchableOpacity>
@@ -214,7 +221,7 @@ function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) 
           </View>
         </View>
 
-        <StatusRow />
+        <StatusRow rating={userRating(item.description)} />
 
         {hasReview && (
           <Text style={[s.reviewText, { marginTop: 8 }]} numberOfLines={4}>
