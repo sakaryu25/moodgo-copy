@@ -470,7 +470,7 @@ export default function Home() {
           seenPlaces:         [...seenSet],
           showUnseenOnly:     showUnseenOnly || excludeShown,
           refinementText:     refineText ?? '',
-          userPreferenceHints: [],
+          userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
         }),
       });
 
@@ -520,6 +520,37 @@ export default function Home() {
   // ─── Place rating (👍/👎) ─────────────────────────────────────────────────
   // Web版 submitPlaceRating() と同じ構造：
   //   ローカル state 更新 → pastFeedback に追加 → /api/feedback → /api/mood-rating
+
+  // ── ② 暗黙フィードバック送信（学習ループ用・fire-and-forget）─────────────────
+  //   地図クリック/詳細閲覧/お気に入り/行った！を記録 → 検索結果の昇格学習に使われる
+  const sendEngagement = (placeName: string, action: 'map_click' | 'detail_view' | 'favorite' | 'visited' | 'share') => {
+    if (!placeName) return;
+    apiFetch('/api/engagement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ place_name: placeName, mood: selectedMood, action }),
+    }).catch(() => {});
+  };
+
+  // ── ⑤ 端末プロファイル: お気に入り・高評価のタグ頻度から「好みヒント」を生成 ───
+  //   サーバーの userPreferenceHints（検索のnice-to-haveタグ＆AIプロンプト）に渡す。
+  //   端末ローカル計算なのでプライバシーフレンドリー・テーブル追加不要。
+  const buildPreferenceHints = (): string[] => {
+    const freq = new Map<string, number>();
+    const addTags = (tags?: string[]) => (tags ?? []).forEach(t => {
+      if (t && t.startsWith('#')) freq.set(t, (freq.get(t) ?? 0) + 1);
+    });
+    for (const f of favorites) addTags((f as { features?: string[] }).features);
+    // 高評価(good)を付けたスポットのタグも反映（直近の検索結果から逆引き）
+    for (const [title, v] of Object.entries(placeRatings)) {
+      if (v === 'good') addTags(apiRecommendations.find(r => r.title === title)?.features);
+    }
+    return [...freq.entries()]
+      .filter(([, n]) => n >= 2)              // 2回以上現れたタグ＝安定した好み
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([t]) => t);
+  };
 
   // ── 「おすすめはいかがでしたか？」全体評価（星1〜5）────────────────────────
   //   星を即時に黄色く染めてから、少し見せた後にお礼表示へ切り替える
@@ -613,6 +644,7 @@ export default function Home() {
   // ─── Visited feedback (行った！) ─────────────────────────────────────────
 
   const submitVisitedFeedback = async (title: string, rating: number) => {
+    sendEngagement(title, 'visited');  // ② 学習ループ: 実訪問=最強シグナル
     const item: FeedbackItem = {
       id:               Date.now().toString(),
       answers:          { mood: selectedMood, area: selectedArea, companion: selectedCompanion },
@@ -690,7 +722,7 @@ export default function Home() {
           seenPlaces:         [],
           showUnseenOnly:     false,
           refinementText:     '',
-          userPreferenceHints: [],
+          userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
         }),
       });
       const d = await res.json();
@@ -755,6 +787,7 @@ export default function Home() {
     if (exists) {
       setFavorites(prev => prev.filter(f => f.title !== rec.title));
     } else {
+      sendEngagement(rec.title, 'favorite');  // ② 学習ループ: お気に入り=強いシグナル
       setFavorites(prev => [{
         title:            rec.title,
         area:             selectedArea,
@@ -778,6 +811,7 @@ export default function Home() {
   // ─── 詳細ページへ遷移 ─────────────────────────────────────────────────────
 
   const handlePressDetail = (rec: Recommendation) => {
+    sendEngagement(rec.title, 'detail_view');  // ② 学習ループ
     setSelectedPlace(rec);
     router.push('/place');
   };
@@ -962,7 +996,10 @@ export default function Home() {
             likedInSession={likedInSession}
             onSetLikedInSession={setLikedInSession}
             mapClickedInSession={mapClickedInSession}
-            onSetMapClickedInSession={setMapClickedInSession}
+            onSetMapClickedInSession={(arr) => {
+              for (const t of arr) if (!mapClickedInSession.includes(t)) sendEngagement(t, 'map_click');
+              setMapClickedInSession(arr);
+            }}
             // ── 絞り込み ──────────────────────────────────────────────────────
             refinementText={refinementText}
             onSetRefinementText={setRefinementText}

@@ -309,10 +309,49 @@ async function fetchMoodRatingAgg(): Promise<MoodRatingAgg> {
   _ratingCache = { at: Date.now(), agg };
   return agg;
 }
-// 現在の気分に対する除外/降格判定ヘルパーを生成
-function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined) {
+// 二項Wilson下限（95%）: 少件数の高評価が過大評価されないようにする
+function wilsonLowerBinomial(good: number, total: number): number {
+  if (total === 0) return 0;
+  const z = 1.96, p = good / total;
+  const denom = 1 + (z * z) / total;
+  const centre = p + (z * z) / (2 * total);
+  const margin = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * total)) / total);
+  return Math.max(0, (centre - margin) / denom);
+}
+
+// ── ② 暗黙フィードバック(spot_engagement)の集計（10分キャッシュ・テーブル未作成でも動作）──
+//   地図クリック/詳細閲覧/お気に入り/行った！を行動の強さで重み付けして学習する。
+const ENGAGEMENT_WEIGHTS: Record<string, number> = {
+  favorite: 3, visited: 4, map_click: 2, share: 2, detail_view: 1,
+};
+type EngagementAgg = Map<string, number>;  // key: moodGroup||nameLower → 重み付き合計
+let _engCache: { at: number; agg: EngagementAgg } | null = null;
+async function fetchEngagementAgg(): Promise<EngagementAgg> {
+  if (_engCache && Date.now() - _engCache.at < 10 * 60 * 1000) return _engCache.agg;
+  const agg: EngagementAgg = new Map();
+  try {
+    if (supabase) {
+      const { data } = await supabase
+        .from("spot_engagement")
+        .select("place_name, mood, action")
+        .order("created_at", { ascending: false })
+        .limit(8000);
+      for (const row of data ?? []) {
+        const mg = moodGroup(row.mood ?? "") || (row.mood ?? "");
+        const key = `${mg}||${String(row.place_name ?? "").toLowerCase().trim()}`;
+        agg.set(key, (agg.get(key) ?? 0) + (ENGAGEMENT_WEIGHTS[row.action ?? ""] ?? 0));
+      }
+    }
+  } catch { /* テーブル未作成等は無視（SQL: supabase/learning-tables.sql）*/ }
+  _engCache = { at: Date.now(), agg };
+  return agg;
+}
+
+// 現在の気分に対する 除外/降格/昇格(学習スコア) 判定ヘルパーを生成
+function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined, engAgg?: EngagementAgg) {
   const mg = moodGroup(mood ?? "") || (mood ?? "");
   const get = (name: string) => agg.get(`${mg}||${name.toLowerCase().trim()}`);
+  const getEng = (name: string) => engAgg?.get(`${mg}||${name.toLowerCase().trim()}`) ?? 0;
   return {
     isExcluded: (name: string): boolean => {
       const r = get(name);
@@ -322,7 +361,47 @@ function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined) {
       const r = get(name);
       return !!r && r.bad >= 1 && r.bad > r.good;                  // 👎優勢は末尾へ
     },
+    // ① 👍ブースト + ② エンゲージメント: 0〜1の学習スコア（高いほど上位へ）
+    //   明示評価(Wilson下限)を主、暗黙評価(対数減衰)を従として合成
+    learnScore: (name: string): number => {
+      const r = get(name);
+      const explicit = (r && r.good >= 2) ? wilsonLowerBinomial(r.good, r.good + r.bad) : 0;
+      const eng = getEng(name);
+      const implicit = eng > 0 ? Math.min(1, Math.log10(1 + eng) / 1.5) : 0;
+      return explicit * 1.0 + implicit * 0.6;
+    },
   };
+}
+
+// ── ③ freeWord蒸留: 解釈ログ＋昇格ルール ─────────────────────────────────────
+// LLMがfreeWordから抽出した構造(人数/ジャンル/雰囲気)を freeword_interpretations に
+// 蓄積し、頻出パターンは freeword_rules(管理者が昇格 or 自動昇格)として
+// LLMを呼ばずに構造化検索へ直接ヒントを与える（高速・無料・ブレない）。
+type FwRule = { pattern: string; text_hint: string | null; skip_llm: boolean | null };
+let _fwRulesCache: { at: number; rules: FwRule[] } | null = null;
+async function fetchFreewordRules(): Promise<FwRule[]> {
+  if (_fwRulesCache && Date.now() - _fwRulesCache.at < 10 * 60 * 1000) return _fwRulesCache.rules;
+  let rules: FwRule[] = [];
+  try {
+    if (supabase) {
+      const { data } = await supabase
+        .from("freeword_rules")
+        .select("pattern, text_hint, skip_llm")
+        .eq("enabled", true)
+        .limit(200);
+      rules = (data ?? []) as FwRule[];
+    }
+  } catch { /* テーブル未作成は無視（SQL: supabase/learning-tables.sql）*/ }
+  _fwRulesCache = { at: Date.now(), rules };
+  return rules;
+}
+function scheduleInterpretationLog(freeword: string, interpretation: unknown): void {
+  if (!supabase || !freeword) return;
+  const norm = freeword.trim().toLowerCase().replace(/[\s。、！!？?]+/g, "");
+  void supabase
+    .from("freeword_interpretations")
+    .insert({ freeword_norm: norm.slice(0, 120), freeword_raw: freeword.slice(0, 300), interpretation })
+    .then(() => {}, () => {});
 }
 
 // ── 写真のplaces書き戻し（APIコスト削減）─────────────────────────────────────
@@ -4961,7 +5040,7 @@ ${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}${ragBlock}${fb
 - reason: 「要望のどこに、なぜ合うのか」を具体的に40〜70字で。ユーザー属性や要望のキーワードに触れる。アプリ名や「AI相談」等のメタ表現は書かない。実際の特徴（料理・雰囲気・立地・価格など）を述べる。
 
 # 出力（このJSONのみ。前後に文章を付けない）
-{"places": [{"name": "正式店名", "query": "${geoAnchor} 正式店名", "reason": "要望に合う具体的な理由(40〜70字)"}]}`;
+{"places": [{"name": "正式店名", "query": "${geoAnchor} 正式店名", "reason": "要望に合う具体的な理由(40〜70字)"}], "interpretation": {"partySize": 人数(不明なら0), "genres": ["読み取ったジャンル"], "vibes": ["雰囲気・条件"]}}`;
     } else {
       // ── 通常 freeWord プロンプト（クイズ経由）────────────────────────────────
       systemContent = "あなたはお出かけプランナーAIです。ユーザーの条件に厳密に合致したリアルな施設のみを提案してください。条件に合わないスポットは絶対に含めないこと。";
@@ -4991,7 +5070,7 @@ ${ragBlock}
 - 予算内に収まるスポット優先
 
 出力は必ず以下のJSON形式のみ（説明文は不要）:
-{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"}]}`;
+{"places": [{"name": "店舗名・施設名", "query": "${area} 店舗名・施設名"}], "interpretation": {"partySize": 人数(不明なら0), "genres": ["読み取ったジャンル"], "vibes": ["雰囲気・条件"]}}`;
     }
 
     const resp = await openaiClient.chat.completions.create({
@@ -5006,8 +5085,10 @@ ${ragBlock}
     });
 
     const text = resp.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as { places?: Array<{ name: string; query: string; reason?: string }> };
+    const parsed = JSON.parse(text) as { places?: Array<{ name: string; query: string; reason?: string }>; interpretation?: unknown };
     const suggestions = parsed.places ?? [];
+    // ③ 蒸留: LLMの解釈を蓄積（頻出パターンは freeword_rules へ昇格して以後LLM不要に）
+    if (parsed.interpretation) scheduleInterpretationLog(answers.freeWord ?? "", parsed.interpretation);
     if (suggestions.length === 0) return [];
     // スポット名→AI理由のマップ
     const aiReasonMap = new Map<string, string>();
@@ -5541,13 +5622,14 @@ async function handleRecommend(request: Request) {
     const { context: globalStatsContext, engagedPlaces, goodVisitedPlaces, badVisitedPlaces } = await fetchGlobalStats(answers);
 
     // 承認済みユーザー投稿スポット＋タグ別キュレーションスポット＋フィードバック集計を取得
-    const [approvedSuggestions, curatedSpots, moodRatingAgg] = await Promise.all([
+    const [approvedSuggestions, curatedSpots, moodRatingAgg, engagementAgg] = await Promise.all([
       fetchApprovedSuggestions(),
       fetchCuratedSpots(),
       fetchMoodRatingAgg(),
+      fetchEngagementAgg(),
     ]);
-    // 自己改善ループ: 「合わない👎」が蓄積したスポットを除外/降格する判定器
-    const ratingJudge = buildRatingJudge(moodRatingAgg, answers.mood);
+    // 自己改善ループ: 👎除外/降格 ＋ 👍&エンゲージメント昇格(learnScore) の判定器
+    const ratingJudge = buildRatingJudge(moodRatingAgg, answers.mood, engagementAgg);
 
     // 管理者が直接追加したスポット（通常スポット vs チェーン店で分離）。
     // curated_spots（タグ別保管）も admin転載と同じ優先注入対象に含める。
@@ -5574,6 +5656,14 @@ async function handleRecommend(request: Request) {
     // ユーザーの回答から定義済みタグを抽出してスコア計算
     const { extractUserTagsFromAnswers } = await import("@/lib/predefined-tags");
     const userTags = extractUserTagsFromAnswers(answers);
+    // ⑤ 端末プロファイル: クライアントが算出した「好みタグ」を加点タグへ合流
+    //   （お気に入り・高評価の頻度Top5。#始まりのみ受理＝サーバー側でも検証）
+    const profileHintTags = userPreferenceHints.filter(h => typeof h === "string" && h.startsWith("#")).slice(0, 5);
+    for (const t of profileHintTags) {
+      if (!userTags.mustTags.includes(t) && !userTags.niceToHaveTags.includes(t)) {
+        userTags.niceToHaveTags.push(t);
+      }
+    }
     const allUserTags = new Set([...userTags.mustTags, ...userTags.niceToHaveTags]);
 
     // ── 距離設定（全経路共通）────────────────────────────────────────────────
@@ -5606,7 +5696,19 @@ async function handleRecommend(request: Request) {
     try {
       // ─── freeWord → OpenAI → Google Maps フロー ──────────────────────────
       // 自由ワードがある場合は OpenAI にスポット提案を依頼し Google で実在確認して返す
-      if (answers.freeWord && openai) {
+      // ③ 蒸留ルール: 昇格済みパターンに一致したら構造化ヒントを適用（skip_llm時はLLM省略）
+      let fwRuleSkipLlm = false;
+      let fwRuleTextHint = "";
+      if (answers.freeWord) {
+        const rules = await fetchFreewordRules();
+        const fwLower = answers.freeWord.toLowerCase();
+        const hit = rules.find(r => r.pattern && fwLower.includes(r.pattern.toLowerCase()));
+        if (hit) {
+          fwRuleTextHint = hit.text_hint ?? "";
+          fwRuleSkipLlm = !!hit.skip_llm;
+        }
+      }
+      if (answers.freeWord && openai && !fwRuleSkipLlm) {
         const fwRecs = await buildFreeWordRecommendations(
           answers, apiKey, openai, seenPlaces, showUnseenOnly, pastFeedback
         );
@@ -5704,6 +5806,8 @@ async function handleRecommend(request: Request) {
         if (isFoodMood && !deepDiveL2 && /[4-9０-９]\s*(?:人|名)|[1-9][0-9]\s*(?:人|名)/.test(answers.freeWord ?? "")) {
           deepDiveL2 = "個室 宴会できる居酒屋";
         }
+        // ③ 蒸留ルールのテキストヒント（昇格パターン）を最優先で適用
+        if (fwRuleTextHint && !deepDiveL2) deepDiveL2 = fwRuleTextHint;
         // L2 がより具体的なカテゴリを指す場合（動物カフェ・波の音と海風 etc.）は L2 を優先
         // "こだわらない" は検索キーとして使えないので除外し、上位カテゴリにフォールバック
         const cleanL2 = (deepDiveL2 && deepDiveL2 !== "こだわらない") ? deepDiveL2 : "";
@@ -5963,12 +6067,16 @@ async function handleRecommend(request: Request) {
         // #6: 食事で深掘り未指定(こだわらない)のときは、各ソース内で同一粗ジャンルを
         //   最大2件に抑えて多様性を確保する（全部ラーメンにならないように）。
         const diversifyFood = isFoodMood && !effectiveDeepDive;
-        // フィードバック自己改善: 👎過半数(3件以上)は除外、👎優勢は末尾へ降格
+        // フィードバック自己改善: 👎過半数(3件以上)=除外 / 👎優勢=末尾降格 /
+        //   👍Wilson＋エンゲージメント=先頭昇格（安定ソートなので同点は元の並びを維持）
         const ratingSanitize = (arr: Rec[]): Rec[] => {
           const kept = arr.filter(r => !ratingJudge.isExcluded(r.title ?? ""));
           const ok   = kept.filter(r => !ratingJudge.isDemoted(r.title ?? ""));
           const demoted = kept.filter(r => ratingJudge.isDemoted(r.title ?? ""));
-          return [...ok, ...demoted];
+          const boosted = ok.map(r => ({ r, ls: ratingJudge.learnScore(r.title ?? "") }))
+            .sort((a, b) => b.ls - a.ls)
+            .map(x => x.r);
+          return [...boosted, ...demoted];
         };
         const finalizeSource = (arr: Rec[]): Rec[] => {
           const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(arr))))))));
@@ -6280,7 +6388,10 @@ async function handleRecommend(request: Request) {
               if (a.openNow === true && b.openNow !== true) return -1;
               if (b.openNow === true && a.openNow !== true) return 1;
             }
-            return ka - kb;
+            // 学習スコアを距離ボーナス換算（👍/エンゲージメントが高い店は最大3km分有利）
+            const la = ratingJudge.learnScore(a.title ?? "") * 3;
+            const lb = ratingJudge.learnScore(b.title ?? "") * 3;
+            return (ka - la) - (kb - lb);
           }).slice(0, 15);
         } else if (minRadiusKm === 0) {
           // ── 非飲食・近距離設定/手動エリア（far-biasなし）: 最終表示順を近場優先に ──
@@ -6300,7 +6411,10 @@ async function handleRecommend(request: Request) {
               const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
               const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
               if (ga !== gb) return ga - gb;
-              return (kmOfRec(a) - kmOfRec(b)) + (Math.random() - 0.5) * jitterKm * 2;
+              // 学習スコアを距離ボーナス換算（👍/エンゲージメント高は最大3km分有利）
+              const la = ratingJudge.learnScore(a.title ?? "") * 3;
+              const lb = ratingJudge.learnScore(b.title ?? "") * 3;
+              return ((kmOfRec(a) - la) - (kmOfRec(b) - lb)) + (Math.random() - 0.5) * jitterKm * 2;
             })
             .slice(0, 15);
         }

@@ -2243,6 +2243,8 @@ export default function AdminPage() {
   const [moodRatingsLoading, setMoodRatingsLoading] = useState(false);
   const [moodRatingsError, setMoodRatingsError] = useState("");
   const [moodRatingsThreshold, setMoodRatingsThreshold] = useState(0);   // 既定=全件表示（少件数でも反映されるように）
+  // ⑥ 品質劣化アラート（低評価が続く気分×エリア / 👎率の高い気分）
+  const [qualityAlerts, setQualityAlerts] = useState<Array<{ type: string; key: string; detail: string; severity: string }>>([]);
   // 並び替え: 合わない件数順 / 評価総数順
   const [moodRatingsSort, setMoodRatingsSort] = useState<"bad" | "total" | "good">("total");
 
@@ -2250,6 +2252,10 @@ export default function AdminPage() {
     if (!authed || tab !== "mood_ratings") return;
     setMoodRatingsLoading(true);
     setMoodRatingsError("");
+    fetch(`/api/admin/quality-alerts?secret=moodgoadmin123`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setQualityAlerts(d.alerts ?? []); })
+      .catch(() => {});
     fetch(`/api/mood-rating?secret=moodgoadmin123`)
       .then(r => r.json())
       .then(d => {
@@ -6220,6 +6226,17 @@ export default function AdminPage() {
           <div>
             <div style={{ ...card, marginBottom: "24px" }}>
               <div style={{ ...titleStyle, marginBottom: "16px" }}>🎭 気分フィードバック（合う / 合わない）集計</div>
+
+              {/* ⑥ 品質劣化アラート */}
+              {qualityAlerts.length > 0 && (
+                <div style={{ marginBottom: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {qualityAlerts.map((a, i) => (
+                    <div key={i} style={{ padding: "12px 16px", borderRadius: "12px", background: a.severity === "high" ? "#fde8e8" : "#fff7e0", border: `1.5px solid ${a.severity === "high" ? "#f5b5b5" : "#ffd480"}`, fontSize: "13px", color: a.severity === "high" ? "#9b2c2c" : "#8a6000" }}>
+                      {a.severity === "high" ? "🚨" : "⚠️"} <strong>{a.key}</strong>: {a.detail}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: "13px", color: "#7a5860", marginBottom: "16px" }}>
                 検索結果でユーザーが押した「この気分に合う 👍 / 合わない 👎」の集計です。<br />
                 合わない率が高いスポットはタグを見直すか削除を検討してください。

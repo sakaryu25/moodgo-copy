@@ -197,6 +197,20 @@ export const TAG_CATEGORIES: TagCategory[] = [
 ];
 
 // 気分タグとMoodGoの気分キーのマッピング
+// クイズ短縮キー（'まったり'等）→ 気分タグ。検索/学習ループ/自動保存で共用
+export const MOOD_SHORT_KEY_TO_TAG: Record<string, string> = {
+  "まったり":     "#まったりしたい",
+  "わいわい":     "#わいわい楽しみたい",
+  "楽しみたい":   "#わいわい楽しみたい",
+  "自然":         "#自然感じたい",
+  "ドライブ":     "#ドライブしたい",
+  "集中":         "#集中したい",
+  "運動":         "#体動かしたい",
+  "旅行":         "#遠くに行きたい",
+  "お腹すいた":   "#お腹すいた",
+  "ショッピング": "#ショッピング",
+};
+
 export const MOOD_TAG_MAP: Record<string, string> = {
   "#お腹すいた":         "お腹すいた",
   "#まったりしたい":     "まったりしたい",
@@ -279,20 +293,7 @@ export function extractUserTagsFromAnswers(answers: {
   const niceToHaveTags: string[] = [];
   const excludeTags: string[] = [];
 
-  // ── 気分タグ（必須）
-  // クイズ短縮キー（'まったり'等）と完全名（'まったりしたい'等）の両方に対応
-  const MOOD_SHORT_KEY_TO_TAG: Record<string, string> = {
-    "まったり":     "#まったりしたい",
-    "わいわい":     "#わいわい楽しみたい",
-    "楽しみたい":   "#わいわい楽しみたい",
-    "自然":         "#自然感じたい",
-    "ドライブ":     "#ドライブしたい",
-    "集中":         "#集中したい",
-    "運動":         "#体動かしたい",
-    "旅行":         "#遠くに行きたい",
-    "お腹すいた":   "#お腹すいた",
-    "ショッピング": "#ショッピング",
-  };
+  // ── 気分タグ（必須）: マップはモジュールレベル(MOOD_SHORT_KEY_TO_TAG)を参照
 
   if (answers.mood) {
     if (answers.mood === "時間潰したい") {

@@ -38,6 +38,48 @@ export async function POST(req: NextRequest) {
       .from("mood_place_ratings")
       .insert({ place_name, mood: mood ?? null, sub_category: sub_category ?? null, verdict });
 
+    // ── ④ 成功事例のDB還元: 👍が付いたスポットを気分タグ付きで places に保存 ──
+    //   AI提案(freeWord/AI相談)由来の当たりスポットも、これで構造化検索の資産になる。
+    //   fire-and-forget（失敗しても評価記録には影響しない）
+    if (verdict === "good" && mood) {
+      void (async () => {
+        try {
+          const { MOOD_SHORT_KEY_TO_TAG } = await import("@/lib/predefined-tags");
+          const moodTag = (MOOD_SHORT_KEY_TO_TAG as Record<string, string>)[mood]
+            ?? (mood.startsWith("#") ? mood : undefined);
+          const gKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+          if (!moodTag || !gKey) return;
+          const gr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": gKey,
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount",
+            },
+            body: JSON.stringify({ textQuery: place_name, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
+            signal: AbortSignal.timeout(7000),
+          });
+          const gd = await gr.json().catch(() => null);
+          const pl = gd?.places?.[0];
+          if (!pl?.id || typeof pl.location?.latitude !== "number") return;
+          const { scheduleGenericAutoSave } = await import("@/lib/google-places-auto-save");
+          scheduleGenericAutoSave(
+            [{
+              googlePlaceId: String(pl.id),
+              name: pl.displayName?.text ?? place_name,
+              address: pl.formattedAddress ?? "",
+              lat: pl.location.latitude,
+              lng: pl.location.longitude,
+              photoUrl: null,
+              rating: typeof pl.rating === "number" ? pl.rating : null,
+              openNow: null,
+            }],
+            [moodTag, ...(sub_category ? [`#${String(sub_category).replace(/^#/, "")}`] : [])],
+          );
+        } catch { /* 還元失敗は無視 */ }
+      })();
+    }
+
     if (error) {
       // テーブル未作成の場合はスキップ（エラーにしない）
       console.warn("[mood-rating] insert skipped:", error.message);
