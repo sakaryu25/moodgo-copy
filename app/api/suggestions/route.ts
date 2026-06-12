@@ -283,8 +283,55 @@ export async function PATCH(request: Request) {
     if (googlePlaceId !== undefined) updatePayload.google_place_id = googlePlaceId;
     if (googleMapsUri !== undefined) updatePayload.google_maps_uri = googleMapsUri;
     if (googlePlaceName !== undefined) updatePayload.google_place_name = googlePlaceName;
-    if (autoTags !== undefined) updatePayload.auto_tags = autoTags;
+    // タグは # プレフィックスを正規化して保存（#無しタグは検索のタグ一致に乗らないため）
+    if (autoTags !== undefined) {
+      updatePayload.auto_tags = (autoTags as string[]).map(t =>
+        t && !String(t).startsWith("#") ? `#${t}` : t
+      );
+    }
     if (body.stationInfo !== undefined) updatePayload.station_info = body.stationInfo;
+    // 座標の直接更新（バックフィル・管理者修正用）
+    if (body.lat !== undefined) updatePayload.lat = body.lat;
+    if (body.lng !== undefined) updatePayload.lng = body.lng;
+
+    // ── 承認時の座標自動解決 ─────────────────────────────────────────────────
+    //   座標が無い投稿は検索結果への注入（40km判定）ができず、承認しても
+    //   どこにも表示されない。承認時に Google Text Search で自動ジオコーディングする。
+    if (status === "approved" && body.lat === undefined) {
+      try {
+        const { data: row } = await supabase
+          .from("suggestions")
+          .select("spot_name, google_place_name, address, lat, lng")
+          .eq("id", id)
+          .single();
+        if (row && (row.lat == null || row.lng == null)) {
+          const gKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+          const q = [row.google_place_name ?? row.spot_name, row.address ?? ""].filter(Boolean).join(" ");
+          if (gKey && q.trim()) {
+            const gr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": gKey,
+                "X-Goog-FieldMask": "places.location,places.displayName,places.formattedAddress,places.id",
+              },
+              body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
+              signal: AbortSignal.timeout(7000),
+            });
+            const gd = await gr.json().catch(() => null);
+            const loc = gd?.places?.[0]?.location;
+            if (typeof loc?.latitude === "number" && typeof loc?.longitude === "number") {
+              updatePayload.lat = loc.latitude;
+              updatePayload.lng = loc.longitude;
+              if (!row.google_place_name && gd.places[0].displayName?.text) {
+                updatePayload.google_place_name = gd.places[0].displayName.text;
+              }
+              if (gd.places[0].id) updatePayload.google_place_id = gd.places[0].id;
+            }
+          }
+        }
+      } catch { /* ジオコード失敗でも承認自体は続行 */ }
+    }
 
     // スポット基本情報の編集（管理者による直接編集）
     if (body.spotName !== undefined) updatePayload.spot_name = body.spotName;
