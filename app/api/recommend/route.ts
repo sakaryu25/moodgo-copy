@@ -596,6 +596,13 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
   const ckey = stationCacheKey(lat, lng);
   const cached = _stationCache.get(ckey);
   if (cached && Date.now() - cached.ts < STATION_CACHE_TTL_MS) return cached.val;
+  // 永続キャッシュ（駅は変化しないため30日。コールドスタート跨ぎ・全ユーザー共有）
+  const ltHit = await ltCacheGetMany([`st:${ckey}`]);
+  const ltVal = ltHit.get(`st:${ckey}`);
+  if (typeof ltVal === "string") {
+    _stationCache.set(ckey, { ts: Date.now(), val: ltVal });
+    return ltVal;
+  }
   // キャッシュサイズ上限（500エントリ）超過時は最古を削除
   if (_stationCache.size >= 500) {
     const oldest = [..._stationCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
@@ -641,6 +648,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     const minutes = Math.ceil(nearest.dist / 80);
     const val = `${nearest.name}から徒歩約${minutes}分`;
     _stationCache.set(ckey, { ts: Date.now(), val });  // A: 結果をキャッシュ
+    await ltCachePut(`st:${ckey}`, val);               // 永続(30日・全インスタンス共有)
     return val;
   } catch {
     return "";
@@ -3687,6 +3695,50 @@ async function setSupplementDbCache(key: string, data: Record<string, unknown>[]
   } catch { /* テーブル未作成等は無視 */ }
 }
 
+// ─── 汎用長期キャッシュ（Google APIコスト削減・結果は完全同一）────────────────
+// 写真URL・営業時間・最寄り駅・ジオコーディングは時間で変化しない/緩やかなため、
+// api_cache テーブルに長期TTLで恒久化する。2回目以降の検索は同じデータを
+// Supabaseから返すだけ＝品質を一切落とさずGoogle呼び出しを削減する。
+//   キー: enr:<スポット名>=写真+営業時間 / st:<座標grid>=最寄り駅 / geo:<エリア>=座標
+const LT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30日
+const _ltMem = new Map<string, { exp: number; data: unknown }>();
+async function ltCacheGetMany(keys: string[]): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>();
+  const missing: string[] = [];
+  const now = Date.now();
+  for (const k of keys) {
+    const m = _ltMem.get(k);
+    if (m && m.exp > now) out.set(k, m.data);
+    else missing.push(k);
+  }
+  if (missing.length > 0 && supabase) {
+    try {
+      const { data } = await supabase
+        .from("api_cache")
+        .select("cache_key, data")
+        .in("cache_key", missing)
+        .gt("expires_at", new Date().toISOString());
+      for (const row of data ?? []) {
+        out.set(row.cache_key, row.data);
+        _ltMem.set(row.cache_key, { exp: now + 5 * 60 * 1000, data: row.data });
+      }
+    } catch { /* api_cache未作成は無視 */ }
+  }
+  return out;
+}
+async function ltCachePut(key: string, data: unknown, ttlMs: number = LT_CACHE_TTL_MS): Promise<void> {
+  _ltMem.set(key, { exp: Date.now() + Math.min(ttlMs, 5 * 60 * 1000), data });
+  if (!supabase) return;
+  try {
+    await supabase.from("api_cache").upsert(
+      { cache_key: key, data, expires_at: new Date(Date.now() + ttlMs).toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: "cache_key" },
+    );
+  } catch { /* 無視 */ }
+}
+// enr: キャッシュの形（部分的でよい。あるフィールドだけ利用）
+type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[] };
+
 // ─── Google Places 補足検索 ─────────────────────────────────────────────────
 // Supabase 結果を補うために Google Places Nearby Search で 10 件追加取得
 async function fetchGooglePlacesSupplement(
@@ -5600,6 +5652,13 @@ async function handleRecommend(request: Request) {
     // （以前は現在地取得済みの座標が残っていると手入力エリアが無視されていた）
     if (answers.areaMode === "manual" && answers.area && answers.area.trim()) {
       try {
+        // コスト削減: 住所→座標は不変なので永続キャッシュ（同じ住所の再検索でgeocode不要）
+        const geoKey = `geo:${answers.area.trim().slice(0, 100)}`;
+        const geoCached = (await ltCacheGetMany([geoKey])).get(geoKey) as { lat: number; lng: number } | undefined;
+        if (geoCached && typeof geoCached.lat === "number") {
+          answers.originLat = geoCached.lat;
+          answers.originLng = geoCached.lng;
+        } else {
         const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
           answers.area.trim()
         )}&language=ja&region=JP&key=${apiKey}`;
@@ -5609,9 +5668,11 @@ async function handleRecommend(request: Request) {
         if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
           answers.originLat = loc.lat;
           answers.originLng = loc.lng;
+          await ltCachePut(geoKey, { lat: loc.lat, lng: loc.lng });  // 永続(30日)
           console.log(`[recommend] 手動エリア「${answers.area}」→ ${loc.lat}, ${loc.lng}`);
         } else {
           console.warn(`[recommend] 手動エリア「${answers.area}」のジオコーディング失敗: ${geoData?.status}`);
+        }
         }
       } catch (e) {
         console.warn("[recommend] 手動エリアのジオコーディングエラー:", e);
@@ -5921,7 +5982,15 @@ async function handleRecommend(request: Request) {
           (async (): Promise<Map<string, string[]>> => {
             const photoMap = new Map<string, string[]>();
             if (!apiKey || !hasLocation || noPhotoNames.length === 0) return photoMap;
-            await Promise.all(noPhotoNames.map(async (name) => {
+            // コスト削減: 長期キャッシュ(enr:)から先に充当（2回目以降はGoogle不要）
+            const phHit = await ltCacheGetMany(noPhotoNames.map(n => `enr:${n.slice(0, 80)}`));
+            const phMiss: string[] = [];
+            for (const name of noPhotoNames) {
+              const c = phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined;
+              if (c?.photoUrls?.length) photoMap.set(name, c.photoUrls);
+              else phMiss.push(name);
+            }
+            await Promise.all(phMiss.map(async (name) => {
               try {
                 const res = await gfetch("https://places.googleapis.com/v1/places:searchText", {
                   method: "POST",
@@ -5952,7 +6021,8 @@ async function handleRecommend(request: Request) {
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
                   photoMap.set(name, urls);
-                  schedulePhotoWriteBack(name, urls[0]);  // 次回以降のGoogle呼び出し削減
+                  schedulePhotoWriteBack(name, urls[0]);          // places.photo_url(単発)
+                  await ltCachePut(`enr:${name.slice(0, 80)}`, { photoUrls: urls });  // 長期キャッシュ
                 }
               } catch { /* 写真取得失敗は無視 */ }
             }));
@@ -6424,11 +6494,35 @@ async function handleRecommend(request: Request) {
         //   営業時間が無い or 写真が10枚未満の結果だけ Google Text Search で補完する。
         //   （表示する15件のみ対象。各店1回の searchText で hours+photos を一括取得）
         if (apiKey && recommendations.length > 0) {
+          // ── コスト削減: 長期キャッシュ(enr:)から写真・営業時間をprefill ──────────
+          //   2回目以降の検索ではGoogleを呼ばず同一データを返す（品質は完全同一）
+          const enrKeys = recommendations.map(r => `enr:${(r.title ?? "").slice(0, 80)}`);
+          const enrHit = await ltCacheGetMany(enrKeys);
+          recommendations = recommendations.map((rec) => {
+            const c = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
+            if (!c) return rec;
+            const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
+            const upd: typeof rec = { ...rec };
+            if ((c.photoUrls?.length ?? 0) > photoUrls.length) {
+              upd.photoUrls = c.photoUrls!;
+              upd.photoUrl = c.photoUrls![0] ?? rec.photoUrl;
+            }
+            if ((rec.openNow === undefined || !rec.openingHoursText) && c.periods) {
+              const st = computeOpenStatus({ openNow: undefined, periods: c.periods });
+              upd.openNow = st.openNow ?? upd.openNow;
+              upd.openStatusBadge = st.badge ?? upd.openStatusBadge;
+              if (c.weekday?.length) upd.openingHoursText = c.weekday.join("\n");
+            }
+            return upd;
+          });
           await Promise.all(recommendations.map(async (rec, idx) => {
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
             const needPhotos = photoUrls.length < 10;
             const needHours = rec.openNow === undefined || !rec.openingHoursText;
             if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
+            // キャッシュ済み（写真3枚以上 or 営業時間あり）の項目は再取得しない
+            const cVal = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
+            if (cVal && (cVal.photoUrls?.length ?? 0) >= 3 && cVal.periods) return;
             try {
               const q = rec.address ? `${rec.title} ${rec.address}` : rec.title ?? "";
               if (!q.trim()) return;
@@ -6447,13 +6541,15 @@ async function handleRecommend(request: Request) {
               const place = ed?.places?.[0];
               if (!place) return;
               // 写真を最大10枚補完
+              const enrSave: EnrichCacheVal = {};
               if (needPhotos) {
                 const photos = (place.photos ?? []) as Array<{ name?: string }>;
                 const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
                 if (urls.length > photoUrls.length) {
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
-                  if (urls[0]) schedulePhotoWriteBack(rec.title ?? "", urls[0]);  // 次回以降のGoogle呼び出し削減
+                  if (urls[0]) schedulePhotoWriteBack(rec.title ?? "", urls[0]);  // places.photo_urlにも単発保存
                 }
+                if (urls.length > 0) enrSave.photoUrls = urls;
               }
               // 営業時間・営業状態を補完
               if (needHours && place.currentOpeningHours) {
@@ -6465,6 +6561,14 @@ async function handleRecommend(request: Request) {
                   openStatusBadge: st.badge ?? recommendations[idx].openStatusBadge,
                   openingHoursText: wd?.join("\n") ?? recommendations[idx].openingHoursText,
                 };
+                const periods = (place.currentOpeningHours as { periods?: GooglePeriod[] })?.periods;
+                if (periods) enrSave.periods = periods;
+                if (wd?.length) enrSave.weekday = wd;
+              }
+              // 長期キャッシュへ保存（次回以降この店のGoogle呼び出しが不要に）
+              if (enrSave.photoUrls || enrSave.periods) {
+                const prev = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
+                await ltCachePut(`enr:${(rec.title ?? "").slice(0, 80)}`, { ...prev, ...enrSave });
               }
             } catch { /* 補完失敗は無視 */ }
           }));
