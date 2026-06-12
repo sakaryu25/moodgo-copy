@@ -64,8 +64,10 @@ export async function POST(req: NextRequest) {
           const gd = await gr.json().catch(() => null);
           const pl = gd?.places?.[0];
           if (!pl?.id || typeof pl.location?.latitude !== "number") return;
-          const { scheduleGenericAutoSave } = await import("@/lib/google-places-auto-save");
-          scheduleGenericAutoSave(
+          // scheduleGenericAutoSaveはsetTimeout(3s)のためサーバーレス凍結で実行されない
+          // → autoSavePlacesWithTags を直接awaitする
+          const { autoSavePlacesWithTags } = await import("@/lib/google-places-auto-save");
+          await autoSavePlacesWithTags(
             [{
               googlePlaceId: String(pl.id),
               name: pl.displayName?.text ?? place_name,
