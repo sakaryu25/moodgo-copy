@@ -306,8 +306,15 @@ export async function PATCH(request: Request) {
           .single();
         if (row && (row.lat == null || row.lng == null)) {
           const gKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
-          const q = [row.google_place_name ?? row.spot_name, row.address ?? ""].filter(Boolean).join(" ");
-          if (gKey && q.trim()) {
+          const name = (row.google_place_name ?? row.spot_name ?? "").trim();
+          const addr = (row.address ?? "").trim();
+
+          type GPlace = {
+            location?: { latitude?: number; longitude?: number };
+            displayName?: { text?: string };
+            id?: string;
+          };
+          const searchOnce = async (textQuery: string): Promise<GPlace | null> => {
             const gr = await fetch("https://places.googleapis.com/v1/places:searchText", {
               method: "POST",
               headers: {
@@ -315,18 +322,42 @@ export async function PATCH(request: Request) {
                 "X-Goog-Api-Key": gKey,
                 "X-Goog-FieldMask": "places.location,places.displayName,places.formattedAddress,places.id",
               },
-              body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
+              body: JSON.stringify({ textQuery, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
               signal: AbortSignal.timeout(7000),
             });
             const gd = await gr.json().catch(() => null);
-            const loc = gd?.places?.[0]?.location;
+            return gd?.places?.[0] ?? null;
+          };
+          const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+            const R = 6371000, toR = Math.PI / 180;
+            const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
+            const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
+            return 2 * R * Math.asin(Math.sqrt(h));
+          };
+
+          if (gKey && (name || addr)) {
+            // 住所を基準点にする。名前のテキスト検索は同名の別店（例: 別地域の "Chill Spot"）に
+            // 飛ぶことがあるため、住所から500m超の名前検索結果は捨てて住所の座標を使う。
+            const addrPlace = addr ? await searchOnce(addr) : null;
+            const namePlace = name ? await searchOnce([name, addr].filter(Boolean).join(" ")) : null;
+            const aLoc = addrPlace?.location, nLoc = namePlace?.location;
+            const nameOk = !!(
+              typeof nLoc?.latitude === "number" && typeof nLoc?.longitude === "number" &&
+              (!(typeof aLoc?.latitude === "number" && typeof aLoc?.longitude === "number") ||
+                distM(aLoc.latitude!, aLoc.longitude!, nLoc.latitude, nLoc.longitude) <= 500)
+            );
+            const chosen = nameOk ? namePlace : addrPlace;
+            const loc = chosen?.location;
             if (typeof loc?.latitude === "number" && typeof loc?.longitude === "number") {
               updatePayload.lat = loc.latitude;
               updatePayload.lng = loc.longitude;
-              if (!row.google_place_name && gd.places[0].displayName?.text) {
-                updatePayload.google_place_name = gd.places[0].displayName.text;
+              // 名前一致が住所と整合した時だけGoogle名/IDを紐付ける（別店の情報を保存しない）
+              if (nameOk && namePlace) {
+                if (!row.google_place_name && namePlace.displayName?.text) {
+                  updatePayload.google_place_name = namePlace.displayName.text;
+                }
+                if (namePlace.id) updatePayload.google_place_id = namePlace.id;
               }
-              if (gd.places[0].id) updatePayload.google_place_id = gd.places[0].id;
             }
           }
         }
