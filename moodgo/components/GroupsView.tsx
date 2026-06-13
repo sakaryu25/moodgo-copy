@@ -12,8 +12,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import {
-  Activity, BookOpen, Bot, Camera, Car, ChevronLeft, Coffee, Copy, Dices, Flame,
-  Heart, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle, Moon, Navigation,
+  Activity, BookOpen, Bot, Camera, Car, Check, ChevronLeft, Coffee, Copy, Dices,
+  Flame, Heart, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle, Moon, Navigation,
   PartyPopper, Plane, Plus, Send, Settings, ShoppingBag, Shuffle, Sparkles,
   ThumbsUp, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
@@ -168,6 +168,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [showRoulette, setShowRoulette] = useState(false);
   const [rIdx, setRIdx] = useState(0);
   const [rDone, setRDone] = useState(false);
+  const [spinning, setSpinning] = useState(false);
+  const [rouSel, setRouSel] = useState<Set<string>>(new Set());  // ルーレットに参加させる候補
   const spinRef = useRef(false);
 
   // 気分一致 → AI提案
@@ -494,15 +496,32 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     return out;
   })();
 
-  const startRoulette = () => {
-    if (spinRef.current || rouletteCands.length < 2) return;
-    spinRef.current = true;
+  // ルーレットに参加させる候補（チェックを付けたものだけ）
+  const rouSelCands = rouletteCands.filter(c => rouSel.has(c.id));
+
+  const toggleRouSel = (id: string) => {
+    if (spinRef.current) return;  // 回転中は変更不可
+    Haptics.selectionAsync();
     setRDone(false);
-    const total = 16 + Math.floor(Math.random() * rouletteCands.length * 2);
+    setRIdx(0);
+    setRouSel(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const startRoulette = () => {
+    const n = rouSelCands.length;
+    if (spinRef.current || n < 2) return;
+    spinRef.current = true;
+    setSpinning(true);
+    setRDone(false);
+    const total = 16 + Math.floor(Math.random() * n * 2);
     let step = 0;
-    let cur = rIdx;
+    let cur = rIdx % n;
     const tick = () => {
-      cur = (cur + 1) % rouletteCands.length;
+      cur = (cur + 1) % n;
       setRIdx(cur);
       Haptics.selectionAsync();
       step++;
@@ -510,6 +529,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         setTimeout(tick, 55 + ((step / total) ** 2) * 330);  // だんだん減速
       } else {
         spinRef.current = false;
+        setSpinning(false);
         setRDone(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -518,7 +538,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   };
 
   const sendRouletteResult = async () => {
-    const win = rouletteCands[rIdx];
+    const win = rouSelCands[rIdx];
     if (!active || !win) return;
     setShowRoulette(false);
     try {
@@ -885,10 +905,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               <PuniPressable
                 onPress={() => {
                   if (rouletteCands.length < 2) {
-                    Alert.alert('候補が足りないよ', 'スポットを2件以上シェアするとルーレットで決められるよ🎰');
+                    Alert.alert('候補が足りないよ', 'スポットを2件以上シェアするとルーレットで決められるよ');
                     return;
                   }
+                  setRouSel(new Set(rouletteCands.map(c => c.id)));  // 最初は全員参加
                   setRDone(false);
+                  setRIdx(0);
                   setShowRoulette(true);
                 }}
                 style={s.diceBtn}
@@ -1088,24 +1110,58 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     <X size={18} color="#7C3AED" strokeWidth={2.5} />
                   </PuniPressable>
                 </View>
-                {rouletteCands.map((c, i) => (
-                  <View key={c.id} style={[s.rouRow, i === rIdx && (rDone ? s.rouRowWin : s.rouRowOn)]}>
-                    {rDone && i === rIdx
-                      ? <PartyPopper size={14} color="#92400E" strokeWidth={2.2} />
-                      : <MapPin size={14} color="#7C3AED" strokeWidth={2.2} />}
-                    <Text style={[s.rouText, i === rIdx && s.rouTextOn]} numberOfLines={1}>
-                      {c.spot_name}
-                    </Text>
-                  </View>
-                ))}
-                <PuniPressable onPress={rDone ? sendRouletteResult : startRoulette} style={s.rouBtn}>
+                <Text style={s.rouHint}>タップして候補を選んでから回そう</Text>
+                <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+                  {rouletteCands.map((c) => {
+                    const included = rouSel.has(c.id);
+                    const selIdx = rouSelCands.findIndex(sc => sc.id === c.id);
+                    const isActive = included && selIdx === rIdx && (spinning || rDone);
+                    const isWin = rDone && isActive;
+                    return (
+                      <PuniPressable
+                        key={c.id}
+                        onPress={() => toggleRouSel(c.id)}
+                        style={[
+                          s.rouRow,
+                          !included && s.rouRowOff,
+                          isActive && (isWin ? s.rouRowWin : s.rouRowOn),
+                        ]}
+                      >
+                        {isWin
+                          ? <PartyPopper size={14} color="#92400E" strokeWidth={2.2} />
+                          : <MapPin size={14} color={included ? '#7C3AED' : '#C4B5FD'} strokeWidth={2.2} />}
+                        <Text
+                          style={[s.rouText, !included && s.rouTextOff, isActive && s.rouTextOn]}
+                          numberOfLines={1}
+                        >
+                          {c.spot_name}
+                        </Text>
+                        <View style={{ flex: 1 }} />
+                        <View style={[s.rouCheck, included && s.rouCheckOn]}>
+                          {included && <Check size={12} color="#fff" strokeWidth={3.2} />}
+                        </View>
+                      </PuniPressable>
+                    );
+                  })}
+                </ScrollView>
+                <PuniPressable
+                  onPress={rDone ? sendRouletteResult : startRoulette}
+                  disabled={spinning || rouSelCands.length < 2}
+                  style={[s.rouBtn, (spinning || rouSelCands.length < 2) && { opacity: 0.5 }]}
+                >
                   <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.rouBtnInner}>
                     <Text style={s.rouBtnText} numberOfLines={1}>
-                      {rDone ? `「${rouletteCands[rIdx]?.spot_name}」に決定として送る` : '回す！'}
+                      {spinning
+                        ? '回転中…'
+                        : rDone
+                          ? `「${rouSelCands[rIdx]?.spot_name}」に決定として送る`
+                          : rouSelCands.length < 2
+                            ? '候補を2つ以上選んでね'
+                            : `回す！（${rouSelCands.length}か所）`}
                     </Text>
                   </LinearGradient>
                 </PuniPressable>
-                {rDone && (
+                {rDone && !spinning && (
                   <PuniPressable onPress={startRoulette} style={s.matchLater}>
                     <Text style={s.matchLaterText}>もう一回回す</Text>
                   </PuniPressable>
@@ -1714,15 +1770,24 @@ const s = StyleSheet.create({
     backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#DDD6FE',
     alignItems: 'center', justifyContent: 'center',
   },
+  rouHint: { fontSize: 11, color: '#A78BFA', textAlign: 'center', marginBottom: 10 },
   rouRow: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
-    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6,
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 6,
     backgroundColor: '#FAF8FF', borderWidth: 1.5, borderColor: '#F1EBFE',
   },
+  rouRowOff: { opacity: 0.45 },
   rouRowOn:  { backgroundColor: '#EDE9FE', borderColor: '#A78BFA' },
   rouRowWin: { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' },
   rouText:   { fontSize: 13, fontWeight: '700', color: INK, flexShrink: 1 },
+  rouTextOff: { color: '#A78BFA' },
   rouTextOn: { fontWeight: '900' },
+  rouCheck: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rouCheckOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   rouBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 10 },
   rouBtnInner: { paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   rouBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
