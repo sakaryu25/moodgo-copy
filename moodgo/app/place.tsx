@@ -351,6 +351,9 @@ export default function PlaceDetailPage() {
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
   const photos = [...new Set([...uploadedPhotos, ...fetchedPhotos, ...basePhotos])];
+  // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
+  const showContribute = isSpooky && photos.length > 0;
+  const heroPageCount = photos.length + (showContribute ? 1 : 0);
 
   // 心霊スポットは最新の投稿写真をマウント時に取得（検索後/他ユーザーの追加も反映）
   useEffect(() => {
@@ -611,7 +614,7 @@ export default function PlaceDetailPage() {
             <ScrollView
               ref={photoScrollRef}
               horizontal pagingEnabled
-              scrollEnabled={photos.length > 1}
+              scrollEnabled={heroPageCount > 1}
               showsHorizontalScrollIndicator={false}
               decelerationRate="fast" bounces={false}
               onMomentumScrollEnd={onPhotoScrollEnd}
@@ -621,6 +624,19 @@ export default function PlaceDetailPage() {
                 <Image key={i} source={{ uri }}
                   style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
               ))}
+              {showContribute && (
+                <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
+                  style={[{ width: photoWidth, height: 300 }, s.heroPlaceholder]}>
+                  <Moon size={44} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
+                  <Text style={s.heroSpookyTitle}>写真を提供してください</Text>
+                  <Text style={s.heroSpookySub}>あなたの写真でこの場所を伝えてください 🙏</Text>
+                  <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.8} style={s.heroSpookyBtn}>
+                    {uploadingPhoto
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>写真を追加</Text></>}
+                  </TouchableOpacity>
+                </LinearGradient>
+              )}
             </ScrollView>
           ) : isSpooky ? (
             <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={s.heroPlaceholder}>
@@ -639,27 +655,22 @@ export default function PlaceDetailPage() {
             </LinearGradient>
           )}
 
-          {/* 心霊: 写真も暗く沈ませて統一した怖い雰囲気に */}
-          {isSpooky && photos.length > 0 && (
-            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(8,4,20,0.45)' }]} />
-          )}
-
           <LinearGradient colors={GRAD_DARK} style={s.heroOverlay} pointerEvents="none" />
 
-          {photos.length > 1 && (
+          {heroPageCount > 1 && (
             <>
               {photoIdx > 0 && (
                 <TouchableOpacity onPress={() => scrollToPhoto(photoIdx - 1)} style={[s.arrowBtn, { left: 12 }]}>
                   <Text style={s.arrowText}>‹</Text>
                 </TouchableOpacity>
               )}
-              {photoIdx < photos.length - 1 && (
+              {photoIdx < heroPageCount - 1 && (
                 <TouchableOpacity onPress={() => scrollToPhoto(photoIdx + 1)} style={[s.arrowBtn, { right: 12 }]}>
                   <Text style={s.arrowText}>›</Text>
                 </TouchableOpacity>
               )}
               <View style={s.pageDots}>
-                {photos.map((_, i) => (
+                {Array.from({ length: heroPageCount }).map((_, i) => (
                   <View key={i} style={[s.pageDot, i === photoIdx && s.pageDotActive]} />
                 ))}
               </View>
@@ -667,15 +678,8 @@ export default function PlaceDetailPage() {
           )}
           {photos.length > 0 && (
             <View style={s.photoCount}>
-              <Text style={s.photoCountText}>{photoIdx + 1} / {photos.length}</Text>
+              <Text style={s.photoCountText}>{photoIdx + 1} / {heroPageCount}</Text>
             </View>
-          )}
-          {isSpooky && photos.length > 0 && (
-            <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.85} style={s.heroAddMini}>
-              {uploadingPhoto
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <><Camera size={13} color="#fff" strokeWidth={2.2} /><Text style={s.heroAddMiniText}>写真を追加</Text></>}
-            </TouchableOpacity>
           )}
         </View>
 

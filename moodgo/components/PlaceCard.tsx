@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Check, Clock, Flame, Heart, ImagePlus, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import { Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -292,6 +292,9 @@ export default function PlaceCard({
   // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
   const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
   const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
+  // 心霊で写真がある場合、カルーセル末尾に「提供してください」スライドを追加する
+  const showContribute = spooky && photos.length > 0;
+  const pageCount = photos.length + (showContribute ? 1 : 0);
   const onImgError = (uri: string) =>
     setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
   const [photoIdx, setPhotoIdx] = useState(0);
@@ -368,7 +371,7 @@ export default function PlaceCard({
             ref={photoScrollRef}
             horizontal
             pagingEnabled
-            scrollEnabled={photos.length > 1}
+            scrollEnabled={pageCount > 1}
             showsHorizontalScrollIndicator={false}
             decelerationRate="fast"
             scrollEventThrottle={16}
@@ -391,6 +394,22 @@ export default function PlaceCard({
                 />
               </TouchableOpacity>
             ))}
+            {/* 末尾の「写真を提供してください」スライド（スライドすると出る） */}
+            {showContribute && (
+              <LinearGradient
+                colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
+                style={[{ width: photoWidth, height: 220 }, s.photoPlaceholder]}
+              >
+                <Moon size={32} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
+                <Text style={s.spookyAskTitle}>写真を提供してください</Text>
+                <Text style={s.spookyAskSub}>あなたの写真でこの場所を伝えてください 🙏</Text>
+                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.spookyAddBtn}>
+                  {uploading
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
+                </TouchableOpacity>
+              </LinearGradient>
+            )}
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
@@ -415,41 +434,27 @@ export default function PlaceCard({
           </LinearGradient>
         )}
 
-        {/* 心霊: 写真も暗く沈ませて全カードを統一した怖い雰囲気にする */}
-        {darkTheme && photos.length > 0 && (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, s.spookyPhotoTint]} />
-        )}
-
         <LinearGradient
           colors={['transparent', 'rgba(15,10,30,0.45)']}
           style={s.photoOverlay}
           pointerEvents="none"
         />
 
-        {/* 心霊: 写真がある場合も「写真を追加」できる（誰でも投稿可） */}
-        {spooky && photos.length > 0 && (
-          <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.spookyAddMini}>
-            {uploading
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <><ImagePlus size={13} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddMiniText}>写真を追加</Text></>}
-          </TouchableOpacity>
-        )}
-
-        {/* ページングドット + 矢印ボタン */}
-        {photos.length > 1 && (
+        {/* ページングドット + 矢印ボタン（提供スライド含む） */}
+        {pageCount > 1 && (
           <>
             {photoIdx > 0 && (
               <TouchableOpacity onPress={() => scrollToPhoto(photoIdx - 1)} style={[s.arrowBtn, { left: 10 }]}>
                 <Text style={s.arrowText}>‹</Text>
               </TouchableOpacity>
             )}
-            {photoIdx < photos.length - 1 && (
+            {photoIdx < pageCount - 1 && (
               <TouchableOpacity onPress={() => scrollToPhoto(photoIdx + 1)} style={[s.arrowBtn, { right: 10 }]}>
                 <Text style={s.arrowText}>›</Text>
               </TouchableOpacity>
             )}
             <View style={s.pageDots}>
-              {photos.map((_, i) => (
+              {Array.from({ length: pageCount }).map((_, i) => (
                 <View key={i} style={[s.pageDot, i === photoIdx && s.pageDotActive]} />
               ))}
             </View>
