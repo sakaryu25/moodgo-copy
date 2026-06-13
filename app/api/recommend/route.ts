@@ -6175,16 +6175,17 @@ async function handleRecommend(request: Request) {
           return {
             title: r.name,
             address: r.address,
+            // 心霊(独自モード)は Google由来/places保存の写真を一切使わない（利用者投稿のみ）。
+            //   → ここでは空にし、後段の spot_photos ブロックでユーザー投稿だけを添付する。
             // 旧形式の photo_reference (AU_ZVEF...) はv1 API非対応 → sbPhotoMap で上書きを優先。
-            // sbPhotoMap はすでに buildPhotoProxyUrl 経由の正常URLを持つため。
-            photoUrl: (sbPhotoMap.get(r.name) ?? [])[0]
-              || wrapWithPhotoProxy(r.imageUrl || ""),
-            photoUrls: (sbPhotoMap.get(r.name) ?? []).length > 0
+            photoUrl: isProprietaryOnly ? "" : ((sbPhotoMap.get(r.name) ?? [])[0]
+              || wrapWithPhotoProxy(r.imageUrl || "")),
+            photoUrls: isProprietaryOnly ? [] : ((sbPhotoMap.get(r.name) ?? []).length > 0
               ? sbPhotoMap.get(r.name)!
               : (r.imageUrl
                   ? (r.photoUrls ?? [])
                   : []
-                ).map(wrapWithPhotoProxy),
+                ).map(wrapWithPhotoProxy)),
             rating: r.rating,
             userRatingCount: r.reviewCount,
             openNow: r.openNow ?? undefined,

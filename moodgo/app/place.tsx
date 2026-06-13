@@ -423,7 +423,10 @@ export default function PlaceDetailPage() {
       setRec(prev => prev ? {
         ...prev,
         mapUrl:    (p.mapUrl as string) || prev.mapUrl,
-        photoUrls: (p.photoUrls as string[])?.length ? (p.photoUrls as string[]) : prev.photoUrls,
+        // 心霊スポットはGoogle由来の写真を取り込まない（利用者投稿のみ）
+        photoUrls: prev.tags?.includes('#心霊スポット')
+          ? prev.photoUrls
+          : ((p.photoUrls as string[])?.length ? (p.photoUrls as string[]) : prev.photoUrls),
         lat:       (p.lat as number)    ?? prev.lat,
         lng:       (p.lng as number)    ?? prev.lng,
       } : prev);
