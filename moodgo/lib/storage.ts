@@ -5,6 +5,7 @@ export const HISTORY_KEY = "moodgo-history";
 export const FEEDBACK_KEY = "moodgo-feedback";
 export const PENDING_VISITED_KEY = "moodgo-pending-visited";
 export const BLOCKED_PLACES_KEY = "moodgo-blocked-places";
+export const BLOCKED_USERS_KEY = "moodgo-blocked-users";   // ブロックした投稿者のdevice_id一覧
 export const PROFILE_KEY = "moodgo-profile";
 
 export async function loadJSON<T>(key: string, fallback: T): Promise<T> {

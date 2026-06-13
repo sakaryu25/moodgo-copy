@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ALL_PREDEFINED_TAGS, buildFacilityTaggingPrompt } from "@/lib/predefined-tags";
+import { findNgWord } from "@/lib/ngwords";
 import OpenAI from "openai";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -147,6 +148,17 @@ export async function POST(request: Request) {
 
     if (!spotName?.trim()) {
       return NextResponse.json({ ok: false, error: "スポット名は必須です" }, { status: 400 });
+    }
+
+    // 不適切語フィルタ（UGCの一次審査。最終判断はadmin承認）
+    {
+      const ng = findNgWord(spotName) ?? findNgWord(String(description ?? "")) ?? findNgWord(String(contact ?? ""));
+      if (ng) {
+        return NextResponse.json(
+          { ok: false, error: "不適切な表現が含まれています。内容を見直してください。" },
+          { status: 400 },
+        );
+      }
     }
 
     const placeTypeHints: string[] = placeTypesRaw ? JSON.parse(placeTypesRaw) : [];

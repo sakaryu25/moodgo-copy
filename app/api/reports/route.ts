@@ -32,9 +32,14 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  }
+  // admin専用（通報内容は個人情報を含みうるため secret 必須）
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get("secret") !== "moodgoadmin123") {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   try {

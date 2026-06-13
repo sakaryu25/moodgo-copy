@@ -2272,7 +2272,7 @@ export default function AdminPage() {
     setReportsLoading(true);
     setReportsError("");
     Promise.all([
-      fetch("/api/reports").then(r => r.json()),
+      fetch("/api/reports?secret=moodgoadmin123").then(r => r.json()),
       fetch("/api/admin/block-place").then(r => r.json()),
     ]).then(([reportData, blockData]) => {
       if (reportData.ok) setReports(reportData.reports ?? []);

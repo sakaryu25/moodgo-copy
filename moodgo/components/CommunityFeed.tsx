@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
+import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
 import ReportModal from './ReportModal';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ type FeedItem = {
   created_at: string;
   poster_name?: string | null;
   poster_icon?: string | null;
+  poster_id?: string | null;
 };
 
 type IconComp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -304,12 +306,15 @@ const DUMMY: FeedItem[] = [
 export default function CommunityFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
     (async () => {
       try {
+        const blocked = await loadJSON<string[]>(BLOCKED_USERS_KEY, []);
+        if (isMounted.current) setBlockedUsers(blocked);
         const res = await apiFetch('/api/community-feed?limit=20');
         const data = await res.json();
         if (isMounted.current) {
@@ -329,6 +334,20 @@ export default function CommunityFeed() {
   const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
   const openReport = (i: FeedItem) => setReportTarget(i);
 
+  // 投稿者をブロック（端末IDを保存し、以後その投稿者の投稿を非表示）
+  const handleBlockUser = (deviceId: string) => {
+    if (!deviceId) return;
+    setBlockedUsers(prev => {
+      if (prev.includes(deviceId)) return prev;
+      const next = [...prev, deviceId];
+      saveJSON(BLOCKED_USERS_KEY, next);
+      return next;
+    });
+  };
+
+  // ブロック済み投稿者の投稿を除外
+  const visibleItems = items.filter(it => !it.poster_id || !blockedUsers.includes(it.poster_id));
+
   // 2カラムに分割。
   // ・画像なし（テキスト）カードは左右交互に振り分け → 片側だけ画像/テキストに偏らない
   // ・画像ありカードは枚数の少ない列に入れて左右をバランス
@@ -336,7 +355,7 @@ export default function CommunityFeed() {
   const leftItems: FeedItem[] = [];
   const rightItems: FeedItem[] = [];
   let textToggle = 0;
-  for (const it of items) {
+  for (const it of visibleItems) {
     if (!hasImg(it)) {
       (textToggle === 0 ? leftItems : rightItems).push(it);
       textToggle ^= 1;
@@ -381,7 +400,7 @@ export default function CommunityFeed() {
       )}
 
       {/* もっと見るボタン */}
-      {!loading && items.length > 0 && (
+      {!loading && visibleItems.length > 0 && (
         <TouchableOpacity style={s.moreBtn} activeOpacity={0.7}>
           <Text style={s.moreBtnText}>もっと見る</Text>
           <ChevronDown size={15} color={PURPLE} strokeWidth={2.4} />
@@ -394,6 +413,8 @@ export default function CommunityFeed() {
         spotName={reportTarget?.spot_name ?? ''}
         spotAddress={reportTarget?.address ?? ''}
         suggestionId={reportTarget?.id}
+        posterId={reportTarget?.poster_id ?? undefined}
+        onBlockUser={handleBlockUser}
         onClose={() => setReportTarget(null)}
       />
     </View>

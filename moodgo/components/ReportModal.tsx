@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
@@ -22,10 +22,14 @@ type Props = {
   spotAddress?: string;
   /** 任意: 対象スポットのID（adminが特定・削除しやすくする） */
   suggestionId?: string;
+  /** 任意: 投稿者の端末ID。指定時は「投稿者をブロック」を表示 */
+  posterId?: string;
+  /** 任意: 投稿者ブロック時のコールバック（device_idを渡す） */
+  onBlockUser?: (deviceId: string) => void;
   onClose: () => void;
 };
 
-export default function ReportModal({ visible, spotName, spotAddress, suggestionId, onClose }: Props) {
+export default function ReportModal({ visible, spotName, spotAddress, suggestionId, posterId, onBlockUser, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -34,6 +38,25 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
 
   const reset = () => { setReason(''); setNote(''); setSubmitting(false); setDone(false); };
   const close = () => { reset(); onClose(); };
+
+  const blockUser = () => {
+    if (!posterId) return;
+    Alert.alert(
+      'この投稿者をブロック',
+      'この投稿者の投稿が今後フィードに表示されなくなります。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'ブロック', style: 'destructive',
+          onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onBlockUser?.(posterId);
+            close();
+          },
+        },
+      ],
+    );
+  };
 
   const submit = async () => {
     if (!reason || submitting) return;
@@ -112,6 +135,12 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
+
+              {!!posterId && onBlockUser && (
+                <TouchableOpacity onPress={blockUser} activeOpacity={0.7} style={s.blockBtn}>
+                  <Text style={s.blockText}>この投稿者をブロック</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </View>
@@ -155,6 +184,9 @@ const s = StyleSheet.create({
   sendWrap: { flex: 1 },
   sendBtn: { height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   sendText: { fontSize: 16, fontWeight: '900', color: '#fff' },
+
+  blockBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
+  blockText: { fontSize: 14, fontWeight: '700', color: '#9CA3AF' },
 
   doneBox: { alignItems: 'center', paddingVertical: 24, gap: 12 },
   doneIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' },

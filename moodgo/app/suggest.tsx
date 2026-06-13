@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { findNgWord } from '@/lib/ngwords';
 import PuniPressable from '@/components/PuniPressable';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -473,6 +474,11 @@ export default function SuggestScreen() {
 
   const handleSubmit = async () => {
     if (!spotName.trim()) { setError(t.errName); return; }
+    // 不適切語の事前チェック（サーバ側でも再チェックする）
+    if (findNgWord(spotName) || findNgWord(description) || findNgWord(contact)) {
+      setError('不適切な表現が含まれています。内容を見直してください。');
+      return;
+    }
     // 気分タグ必須: 気分タグの無い投稿は承認後も検索結果に出る経路が無い
     if (!selectedTags.some(tag => MOODS.includes(tag))) {
       setError(t.errMoodTag);

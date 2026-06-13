@@ -104,6 +104,7 @@ export async function GET(request: Request) {
         created_at: s.created_at,
         poster_name: (s.poster_name as string | null) ?? null,
         poster_icon: iconFor(s.device_id),
+        poster_id: (s.device_id as string | null) ?? null,   // 投稿者ブロック用（端末ID）
       };
     });
 
