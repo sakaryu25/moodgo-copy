@@ -229,6 +229,7 @@ export async function autoSaveGooglePlaces(
 export async function autoSavePlacesWithTags(
   places: GooglePlaceEntry[],
   tags: string[],   // 直接 DB に入れるタグ配列（例: ["#温泉", "#自然感じたい"]）
+  sourceType: string = "google",  // 由来ラベル（"google" / "yahoo"）。google_place_id無しでも保存可
 ): Promise<{ saved: number; skipped: number }> {
   if (!supabase || places.length === 0) return { saved: 0, skipped: 0 };
 
@@ -268,7 +269,7 @@ export async function autoSavePlacesWithTags(
         lat: p.lat,
         lng: p.lng,
         google_place_id: p.googlePlaceId || null,
-        source_type: "google",
+        source_type: sourceType,
         tags,
         photo_url: p.photoUrl ?? null,
         is_active: true,
@@ -294,10 +295,10 @@ export async function autoSavePlacesWithTags(
 export function scheduleGenericAutoSave(
   places: GooglePlaceEntry[],
   tags: string[],
-  delayMs = 3000,
+  sourceType: string = "google",
 ): void {
   if (!places.length || !tags.length) return;
-  runAfterResponse(() => autoSavePlacesWithTags(places, tags).then(() => {}));
+  runAfterResponse(() => autoSavePlacesWithTags(places, tags, sourceType).then(() => {}));
 }
 
 // ── fire-and-forget ラッパー（ルートから呼ぶ用）──────────────────────────────

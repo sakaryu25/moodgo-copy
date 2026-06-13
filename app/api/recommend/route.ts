@@ -6642,16 +6642,36 @@ async function handleRecommend(request: Request) {
             .filter(e => e.googlePlaceId && e.name)
             // 飲食NGコンテキストでは飲食店をSupabaseに保存しない（mood汚染を防ぐ＝根本対策）
             .filter(e => isFoodAllowedContext(answers.mood, effectiveDeepDive) || !isRestaurantName(e.name));
-          if (googleEntries.length > 0) {
+          // Yahoo補足結果も保存（google_place_id無し → 名前+住所でdedup・由来は"yahoo"）。
+          //   Yahoo結果はGoogleで写真補完済み。これでYahooで見つけた店も次回からSupabaseで賄える。
+          const yahooEntries = (yahooSupplements as Array<Record<string, unknown>>)
+            .filter(y => y.title && typeof y.lat === "number" && typeof y.lng === "number")
+            .map(y => ({
+              googlePlaceId: "",
+              name: String(y.title ?? ""),
+              address: String(y.address ?? ""),
+              lat: y.lat as number,
+              lng: y.lng as number,
+              photoUrl: (y.photoUrl as string | undefined) ?? null,
+              rating: (y.rating as number | null | undefined) ?? null,
+              openNow: (y.openNow as boolean | null | undefined) ?? null,
+            }))
+            .filter(e => e.name)
+            .filter(e => isFoodAllowedContext(answers.mood, effectiveDeepDive) || !isRestaurantName(e.name));
+
+          if (googleEntries.length > 0 || yahooEntries.length > 0) {
             const { scheduleAutoSave, scheduleGenericAutoSave, detectFoodGenreTag } =
               await import("@/lib/google-places-auto-save");
             const foodGenreTag = isFoodMood ? detectFoodGenreTag(effectiveDeepDive || (answers.mood ?? "")) : null;
-            if (foodGenreTag) {
-              scheduleAutoSave(googleEntries, foodGenreTag);   // 食ジャンル別ルールで保存
-            } else {
-              // 非食 or ジャンル未検出: ユーザーのmustタグで保存
-              const tags = userTags.mustTags.filter(t => t.startsWith("#"));
-              if (tags.length > 0) scheduleGenericAutoSave(googleEntries, tags);
+            const genericTags = userTags.mustTags.filter(t => t.startsWith("#"));
+            // Google: 食ジャンル別ルール優先、それ以外は mustタグで保存
+            if (googleEntries.length > 0) {
+              if (foodGenreTag) scheduleAutoSave(googleEntries, foodGenreTag);
+              else if (genericTags.length > 0) scheduleGenericAutoSave(googleEntries, genericTags);
+            }
+            // Yahoo: mustタグで保存（由来=yahoo）
+            if (yahooEntries.length > 0 && genericTags.length > 0) {
+              scheduleGenericAutoSave(yahooEntries, genericTags, "yahoo");
             }
           }
         } catch { /* 自動保存失敗は検索結果に影響させない */ }
