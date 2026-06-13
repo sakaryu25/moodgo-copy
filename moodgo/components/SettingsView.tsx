@@ -6,7 +6,8 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { Camera, Check, ChevronRight, EyeOff, Globe, MapPin, Navigation, Trash2, UserRound } from 'lucide-react-native';
+import { Camera, Check, ChevronRight, EyeOff, FileText, Globe, Mail, MapPin, Navigation, ShieldCheck, Trash2, UserRound } from 'lucide-react-native';
+import { router, type Href } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Image, Linking, Modal, ScrollView,
@@ -29,6 +30,9 @@ const BLUE   = '#4FA3FF';
 const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
+
+// 法務ページ（Next.jsバックエンドの公開ページをWebView/ブラウザで開く）
+const LEGAL_BASE = 'https://moodgo-qvmk.vercel.app';
 
 // トーク（グループ）のニックネームと同じキーで保存して同期させる
 const NICKNAME_KEY  = 'moodgo-group-nickname';
@@ -198,6 +202,9 @@ export default function SettingsView({
       setLocCanAsk(p.canAskAgain);
     } catch { /* noop */ }
   };
+
+  // 外部URL（法務ページ）を安全に開く
+  const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
 
   const handleSave = () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
@@ -500,6 +507,29 @@ export default function SettingsView({
               </TouchableOpacity>
             </View>
 
+            {/* ── 規約・サポート ── */}
+            <SectionHeader
+              icon={<FileText size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? '規約・サポート' : 'Legal & Support'}
+            />
+            <View style={s.card}>
+              <TouchableOpacity onPress={() => openLink(`${LEGAL_BASE}/privacy`)} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
+                <ShieldCheck size={17} color={PURPLE} strokeWidth={2} />
+                <Text style={s.linkRowText}>{lang === 'ja' ? 'プライバシーポリシー' : 'Privacy Policy'}</Text>
+                <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => openLink(`${LEGAL_BASE}/terms`)} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
+                <FileText size={17} color={PURPLE} strokeWidth={2} />
+                <Text style={s.linkRowText}>{lang === 'ja' ? '利用規約' : 'Terms of Service'}</Text>
+                <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { onClose(); router.push('/contact' as Href); }} style={s.linkRow} activeOpacity={0.7}>
+                <Mail size={17} color={PURPLE} strokeWidth={2} />
+                <Text style={s.linkRowText}>{lang === 'ja' ? 'お問い合わせ' : 'Contact'}</Text>
+                <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
             {/* ── バージョン ── */}
             <View style={s.versionRow}>
               <Text style={s.versionText}>MoodGo  v1.0.0</Text>
@@ -652,6 +682,10 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#FAFAFF',
   },
   unblockText: { fontSize: 13, fontWeight: '700', color: PURPLE },
+
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
+  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F1ECFF' },
+  linkRowText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1E0753' },
 
   versionRow: { alignItems: 'center', marginTop: 32 },
   versionText: { fontSize: 12, color: '#C4B5FD', fontWeight: '500' },
