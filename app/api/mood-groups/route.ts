@@ -47,7 +47,19 @@ export async function GET(req: NextRequest) {
       if (gErr) throw gErr;
       if (mErr) throw mErr;
       if (pErr) throw pErr;
-      return NextResponse.json({ ok: true, group, members: members ?? [], posts: posts ?? [] });
+
+      // 投票・絵文字リアクション（テーブル未作成なら空のまま）
+      let reactions: Array<{ post_id: string; device_id: string; rtype: string; value: string }> = [];
+      const postIds = (posts ?? []).map(p => p.id);
+      if (postIds.length > 0) {
+        const { data: rx } = await supabase
+          .from("mood_group_reactions")
+          .select("post_id, device_id, rtype, value")
+          .in("post_id", postIds);
+        reactions = rx ?? [];
+      }
+
+      return NextResponse.json({ ok: true, group, members: members ?? [], posts: posts ?? [], reactions });
     }
 
     // ── 自分の所属グループ一覧 ──
@@ -174,10 +186,13 @@ export async function POST(req: NextRequest) {
       if (meErr) throw meErr;
       if (!me) return NextResponse.json({ ok: false, error: "このグループのメンバーではありません" }, { status: 403 });
 
+      // asBot: 気分一致のAI提案などをMoodGo名義で投稿（送信者はメンバーであることが条件）
+      const nickname = body.asBot === true ? "MoodGo" : me.nickname;
+
       const { data: post, error: pErr } = await supabase
         .from("mood_group_posts")
         .insert({
-          group_id: groupId, device_id: deviceId, nickname: me.nickname, mood,
+          group_id: groupId, device_id: deviceId, nickname, mood,
           comment: comment || null,
           spot_name: spotName || null,
           spot_address: spotAddress || null,
@@ -186,7 +201,88 @@ export async function POST(req: NextRequest) {
         .select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
         .single();
       if (pErr) throw pErr;
-      return NextResponse.json({ ok: true, post });
+
+      // ── 気分一致の検出 ──
+      // 直近2時間の各メンバー最新の気分つぶやきが全員同じならお知らせ（クライアントがAI提案を起動）
+      let moodMatch: { mood: string; count: number } | null = null;
+      if (!spotName && body.asBot !== true) {
+        try {
+          const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+          const [{ data: mems }, { data: recent }] = await Promise.all([
+            supabase.from("mood_group_members").select("device_id").eq("group_id", groupId),
+            supabase.from("mood_group_posts")
+              .select("device_id, mood, nickname, spot_name")
+              .eq("group_id", groupId).gte("created_at", since)
+              .order("created_at", { ascending: false }).limit(60),
+          ]);
+          const memberIds = (mems ?? []).map(m => m.device_id);
+          if (memberIds.length >= 2) {
+            const latestMood = new Map<string, string>();
+            for (const p of recent ?? []) {
+              if (p.spot_name || p.nickname === "MoodGo") continue;  // スポット共有とAI投稿は除外
+              if (!latestMood.has(p.device_id)) latestMood.set(p.device_id, p.mood);
+            }
+            const moods = memberIds.map(d => latestMood.get(d));
+            if (moods.every(m2 => m2 && m2 === mood)) {
+              moodMatch = { mood, count: memberIds.length };
+            }
+          }
+        } catch { /* 検出失敗は無視（投稿自体は成功） */ }
+      }
+
+      return NextResponse.json({ ok: true, post, moodMatch });
+    }
+
+    // ── 投票（行きたい/微妙）・絵文字リアクション ──
+    // 同じ値をもう一度送るとトグルOFF、違う値なら上書き（1投稿につき投票1＋絵文字1）
+    if (body.action === "react") {
+      const groupId = String(body.groupId ?? "").trim();
+      const postId = String(body.postId ?? "").trim();
+      const rtype = body.rtype === "vote" ? "vote" : "emoji";
+      const value = String(body.value ?? "").trim().slice(0, 16);
+      if (!groupId || !postId || !value) {
+        return NextResponse.json({ ok: false, error: "groupId/postId/value必須" }, { status: 400 });
+      }
+
+      const { data: me, error: meErr } = await supabase
+        .from("mood_group_members")
+        .select("id")
+        .eq("group_id", groupId).eq("device_id", deviceId)
+        .maybeSingle();
+      if (meErr) throw meErr;
+      if (!me) return NextResponse.json({ ok: false, error: "このグループのメンバーではありません" }, { status: 403 });
+
+      const { data: ex, error: exErr } = await supabase
+        .from("mood_group_reactions")
+        .select("id, value")
+        .eq("post_id", postId).eq("device_id", deviceId).eq("rtype", rtype)
+        .maybeSingle();
+      if (exErr) {
+        // テーブル未作成（supabase/group-features.sql 未実行）
+        if (/mood_group_reactions|schema cache|does not exist/i.test(String(exErr.message))) {
+          return NextResponse.json({ ok: false, error: "リアクション機能の準備中です（DB更新待ち）" }, { status: 400 });
+        }
+        throw exErr;
+      }
+
+      if (ex && ex.value === value) {
+        const { error } = await supabase.from("mood_group_reactions").delete().eq("id", ex.id);
+        if (error) throw error;
+      } else if (ex) {
+        const { error } = await supabase.from("mood_group_reactions").update({ value }).eq("id", ex.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("mood_group_reactions")
+          .insert({ post_id: postId, group_id: groupId, device_id: deviceId, rtype, value });
+        if (error) {
+          if (/mood_group_reactions|schema cache|does not exist/i.test(String(error.message))) {
+            return NextResponse.json({ ok: false, error: "リアクション機能の準備中です（DB更新待ち）" }, { status: 400 });
+          }
+          throw error;
+        }
+      }
+      return NextResponse.json({ ok: true });
     }
 
     // ── グループアイコン（写真）を設定 ──

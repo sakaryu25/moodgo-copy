@@ -5,9 +5,11 @@
  * - 15秒ごとにフィード自動更新＋新着で自動スクロール
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import {
   Activity, BookOpen, Camera, Car, ChevronLeft, Coffee, Copy, Heart, Leaf, LogOut,
   MapPin, MessageCircle, Moon, Navigation, Plane, Plus, Send, Settings, ShoppingBag,
@@ -71,6 +73,10 @@ type Post  = {
   created_at: string;
 };
 type Member = { device_id: string; nickname: string };
+type Reaction = { post_id: string; device_id: string; rtype: 'vote' | 'emoji'; value: string };
+
+// 長押しで選べる絵文字リアクション
+const REACT_EMOJIS = ['👍', '🔥', '🍜', '😂', '❤️', '😮'];
 
 // 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
 function timeAgo(iso: string): string {
@@ -118,6 +124,19 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [active, setActive]   = useState<Group | null>(null);
   const [posts, setPosts]     = useState<Post[]>([]);   // 新しい順で保持・表示時に反転
   const [members, setMembers] = useState<Member[]>([]);
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [reactTarget, setReactTarget] = useState<string | null>(null);  // 長押し中の投稿ID
+
+  // ルーレット
+  const [showRoulette, setShowRoulette] = useState(false);
+  const [rIdx, setRIdx] = useState(0);
+  const [rDone, setRDone] = useState(false);
+  const spinRef = useRef(false);
+
+  // 気分一致 → AI提案
+  const [matchInfo, setMatchInfo] = useState<{ mood: string; count: number } | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
+  const matchShownRef = useRef('');   // 同じ一致で何度も出さないため
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [iconBusy, setIconBusy] = useState(false);
 
@@ -240,6 +259,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       const data = await res.json();
       if (data.ok) {
         setPosts(data.posts); setMembers(data.members);
+        setReactions(data.reactions ?? []);
         // アイコンなど他メンバーの変更を反映
         if (data.group) setActive(a => (a && a.id === data.group.id ? { ...a, ...data.group } : a));
       }
@@ -381,11 +401,158 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       if (data.ok) {
         setPosts(prev => [data.post, ...prev]);
         setSelMood(''); setComment('');
+        // 全員の気分が揃った！ → お祝い＋AI提案の案内（同じ一致では1回だけ）
+        if (data.moodMatch) {
+          const key = `${active.id}:${data.moodMatch.mood}`;
+          if (matchShownRef.current !== key) {
+            matchShownRef.current = key;
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setMatchInfo(data.moodMatch);
+          }
+        }
       } else {
         Alert.alert('エラー', data.error ?? '投稿に失敗しました');
       }
     } catch { Alert.alert('エラー', '通信に失敗しました'); }
     finally { setPosting(false); }
+  };
+
+  // ── 投票・絵文字リアクション（楽観更新＋失敗時は再取得で復元） ──
+  const sendReaction = async (postId: string, rtype: 'vote' | 'emoji', value: string) => {
+    if (!active) return;
+    Haptics.selectionAsync();
+    setReactions(prev => {
+      const i = prev.findIndex(r => r.post_id === postId && r.device_id === deviceId && r.rtype === rtype);
+      if (i >= 0) {
+        const next = prev.slice();
+        const mine = next.splice(i, 1)[0];
+        if (mine.value !== value) next.push({ post_id: postId, device_id: deviceId, rtype, value });
+        return next;
+      }
+      return [...prev, { post_id: postId, device_id: deviceId, rtype, value }];
+    });
+    try {
+      const res = await apiFetch('/api/mood-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'react', groupId: active.id, deviceId, postId, rtype, value }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? 'リアクションに失敗しました');
+    } catch (e) {
+      fetchGroupDetail(active, deviceId);
+      Alert.alert('エラー', e instanceof Error ? e.message : 'リアクションに失敗しました');
+    }
+  };
+
+  // ── ルーレット（共有済みスポットから1つに決定） ──
+  const rouletteCands = (() => {
+    const seen = new Set<string>();
+    const out: Post[] = [];
+    for (const p of posts) {
+      if (!p.spot_name || seen.has(p.spot_name)) continue;
+      seen.add(p.spot_name);
+      out.push(p);
+      if (out.length >= 8) break;
+    }
+    return out;
+  })();
+
+  const startRoulette = () => {
+    if (spinRef.current || rouletteCands.length < 2) return;
+    spinRef.current = true;
+    setRDone(false);
+    const total = 16 + Math.floor(Math.random() * rouletteCands.length * 2);
+    let step = 0;
+    let cur = rIdx;
+    const tick = () => {
+      cur = (cur + 1) % rouletteCands.length;
+      setRIdx(cur);
+      Haptics.selectionAsync();
+      step++;
+      if (step < total) {
+        setTimeout(tick, 55 + ((step / total) ** 2) * 330);  // だんだん減速
+      } else {
+        spinRef.current = false;
+        setRDone(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    };
+    tick();
+  };
+
+  const sendRouletteResult = async () => {
+    const win = rouletteCands[rIdx];
+    if (!active || !win) return;
+    setShowRoulette(false);
+    try {
+      const res = await apiFetch('/api/mood-groups', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'post', groupId: active.id, deviceId,
+          spotName: win.spot_name, spotAddress: win.spot_address ?? '', spotUrl: win.spot_url ?? '',
+          comment: '🎰 ルーレットで決定！',
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) setPosts(prev => [data.post, ...prev]);
+    } catch { /* 失敗時は次のポーリングに任せる */ }
+  };
+
+  // ── 気分一致 → AIがおすすめを探してチャットに投下 ──
+  const runMoodMatchSearch = async () => {
+    if (!active || !matchInfo || matchBusy) return;
+    setMatchBusy(true);
+    try {
+      // 現在地（取れなければ位置なしで検索）
+      let lat: number | undefined, lng: number | undefined;
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.granted) {
+          const pos = (await Location.getLastKnownPositionAsync()) ??
+            (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+          lat = pos?.coords.latitude; lng = pos?.coords.longitude;
+        }
+      } catch { /* 位置なしで続行 */ }
+
+      const res = await apiFetch('/api/recommend', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers: {
+            mood: matchInfo.mood,
+            companion: '友達',
+            freeWord: matchInfo.count >= 4 ? `${matchInfo.count}人で行ける場所` : '',
+            radiusKm: 8,
+            areaMode: 'current_location',
+            originLat: lat, originLng: lng,
+            dynamicQs: [],
+          },
+        }),
+      });
+      const d = await res.json();
+      type Rec = { title: string; address?: string; mapUrl?: string };
+      const recs: Rec[] = (d.recommendations ?? d.data ?? []).slice(0, 3);
+      if (recs.length === 0) {
+        Alert.alert('ごめん！', 'いまの条件ではおすすめが見つからなかったよ');
+        return;
+      }
+      // MoodGo名義で前置き＋スポットカードを投下
+      const postBody = (extra: Record<string, unknown>) =>
+        apiFetch('/api/mood-groups', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'post', groupId: active.id, deviceId, asBot: true, ...extra }),
+        });
+      await postBody({
+        mood: matchInfo.mood,
+        comment: `🤖 全員「${matchInfo.mood}」気分！${matchInfo.count}人へのおすすめを見つけたよ👇`,
+      });
+      for (const r of recs) {
+        await postBody({ spotName: r.title, spotAddress: r.address ?? '', spotUrl: r.mapUrl ?? '' });
+      }
+      await fetchGroupDetail(active, deviceId);
+      setMatchInfo(null);
+    } catch {
+      Alert.alert('エラー', 'おすすめの取得に失敗しました');
+    } finally { setMatchBusy(false); }
   };
 
   const handleLeave = () => {
@@ -477,9 +644,63 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 <Text style={s.emptyText}>まだつぶやきがないよ{'\n'}最初の気分をつぶやいてみて！</Text>
               </View>
             ) : timeline.map(p => {
-              const mine = p.device_id === deviceId;
+              const isBot = p.nickname === 'MoodGo';
+              const mine = p.device_id === deviceId && !isBot;  // AI投稿は常に左側に出す
               const darkMood = p.mood === '疲れた・眠い';
               const isSpot = !!p.spot_name;
+
+              // リアクション集計
+              const rx = reactions.filter(r => r.post_id === p.id);
+              const emojiAgg = new Map<string, { count: number; mine: boolean }>();
+              for (const r of rx) {
+                if (r.rtype !== 'emoji') continue;
+                const e = emojiAgg.get(r.value) ?? { count: 0, mine: false };
+                e.count++;
+                if (r.device_id === deviceId) e.mine = true;
+                emojiAgg.set(r.value, e);
+              }
+              const wantCount = rx.filter(r => r.rtype === 'vote' && r.value === 'want').length;
+              const mehCount  = rx.filter(r => r.rtype === 'vote' && r.value === 'meh').length;
+              const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
+              const decided = members.length >= 2 && wantCount > members.length / 2;
+
+              // 投票（スポットのみ）＋絵文字リアクション（バブル内の下部）
+              const extras = () => (
+                <>
+                  {isSpot && (
+                    <View style={s.voteRow}>
+                      <PuniPressable
+                        onPress={() => sendReaction(p.id, 'vote', 'want')}
+                        style={[s.voteBtn, myVote === 'want' && s.voteBtnOnWant]}
+                      >
+                        <Text style={s.voteText}>😍 行きたい{wantCount > 0 ? ` ${wantCount}` : ''}</Text>
+                      </PuniPressable>
+                      <PuniPressable
+                        onPress={() => sendReaction(p.id, 'vote', 'meh')}
+                        style={[s.voteBtn, myVote === 'meh' && s.voteBtnOnMeh]}
+                      >
+                        <Text style={s.voteText}>😕 微妙{mehCount > 0 ? ` ${mehCount}` : ''}</Text>
+                      </PuniPressable>
+                      {decided && (
+                        <View style={s.decidedBadge}><Text style={s.decidedText}>🎉決定！</Text></View>
+                      )}
+                    </View>
+                  )}
+                  {emojiAgg.size > 0 && (
+                    <View style={s.reactChips}>
+                      {[...emojiAgg.entries()].map(([emo, info]) => (
+                        <PuniPressable
+                          key={emo}
+                          onPress={() => sendReaction(p.id, 'emoji', emo)}
+                          style={[s.reactChip, info.mine && s.reactChipMine]}
+                        >
+                          <Text style={s.reactChipText}>{emo} {info.count}</Text>
+                        </PuniPressable>
+                      ))}
+                    </View>
+                  )}
+                </>
+              );
               // スポット共有: 📍カード（タップで地図を開く）
               const spotCard = () => (
                 <PuniPressable
@@ -527,30 +748,40 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 );
               };
               if (mine) {
-                // 自分: 右側の紫グラデバブル
+                // 自分: 右側の紫グラデバブル（長押しで絵文字リアクション）
                 return (
                   <View key={p.id} style={s.rowMine}>
                     <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
-                    <View style={s.bubbleMine}>
+                    <Pressable
+                      onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setReactTarget(p.id); }}
+                      delayLongPress={250}
+                      style={s.bubbleMine}
+                    >
                       {isSpot ? spotCard() : moodTag('mine')}
                       {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
-                    </View>
+                      {extras()}
+                    </Pressable>
                   </View>
                 );
               }
-              // メンバー: 左側の白バブル＋アバター
+              // メンバー / MoodGo AI: 左側の白バブル＋アバター
               return (
                 <View key={p.id} style={s.rowOther}>
-                  <View style={s.avatar}>
-                    <Text style={s.avatarText}>{p.nickname.slice(0, 1)}</Text>
+                  <View style={[s.avatar, isBot && s.avatarBot]}>
+                    <Text style={s.avatarText}>{isBot ? '🤖' : p.nickname.slice(0, 1)}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.otherNick}>{p.nickname}</Text>
                     <View style={s.rowOtherBubbleLine}>
-                      <View style={s.bubbleOther}>
+                      <Pressable
+                        onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setReactTarget(p.id); }}
+                        delayLongPress={250}
+                        style={s.bubbleOther}
+                      >
                         {isSpot ? spotCard() : moodTag('other')}
                         {p.comment ? <Text style={s.bubbleOtherText}>{p.comment}</Text> : null}
-                      </View>
+                        {extras()}
+                      </Pressable>
                       <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
                     </View>
                   </View>
@@ -587,6 +818,20 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               {/* いいねした場所をそのまま送る */}
               <PuniPressable onPress={openFavSheet} style={s.favHeartBtn}>
                 <Heart size={18} color="#EC4899" fill="#FBCFE8" strokeWidth={2} />
+              </PuniPressable>
+              {/* ルーレットで行き先を決める */}
+              <PuniPressable
+                onPress={() => {
+                  if (rouletteCands.length < 2) {
+                    Alert.alert('候補が足りないよ', 'スポットを2件以上シェアするとルーレットで決められるよ🎰');
+                    return;
+                  }
+                  setRDone(false);
+                  setShowRoulette(true);
+                }}
+                style={s.diceBtn}
+              >
+                <Text style={{ fontSize: 18 }}>🎰</Text>
               </PuniPressable>
               <TextInput
                 value={comment}
@@ -673,6 +918,87 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     <Text style={s.leaveText}>グループを抜ける</Text>
                   </PuniPressable>
                 </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* 絵文字リアクションピッカー（バブル長押しで表示） */}
+          <Modal visible={!!reactTarget} transparent animationType="fade" onRequestClose={() => setReactTarget(null)}>
+            <Pressable style={s.pickerOverlay} onPress={() => setReactTarget(null)}>
+              <View style={s.pickerCard}>
+                {REACT_EMOJIS.map(e => (
+                  <PuniPressable
+                    key={e}
+                    onPress={() => { if (reactTarget) sendReaction(reactTarget, 'emoji', e); setReactTarget(null); }}
+                    style={s.pickerEmoji}
+                  >
+                    <Text style={{ fontSize: 26 }}>{e}</Text>
+                  </PuniPressable>
+                ))}
+              </View>
+            </Pressable>
+          </Modal>
+
+          {/* ルーレット: 共有済みスポットから1つに決定 */}
+          <Modal visible={showRoulette} transparent animationType="fade" onRequestClose={() => setShowRoulette(false)}>
+            <View style={s.modalOverlay}>
+              <View style={s.modalCard}>
+                <View style={s.modalHeader}>
+                  <Text style={s.modalTitle}>🎰 ルーレットで決める</Text>
+                  <PuniPressable onPress={() => setShowRoulette(false)} style={s.modalClose}>
+                    <X size={18} color="#7C3AED" strokeWidth={2.5} />
+                  </PuniPressable>
+                </View>
+                {rouletteCands.map((c, i) => (
+                  <View key={c.id} style={[s.rouRow, i === rIdx && (rDone ? s.rouRowWin : s.rouRowOn)]}>
+                    <Text style={[s.rouText, i === rIdx && s.rouTextOn]} numberOfLines={1}>
+                      {rDone && i === rIdx ? '🎉 ' : '📍 '}{c.spot_name}
+                    </Text>
+                  </View>
+                ))}
+                <PuniPressable onPress={rDone ? sendRouletteResult : startRoulette} style={s.rouBtn}>
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.rouBtnInner}>
+                    <Text style={s.rouBtnText} numberOfLines={1}>
+                      {rDone ? `「${rouletteCands[rIdx]?.spot_name}」に決定として送る` : '回す！'}
+                    </Text>
+                  </LinearGradient>
+                </PuniPressable>
+                {rDone && (
+                  <PuniPressable onPress={startRoulette} style={s.matchLater}>
+                    <Text style={s.matchLaterText}>もう一回回す</Text>
+                  </PuniPressable>
+                )}
+              </View>
+            </View>
+          </Modal>
+
+          {/* 気分一致のお祝い → AI提案 */}
+          <Modal
+            visible={!!matchInfo}
+            transparent
+            animationType="fade"
+            onRequestClose={() => { if (!matchBusy) setMatchInfo(null); }}
+          >
+            <View style={s.modalOverlay}>
+              <View style={[s.modalCard, { alignItems: 'center' }]}>
+                <Text style={{ fontSize: 44 }}>🎉</Text>
+                <Text style={s.matchTitle}>全員「{matchInfo?.mood}」気分！</Text>
+                <Text style={s.matchSub}>{matchInfo?.count}人の気分がそろったよ</Text>
+                <PuniPressable
+                  onPress={runMoodMatchSearch}
+                  disabled={matchBusy}
+                  style={[s.rouBtn, { alignSelf: 'stretch' }]}
+                  containerStyle={{ alignSelf: 'stretch' }}
+                >
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.rouBtnInner}>
+                    {matchBusy
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.rouBtnText}>🤖 AIにおすすめを探してもらう</Text>}
+                  </LinearGradient>
+                </PuniPressable>
+                <PuniPressable onPress={() => setMatchInfo(null)} disabled={matchBusy} style={s.matchLater}>
+                  <Text style={s.matchLaterText}>今はいいかな</Text>
+                </PuniPressable>
               </View>
             </View>
           </Modal>
@@ -1188,6 +1514,64 @@ const s = StyleSheet.create({
   },
   favThumb: { width: 48, height: 48, borderRadius: 12 },
   favThumbPh: { backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' },
+
+  // ── 投票・絵文字リアクション ──
+  avatarBot: { backgroundColor: '#EDE9FE' },
+  voteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  voteBtn: {
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#EDE9FE',
+  },
+  voteBtnOnWant: { backgroundColor: '#ECFDF5', borderColor: '#34D399' },
+  voteBtnOnMeh:  { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' },
+  voteText: { fontSize: 11, fontWeight: '700', color: INK },
+  decidedBadge: {
+    backgroundColor: '#FDE68A', borderRadius: 999,
+    paddingHorizontal: 9, paddingVertical: 4,
+  },
+  decidedText: { fontSize: 11, fontWeight: '900', color: '#92400E' },
+  reactChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 },
+  reactChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#EDE9FE',
+  },
+  reactChipMine: { backgroundColor: '#EDE9FE', borderColor: '#A78BFA' },
+  reactChipText: { fontSize: 11, fontWeight: '700', color: INK },
+  pickerOverlay: {
+    flex: 1, backgroundColor: 'rgba(30,7,83,0.3)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pickerCard: {
+    flexDirection: 'row', gap: 6,
+    backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16, shadowRadius: 18, elevation: 12,
+  },
+  pickerEmoji: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+
+  // ── ルーレット・気分一致 ──
+  diceBtn: {
+    width: 44, height: 44, borderRadius: 999,
+    backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#DDD6FE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rouRow: {
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6,
+    backgroundColor: '#FAF8FF', borderWidth: 1.5, borderColor: '#F1EBFE',
+  },
+  rouRowOn:  { backgroundColor: '#EDE9FE', borderColor: '#A78BFA' },
+  rouRowWin: { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' },
+  rouText:   { fontSize: 13, fontWeight: '700', color: INK },
+  rouTextOn: { fontWeight: '900' },
+  rouBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 10 },
+  rouBtnInner: { paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  rouBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  matchTitle: { fontSize: 19, fontWeight: '900', color: INK, marginTop: 6 },
+  matchSub: { fontSize: 12, color: '#A78BFA', marginTop: 4, marginBottom: 16 },
+  matchLater: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 },
+  matchLaterText: { fontSize: 12, fontWeight: '700', color: '#A78BFA' },
   favTitle: { fontSize: 14, fontWeight: '800', color: INK },
   favArea: { fontSize: 11, color: '#A78BFA', marginTop: 2 },
   favSendBtn: { borderRadius: 999, overflow: 'hidden' },
