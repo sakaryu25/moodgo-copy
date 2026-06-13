@@ -3,11 +3,17 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import { Camera, Check, Clock, Flame, Heart, ImagePlus, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
+import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 import React, { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   Linking,
@@ -218,9 +224,53 @@ export default function PlaceCard({
   moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false,
 }: Props) {
   const t = T[lang];
-  const rawPhotos = (item.photoUrls ?? []).length > 0
+  // 利用者がその場で追加した写真（即時表示・Google補強はしない）
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const basePhotos = (item.photoUrls ?? []).length > 0
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
+  const rawPhotos = [...uploadedPhotos, ...basePhotos];
+
+  // 心霊スポット等への写真投稿：誰でも追加できる（削除は管理者のみ）
+  const handleAddPhoto = async () => {
+    if (uploading) return;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('写真へのアクセスが必要です', '設定アプリからMoodGoに写真の許可をしてください。');
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+      if (picked.canceled || !picked.assets?.length) return;
+      setUploading(true);
+      const small = await ImageManipulator.manipulateAsync(
+        picked.assets[0].uri,
+        [{ resize: { width: 1080 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      const deviceId = await getDeviceId().catch(() => '');
+      const res = await apiFetch('/api/spot-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placeId: item.supabaseId,
+          placeName: item.title,
+          address: item.address ?? '',
+          deviceId,
+          imageBase64: small.base64,
+        }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
+      setUploadedPhotos(prev => [data.url, ...prev]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
+    } finally {
+      setUploading(false);
+    }
+  };
   // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
   const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
   const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
@@ -330,9 +380,16 @@ export default function PlaceCard({
             <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
           </TouchableOpacity>
         ) : spooky ? (
-          // 心霊・スリル系の雰囲気プレースホルダー（暗い霧／月）
+          // 心霊・スリル系の雰囲気プレースホルダー（暗い霧／月）＋写真提供のお願い
           <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.photo, s.photoPlaceholder]}>
-            <Moon size={40} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
+            <Moon size={36} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
+            <Text style={s.spookyAskTitle}>この場所の写真がありません</Text>
+            <Text style={s.spookyAskSub}>写真をお持ちの方は、ぜひ提供してください 🙏</Text>
+            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.spookyAddBtn}>
+              {uploading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
+            </TouchableOpacity>
           </LinearGradient>
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
@@ -345,6 +402,15 @@ export default function PlaceCard({
           style={s.photoOverlay}
           pointerEvents="none"
         />
+
+        {/* 心霊: 写真がある場合も「写真を追加」できる（誰でも投稿可） */}
+        {spooky && photos.length > 0 && (
+          <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.spookyAddMini}>
+            {uploading
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <><ImagePlus size={13} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddMiniText}>写真を追加</Text></>}
+          </TouchableOpacity>
+        )}
 
         {/* ページングドット + 矢印ボタン */}
         {photos.length > 1 && (
@@ -621,6 +687,20 @@ const s = StyleSheet.create({
   photoWrap:        { position: 'relative' },
   photo:            { width: '100%', height: 220 },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  spookyAskTitle: { color: 'rgba(220,210,255,0.92)', fontSize: 14, fontWeight: '800', marginTop: 12 },
+  spookyAskSub: { color: 'rgba(190,175,235,0.7)', fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
+  spookyAddBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16,
+    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 999,
+    backgroundColor: 'rgba(150,110,230,0.55)', borderWidth: 1, borderColor: 'rgba(200,180,255,0.4)',
+  },
+  spookyAddText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  spookyAddMini: {
+    position: 'absolute', bottom: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(20,12,35,0.7)',
+    borderWidth: 1, borderColor: 'rgba(200,180,255,0.35)',
+  },
+  spookyAddMiniText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   photoOverlay:     { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
   arrowBtn: {
     position: 'absolute', top: '50%', marginTop: -20,

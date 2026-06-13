@@ -6216,6 +6216,50 @@ async function handleRecommend(request: Request) {
           };
         });
 
+        // ── 心霊(独自データのみ): 利用者投稿写真(spot_photos)を添付 ───────────────
+        //   Googleからは一切補強しない。Supabaseのspot_photosのみを写真ソースにする。
+        if (isProprietaryOnly && supabase) {
+          try {
+            const uuids = scored
+              .map(r => (r.id && r.id.startsWith("sb-")) ? r.id.slice(3) : null)
+              .filter((x): x is string => !!x);
+            const names = scored.map(r => r.name).filter((n): n is string => !!n);
+            const rows: Array<{ place_id: string | null; place_name: string | null; image_url: string }> = [];
+            if (uuids.length > 0) {
+              const { data } = await supabase.from("spot_photos")
+                .select("place_id, place_name, image_url").in("place_id", uuids)
+                .order("created_at", { ascending: false });
+              if (data) rows.push(...data);
+            }
+            if (names.length > 0) {
+              const { data } = await supabase.from("spot_photos")
+                .select("place_id, place_name, image_url").in("place_name", names)
+                .order("created_at", { ascending: false });
+              if (data) rows.push(...data);
+            }
+            if (rows.length > 0) {
+              const seenUrl = new Set<string>();
+              const byId = new Map<string, string[]>();
+              const byName = new Map<string, string[]>();
+              for (const row of rows) {
+                if (seenUrl.has(row.image_url)) continue;
+                seenUrl.add(row.image_url);
+                if (row.place_id) { const a = byId.get(row.place_id) ?? []; a.push(row.image_url); byId.set(row.place_id, a); }
+                if (row.place_name) { const a = byName.get(row.place_name) ?? []; a.push(row.image_url); byName.set(row.place_name, a); }
+              }
+              for (const rec of supabaseRecs) {
+                const urls = (rec.supabaseId ? byId.get(rec.supabaseId) : undefined) ?? byName.get(rec.title) ?? [];
+                if (urls.length > 0) {
+                  rec.photoUrls = urls;
+                  rec.photoUrl = urls[0];
+                  rec.hasUserPhotos = true;
+                  rec.userPhotoCount = urls.length;
+                }
+              }
+            }
+          } catch { /* spot_photos未作成・取得失敗はプレースホルダー表示で安全 */ }
+        }
+
         // ── 結果の結合 ─────────────────────────────────────────────────────────
         // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
         // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う

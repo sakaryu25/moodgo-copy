@@ -358,21 +358,34 @@ export default function ResultsView(props: Props) {
   if (notSkipped(selectedArea))       condChips.push({ label: t.condArea,      value: selectedArea,                         Icon: MapPin });
   if (facilityLabel)                  condChips.push({ label: 'コース',         value: facilityLabel,                        Icon: Tag });
 
+  // 心霊スポット時は画面全体を怖い雰囲気（暗い背景＋暗いナビバー）にする
+  const spooky = deepDiveL1 === '心霊';
+  const spookyText = spooky ? '#E7DCFF' : undefined;
+
   return (
-    <View style={s.root}>
+    <View style={[s.root, spooky && s.rootSpooky]}>
+      {/* 心霊: 画面全体に暗い霧のグラデーション背景を敷く */}
+      {spooky && (
+        <LinearGradient
+          colors={['#1A1030', '#120A24', '#080414']}
+          start={{ x: 0.3, y: 0 }} end={{ x: 0.7, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
       {/* iOS navigation bar */}
-      <View style={[s.navBar, { paddingTop: insets.top }]}>
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={[s.navBar, spooky && s.navBarSpooky, { paddingTop: insets.top }]}>
+        <BlurView intensity={spooky ? 40 : 80} tint={spooky ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={s.navBarBorder} />
         <View style={s.navBarInner}>
           <TouchableOpacity onPress={onReset} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={20} color={BRAND} strokeWidth={2.5} />
-            <Text style={s.backText}>{t.back}</Text>
+            <ChevronLeft size={20} color={spooky ? '#C9B6FF' : BRAND} strokeWidth={2.5} />
+            <Text style={[s.backText, spookyText ? { color: spookyText } : null]}>{t.back}</Text>
           </TouchableOpacity>
           <View style={s.navCenter}>
-            <Text style={s.navTitle} numberOfLines={1}>{pageTitle}</Text>
+            <Text style={[s.navTitle, spookyText ? { color: spookyText } : null]} numberOfLines={1}>{pageTitle}</Text>
             {!isLoading && facilityItems.length > 0 && (
-              <Text style={s.navCount}>{facilityItems.length}{lang === 'ja' ? '件' : ' spots'}</Text>
+              <Text style={[s.navCount, spooky ? { color: 'rgba(200,185,245,0.7)' } : null]}>{facilityItems.length}{lang === 'ja' ? '件' : ' spots'}</Text>
             )}
           </View>
           <View style={s.navRight}>
@@ -771,7 +784,9 @@ export default function ResultsView(props: Props) {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
+  rootSpooky: { backgroundColor: '#080414' },
   navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: 'rgba(243,241,239,0.85)', borderBottomWidth: 1, borderBottomColor: 'rgba(192,132,252,0.18)' },
+  navBarSpooky: { backgroundColor: 'rgba(12,7,24,0.7)', borderBottomColor: 'rgba(140,110,210,0.25)' },
   navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(192,132,252,0.18)' },
   navBarInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, minHeight: 50 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 4, minWidth: 72 },
