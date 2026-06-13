@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "fit-collection-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/sakaken/fit-collection && CI=1 npx expo start --web --clear --port ${PORT:-8090}"],
+      "port": 8090,
+      "autoPort": true
     }
   ]
 }

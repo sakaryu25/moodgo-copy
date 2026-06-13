@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CalendarClock, Check, ChevronLeft, Clock, MapPin, Phone, Search, Train, Users } from 'lucide-react-native';
+import { CalendarClock, Check, ChevronDown, ChevronLeft, Clock, MapPin, Phone, Search, Train, Users, Utensils } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -104,6 +104,7 @@ export default function FeatureSpotPage() {
   const [spot, setSpot] = useState<FeaturedSpot | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -225,29 +226,48 @@ export default function FeatureSpotPage() {
           </View>
         )}
 
-        {/* ── メニュー ── */}
-        {menuByCategory.length > 0 && (
+        {/* ── メニュー（タップで展開）── */}
+        {(spot.menu_items?.length ?? 0) > 0 && (
           <View style={s.section}>
             <SectionHeading kicker="MENU" title="メニュー" />
-            {menuByCategory.map((grp, gi) => (
-              <View key={gi}>
-                {!!grp.category && <Text style={s.menuCategory}>{grp.category}</Text>}
-                {grp.items.map((item, i) => (
-                  <View key={i} style={[s.menuRow, i < grp.items.length - 1 && s.menuRowBorder]}>
-                    {!!item.image_url && (
-                      <Image source={{ uri: item.image_url }} style={s.menuImg} contentFit="cover" />
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <View style={s.menuNameRow}>
-                        <Text style={s.menuName}>{item.name}</Text>
-                        {!!item.price && <Text style={s.menuPrice}>{item.price}</Text>}
+
+            {/* 開閉トグル */}
+            <TouchableOpacity style={s.menuToggle} activeOpacity={0.8} onPress={() => setMenuOpen((o) => !o)}>
+              <Utensils size={17} color={ACCENT} strokeWidth={2.2} />
+              <Text style={s.menuToggleText}>
+                {menuOpen ? 'メニューを閉じる' : `メニューを見る（${spot.menu_items!.length}品）`}
+              </Text>
+              <ChevronDown
+                size={18}
+                color={ACCENT}
+                strokeWidth={2.2}
+                style={{ transform: [{ rotate: menuOpen ? '180deg' : '0deg' }] }}
+              />
+            </TouchableOpacity>
+
+            {menuOpen && (
+              <View style={s.menuList}>
+                {menuByCategory.map((grp, gi) => (
+                  <View key={gi}>
+                    {!!grp.category && <Text style={s.menuCategory}>{grp.category}</Text>}
+                    {grp.items.map((item, i) => (
+                      <View key={i} style={[s.menuRow, i < grp.items.length - 1 && s.menuRowBorder]}>
+                        {!!item.image_url && (
+                          <Image source={{ uri: item.image_url }} style={s.menuImg} contentFit="cover" />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <View style={s.menuNameRow}>
+                            <Text style={s.menuName}>{item.name}</Text>
+                            {!!item.price && <Text style={s.menuPrice}>{item.price}</Text>}
+                          </View>
+                          {!!item.description && <Text style={s.menuDesc}>{item.description}</Text>}
+                        </View>
                       </View>
-                      {!!item.description && <Text style={s.menuDesc}>{item.description}</Text>}
-                    </View>
+                    ))}
                   </View>
                 ))}
               </View>
-            ))}
+            )}
           </View>
         )}
 
@@ -397,6 +417,13 @@ const s = StyleSheet.create({
   featureText: { flex: 1, fontSize: 15, lineHeight: 23, color: '#3C3833' },
 
   // メニュー
+  menuToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    backgroundColor: '#fff', borderWidth: StyleSheet.hairlineWidth, borderColor: LINE,
+    borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16,
+  },
+  menuToggleText: { flex: 1, fontSize: 15, fontWeight: '800', color: INK },
+  menuList: { marginTop: 6 },
   menuCategory: { fontSize: 12, fontWeight: '800', color: ACCENT, letterSpacing: 1, marginTop: 8, marginBottom: 4 },
   menuRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 13 },
   menuRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: LINE },
