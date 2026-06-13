@@ -233,6 +233,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, post, moodMatch });
     }
 
+    // ── ニックネーム一括変更（設定画面から。参加中の全グループのメンバー名を更新） ──
+    if (body.action === "set_nickname") {
+      const nickname = String(body.nickname ?? "").trim().slice(0, 20);
+      if (!nickname) return NextResponse.json({ ok: false, error: "nickname必須" }, { status: 400 });
+      const { error } = await supabase
+        .from("mood_group_members")
+        .update({ nickname })
+        .eq("device_id", deviceId);
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
+    }
+
     // ── 投票（行きたい/微妙）・絵文字リアクション ──
     // 同じ値をもう一度送るとトグルOFF、違う値なら上書き（1投稿につき投票1＋絵文字1）
     if (body.action === "react") {

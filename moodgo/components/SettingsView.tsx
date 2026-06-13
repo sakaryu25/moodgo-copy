@@ -1,18 +1,23 @@
 /**
  * SettingsView.tsx — 設定画面 (MoodGo UI統一)
  */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { Check, ChevronRight, EyeOff, Globe, MapPin, Navigation, Trash2, UserRound } from 'lucide-react-native';
+import { Camera, Check, ChevronRight, EyeOff, Globe, MapPin, Navigation, Trash2, UserRound } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, Dimensions, Linking, Modal, ScrollView,
-  StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Animated, Dimensions, Image, Linking, Modal, ScrollView,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
 } from 'react-native-svg';
+import { getDeviceId } from '@/lib/abtest';
+import { apiFetch } from '@/lib/api';
 import AppBackground from './AppBackground';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
 import PuniPressable from './PuniPressable';
@@ -24,6 +29,10 @@ const BLUE   = '#4FA3FF';
 const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
+
+// トーク（グループ）のニックネームと同じキーで保存して同期させる
+const NICKNAME_KEY  = 'moodgo-group-nickname';
+const USER_ICON_KEY = 'moodgo-user-icon';
 
 const AGE_OPTIONS_JA    = ['10代', '20代', '30代', '40代以上'];
 const AGE_OPTIONS_EN    = ['10s', '20s', '30s', '40+'];
@@ -113,6 +122,10 @@ export default function SettingsView({
   const [prefectureInput, setPrefectureInput] = useState(profilePrefecture);
   const [showPrefPicker, setShowPrefPicker]   = useState(false);
   const [saved, setSaved]                     = useState(false);
+  // アイコンと名前
+  const [nameInput, setNameInput] = useState('');
+  const [iconUrl, setIconUrl]     = useState('');
+  const [iconBusy, setIconBusy]   = useState(false);
   // 位置情報の許可状態
   const [locStatus, setLocStatus] = useState<Location.PermissionStatus | null>(null);
   const [locCanAsk, setLocCanAsk] = useState(true);
@@ -124,12 +137,54 @@ export default function SettingsView({
       setPrefectureInput(profilePrefecture);
       setSaved(false);
       setShowPrefPicker(false);
+      // 保存済みの名前・アイコンを読み込み
+      AsyncStorage.getItem(NICKNAME_KEY).then(v => setNameInput(v ?? '')).catch(() => {});
+      AsyncStorage.getItem(USER_ICON_KEY).then(v => setIconUrl(v ?? '')).catch(() => {});
       // 開くたびに最新の許可状態をチェック
       Location.getForegroundPermissionsAsync()
         .then(p => { setLocStatus(p.status); setLocCanAsk(p.canAskAgain); })
         .catch(() => {});
     }
   }, [visible, profileAge, profileGender, profilePrefecture]);
+
+  // アイコン: 端末の写真を選んで512pxに縮小→アップロード（即時保存）
+  const handlePickIcon = async () => {
+    if (iconBusy) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        lang === 'ja' ? '写真へのアクセスが必要です' : 'Photo access needed',
+        lang === 'ja' ? '設定アプリからMoodGoに写真の許可をしてね' : 'Please allow photo access in the Settings app',
+      );
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,   // 正方形に切り抜き
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (picked.canceled || !picked.assets?.length) return;
+    setIconBusy(true);
+    try {
+      const small = await ImageManipulator.manipulateAsync(
+        picked.assets[0].uri,
+        [{ resize: { width: 512 } }],
+        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      const deviceId = await getDeviceId();
+      const res = await apiFetch('/api/user-icon', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, imageBase64: small.base64 }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? '設定に失敗しました');
+      setIconUrl(data.icon);
+      await AsyncStorage.setItem(USER_ICON_KEY, data.icon);
+    } catch (e) {
+      Alert.alert('エラー', e instanceof Error ? e.message : '設定に失敗しました');
+    } finally { setIconBusy(false); }
+  };
 
   const handleLocPermission = async () => {
     // 許可済み or 再確認不可（一度拒否）→ 設定アプリへ。未設定ならその場でOSダイアログ
@@ -146,6 +201,17 @@ export default function SettingsView({
 
   const handleSave = () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
+    // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
+    const name = nameInput.trim().slice(0, 20);
+    AsyncStorage.setItem(NICKNAME_KEY, name).catch(() => {});
+    if (name) {
+      getDeviceId()
+        .then(id => apiFetch('/api/mood-groups', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_nickname', deviceId: id, nickname: name }),
+        }))
+        .catch(() => {});
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
@@ -243,8 +309,47 @@ export default function SettingsView({
               label={lang === 'ja' ? 'プロフィール' : 'Profile'}
             />
             <View style={s.card}>
+              {/* アイコン（タップで写真を設定） */}
+              <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                <PuniPressable onPress={handlePickIcon} disabled={iconBusy} style={s.avatarWrap}>
+                  {iconUrl ? (
+                    <Image source={{ uri: iconUrl }} style={s.avatarImg} />
+                  ) : (
+                    <View style={[s.avatarImg, s.avatarPh]}>
+                      <UserRound size={36} color={PURPLE} strokeWidth={1.8} />
+                    </View>
+                  )}
+                  {iconBusy ? (
+                    <View style={s.avatarBusy}>
+                      <ActivityIndicator color="#fff" />
+                    </View>
+                  ) : (
+                    <View style={s.avatarBadge}>
+                      <Camera size={12} color="#fff" strokeWidth={2.5} />
+                    </View>
+                  )}
+                </PuniPressable>
+                <Text style={s.avatarHint}>
+                  {lang === 'ja' ? 'タップして写真を設定' : 'Tap to set a photo'}
+                </Text>
+              </View>
+
+              {/* 名前 */}
+              <Text style={s.fieldLabel}>{lang === 'ja' ? '名前（ニックネーム）' : 'Name'}</Text>
+              <TextInput
+                value={nameInput}
+                onChangeText={setNameInput}
+                placeholder={lang === 'ja' ? '例: りゅうき' : 'e.g. Ryuki'}
+                placeholderTextColor="#C4B5FD"
+                style={s.nameInput}
+                maxLength={20}
+              />
+              <Text style={s.nameHint}>
+                {lang === 'ja' ? 'トーク（グループ）で表示される名前です' : 'Shown in group talks'}
+              </Text>
+
               {/* 年代 */}
-              <Text style={s.fieldLabel}>{lang === 'ja' ? '年代' : 'Age group'}</Text>
+              <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '年代' : 'Age group'}</Text>
               <View style={s.chipRow}>
                 {ageOptions.map((opt) => (
                   <Chip key={opt} label={opt} active={ageInput === opt} onPress={() => setAgeInput(opt)} />
@@ -445,6 +550,32 @@ const s = StyleSheet.create({
   },
 
   fieldLabel: { fontSize: 12, fontWeight: '700', color: '#7C3AED', marginBottom: 10, letterSpacing: 0.2 },
+
+  // アイコンと名前
+  avatarWrap: { width: 88, height: 88 },
+  avatarImg:  { width: 88, height: 88, borderRadius: 44 },
+  avatarPh: {
+    backgroundColor: '#F3EEFF', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#DDD6FE',
+  },
+  avatarBusy: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 44, backgroundColor: 'rgba(30,7,83,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarBadge: {
+    position: 'absolute', right: 0, bottom: 0,
+    width: 26, height: 26, borderRadius: 13, backgroundColor: '#7C3AED',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+  },
+  avatarHint: { fontSize: 10, color: '#A78BFA', marginTop: 7 },
+  nameInput: {
+    height: 48, borderRadius: 12,
+    backgroundColor: '#FAFAFF', borderWidth: 1.5, borderColor: '#DDD6FE',
+    paddingHorizontal: 14, fontSize: 14, fontWeight: '600', color: '#1E0753',
+  },
+  nameHint: { fontSize: 10, color: '#A78BFA', marginTop: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
   chip: {
