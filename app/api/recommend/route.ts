@@ -5622,6 +5622,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     arr.filter(r => {
       const name = r.title ?? "";
       if (FINALIZE_NG_BIZ_RE.test(name)) return false;
+      // 心霊は著作権で写真なし・独自スポットでレビュー0件が正常。スプーキー
+      // プレースホルダーをUIで表示するため、写真/評価ゲートはスキップ（NG_BIZ除去は維持）。
+      if (effectiveDeepDive === "心霊") return true;
       const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
       const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
       if (!hasPhoto && reviews < 5) return false;
