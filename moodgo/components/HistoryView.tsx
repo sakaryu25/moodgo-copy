@@ -10,6 +10,8 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
+  Dimensions,
   ScrollView,
   StyleSheet,
   Text,
@@ -225,23 +227,31 @@ function DetailView({
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
-  // 画面のどこからでも右方向の横スワイプで前のページ（履歴一覧）に戻る。
-  // react-native-gesture-handler で縦スクロール(ScrollView)と両立。
-  // 端の制限を外し、他画面と同じ感度でどこからでも戻れるようにする。
+  // 画面のどこからでも右スワイプで前のページ（履歴一覧）に戻る。
+  // iOSネイティブ同様、指に追従して画面がスライドし、1/3超 or 軽いフリックで確定。
   // runOnJS(true) によりコールバックはJSスレッドで実行（worklet/babelプラグイン不要）。
+  const SCREEN_W = Dimensions.get('window').width;
+  const panX = useRef(new Animated.Value(0)).current;
   const swipeBack = useMemo(
     () =>
       Gesture.Pan()
         .runOnJS(true)
-        .activeOffsetX(20)          // 横20pxでアクティブ化（縦より先に横が動いた時のみ）
-        .failOffsetY([-16, 16])     // 縦16px先行ならスクロール優先で失敗
+        .activeOffsetX(12)          // 横12pxでアクティブ化（軽め＝ネイティブ同等）
+        .failOffsetY([-14, 14])     // 縦14px先行ならスクロール優先で失敗
+        .onUpdate((e) => {
+          // 指に追従（右方向のみ）。少し重みを付けて自然に
+          panX.setValue(e.translationX > 0 ? e.translationX : 0);
+        })
         .onEnd((e) => {
-          // 右方向に少し動かす or 軽いフリックで戻る（どこから始めてもOK）
-          if (e.translationX > 50 || (e.translationX > 20 && e.velocityX > 320)) {
-            onBack();
+          const go = e.translationX > SCREEN_W * 0.32 || (e.translationX > 24 && e.velocityX > 300);
+          if (go) {
+            Animated.timing(panX, { toValue: SCREEN_W, duration: 160, useNativeDriver: true })
+              .start(() => { panX.setValue(0); onBack(); });
+          } else {
+            Animated.spring(panX, { toValue: 0, useNativeDriver: true, mass: 0.7, damping: 18, stiffness: 240 }).start();
           }
         }),
-    [onBack],
+    [onBack, SCREEN_W],
   );
 
   // ResultsView と同じスタイルの条件チップ
@@ -261,7 +271,7 @@ function DetailView({
 
   return (
     <GestureDetector gesture={swipeBack}>
-    <View style={{ flex: 1 }}>
+    <Animated.View style={{ flex: 1, backgroundColor: '#F3F1EF', transform: [{ translateX: panX }] }}>
     <ScrollView
       style={s.root}
       contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -354,7 +364,7 @@ function DetailView({
       suggestionId={reportRec?.supabaseId}
       onClose={() => setReportRec(null)}
     />
-    </View>
+    </Animated.View>
     </GestureDetector>
   );
 }
