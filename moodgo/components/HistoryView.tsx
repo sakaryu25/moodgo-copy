@@ -338,11 +338,15 @@ function DetailView({
       {/* スポット一覧 */}
       <View style={{ paddingTop: 8 }}>
         {item.recommendations && item.recommendations.length > 0
-          ? (() => { const histShinrei = (sa as { deepDiveL1?: string }).deepDiveL1 === '心霊'; return item.recommendations.map((rec, i) => (
+          ? item.recommendations.map((rec, i) => {
+            // 心霊判定はスポットのタグで（保存データに deepDiveL1 が無くても確実に拾える）
+            const recShinrei = (sa as { deepDiveL1?: string }).deepDiveL1 === '心霊'
+              || !!rec.tags?.includes('#心霊スポット');
+            return (
             <PlaceCard
               key={`${rec.title}-${i}`}
               // 心霊は保存済みのGoogle写真を使わず、利用者投稿/プレースホルダーにする
-              item={histShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : rec}
+              item={recShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : rec}
               isFavorited={(favorites ?? []).some((f) => f.title === rec.title)}
               onToggleFavorite={() => onToggleFavorite?.(rec)}
               lang={lang}
@@ -350,13 +354,14 @@ function DetailView({
               onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
               onReport={() => setReportRec(rec)}
               onPressDetail={onPressDetail
-                ? () => onPressDetail(histShinrei
+                ? () => onPressDetail(recShinrei
                     ? { ...rec, photoUrl: undefined, photoUrls: undefined, tags: [...(rec.tags ?? []), ...(rec.tags?.includes('#心霊スポット') ? [] : ['#心霊スポット'])] }
                     : rec)
                 : undefined}
-              spooky={histShinrei}
+              spooky={recShinrei}
             />
-          )); })()
+            );
+          })
           : (
             <View style={s.emptyBox}>
               <Text style={s.emptyText}>{t.noRecs}</Text>
