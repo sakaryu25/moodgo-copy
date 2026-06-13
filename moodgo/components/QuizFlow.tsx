@@ -75,6 +75,7 @@ const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon; dark?:
   { key: '運動',       label: '運動',       sub: 'スポーツ',    Icon: Activity },
   { key: '旅行',       label: '旅行・観光', sub: '小旅行',      Icon: Plane },
   { key: 'ショッピング', label: 'ショッピング', sub: 'お買い物', Icon: ShoppingBag },
+  { key: 'スリル',     label: 'スリル',     sub: '絶叫・冒険',  Icon: Flame },
   { key: '時間潰し',   label: '時間潰し',   sub: 'のんびり',    Icon: Shuffle },
   // 遊び心枠: 夜カラーの特別カード。選ぶとお疲れさまコメントが出る
   { key: '疲れた・眠い', label: '疲れた・眠い', sub: 'おつかれさま', Icon: Moon, dark: true },
@@ -321,6 +322,17 @@ const DEEP_DIVE: Record<string, DiveConfig> = {
       { key: 'お土産・ギフト',         label: 'お土産・ギフト', sub: '贈り物探し',     Icon: Star },
     ],
   },
+
+  'スリル': {
+    title: 'どんなスリルを求める？',
+    options: [
+      { key: '絶叫',   label: '絶叫',   sub: '遊園地・絶叫マシン',   Icon: Zap },
+      { key: '心霊',   label: '心霊',   sub: 'お化け屋敷・心霊',     Icon: Moon },
+      { key: '高所',   label: '高所',   sub: '展望台・吊り橋',       Icon: Mountain },
+      { key: '体験型', label: '体験型', sub: 'VR・脱出・アスレチック', Icon: Gamepad2 },
+      { key: 'こだわらない', label: 'こだわらない', sub: 'なんでもOK', Icon: Shuffle },
+    ],
+  },
 };
 
 // ─── 気分別ヒントタグ ─────────────────────────────────────────────────────────
@@ -357,6 +369,10 @@ const FREE_WORD_HINTS: Record<string, string[]> = {
   'ショッピング': [
     'セール中', '駐車場あり', 'アウトレット', 'カード払いOK', '試着できる', '子連れOK',
     '免税対応', '駅チカ', '混みにくい', '休憩スペースあり', '大型商業施設', '最新商品あり',
+  ],
+  'スリル': [
+    '絶叫マシンあり', '夜も営業', '初心者OK', '予約できる', '駐車場あり', '雨でもOK',
+    '屋内施設', '友達と行ける', 'カップル向け', '一人でもOK', '駅チカ', '体験プランあり',
   ],
   '時間潰し': [
     '無料で楽しめる', '屋内', '一人でも入りやすい', '何時間でもOK', '雨でもOK', '駅チカ',
