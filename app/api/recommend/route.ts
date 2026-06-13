@@ -5986,10 +5986,10 @@ async function handleRecommend(request: Request) {
         //   高額な Google/Yahoo 補足検索を呼ばずに Supabase だけで15件を組む。
         //   sbQualified = 距離キャップ後のSupabaseのうち、ジャンル＆飲食フィルタを通る件数。
         const isFoodForSkip = answers.mood === "お腹すいた";
-        // ── スリルは独自データのみで戦う（Google/Yahoo不使用・15件埋めもしない）──
-        //   ユーザー指示: スリル/心霊はplaces保存庫＋穴場投稿＋admin転載だけで検索。
-        //   ヒットが少なくても（1件でも）そのまま表示。距離拡大ボタンは別途フロントで設置済み。
-        const isProprietaryOnly = (answers.mood ?? "") === "スリル";
+        // ── 心霊の深掘りのみ独自データで戦う（Google/Yahoo不使用・15件埋めもしない）──
+        //   ユーザー指示: 心霊だけ places保存庫(#心霊スポット)＋穴場投稿＋admin転載で検索。
+        //   絶叫/高所/体験型は従来どおりGoogle/Yahooも使う。ヒットが少なくても1件でも表示。
+        const isProprietaryOnly = effectiveDeepDive === "心霊";
         const sbQualified = sbPoolCapped.filter(r => {
           const nm = r.name ?? "";
           if (!nameMatchesGenre(nm, effectiveDeepDive)) return false;          // ジャンル不一致を除外

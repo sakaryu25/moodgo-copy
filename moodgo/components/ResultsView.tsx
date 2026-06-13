@@ -486,7 +486,7 @@ export default function ResultsView(props: Props) {
 
         {/* ── エリアを広げる（手動エリアモード＋スリルは現在地でも表示）─── */}
         {/* スリルは独自データのみで件数が少ないため、現在地検索でも距離拡大ボタンを出す */}
-        {!isLoading && (areaMode === 'manual' || selectedMood === 'スリル') && onChangeRadius && (() => {
+        {!isLoading && (areaMode === 'manual' || deepDiveL1 === '心霊') && onChangeRadius && (() => {
           const RADIUS_STEPS = [2, 5, 10, 20, 40, 80];
           const nextRadius = RADIUS_STEPS.find(r => r > (radiusKm ?? 0));
           if (!nextRadius) return null;
@@ -506,7 +506,7 @@ export default function ResultsView(props: Props) {
         })()}
 
         {/* ── 心霊・スリルの注意/免責バナー ─── */}
-        {!isLoading && selectedMood === 'スリル' && (
+        {!isLoading && deepDiveL1 === '心霊' && (
           <View style={s.cautionBanner}>
             <Text style={s.cautionText}>
               ⚠️ 私有地・立入禁止区域には入らないでください。訪問は自己責任で、危険行為・無断侵入は推奨しません。
@@ -580,7 +580,7 @@ export default function ResultsView(props: Props) {
             onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
             onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
-            spooky={selectedMood === 'スリル'}
+            spooky={deepDiveL1 === '心霊'}
           />
         ))}
 
