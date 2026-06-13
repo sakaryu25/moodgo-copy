@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FavoriteItem } from '@/types/app';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import { apiFetch } from '@/lib/api';
+import { useSpotPhotos } from '@/lib/spotPhotos';
 import PuniPressable from './PuniPressable';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -75,6 +77,43 @@ const T = {
     emptyPostSub: 'Save posts you like with the heart!',
   },
 };
+
+// お気に入りカードのサムネ。心霊は投稿写真があればそれ、無ければ暗いPH。Google写真は使わない。
+function FavoriteCardImage({ item }: { item: FavoriteItem }) {
+  const isShinrei = !!item.tags?.includes('#心霊スポット');
+  const storePhotos = useSpotPhotos(item.supabaseId, item.title);
+  const [fetched, setFetched] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isShinrei) return;
+    let active = true;
+    const params = new URLSearchParams();
+    if (item.supabaseId) params.set('placeId', item.supabaseId);
+    else params.set('placeName', item.title);
+    apiFetch(`/api/spot-photo?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => { if (active && d?.ok && Array.isArray(d.photos)) setFetched(d.photos); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isShinrei, item.supabaseId, item.title]);
+
+  if (isShinrei) {
+    const userPhoto = [storePhotos[0], fetched[0]].find(Boolean);
+    return userPhoto ? (
+      <Image source={{ uri: userPhoto }} style={s.cardImg} contentFit="cover" />
+    ) : (
+      <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
+        <Moon size={22} color="rgba(180,160,255,0.6)" strokeWidth={1.5} />
+      </LinearGradient>
+    );
+  }
+  return item.photoUrl ? (
+    <Image source={{ uri: item.photoUrl }} style={s.cardImg} contentFit="cover" />
+  ) : (
+    <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
+      <Navigation size={22} color="#C084FC" strokeWidth={1.5} />
+    </LinearGradient>
+  );
+}
 
 export default function FavoritesView({
   favorites, favoriteSort, onSetFavoriteSort, onRemoveFavorite, onPressCard, lang = 'ja', resetKey,
@@ -138,18 +177,7 @@ export default function FavoritesView({
         list.map((item) => (
           <TouchableOpacity key={item.title} style={s.card} activeOpacity={0.75} onPress={() => handlePress(item)}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
-            {item.tags?.includes('#心霊スポット') ? (
-              // 心霊はGoogle写真を使わず暗いプレースホルダー
-              <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
-                <Moon size={22} color="rgba(180,160,255,0.6)" strokeWidth={1.5} />
-              </LinearGradient>
-            ) : item.photoUrl ? (
-              <Image source={{ uri: item.photoUrl }} style={s.cardImg} contentFit="cover" />
-            ) : (
-              <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
-                <Navigation size={22} color="#C084FC" strokeWidth={1.5} />
-              </LinearGradient>
-            )}
+            <FavoriteCardImage item={item} />
             <View style={s.cardBody}>
               <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
               {item.area ? (
