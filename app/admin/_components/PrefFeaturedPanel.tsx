@@ -370,8 +370,8 @@ function MoodEditor({ moods, onChange }: { moods: MoodDraft[]; onChange: (m: Moo
 const lbl: React.CSSProperties = { display: "block", fontSize: "12px", fontWeight: 700, color: C.dark, marginBottom: "4px" };
 
 // 折りたたみ式サブセクション
-function SubSection({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function SubSection({ title, hint, children, defaultOpen }: { title: string; hint?: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
   return (
     <div style={{ border: `1.5px solid ${C.border}`, borderRadius: "10px", background: "#fff", overflow: "hidden" }}>
       <button onClick={() => setOpen((o) => !o)} style={{
@@ -547,17 +547,17 @@ function SpotEditor({ spots, onChange }: { spots: SpotDraft[]; onChange: (s: Spo
             </div>
 
             {/* 🍽 メニュー */}
-            <SubSection title="🍽 メニュー" hint={s.menu_items.length ? `${s.menu_items.length}件` : "未設定"}>
+            <SubSection title="🍽 メニュー" hint={s.menu_items.length ? `${s.menu_items.length}件` : "未設定"} defaultOpen>
               <MenuItemsEditor items={s.menu_items} onChange={(v) => upd(i, "menu_items", v)} />
             </SubSection>
 
             {/* 🎪 期間限定イベント */}
-            <SubSection title="🎪 期間限定イベント" hint={s.events.length ? `${s.events.length}件` : "未設定"}>
+            <SubSection title="🎪 期間限定イベント" hint={s.events.length ? `${s.events.length}件` : "未設定"} defaultOpen>
               <EventsEditor events={s.events} onChange={(v) => upd(i, "events", v)} />
             </SubSection>
 
             {/* 🕐 営業時間・定休日 */}
-            <SubSection title="🕐 営業時間・定休日">
+            <SubSection title="🕐 営業時間・定休日" defaultOpen>
               <HoursEditor hours={s.hours} onChange={(v) => upd(i, "hours", v)} />
               <div style={{ marginTop: "8px" }}>
                 <label style={lbl}>定休日（自由文・任意）</label>
