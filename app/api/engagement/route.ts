@@ -24,9 +24,19 @@ export async function POST(req: NextRequest) {
     }
     if (!supabase) return NextResponse.json({ ok: true, skipped: true });
 
+    const name = String(place_name).slice(0, 200);
     const { error } = await supabase
       .from("spot_engagement")
-      .insert({ place_name: String(place_name).slice(0, 200), mood: mood ?? null, action });
+      .insert({ place_name: name, mood: mood ?? null, action });
+
+    // item8: 場所×気分アフィニティを加算（visited=5/favorite=3/share=3/detail=1/map=1）。
+    //   協調フィルタ（似たユーザーの好み）を都度計算でなく集計テーブルで高速・高精度に。
+    //   テーブル/RPC未作成でも握りつぶして安全。
+    if (mood) {
+      const WEIGHT: Record<string, number> = { visited: 5, favorite: 3, share: 3, detail_view: 1, map_click: 1 };
+      await supabase.rpc("bump_affinity", { p_place: name, p_mood: String(mood), p_delta: WEIGHT[action] ?? 1 }).then(() => {}, () => {});
+    }
+
     if (error) {
       // テーブル未作成（supabase/learning-tables.sql 未実行）でもエラーにしない
       return NextResponse.json({ ok: true, skipped: true });

@@ -87,6 +87,17 @@ create table if not exists place_mood_affinity (
 );
 create index if not exists idx_affinity_mood_score on place_mood_affinity (mood, score desc);
 
+-- item8用: アフィニティ加算（原子的 upsert）。エンゲージメントのたびに呼ぶ。
+create or replace function bump_affinity(p_place text, p_mood text, p_delta int)
+returns void language plpgsql as $$
+begin
+  insert into place_mood_affinity (place_name, mood, score, updated_at)
+  values (p_place, p_mood, p_delta, now())
+  on conflict (place_name, mood)
+  do update set score = place_mood_affinity.score + p_delta, updated_at = now();
+end;
+$$;
+
 -- item5: 通報→report_count加算→闾値でis_active=false（閉店/無効の自動掃除・原子的）
 create or replace function increment_report_count(p_name text, p_threshold int default 3)
 returns int language plpgsql as $$
