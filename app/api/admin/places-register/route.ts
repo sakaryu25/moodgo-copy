@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
 
     const payload = {
       name:            name.trim(),
-      address:         address.trim() || null,
+      // places.address は NOT NULL のため空文字で（null禁止）
+      address:         address.trim() || "",
       nearest_station: nearestStation.trim() || null,
       lat:             lat ?? null,
       lng:             lng ?? null,
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
       let ins = await supabase.from("places").insert(payload).select("id").single();
       if (ins.error && (ins.error.code === "42703" || ins.error.code === "PGRST204")) {
         const minimal = {
-          name: payload.name, address: payload.address, lat: payload.lat, lng: payload.lng,
+          name: payload.name, address: payload.address ?? "", lat: payload.lat, lng: payload.lng,
           google_place_id: payload.google_place_id, tags: payload.tags, is_active: true,
         };
         ins = await supabase.from("places").insert(minimal).select("id").single();
