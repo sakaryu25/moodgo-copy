@@ -25,6 +25,11 @@ export async function POST(request: Request) {
     });
 
     if (error) throw error;
+
+    // places.report_count を加算し、闾値(3)で is_active=false に（閉店/無効の自動掃除）。
+    // RPC未作成(supabase/db-accumulation.sql未実行)でも握りつぶして安全。
+    await supabase.rpc("increment_report_count", { p_name: spot_name.trim() }).then(() => {}, () => {});
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("reports POST error:", e);

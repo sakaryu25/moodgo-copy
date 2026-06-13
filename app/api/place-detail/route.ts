@@ -5,10 +5,29 @@
 // POST { placeId: string }
 // POST { name: string, address?: string }  → テキスト検索で placeId を解決してから詳細取得
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { supabase } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// 詳細キャッシュ（place_details）。30日以内ならGoogle Place Detailsを呼ばずに返す（item6）。
+const DETAIL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+async function readDetailCache(placeId: string): Promise<Record<string, unknown> | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.from("place_details").select("data, checked_at").eq("place_key", placeId).maybeSingle();
+    if (!data?.checked_at) return null;
+    if (Date.now() - new Date(data.checked_at as string).getTime() > DETAIL_TTL_MS) return null;
+    return (data.data as Record<string, unknown>) ?? null;
+  } catch { return null; }
+}
+function writeDetailCache(placeId: string, place: Record<string, unknown>): void {
+  if (!supabase) return;
+  const sb = supabase;
+  const run = () => sb.from("place_details").upsert({ place_key: placeId, data: place, checked_at: new Date().toISOString() }).then(() => {}, () => {});
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
 
 const FIELD_MASK = [
   "id",
@@ -134,6 +153,10 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
   }
 
   try {
+    // キャッシュヒットならGoogleを呼ばずに返す（30日・item6）
+    const cached = await readDetailCache(placeId);
+    if (cached) return NextResponse.json({ ok: true, place: cached, cached: true });
+
     const d = await fetchPlaceDetail(placeId, key);
 
     // 写真URL解決
@@ -185,6 +208,7 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
       reviews,
     };
 
+    writeDetailCache(placeId, place);  // 詳細をキャッシュ→次回30日間はGoogle不要（item6）
     return NextResponse.json({ ok: true, place });
   } catch (err) {
     console.error("[/api/place-detail] error:", err);

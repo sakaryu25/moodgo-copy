@@ -68,15 +68,11 @@ begin
 end;
 $$;
 
--- item6: 詳細情報キャッシュ（Google Place Details の再取得削減）
+-- item6: 詳細情報キャッシュ（Google Place Details の再取得削減）。
+-- 口コミ・電話・サイト・営業時間・写真URL等をまるごとJSONで保存。30日キャッシュ。
 create table if not exists place_details (
-  place_key text primary key,           -- google_place_id があればそれ、無ければ正規化名
-  phone text,
-  website text,
-  reviews jsonb,
-  opening_hours text,
-  rating double precision,
-  user_rating_count int,
+  place_key text primary key,           -- google_place_id（詳細はplaceIdで引くため）
+  data jsonb not null,                  -- 詳細レスポンス(place)まるごと
   checked_at timestamptz not null default now()
 );
 create index if not exists idx_place_details_checked on place_details (checked_at desc);
@@ -90,6 +86,21 @@ create table if not exists place_mood_affinity (
   primary key (place_name, mood)
 );
 create index if not exists idx_affinity_mood_score on place_mood_affinity (mood, score desc);
+
+-- item5: 通報→report_count加算→闾値でis_active=false（閉店/無効の自動掃除・原子的）
+create or replace function increment_report_count(p_name text, p_threshold int default 3)
+returns int language plpgsql as $$
+declare new_count int;
+begin
+  update places
+  set report_count = coalesce(report_count, 0) + 1,
+      last_reported_at = now(),
+      is_active = case when coalesce(report_count, 0) + 1 >= p_threshold then false else is_active end
+  where name = p_name
+  returning report_count into new_count;
+  return coalesce(new_count, 0);
+end;
+$$;
 
 -- item10: 検索スナップショット（同条件の再検索をパイプライン丸ごとスキップ）
 create table if not exists search_snapshots (
