@@ -6457,7 +6457,8 @@ async function handleRecommend(request: Request) {
               const isLegacyUrl = (u: string) => u.includes("maps.googleapis.com/maps/api/place/photo");
               const hasLegacyOnly = rawImgs.length > 0 && rawImgs.every(isLegacyUrl);
               let imgs = hasLegacyOnly ? [] : rawImgs.map(wrapWithPhotoProxy);
-              if (imgs.length === 0 && apiKey) {
+              // 心霊は独自データのみ＝admin転載の写真補完もGoogleを叩かない（スプーキーPH表示）
+              if (imgs.length === 0 && apiKey && !isProprietaryOnly) {
                 try {
                   const pr = await gfetch("https://places.googleapis.com/v1/places:searchText", {
                     method: "POST",
@@ -6601,7 +6602,8 @@ async function handleRecommend(request: Request) {
         //   Yahoo/Supabase 由来の店は営業時間・写真が欠けがち。結果画面では充実を優先し、
         //   営業時間が無い or 写真が10枚未満の結果だけ Google Text Search で補完する。
         //   （表示する15件のみ対象。各店1回の searchText で hours+photos を一括取得）
-        if (apiKey && recommendations.length > 0) {
+        //   心霊は独自データのみ＝最終エンリッチでもGoogleを叩かない（写真なしはスプーキーPH表示）
+        if (apiKey && recommendations.length > 0 && !isProprietaryOnly) {
           // ── コスト削減: 長期キャッシュ(enr:)から写真・営業時間をprefill ──────────
           //   2回目以降の検索ではGoogleを呼ばず同一データを返す（品質は完全同一）
           const enrKeys = recommendations.map(r => `enr:${(r.title ?? "").slice(0, 80)}`);
