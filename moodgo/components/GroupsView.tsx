@@ -273,8 +273,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       onPanResponderRelease: (_e, g) => {
         if (g.dx > SW / 3 || g.vx > 0.8) {
           // しきい値超え → 画面外までスライドして閉じる
+          // dragXはSWのまま閉じる（先に0へ戻すとチャットが一瞬全画面に戻って見える）。
+          // 一覧に戻った後 useEffect で dragX を0にリセットする。
           Animated.timing(dragX, { toValue: SW, duration: 160, useNativeDriver: true }).start(() => {
-            dragX.setValue(0);
             closeChatRef.current();
           });
         } else {
@@ -463,13 +464,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   };
 
   // 戻るボタン: スワイプバックと同じスライドアニメで閉じる
+  // dragXはSWのまま閉じる（先に0へ戻すとチャットが一瞬全画面に戻って見える＝チラつきの原因）
   const animateCloseChat = () => {
     Animated.timing(dragX, { toValue: SW, duration: 200, useNativeDriver: true }).start(() => {
-      dragX.setValue(0);
       closeChat();
     });
   };
   closeChatRef.current = closeChat;
+
+  // チャットが閉じきって一覧に戻ったら dragX を0へ戻す（チャット未マウントなので見た目に影響なし）
+  useEffect(() => {
+    if (!active) dragX.setValue(0);
+  }, [active]);
 
   // ── つぶやく ──
   const handlePost = async () => {
