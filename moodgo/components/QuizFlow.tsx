@@ -1134,8 +1134,11 @@ export default function QuizFlow(props: Props) {
     },
   })).current;
 
+  // 「疲れた・眠い」はねぎらい専用カード → 次へ進ませない
+  const blockNext = step === 1 && selectedMood === TIRED_KEY;
+
   const handleNext = () => {
-    if (step === 1)  { onSetStep(2);  return; }
+    if (step === 1)  { if (selectedMood === TIRED_KEY) return; onSetStep(2);  return; }
     if (step === 2)  { onSetStep(3);  return; }
     if (step === 3)  { onSetStep(areaMode === 'manual' ? 5 : 4); return; }
     if (step === 4)  { onSetStep(5);  return; }
@@ -1448,9 +1451,9 @@ export default function QuizFlow(props: Props) {
             style={StyleSheet.absoluteFill}
           />
           <View style={s.bottomBarTint} />
-          <PuniPressable onPress={handleNext} style={s.nextWrap}>
+          <PuniPressable onPress={handleNext} disabled={blockNext} style={[s.nextWrap, blockNext && { opacity: 0.4 }]}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.nextBtn}>
-              <Text style={s.nextTxt}>{nextLabel}</Text>
+              <Text style={s.nextTxt}>{blockNext ? (lang === 'ja' ? 'ゆっくり休んでね🌙' : 'Rest well 🌙') : nextLabel}</Text>
             </LinearGradient>
           </PuniPressable>
         </View>

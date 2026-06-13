@@ -245,8 +245,10 @@ function DetailView({
         .onEnd((e) => {
           const go = e.translationX > SCREEN_W * 0.32 || (e.translationX > 24 && e.velocityX > 300);
           if (go) {
+            // panXはSWのまま閉じる（先に0へ戻すと詳細が一瞬全画面に戻って見える＝チラつきの原因）。
+            // 詳細はonBackでアンマウントされ、panXはこのコンポーネント内のrefなので残っても影響なし。
             Animated.timing(panX, { toValue: SCREEN_W, duration: 160, useNativeDriver: true })
-              .start(() => { panX.setValue(0); onBack(); });
+              .start(() => { onBack(); });
           } else {
             Animated.spring(panX, { toValue: 0, useNativeDriver: true, mass: 0.7, damping: 18, stiffness: 240 }).start();
           }
