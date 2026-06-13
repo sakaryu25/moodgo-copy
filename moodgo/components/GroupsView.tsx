@@ -11,9 +11,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import {
-  Activity, BookOpen, Camera, Car, ChevronLeft, Coffee, Copy, Heart, Leaf, LogOut,
-  MapPin, MessageCircle, Moon, Navigation, Plane, Plus, Send, Settings, ShoppingBag,
-  Shuffle, Sparkles, UtensilsCrossed, Users, X,
+  Activity, BookOpen, Bot, Camera, Car, ChevronLeft, Coffee, Copy, Dices, Flame,
+  Heart, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle, Moon, Navigation,
+  PartyPopper, Plane, Plus, Send, Settings, ShoppingBag, Shuffle, Sparkles,
+  ThumbsUp, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -75,8 +76,17 @@ type Post  = {
 type Member = { device_id: string; nickname: string };
 type Reaction = { post_id: string; device_id: string; rtype: 'vote' | 'emoji'; value: string };
 
-// 長押しで選べる絵文字リアクション
-const REACT_EMOJIS = ['👍', '🔥', '🍜', '😂', '❤️', '😮'];
+// 長押しで選べるリアクション（絵文字ではなくアプリ内アイコンで生成）
+type RIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
+const REACTIONS: { key: string; Icon: RIcon; color: string; fill?: string }[] = [
+  { key: 'thumbs',  Icon: ThumbsUp,        color: '#7C3AED' },
+  { key: 'heart',   Icon: Heart,           color: '#EC4899', fill: '#FBCFE8' },
+  { key: 'fire',    Icon: Flame,           color: '#F97316', fill: '#FED7AA' },
+  { key: 'laugh',   Icon: Laugh,           color: '#F59E0B' },
+  { key: 'sparkle', Icon: Sparkles,        color: '#8B5CF6' },
+  { key: 'food',    Icon: UtensilsCrossed, color: '#10B981' },
+];
+const reactionDef = (key: string) => REACTIONS.find(r => r.key === key);
 
 // 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
 function timeAgo(iso: string): string {
@@ -126,6 +136,15 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [members, setMembers] = useState<Member[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [reactTarget, setReactTarget] = useState<string | null>(null);  // 長押し中の投稿ID
+  const pickerAnim = useRef(new Animated.Value(0)).current;             // ピッカーのヌルッと出現用
+
+  useEffect(() => {
+    if (!reactTarget) return;
+    pickerAnim.setValue(0);
+    Animated.spring(pickerAnim, {
+      toValue: 1, useNativeDriver: true, mass: 0.6, damping: 11, stiffness: 230,
+    }).start();
+  }, [reactTarget]);
 
   // ルーレット
   const [showRoulette, setShowRoulette] = useState(false);
@@ -490,7 +509,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         body: JSON.stringify({
           action: 'post', groupId: active.id, deviceId,
           spotName: win.spot_name, spotAddress: win.spot_address ?? '', spotUrl: win.spot_url ?? '',
-          comment: '🎰 ルーレットで決定！',
+          comment: 'ルーレットで決定！',
         }),
       });
       const data = await res.json();
@@ -543,7 +562,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         });
       await postBody({
         mood: matchInfo.mood,
-        comment: `🤖 全員「${matchInfo.mood}」気分！${matchInfo.count}人へのおすすめを見つけたよ👇`,
+        comment: `全員「${matchInfo.mood}」気分！${matchInfo.count}人へのおすすめを見つけたよ`,
       });
       for (const r of recs) {
         await postBody({ spotName: r.title, spotAddress: r.address ?? '', spotUrl: r.mapUrl ?? '' });
@@ -624,9 +643,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
           {/* メンバー */}
           {members.length > 0 && (
-            <Text style={s.membersLine} numberOfLines={1}>
-              👥 {members.map(m => m.nickname).join('・')}
-            </Text>
+            <View style={s.membersLineRow}>
+              <Users size={12} color="#7C6BA8" strokeWidth={2.2} />
+              <Text style={s.membersLine} numberOfLines={1}>
+                {members.map(m => m.nickname).join('・')}
+              </Text>
+            </View>
           )}
 
           {/* チャットタイムライン */}
@@ -664,7 +686,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
               const decided = members.length >= 2 && wantCount > members.length / 2;
 
-              // 投票（スポットのみ）＋絵文字リアクション（バブル内の下部）
+              // 投票（スポットのみ）＋リアクション（バブル内の下部・全てアイコン生成）
               const extras = () => (
                 <>
                   {isSpot && (
@@ -673,30 +695,41 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                         onPress={() => sendReaction(p.id, 'vote', 'want')}
                         style={[s.voteBtn, myVote === 'want' && s.voteBtnOnWant]}
                       >
-                        <Text style={s.voteText}>😍 行きたい{wantCount > 0 ? ` ${wantCount}` : ''}</Text>
+                        <Heart size={11} color="#10B981" fill={myVote === 'want' ? '#D1FAE5' : 'none'} strokeWidth={2.4} />
+                        <Text style={s.voteText}>行きたい{wantCount > 0 ? ` ${wantCount}` : ''}</Text>
                       </PuniPressable>
                       <PuniPressable
                         onPress={() => sendReaction(p.id, 'vote', 'meh')}
                         style={[s.voteBtn, myVote === 'meh' && s.voteBtnOnMeh]}
                       >
-                        <Text style={s.voteText}>😕 微妙{mehCount > 0 ? ` ${mehCount}` : ''}</Text>
+                        <Meh size={11} color="#F97316" strokeWidth={2.4} />
+                        <Text style={s.voteText}>微妙{mehCount > 0 ? ` ${mehCount}` : ''}</Text>
                       </PuniPressable>
                       {decided && (
-                        <View style={s.decidedBadge}><Text style={s.decidedText}>🎉決定！</Text></View>
+                        <View style={s.decidedBadge}>
+                          <PartyPopper size={11} color="#92400E" strokeWidth={2.2} />
+                          <Text style={s.decidedText}>決定！</Text>
+                        </View>
                       )}
                     </View>
                   )}
                   {emojiAgg.size > 0 && (
                     <View style={s.reactChips}>
-                      {[...emojiAgg.entries()].map(([emo, info]) => (
-                        <PuniPressable
-                          key={emo}
-                          onPress={() => sendReaction(p.id, 'emoji', emo)}
-                          style={[s.reactChip, info.mine && s.reactChipMine]}
-                        >
-                          <Text style={s.reactChipText}>{emo} {info.count}</Text>
-                        </PuniPressable>
-                      ))}
+                      {[...emojiAgg.entries()].map(([key, info]) => {
+                        const def = reactionDef(key);
+                        return (
+                          <PuniPressable
+                            key={key}
+                            onPress={() => sendReaction(p.id, 'emoji', key)}
+                            style={[s.reactChip, info.mine && s.reactChipMine]}
+                          >
+                            {def
+                              ? <def.Icon size={12} color={def.color} fill={def.fill ?? 'none'} strokeWidth={2.2} />
+                              : <Text style={s.reactChipText}>{key}</Text>}
+                            <Text style={s.reactChipText}>{info.count}</Text>
+                          </PuniPressable>
+                        );
+                      })}
                     </View>
                   )}
                 </>
@@ -714,7 +747,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   }}
                   style={[s.spotCard, mine ? s.spotCardMine : null]}
                 >
-                  <Text style={s.spotCardLabel}>📍 おすすめスポット</Text>
+                  <View style={s.spotCardLabelRow}>
+                    <MapPin size={10} color="#A78BFA" strokeWidth={2.4} />
+                    <Text style={s.spotCardLabel}>おすすめスポット</Text>
+                  </View>
                   <Text style={s.spotCardName}>{p.spot_name}</Text>
                   {p.spot_address ? <Text style={s.spotCardAddr} numberOfLines={1}>{p.spot_address}</Text> : null}
                   {p.spot_url ? (
@@ -768,7 +804,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               return (
                 <View key={p.id} style={s.rowOther}>
                   <View style={[s.avatar, isBot && s.avatarBot]}>
-                    <Text style={s.avatarText}>{isBot ? '🤖' : p.nickname.slice(0, 1)}</Text>
+                    {isBot
+                      ? <Bot size={17} color="#7C3AED" strokeWidth={2.2} />
+                      : <Text style={s.avatarText}>{p.nickname.slice(0, 1)}</Text>}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={s.otherNick}>{p.nickname}</Text>
@@ -831,7 +869,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 }}
                 style={s.diceBtn}
               >
-                <Text style={{ fontSize: 18 }}>🎰</Text>
+                <Dices size={20} color="#7C3AED" strokeWidth={2} />
               </PuniPressable>
               <TextInput
                 value={comment}
@@ -922,20 +960,52 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             </View>
           </Modal>
 
-          {/* 絵文字リアクションピッカー（バブル長押しで表示） */}
+          {/* リアクションピッカー（バブル長押しでヌルッと出現。スポットには投票も） */}
           <Modal visible={!!reactTarget} transparent animationType="fade" onRequestClose={() => setReactTarget(null)}>
             <Pressable style={s.pickerOverlay} onPress={() => setReactTarget(null)}>
-              <View style={s.pickerCard}>
-                {REACT_EMOJIS.map(e => (
-                  <PuniPressable
-                    key={e}
-                    onPress={() => { if (reactTarget) sendReaction(reactTarget, 'emoji', e); setReactTarget(null); }}
-                    style={s.pickerEmoji}
-                  >
-                    <Text style={{ fontSize: 26 }}>{e}</Text>
-                  </PuniPressable>
-                ))}
-              </View>
+              <Animated.View
+                style={[
+                  s.pickerCard,
+                  {
+                    opacity: pickerAnim,
+                    transform: [
+                      { scale: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) },
+                      { translateY: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
+                    ],
+                  },
+                ]}
+              >
+                {/* スポット投稿なら投票もここから */}
+                {!!posts.find(pp => pp.id === reactTarget)?.spot_name && (
+                  <View style={s.pickerVoteRow}>
+                    <PuniPressable
+                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'vote', 'want'); setReactTarget(null); }}
+                      style={s.pickerVoteBtn}
+                    >
+                      <Heart size={15} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
+                      <Text style={s.pickerVoteText}>行きたい</Text>
+                    </PuniPressable>
+                    <PuniPressable
+                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'vote', 'meh'); setReactTarget(null); }}
+                      style={s.pickerVoteBtn}
+                    >
+                      <Meh size={15} color="#F97316" strokeWidth={2.2} />
+                      <Text style={[s.pickerVoteText, { color: '#F97316' }]}>微妙</Text>
+                    </PuniPressable>
+                  </View>
+                )}
+                <View style={s.pickerIconRow}>
+                  {REACTIONS.map(r => (
+                    <PuniPressable
+                      key={r.key}
+                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'emoji', r.key); setReactTarget(null); }}
+                      style={s.pickerEmoji}
+                    >
+                      <r.Icon size={24} color={r.color} fill={r.fill ?? 'none'} strokeWidth={2} />
+                    </PuniPressable>
+                  ))}
+                </View>
+              </Animated.View>
             </Pressable>
           </Modal>
 
@@ -944,15 +1014,21 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             <View style={s.modalOverlay}>
               <View style={s.modalCard}>
                 <View style={s.modalHeader}>
-                  <Text style={s.modalTitle}>🎰 ルーレットで決める</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Dices size={18} color="#7C3AED" strokeWidth={2.2} />
+                    <Text style={s.modalTitle}>ルーレットで決める</Text>
+                  </View>
                   <PuniPressable onPress={() => setShowRoulette(false)} style={s.modalClose}>
                     <X size={18} color="#7C3AED" strokeWidth={2.5} />
                   </PuniPressable>
                 </View>
                 {rouletteCands.map((c, i) => (
                   <View key={c.id} style={[s.rouRow, i === rIdx && (rDone ? s.rouRowWin : s.rouRowOn)]}>
+                    {rDone && i === rIdx
+                      ? <PartyPopper size={14} color="#92400E" strokeWidth={2.2} />
+                      : <MapPin size={14} color="#7C3AED" strokeWidth={2.2} />}
                     <Text style={[s.rouText, i === rIdx && s.rouTextOn]} numberOfLines={1}>
-                      {rDone && i === rIdx ? '🎉 ' : '📍 '}{c.spot_name}
+                      {c.spot_name}
                     </Text>
                   </View>
                 ))}
@@ -981,7 +1057,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           >
             <View style={s.modalOverlay}>
               <View style={[s.modalCard, { alignItems: 'center' }]}>
-                <Text style={{ fontSize: 44 }}>🎉</Text>
+                <PartyPopper size={48} color="#F59E0B" strokeWidth={1.8} />
                 <Text style={s.matchTitle}>全員「{matchInfo?.mood}」気分！</Text>
                 <Text style={s.matchSub}>{matchInfo?.count}人の気分がそろったよ</Text>
                 <PuniPressable
@@ -993,7 +1069,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.rouBtnInner}>
                     {matchBusy
                       ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text style={s.rouBtnText}>🤖 AIにおすすめを探してもらう</Text>}
+                      : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Bot size={16} color="#fff" strokeWidth={2.2} />
+                          <Text style={s.rouBtnText}>AIにおすすめを探してもらう</Text>
+                        </View>
+                      )}
                   </LinearGradient>
                 </PuniPressable>
                 <PuniPressable onPress={() => setMatchInfo(null)} disabled={matchBusy} style={s.matchLater}>
@@ -1269,7 +1350,11 @@ const s = StyleSheet.create({
     backgroundColor: '#EDE9FE', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3,
   },
   codeChipText: { fontSize: 11, fontWeight: '800', color: '#7C3AED', letterSpacing: 1 },
-  membersLine: { fontSize: 12, color: '#7C6BA8', paddingHorizontal: 20, paddingBottom: 6 },
+  membersLineRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 20, paddingBottom: 6,
+  },
+  membersLine: { fontSize: 12, color: '#7C6BA8', flexShrink: 1 },
 
   label: { fontSize: 12, fontWeight: '900', color: '#7C3AED', marginBottom: 6 },
   hint:  { fontSize: 11, color: '#A78BFA', marginBottom: 8, lineHeight: 16 },
@@ -1444,7 +1529,8 @@ const s = StyleSheet.create({
     minWidth: 170,
   },
   spotCardMine: { borderColor: '#D4C5FF' },
-  spotCardLabel: { fontSize: 9, fontWeight: '800', color: '#A78BFA', marginBottom: 2 },
+  spotCardLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 2 },
+  spotCardLabel: { fontSize: 9, fontWeight: '800', color: '#A78BFA' },
   spotCardName: { fontSize: 13, fontWeight: '800', color: INK, lineHeight: 18 },
   spotCardAddr: { fontSize: 10, color: '#9CA3AF', marginTop: 2 },
   spotCardLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
@@ -1515,10 +1601,11 @@ const s = StyleSheet.create({
   favThumb: { width: 48, height: 48, borderRadius: 12 },
   favThumbPh: { backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' },
 
-  // ── 投票・絵文字リアクション ──
+  // ── 投票・リアクション ──
   avatarBot: { backgroundColor: '#EDE9FE' },
   voteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
   voteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
     backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#EDE9FE',
   },
@@ -1526,13 +1613,14 @@ const s = StyleSheet.create({
   voteBtnOnMeh:  { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' },
   voteText: { fontSize: 11, fontWeight: '700', color: INK },
   decidedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: '#FDE68A', borderRadius: 999,
     paddingHorizontal: 9, paddingVertical: 4,
   },
   decidedText: { fontSize: 11, fontWeight: '900', color: '#92400E' },
   reactChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 },
   reactChip: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 3,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
     backgroundColor: '#fff', borderWidth: 1, borderColor: '#EDE9FE',
   },
@@ -1543,12 +1631,20 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   pickerCard: {
-    flexDirection: 'row', gap: 6,
-    backgroundColor: '#fff', borderRadius: 999,
-    paddingHorizontal: 14, paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 24,
+    paddingHorizontal: 14, paddingVertical: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16, shadowRadius: 18, elevation: 12,
   },
+  pickerIconRow: { flexDirection: 'row', gap: 4 },
+  pickerVoteRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  pickerVoteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#EDE9FE',
+  },
+  pickerVoteText: { fontSize: 12, fontWeight: '800', color: '#10B981' },
   pickerEmoji: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 
   // ── ルーレット・気分一致 ──
@@ -1558,12 +1654,13 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   rouRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
     borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6,
     backgroundColor: '#FAF8FF', borderWidth: 1.5, borderColor: '#F1EBFE',
   },
   rouRowOn:  { backgroundColor: '#EDE9FE', borderColor: '#A78BFA' },
   rouRowWin: { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' },
-  rouText:   { fontSize: 13, fontWeight: '700', color: INK },
+  rouText:   { fontSize: 13, fontWeight: '700', color: INK, flexShrink: 1 },
   rouTextOn: { fontWeight: '900' },
   rouBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 10 },
   rouBtnInner: { paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
