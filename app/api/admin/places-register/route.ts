@@ -131,13 +131,18 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // ─── 新規レコードを作成 ────────────────────────────────────────────────
-      const { data, error } = await supabase
-        .from("places")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (error) throw error;
-      savedId = data.id;
+      // 未マイグレーション環境（area/description/source_type 等の列が無い）でも登録できるよう、
+      // 列不足エラー時は確実に存在する最小列セットへフォールバックする。
+      let ins = await supabase.from("places").insert(payload).select("id").single();
+      if (ins.error && (ins.error.code === "42703" || ins.error.code === "PGRST204")) {
+        const minimal = {
+          name: payload.name, address: payload.address, lat: payload.lat, lng: payload.lng,
+          google_place_id: payload.google_place_id, tags: payload.tags, is_active: true,
+        };
+        ins = await supabase.from("places").insert(minimal).select("id").single();
+      }
+      if (ins.error) throw ins.error;
+      savedId = ins.data!.id;
 
       // 写真を登録
       if (imageUrls.length > 0) {
@@ -153,7 +158,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id: savedId });
   } catch (e) {
     console.error("[/api/admin/places-register] error:", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = e instanceof Error ? e.message
+      : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message)
+      : JSON.stringify(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
 
