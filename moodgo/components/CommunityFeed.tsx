@@ -40,6 +40,8 @@ type FeedItem = {
   image_urls: string[] | null;
   auto_tags: string[] | null;
   created_at: string;
+  poster_name?: string | null;
+  poster_icon?: string | null;
 };
 
 type IconComp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -101,12 +103,24 @@ function Stars({ n = 5 }: { n?: number }) {
 function UserRow({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) => void }) {
   const bg = avatarBg(item.spot_name);
   const { Icon, color } = tagIcon(item.auto_tags);
+  // 投稿者がプロフィール写真を設定していれば表示（読込失敗時は気分アイコンにフォールバック）
+  const [iconFailed, setIconFailed] = useState(false);
+  const showPhoto = !!item.poster_icon && !iconFailed;
   return (
     <View style={s.userRow}>
-      <View style={[s.avatar, { backgroundColor: bg }]}>
-        <Icon size={13} color={color} strokeWidth={2} />
+      <View style={[s.avatar, { backgroundColor: bg, overflow: 'hidden' }]}>
+        {showPhoto ? (
+          <Image
+            source={{ uri: item.poster_icon! }}
+            style={{ width: 24, height: 24 }}
+            contentFit="cover"
+            onError={() => setIconFailed(true)}
+          />
+        ) : (
+          <Icon size={13} color={color} strokeWidth={2} />
+        )}
       </View>
-      <Text style={s.userName}>MoodGoユーザー</Text>
+      <Text style={s.userName}>{item.poster_name?.trim() || 'MoodGoユーザー'}</Text>
       <Text style={s.timestamp}>{relativeTime(item.created_at)}</Text>
       {/* ⋯ → 報告（adminへ） */}
       <TouchableOpacity

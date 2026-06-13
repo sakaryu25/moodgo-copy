@@ -50,6 +50,8 @@ export async function POST(request: Request) {
     let chainSearchQuery: string | null;
     let availableFrom: string | null;
     let availableUntil: string | null;
+    let posterDeviceId: string | null = null;
+    let posterName: string | null = null;
     let preloadedUrls: string[] = [];
     const imageUrls: string[] = [];
     let imageUploadFailed = 0;
@@ -73,6 +75,8 @@ export async function POST(request: Request) {
       chainSearchQuery = null;
       availableFrom   = null;
       availableUntil  = null;
+      posterDeviceId  = (body.deviceId as string | null) ?? null;
+      posterName      = (body.posterName as string | null) ?? null;
       // JSON の images: base64 data-URL → Supabase Storage にアップロード
       const imgs = (body.images as string[] | undefined) ?? [];
       for (const img of imgs.slice(0, 3)) {
@@ -116,6 +120,8 @@ export async function POST(request: Request) {
       chainSearchQuery = formData.get("chainSearchQuery") as string | null;
       availableFrom   = formData.get("availableFrom") as string | null;
       availableUntil  = formData.get("availableUntil") as string | null;
+      posterDeviceId  = (formData.get("deviceId") as string | null) ?? null;
+      posterName      = (formData.get("posterName") as string | null) ?? null;
       const preloadedRaw = formData.get("preloadedImageUrls") as string | null;
       preloadedUrls   = preloadedRaw ? (JSON.parse(preloadedRaw) as string[]) : [];
       imageUrls.push(...preloadedUrls);
@@ -181,9 +187,18 @@ export async function POST(request: Request) {
       auto_tags: autoTags,
     };
 
+    // 投稿者プロフィール（列が未作成の環境ではフォールバックで自動的に外れる）
+    const poster = {
+      device_id: posterDeviceId?.trim() || null,
+      poster_name: posterName?.trim()?.slice(0, 20) || null,
+    };
+
     // オプショナルカラムを段階的に付加して試行（未マイグレーション環境でもエラーにならないよう）
-    // 試行順: フル → 日付なし → チェーンなし → コアのみ
+    // 試行順: 投稿者あり・フル → … → 投稿者なし・コアのみ
     const candidates = [
+      { ...corePayload, ...poster, is_chain: isChain, chain_search_query: isChain ? (chainSearchQuery?.trim() || null) : null, available_from: availableFrom?.trim() || null, available_until: availableUntil?.trim() || null },
+      { ...corePayload, ...poster, available_from: availableFrom?.trim() || null, available_until: availableUntil?.trim() || null },
+      { ...corePayload, ...poster },
       { ...corePayload, is_chain: isChain, chain_search_query: isChain ? (chainSearchQuery?.trim() || null) : null, available_from: availableFrom?.trim() || null, available_until: availableUntil?.trim() || null },
       { ...corePayload, is_chain: isChain, chain_search_query: isChain ? (chainSearchQuery?.trim() || null) : null },
       { ...corePayload, available_from: availableFrom?.trim() || null, available_until: availableUntil?.trim() || null },

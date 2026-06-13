@@ -58,16 +58,23 @@ export async function GET(request: Request) {
   }
 
   try {
+    // select("*"): device_id / poster_name 列が未作成のDBでもエラーにならない
     const { data, error } = await supabase
       .from("suggestions")
-      .select(
-        "id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, source"
-      )
+      .select("*")
       .eq("status", "approved")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
+
+    // 投稿者アイコン: user-icons/{device_id}.jpg の公開URLを導出（写真未設定なら404→アプリ側でフォールバック）
+    const vHour = Math.floor(Date.now() / 3_600_000);
+    const iconFor = (deviceId: unknown): string | null => {
+      if (typeof deviceId !== "string" || !deviceId) return null;
+      const { data: pub } = supabase!.storage.from("user-icons").getPublicUrl(`${deviceId}.jpg`);
+      return `${pub.publicUrl}?v=${vHour}`;
+    };
 
     // 各アイテムを整形（まずは投稿画像のみ）
     const items = (data ?? []).map((s) => {
@@ -95,6 +102,8 @@ export async function GET(request: Request) {
         lat: s.lat,
         lng: s.lng,
         created_at: s.created_at,
+        poster_name: (s.poster_name as string | null) ?? null,
+        poster_icon: iconFor(s.device_id),
       };
     });
 

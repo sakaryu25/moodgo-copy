@@ -17,7 +17,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 import PuniPressable from '@/components/PuniPressable';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
@@ -480,6 +482,13 @@ export default function SuggestScreen() {
       // サーバーAPIは multipart/form-data のみ受け付けるため FormData を使用
       const fd = new FormData();
       fd.append('spotName', spotName.trim());
+      // 投稿者プロフィール（フィードのアイコン・名前に反映。設定の名前と同期）
+      try {
+        const did = await getDeviceId();
+        const pname = (await AsyncStorage.getItem('moodgo-group-nickname'))?.trim() ?? '';
+        if (did) fd.append('deviceId', did);
+        if (pname) fd.append('posterName', pname);
+      } catch { /* プロフィール無しでも投稿は続行 */ }
       // 説明に価格帯・おすすめ度を付記して送信
       const descWithPrice = [
         description,
