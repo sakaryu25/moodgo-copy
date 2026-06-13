@@ -686,35 +686,37 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
               const decided = members.length >= 2 && wantCount > members.length / 2;
 
-              // 投票（スポットのみ）＋リアクション（バブル内の下部・全てアイコン生成）
+              // 投票・リアクションの結果チップ（バブル内の下部）
+              // 投票ボタンは普段は出さず長押しメニューからのみ。誰かが押した時だけ人数チップを表示
+              const hasChips = emojiAgg.size > 0 || wantCount > 0 || mehCount > 0;
               const extras = () => (
                 <>
-                  {isSpot && (
-                    <View style={s.voteRow}>
-                      <PuniPressable
-                        onPress={() => sendReaction(p.id, 'vote', 'want')}
-                        style={[s.voteBtn, myVote === 'want' && s.voteBtnOnWant]}
-                      >
-                        <Heart size={11} color="#10B981" fill={myVote === 'want' ? '#D1FAE5' : 'none'} strokeWidth={2.4} />
-                        <Text style={s.voteText}>行きたい{wantCount > 0 ? ` ${wantCount}` : ''}</Text>
-                      </PuniPressable>
-                      <PuniPressable
-                        onPress={() => sendReaction(p.id, 'vote', 'meh')}
-                        style={[s.voteBtn, myVote === 'meh' && s.voteBtnOnMeh]}
-                      >
-                        <Meh size={11} color="#F97316" strokeWidth={2.4} />
-                        <Text style={s.voteText}>微妙{mehCount > 0 ? ` ${mehCount}` : ''}</Text>
-                      </PuniPressable>
+                  {hasChips && (
+                    <View style={s.reactChips}>
+                      {wantCount > 0 && (
+                        <PuniPressable
+                          onPress={() => sendReaction(p.id, 'vote', 'want')}
+                          style={[s.reactChip, myVote === 'want' && s.voteChipOnWant]}
+                        >
+                          <Heart size={12} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
+                          <Text style={s.reactChipText}>行きたい {wantCount}</Text>
+                        </PuniPressable>
+                      )}
+                      {mehCount > 0 && (
+                        <PuniPressable
+                          onPress={() => sendReaction(p.id, 'vote', 'meh')}
+                          style={[s.reactChip, myVote === 'meh' && s.voteChipOnMeh]}
+                        >
+                          <Meh size={12} color="#F97316" strokeWidth={2.2} />
+                          <Text style={s.reactChipText}>微妙 {mehCount}</Text>
+                        </PuniPressable>
+                      )}
                       {decided && (
                         <View style={s.decidedBadge}>
                           <PartyPopper size={11} color="#92400E" strokeWidth={2.2} />
                           <Text style={s.decidedText}>決定！</Text>
                         </View>
                       )}
-                    </View>
-                  )}
-                  {emojiAgg.size > 0 && (
-                    <View style={s.reactChips}>
                       {[...emojiAgg.entries()].map(([key, info]) => {
                         const def = reactionDef(key);
                         return (
@@ -1603,15 +1605,9 @@ const s = StyleSheet.create({
 
   // ── 投票・リアクション ──
   avatarBot: { backgroundColor: '#EDE9FE' },
-  voteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  voteBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
-    backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#EDE9FE',
-  },
-  voteBtnOnWant: { backgroundColor: '#ECFDF5', borderColor: '#34D399' },
-  voteBtnOnMeh:  { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' },
-  voteText: { fontSize: 11, fontWeight: '700', color: INK },
+  // 自分が投票済みのチップ強調（行きたい=緑 / 微妙=オレンジ）
+  voteChipOnWant: { backgroundColor: '#ECFDF5', borderColor: '#34D399' },
+  voteChipOnMeh:  { backgroundColor: '#FFF7ED', borderColor: '#FDBA74' },
   decidedBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: '#FDE68A', borderRadius: 999,
