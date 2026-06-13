@@ -505,6 +505,15 @@ export default function ResultsView(props: Props) {
           );
         })()}
 
+        {/* ── 心霊・スリルの注意/免責バナー ─── */}
+        {!isLoading && selectedMood === 'スリル' && (
+          <View style={s.cautionBanner}>
+            <Text style={s.cautionText}>
+              ⚠️ 私有地・立入禁止区域には入らないでください。訪問は自己責任で、危険行為・無断侵入は推奨しません。
+            </Text>
+          </View>
+        )}
+
         {/* ── 都道府県フィルター ─────────────────────── */}
         {!isLoading && prefectureButtons.length > 0 && (
           <ScrollView
@@ -879,4 +888,12 @@ const s = StyleSheet.create({
     shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3,
   },
   expandAreaText: { fontSize: 14, fontWeight: '700', color: BRAND },
+
+  // 心霊・スリルの注意/免責バナー
+  cautionBanner: {
+    backgroundColor: '#FFF7ED', borderRadius: 12,
+    borderWidth: 1, borderColor: '#FED7AA',
+    paddingHorizontal: 14, paddingVertical: 11, marginBottom: 12,
+  },
+  cautionText: { fontSize: 12, color: '#9A3412', lineHeight: 18, fontWeight: '600' },
 });
