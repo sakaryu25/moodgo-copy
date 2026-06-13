@@ -5986,6 +5986,10 @@ async function handleRecommend(request: Request) {
         //   高額な Google/Yahoo 補足検索を呼ばずに Supabase だけで15件を組む。
         //   sbQualified = 距離キャップ後のSupabaseのうち、ジャンル＆飲食フィルタを通る件数。
         const isFoodForSkip = answers.mood === "お腹すいた";
+        // ── スリルは独自データのみで戦う（Google/Yahoo不使用・15件埋めもしない）──
+        //   ユーザー指示: スリル/心霊はplaces保存庫＋穴場投稿＋admin転載だけで検索。
+        //   ヒットが少なくても（1件でも）そのまま表示。距離拡大ボタンは別途フロントで設置済み。
+        const isProprietaryOnly = (answers.mood ?? "") === "スリル";
         const sbQualified = sbPoolCapped.filter(r => {
           const nm = r.name ?? "";
           if (!nameMatchesGenre(nm, effectiveDeepDive)) return false;          // ジャンル不一致を除外
@@ -5993,10 +5997,11 @@ async function handleRecommend(request: Request) {
           return true;
         });
         // 充足判定: 15件以上 → Google/Yahoo両方スキップ / 10件以上 → Yahooのみスキップ
-        const skipAllSupplements = sbQualified.length >= 15;
+        //   スリルは常に両方スキップ（独自データのみ）
+        const skipAllSupplements = isProprietaryOnly || sbQualified.length >= 15;
         const skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
-        // Supabaseで賄う件数: スキップ時は15件まで、通常は5件
-        const sbTakeCount = skipAllSupplements ? 15 : 5;
+        // Supabaseで賄う件数: スキップ/独自時は15件まで、通常は5件
+        const sbTakeCount = (skipAllSupplements || isProprietaryOnly) ? 15 : 5;
 
         // 手動追加スポット優先（埋もれ防止）: 人が手入力した source="manual"/"admin"/"user" は
         // Google自動取り込み("google")より上位に出す。最近の流行りカフェ等を埋もれさせない。
@@ -6004,7 +6009,11 @@ async function handleRecommend(request: Request) {
 
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
-        const scored = sbPoolCapped
+        //   スリル(独自のみ)はジャンル一致するスポットだけに絞る（心霊なら心霊スポットのみ）。
+        const scoredPool = isProprietaryOnly
+          ? sbPoolCapped.filter(r => nameMatchesGenre(r.name ?? "", effectiveDeepDive))
+          : sbPoolCapped;
+        const scored = scoredPool
           .map(r => ({
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
@@ -6056,7 +6065,8 @@ async function handleRecommend(request: Request) {
           // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで最大10枚並列補完
           (async (): Promise<Map<string, string[]>> => {
             const photoMap = new Map<string, string[]>();
-            if (!apiKey || !hasLocation || noPhotoNames.length === 0) return photoMap;
+            // スリルは独自データのみ＝Google写真補完もしない（保存済み写真のみ使用）
+            if (!apiKey || !hasLocation || noPhotoNames.length === 0 || isProprietaryOnly) return photoMap;
             // コスト削減: 長期キャッシュ(enr:)から先に充当（2回目以降はGoogle不要）
             const phHit = await ltCacheGetMany(noPhotoNames.map(n => `enr:${n.slice(0, 80)}`));
             const phMiss: string[] = [];
@@ -6255,7 +6265,8 @@ async function handleRecommend(request: Request) {
         //   ・お腹すいた: MOOD_TYPES=["restaurant"] / MOOD_KW="レストラン グルメ" のため飲食店のまま維持
         //   ・拡大半径は Google 50km / Yahoo 20km の各API上限内にクランプされる
         let widenedSearch = false;
-        if (recommendations.length < 15 && hasLocation) {
+        // スリルは独自データのみ＝Google/Yahooでの15件補填をしない（1件でもそのまま表示）
+        if (recommendations.length < 15 && hasLocation && !isProprietaryOnly) {
           widenedSearch = recommendations.length < 8; // 8件未満なら「条件広げました」を表示
           // 補填半径: 通常は1.5倍拡大(上限50km)。ただし遠出意図(far-bias)時に50kmへ
           //   縮小すると「小旅行(120km)なのに近場ゴミで補填」される逆転が起きるため、

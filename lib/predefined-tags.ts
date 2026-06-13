@@ -236,8 +236,16 @@ export const ALL_PREDEFINED_TAGS = TAG_CATEGORIES.flatMap((c) => c.tags)
   // 重複タグを除去
   .filter((tag, idx, arr) => arr.indexOf(tag) === idx);
 
+// AIの自動タグ付けでは付与しない（人が手動でのみ付ける）タグ。
+//   #心霊スポット は誤判定・炎上リスクが高いので必ず手動運用にする。
+export const MANUAL_ONLY_TAGS = ["#心霊スポット"];
+// AIが自動タグ付けで選べるタグ（手動限定タグを除外）
+export const AI_TAGGABLE_TAGS = ALL_PREDEFINED_TAGS.filter((t) => !MANUAL_ONLY_TAGS.includes(t));
+
 // ─── 施設タグ付け用システムプロンプト ───────────────────────────────────────
 export function buildFacilityTaggingPrompt(tagList: string[]): string {
+  // 手動限定タグ（#心霊スポット 等）はAIには絶対に提示しない＝自動付与されない
+  const offered = tagList.filter((t) => !MANUAL_ONLY_TAGS.includes(t));
   return `あなたは施設・スポット情報のタグ付け専門AIです。
 
 【絶対ルール — 違反厳禁】
@@ -247,7 +255,7 @@ export function buildFacilityTaggingPrompt(tagList: string[]): string {
 4. タグの数に上限はない。当てはまるものを全て付けること。少なく絞りすぎないこと。
 
 【定義済みタグリスト】（このリスト以外は絶対使用禁止）
-${tagList.join(", ")}
+${offered.join(", ")}
 
 【タグ選択の指針 — 積極的に付けること】
 - 気分タグ（#お腹すいた, #まったりしたい, #わいわい楽しみたい, #自然感じたい, #ドライブしたい, #集中したい, #体動かしたい, #遠くに行きたい, #ショッピング, #スリル味わいたい）は当てはまるもの全て付ける

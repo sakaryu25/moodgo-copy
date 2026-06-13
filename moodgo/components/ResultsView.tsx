@@ -484,9 +484,10 @@ export default function ResultsView(props: Props) {
           </View>
         )}
 
-        {/* ── エリアを広げる（手動エリアモード専用） ─── */}
-        {!isLoading && areaMode === 'manual' && onChangeRadius && (() => {
-          const RADIUS_STEPS = [2, 5, 10, 20, 40];
+        {/* ── エリアを広げる（手動エリアモード＋スリルは現在地でも表示）─── */}
+        {/* スリルは独自データのみで件数が少ないため、現在地検索でも距離拡大ボタンを出す */}
+        {!isLoading && (areaMode === 'manual' || selectedMood === 'スリル') && onChangeRadius && (() => {
+          const RADIUS_STEPS = [2, 5, 10, 20, 40, 80];
           const nextRadius = RADIUS_STEPS.find(r => r > (radiusKm ?? 0));
           if (!nextRadius) return null;
           return (

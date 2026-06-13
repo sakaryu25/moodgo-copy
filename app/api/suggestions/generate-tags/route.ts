@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import {
   ALL_PREDEFINED_TAGS,
+  MANUAL_ONLY_TAGS,
   buildFacilityTaggingPrompt,
   TAG_CATEGORIES,
 } from "@/lib/predefined-tags";
@@ -85,9 +86,11 @@ export async function POST(request: Request) {
     );
 
     // バリデーション後に空になった場合はルールベースにフォールバック
-    const finalTags = validatedTags.length > 0
+    const finalTagsRaw = validatedTags.length > 0
       ? validatedTags
       : generateRuleBasedPredefinedTags(description ?? "", hintTags);
+    // 手動限定タグ（#心霊スポット）は自動付与しない＝最終出力からも除外
+    const finalTags = finalTagsRaw.filter(t => !MANUAL_ONLY_TAGS.includes(t));
 
     console.log(`[generate-tags] AI出力: ${rawTags.length}件 → バリデーション後: ${validatedTags.length}件`);
 
