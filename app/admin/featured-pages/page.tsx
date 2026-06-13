@@ -75,11 +75,107 @@ interface MoodDraft {
   bg_color: string;
 }
 
+interface MenuItemDraft {
+  name: string;
+  category: string;
+  price: string;
+  description: string;
+  image_url: string;
+}
+
+interface EventDraft {
+  title: string;
+  start_date: string;
+  end_date: string;
+  description: string;
+  image_url: string;
+}
+
+type DayHours = { open: string; close: string; closed: boolean };
+type HoursDraft = {
+  mon: DayHours; tue: DayHours; wed: DayHours; thu: DayHours;
+  fri: DayHours; sat: DayHours; sun: DayHours;
+  note: string;
+};
+
+const WEEKDAYS: { key: keyof Omit<HoursDraft, "note">; label: string }[] = [
+  { key: "mon", label: "月" },
+  { key: "tue", label: "火" },
+  { key: "wed", label: "水" },
+  { key: "thu", label: "木" },
+  { key: "fri", label: "金" },
+  { key: "sat", label: "土" },
+  { key: "sun", label: "日" },
+];
+
+function emptyDay(): DayHours {
+  return { open: "", close: "", closed: false };
+}
+
+function emptyHours(): HoursDraft {
+  return {
+    mon: emptyDay(), tue: emptyDay(), wed: emptyDay(), thu: emptyDay(),
+    fri: emptyDay(), sat: emptyDay(), sun: emptyDay(), note: "",
+  };
+}
+
 interface SpotDraft {
   title: string;
   location: string;
+  catch_copy: string;
   description: string;
   image_url: string;
+  gallery_image_urls: string[];
+  tags: string[];
+  features: string[];
+  address: string;
+  access: string;
+  phone: string;
+  website: string;
+  instagram: string;
+  congestion_info: string;
+  closed_days: string;
+  hours: HoursDraft;
+  menu_items: MenuItemDraft[];
+  events: EventDraft[];
+}
+
+function emptySpot(): SpotDraft {
+  return {
+    title: "", location: "", catch_copy: "", description: "", image_url: "",
+    gallery_image_urls: [], tags: [], features: [],
+    address: "", access: "", phone: "", website: "", instagram: "",
+    congestion_info: "", closed_days: "", hours: emptyHours(),
+    menu_items: [], events: [],
+  };
+}
+
+// DBから読み込んだスポット（新カラムが無い古い行も想定）を SpotDraft に正規化
+function normalizeSpot(s: any): SpotDraft {
+  const base = emptySpot();
+  return {
+    ...base,
+    title: s.title ?? "",
+    location: s.location ?? "",
+    catch_copy: s.catch_copy ?? "",
+    description: s.description ?? "",
+    image_url: s.image_url ?? "",
+    gallery_image_urls: Array.isArray(s.gallery_image_urls) ? s.gallery_image_urls : [],
+    tags: Array.isArray(s.tags) ? s.tags : [],
+    features: Array.isArray(s.features) ? s.features : [],
+    address: s.address ?? "",
+    access: s.access ?? "",
+    phone: s.phone ?? "",
+    website: s.website ?? "",
+    instagram: s.instagram ?? "",
+    congestion_info: s.congestion_info ?? "",
+    closed_days: s.closed_days ?? "",
+    hours: s.hours && typeof s.hours === "object" && Object.keys(s.hours).length
+      ? { ...emptyHours(), ...s.hours }
+      : emptyHours(),
+    menu_items: Array.isArray(s.menu_items) ? s.menu_items : [],
+    events: Array.isArray(s.events) ? s.events : [],
+  };
 }
 
 interface PageDraft {
@@ -312,18 +408,154 @@ function MoodEditor({ moods, onChange }: {
 
 // ─── スポットエディター ────────────────────────────────────────────────────
 
+// 折りたたみ式サブセクション
+function SubSection({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ border: `1px solid ${BORDER}`, borderRadius: "10px", background: "#fff", overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", cursor: "pointer",
+          padding: "11px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700, fontSize: "13px", color: DARK }}
+      >
+        <span>{title}{hint && <span style={{ fontWeight: 400, color: GRAY, marginLeft: "8px", fontSize: "11px" }}>{hint}</span>}</span>
+        <span style={{ color: GRAY }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && <div style={{ padding: "0 14px 14px" }}>{children}</div>}
+    </div>
+  );
+}
+
+// 1行=1項目の配列フィールド（タグ・特徴・ギャラリーURL）
+function LinesField({ label, value, onChange, placeholder, hint }: {
+  label: string; value: string[]; onChange: (v: string[]) => void; placeholder?: string; hint?: string;
+}) {
+  return (
+    <div>
+      <label style={css.label}>{label}</label>
+      <textarea
+        value={value.join("\n")}
+        onChange={(e) => onChange(e.target.value.split("\n").map((l) => l.trim()).filter(Boolean))}
+        rows={Math.max(2, value.length + 1)}
+        style={css.textarea}
+        placeholder={placeholder}
+      />
+      {hint && <div style={{ fontSize: "11px", color: GRAY, marginTop: "3px" }}>{hint}</div>}
+    </div>
+  );
+}
+
+// ── メニューエディタ ───────────────────────────────────────────────────────
+function MenuItemsEditor({ items, onChange }: { items: MenuItemDraft[]; onChange: (v: MenuItemDraft[]) => void }) {
+  const add = () => onChange([...items, { name: "", category: "", price: "", description: "", image_url: "" }]);
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const upd = (i: number, f: keyof MenuItemDraft, v: string) => {
+    const next = [...items]; next[i] = { ...next[i], [f]: v }; onChange(next);
+  };
+  return (
+    <div style={{ display: "grid", gap: "10px" }}>
+      {items.map((m, i) => (
+        <div key={i} style={{ border: `1px solid ${BORDER}`, borderRadius: "10px", padding: "10px", background: "#fafafa" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: GRAY }}>メニュー #{i + 1}</span>
+            <button onClick={() => remove(i)} style={css.btnDanger}>削除</button>
+          </div>
+          <div style={{ display: "grid", gap: "6px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "6px" }}>
+              <input value={m.name} onChange={(e) => upd(i, "name", e.target.value)} style={css.input} placeholder="メニュー名" />
+              <input value={m.price} onChange={(e) => upd(i, "price", e.target.value)} style={css.input} placeholder="¥1,200" />
+            </div>
+            <input value={m.category} onChange={(e) => upd(i, "category", e.target.value)} style={css.input} placeholder="カテゴリ（例: ドリンク / フード）任意" />
+            <textarea value={m.description} onChange={(e) => upd(i, "description", e.target.value)} rows={2} style={css.textarea} placeholder="説明（任意）" />
+            <input value={m.image_url} onChange={(e) => upd(i, "image_url", e.target.value)} style={css.input} placeholder="画像URL（任意）" />
+          </div>
+        </div>
+      ))}
+      <button onClick={add} style={{ ...css.btnSecondary, width: "100%", justifyContent: "center", display: "flex" }}>＋ メニューを追加</button>
+    </div>
+  );
+}
+
+// ── 期間限定イベントエディタ ─────────────────────────────────────────────────
+function EventsEditor({ events, onChange }: { events: EventDraft[]; onChange: (v: EventDraft[]) => void }) {
+  const add = () => onChange([...events, { title: "", start_date: "", end_date: "", description: "", image_url: "" }]);
+  const remove = (i: number) => onChange(events.filter((_, idx) => idx !== i));
+  const upd = (i: number, f: keyof EventDraft, v: string) => {
+    const next = [...events]; next[i] = { ...next[i], [f]: v }; onChange(next);
+  };
+  return (
+    <div style={{ display: "grid", gap: "10px" }}>
+      {events.map((ev, i) => (
+        <div key={i} style={{ border: `1px solid ${BORDER}`, borderRadius: "10px", padding: "10px", background: "#fafafa" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: GRAY }}>イベント #{i + 1}</span>
+            <button onClick={() => remove(i)} style={css.btnDanger}>削除</button>
+          </div>
+          <div style={{ display: "grid", gap: "6px" }}>
+            <input value={ev.title} onChange={(e) => upd(i, "title", e.target.value)} style={css.input} placeholder="イベント名（例: 夏限定かき氷フェア）" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+              <div>
+                <label style={{ ...css.label, fontSize: "11px" }}>開始日</label>
+                <input type="date" value={ev.start_date} onChange={(e) => upd(i, "start_date", e.target.value)} style={css.input} />
+              </div>
+              <div>
+                <label style={{ ...css.label, fontSize: "11px" }}>終了日</label>
+                <input type="date" value={ev.end_date} onChange={(e) => upd(i, "end_date", e.target.value)} style={css.input} />
+              </div>
+            </div>
+            <textarea value={ev.description} onChange={(e) => upd(i, "description", e.target.value)} rows={2} style={css.textarea} placeholder="説明（任意）" />
+            <input value={ev.image_url} onChange={(e) => upd(i, "image_url", e.target.value)} style={css.input} placeholder="画像URL（任意）" />
+          </div>
+        </div>
+      ))}
+      <button onClick={add} style={{ ...css.btnSecondary, width: "100%", justifyContent: "center", display: "flex" }}>＋ 期間限定イベントを追加</button>
+    </div>
+  );
+}
+
+// ── 営業時間エディタ ───────────────────────────────────────────────────────
+function HoursEditor({ hours, onChange }: { hours: HoursDraft; onChange: (v: HoursDraft) => void }) {
+  const updDay = (key: keyof Omit<HoursDraft, "note">, patch: Partial<DayHours>) => {
+    onChange({ ...hours, [key]: { ...hours[key], ...patch } });
+  };
+  return (
+    <div style={{ display: "grid", gap: "6px" }}>
+      {WEEKDAYS.map(({ key, label }) => {
+        const d = hours[key];
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ width: "20px", fontWeight: 700, fontSize: "13px", color: DARK }}>{label}</span>
+            <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: GRAY }}>
+              <input type="checkbox" checked={d.closed} onChange={(e) => updDay(key, { closed: e.target.checked })} />
+              定休
+            </label>
+            {!d.closed && (
+              <>
+                <input type="time" value={d.open} onChange={(e) => updDay(key, { open: e.target.value })} style={{ ...css.input, width: "110px", flex: "none" }} />
+                <span style={{ color: GRAY }}>〜</span>
+                <input type="time" value={d.close} onChange={(e) => updDay(key, { close: e.target.value })} style={{ ...css.input, width: "110px", flex: "none" }} />
+              </>
+            )}
+          </div>
+        );
+      })}
+      <div>
+        <label style={css.label}>備考（ラストオーダー等・任意）</label>
+        <input value={hours.note} onChange={(e) => onChange({ ...hours, note: e.target.value })} style={css.input} placeholder="L.O. 30分前" />
+      </div>
+    </div>
+  );
+}
+
 function SpotEditor({ spots, onChange }: {
   spots: SpotDraft[];
   onChange: (s: SpotDraft[]) => void;
 }) {
-  const addSpot = () => onChange([
-    ...spots,
-    { title: "", location: "", description: "", image_url: "" },
-  ]);
+  const addSpot = () => onChange([...spots, emptySpot()]);
 
   const removeSpot = (i: number) => onChange(spots.filter((_, idx) => idx !== i));
 
-  const update = (i: number, field: keyof SpotDraft, value: string) => {
+  const update = (i: number, field: keyof SpotDraft, value: any) => {
     const next = [...spots];
     next[i] = { ...next[i], [field]: value };
     onChange(next);
@@ -342,7 +574,7 @@ function SpotEditor({ spots, onChange }: {
       {spots.map((s, i) => (
         <div key={i} style={{ border: `1px solid ${BORDER}`, borderRadius: "12px", padding: "14px", marginBottom: "10px", background: "#fafafa" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-            <span style={{ fontWeight: 700, fontSize: "13px", color: DARK }}>#{i + 1} スポット</span>
+            <span style={{ fontWeight: 700, fontSize: "13px", color: DARK }}>#{i + 1} {s.title || "スポット"}</span>
             <div style={{ display: "flex", gap: "4px" }}>
               <button onClick={() => move(i, -1)} disabled={i === 0} style={css.btnGhost} title="上へ">↑</button>
               <button onClick={() => move(i, 1)} disabled={i === spots.length - 1} style={css.btnGhost} title="下へ">↓</button>
@@ -362,24 +594,71 @@ function SpotEditor({ spots, onChange }: {
             </div>
           )}
 
-          <div style={{ display: "grid", gap: "8px" }}>
-            <div>
-              <label style={css.label}>スポット名 *</label>
-              <input value={s.title} onChange={(e) => update(i, "title", e.target.value)} style={css.input} placeholder="雨音に包まれるカフェ時間" />
+          <div style={{ display: "grid", gap: "10px" }}>
+            {/* 基本 */}
+            <div style={{ display: "grid", gap: "8px" }}>
+              <div>
+                <label style={css.label}>スポット名 *</label>
+                <input value={s.title} onChange={(e) => update(i, "title", e.target.value)} style={css.input} placeholder="雨音に包まれるカフェ時間" />
+              </div>
+              <div>
+                <label style={css.label}>エリア・場所</label>
+                <input value={s.location} onChange={(e) => update(i, "location", e.target.value)} style={css.input} placeholder="横浜・元町エリア" />
+              </div>
+              <div>
+                <label style={css.label}>キャッチコピー</label>
+                <input value={s.catch_copy} onChange={(e) => update(i, "catch_copy", e.target.value)} style={css.input} placeholder="しっとり静かなひとり時間" />
+              </div>
+              <div>
+                <label style={css.label}>説明文</label>
+                <textarea value={s.description} onChange={(e) => update(i, "description", e.target.value)} rows={2} style={css.textarea} placeholder="静かなカフェで、自分だけのリセット時間を。" />
+              </div>
+              <div>
+                <label style={css.label}>サムネイル画像URL（カバー）</label>
+                <input value={s.image_url} onChange={(e) => update(i, "image_url", e.target.value)} style={css.input} placeholder="https://images.unsplash.com/..." />
+                <div style={{ fontSize: "11px", color: GRAY, marginTop: "3px" }}>Unsplash / Supabase Storage URL など</div>
+              </div>
             </div>
-            <div>
-              <label style={css.label}>エリア・場所</label>
-              <input value={s.location} onChange={(e) => update(i, "location", e.target.value)} style={css.input} placeholder="横浜・元町エリア" />
-            </div>
-            <div>
-              <label style={css.label}>説明文</label>
-              <textarea value={s.description} onChange={(e) => update(i, "description", e.target.value)} rows={2} style={css.textarea} placeholder="静かなカフェで、自分だけのリセット時間を。" />
-            </div>
-            <div>
-              <label style={css.label}>サムネイル画像URL</label>
-              <input value={s.image_url} onChange={(e) => update(i, "image_url", e.target.value)} style={css.input} placeholder="https://images.unsplash.com/..." />
-              <div style={{ fontSize: "11px", color: GRAY, marginTop: "3px" }}>Unsplash / Supabase Storage URL など</div>
-            </div>
+
+            {/* 🍽 メニュー */}
+            <SubSection title="🍽 メニュー" hint={s.menu_items.length ? `${s.menu_items.length}件` : "未設定"}>
+              <MenuItemsEditor items={s.menu_items} onChange={(v) => update(i, "menu_items", v)} />
+            </SubSection>
+
+            {/* 🎪 期間限定イベント */}
+            <SubSection title="🎪 期間限定イベント" hint={s.events.length ? `${s.events.length}件` : "未設定"}>
+              <EventsEditor events={s.events} onChange={(v) => update(i, "events", v)} />
+            </SubSection>
+
+            {/* 🕐 営業時間・定休日 */}
+            <SubSection title="🕐 営業時間・定休日">
+              <HoursEditor hours={s.hours} onChange={(v) => update(i, "hours", v)} />
+              <div style={{ marginTop: "8px" }}>
+                <label style={css.label}>定休日（自由文・任意）</label>
+                <input value={s.closed_days} onChange={(e) => update(i, "closed_days", e.target.value)} style={css.input} placeholder="毎週水曜・年末年始" />
+              </div>
+            </SubSection>
+
+            {/* 🏷 タグ・特徴・ギャラリー */}
+            <SubSection title="🏷 タグ・特徴・ギャラリー">
+              <div style={{ display: "grid", gap: "10px" }}>
+                <LinesField label="タグ（1行に1つ）" value={s.tags} onChange={(v) => update(i, "tags", v)} placeholder={"雨の日OK\nひとり歓迎"} />
+                <LinesField label="特徴（1行に1つ）" value={s.features} onChange={(v) => update(i, "features", v)} placeholder={"全席禁煙\nWi-Fiあり\n電源席あり"} />
+                <LinesField label="ギャラリー画像URL（1行に1つ）" value={s.gallery_image_urls} onChange={(v) => update(i, "gallery_image_urls", v)} placeholder={"https://...\nhttps://..."} />
+              </div>
+            </SubSection>
+
+            {/* ℹ 情報・リンク */}
+            <SubSection title="ℹ 情報・リンク">
+              <div style={{ display: "grid", gap: "8px" }}>
+                <div><label style={css.label}>住所</label><input value={s.address} onChange={(e) => update(i, "address", e.target.value)} style={css.input} placeholder="神奈川県横浜市..." /></div>
+                <div><label style={css.label}>アクセス</label><input value={s.access} onChange={(e) => update(i, "access", e.target.value)} style={css.input} placeholder="元町・中華街駅から徒歩5分" /></div>
+                <div><label style={css.label}>電話</label><input value={s.phone} onChange={(e) => update(i, "phone", e.target.value)} style={css.input} placeholder="045-XXX-XXXX" /></div>
+                <div><label style={css.label}>混雑情報</label><input value={s.congestion_info} onChange={(e) => update(i, "congestion_info", e.target.value)} style={css.input} placeholder="土日午後は混雑" /></div>
+                <div><label style={css.label}>公式サイトURL</label><input value={s.website} onChange={(e) => update(i, "website", e.target.value)} style={css.input} placeholder="https://..." /></div>
+                <div><label style={css.label}>Instagram URL</label><input value={s.instagram} onChange={(e) => update(i, "instagram", e.target.value)} style={css.input} placeholder="https://instagram.com/..." /></div>
+              </div>
+            </SubSection>
           </div>
         </div>
       ))}
@@ -765,9 +1044,7 @@ export default function FeaturedPagesAdmin() {
       moods: (d.featured_page_moods ?? []).map((m: any) => ({
         title: m.title, icon_name: m.icon_name, icon_color: m.icon_color, bg_color: m.bg_color,
       })),
-      spots: (d.featured_page_spots ?? []).map((s: any) => ({
-        title: s.title, location: s.location ?? "", description: s.description ?? "", image_url: s.image_url ?? "",
-      })),
+      spots: (d.featured_page_spots ?? []).map((s: any) => normalizeSpot(s)),
     });
   };
 

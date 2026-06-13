@@ -87,7 +87,28 @@ export async function POST(req: NextRequest) {
   // ── 3. おすすめスポットを挿入 ──────────────────────────────────────────
   if (spots.length > 0) {
     await supabase.from("featured_page_spots").insert(
-      spots.map((s: any, i: number) => ({ ...s, page_id: pageId, sort_order: i }))
+      spots.map((s: any, i: number) => ({
+        page_id: pageId,
+        title: s.title ?? "",
+        location: s.location ?? "",
+        catch_copy: s.catch_copy ?? "",
+        description: s.description ?? "",
+        image_url: s.image_url ?? "",
+        gallery_image_urls: s.gallery_image_urls ?? [],
+        tags: s.tags ?? [],
+        features: s.features ?? [],
+        address: s.address ?? "",
+        access: s.access ?? "",
+        phone: s.phone ?? "",
+        website: s.website ?? "",
+        instagram: s.instagram ?? "",
+        congestion_info: s.congestion_info ?? "",
+        closed_days: s.closed_days ?? "",
+        hours: s.hours ?? {},
+        menu_items: s.menu_items ?? [],
+        events: s.events ?? [],
+        sort_order: i,
+      }))
     );
   }
 

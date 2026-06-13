@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
+import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 
@@ -154,6 +155,7 @@ type CardItem = {
   desc: string;
   image: string;
   slug?: string;
+  spotId?: string;   // システムB スポット詳細への直リンク
 };
 
 type HeroData = {
@@ -163,6 +165,7 @@ type HeroData = {
   description: string;
   buttonLabel: string;
   slug?: string;
+  spotId?: string;
 };
 
 type SectionData = {
@@ -179,14 +182,34 @@ type TabContentData = {
   prefectures?: string[];
 };
 
-type FeaturedPageRecord = {
+// システムB（featured_pages_v2 / _moods / _spots）— アプリの特集データ源
+type MoodV2 = {
   id: string;
-  slug: string;
-  partner_name: string;
-  spot_name: string;
+  title: string;
+  icon_name?: string;
+  icon_color?: string;
+  bg_color?: string;
+};
+type SpotV2 = {
+  id: string;
+  title: string;
+  location?: string;
   catch_copy?: string;
-  cover_image_url?: string;
-  tags: string[];
+  description?: string;
+  image_url?: string;
+};
+type FeaturedPageV2 = {
+  id: string;
+  prefecture: string;
+  issue?: string;
+  label?: string;
+  banner_title?: string;
+  banner_description?: string;
+  banner_image_url?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  featured_page_moods?: MoodV2[];
+  featured_page_spots?: SpotV2[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -927,7 +950,8 @@ function SegmentedTabs({ tabs, selected, onSelect }: SegmentedTabsProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HeroFeatureCard
 // ─────────────────────────────────────────────────────────────────────────────
-function openSpot(router: ReturnType<typeof useRouter>, opts: { slug?: string; title: string; area?: string; desc?: string; image?: string }) {
+function openSpot(router: ReturnType<typeof useRouter>, opts: { spotId?: string; slug?: string; title: string; area?: string; desc?: string; image?: string }) {
+  if (opts.spotId) { router.push(`/feature/spot/${opts.spotId}`); return; }
   if (opts.slug) { router.push(`/feature/${opts.slug}`); return; }
   router.push({
     pathname: "/feature-spot",
@@ -937,7 +961,7 @@ function openSpot(router: ReturnType<typeof useRouter>, opts: { slug?: string; t
 
 function HeroFeatureCard({ data, area }: { data: HeroData; area?: string }) {
   const router = useRouter();
-  const go = () => openSpot(router, { slug: data.slug, title: data.title, area, desc: data.description, image: data.image });
+  const go = () => openSpot(router, { spotId: data.spotId, slug: data.slug, title: data.title, area, desc: data.description, image: data.image });
   return (
     <TouchableOpacity style={s.heroWrap} activeOpacity={0.9} onPress={go}>
       <ImageBackground
@@ -1060,7 +1084,7 @@ function HorizontalFeatureCards({ title, cards, area }: { title: string; cards: 
             key={i}
             style={[s.hCard, i < cards.length - 1 && { marginRight: 12 }]}
             activeOpacity={0.84}
-            onPress={() => openSpot(router, { slug: item.slug, title: item.title, area, desc: item.desc, image: item.image })}
+            onPress={() => openSpot(router, { spotId: item.spotId, slug: item.slug, title: item.title, area, desc: item.desc, image: item.image })}
           >
             <ImageBackground
               source={{ uri: item.image }}
@@ -1140,43 +1164,9 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
   // 全国 / 地方 / 都道府県 の3タブ（重複排除）。県グリッドから選んだ県も追加。
   const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab, activeTab]));
 
-  const data = apiTabData[activeTab] ?? getBaseTab(activeTab);
+  // システムB直結：該当タブのページが無ければ空状態を表示
+  const viewData = apiTabData[activeTab];
   const regionImg = REGION_BG_IMAGES[TAB_REGION_KEY[activeTab] ?? ""];
-
-  // ── スポットの実写真を Google から取得（名前→写真URL）──────────────────────
-  const [photoMap, setPhotoMap] = useState<Record<string, string>>({});
-  const photoMapRef = useRef<Record<string, string>>({});
-  useEffect(() => { photoMapRef.current = photoMap; }, [photoMap]);
-
-  useEffect(() => {
-    const d = apiTabData[activeTab] ?? getBaseTab(activeTab);
-    const names = new Set<string>();
-    if (d.hero.title) names.add(d.hero.title);
-    d.sections.forEach((sec) => sec.cards.forEach((c) => c.title && names.add(c.title)));
-    // admin投稿(slug付き)やすでに取得済みの名前は除外
-    const items = Array.from(names)
-      .filter((n) => !(n in photoMapRef.current))
-      .map((n) => ({ name: n, area: activeTab as string }));
-    if (!items.length) return;
-    apiFetch("/api/feature-photos", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
-    })
-      .then((r) => r.json())
-      .then((j) => { if (j?.photos) setPhotoMap((prev) => ({ ...prev, ...j.photos })); })
-      .catch(() => {});
-  }, [activeTab, apiTabData]);
-
-  // 実写真があれば差し替えた表示用データ
-  const viewData: TabContentData = {
-    ...data,
-    hero: { ...data.hero, image: photoMap[data.hero.title] ?? data.hero.image },
-    sections: data.sections.map((sec) => ({
-      ...sec,
-      cards: sec.cards.map((c) => ({ ...c, image: photoMap[c.title] ?? c.image })),
-    })),
-  };
 
   return (
     <ScrollView
@@ -1186,37 +1176,39 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
       {/* ── エリア切替タブ ── */}
       <SegmentedTabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
 
-      {/* 見出し */}
-      <View style={s.contentHeader}>
-        {regionImg && (
-          <ExpoImage
-            source={regionImg}
-            style={s.contentHeaderBgImg}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-          />
-        )}
-        <Text style={s.contentTitle}>{viewData.title}</Text>
-        <Text style={s.contentSubtitle}>{viewData.subtitle}</Text>
-      </View>
+      {viewData ? (
+        <>
+          {/* 見出し */}
+          <View style={s.contentHeader}>
+            {regionImg && (
+              <ExpoImage
+                source={regionImg}
+                style={s.contentHeaderBgImg}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            )}
+            <Text style={s.contentTitle}>{viewData.title}</Text>
+            <Text style={s.contentSubtitle}>{viewData.subtitle}</Text>
+          </View>
 
-      {/* ヒーローカード */}
-      <HeroFeatureCard data={viewData.hero} area={activeTab as string} />
+          {/* ヒーローカード */}
+          <HeroFeatureCard data={viewData.hero} area={activeTab as string} />
 
-      {/* カテゴリチップ */}
-      <CategoryChips categories={viewData.categories} />
+          {/* カテゴリチップ */}
+          {viewData.categories.length > 0 && <CategoryChips categories={viewData.categories} />}
 
-      {/* セクション（横スクロールカード群） */}
-      {viewData.sections.map((sec, i) => (
-        <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} area={activeTab as string} />
-      ))}
-
-      {/* 都県グリッド */}
-      {viewData.prefectures && (
-        <PrefectureGrid
-          prefectures={viewData.prefectures}
-          onSelectPref={(p) => setActiveTab(p as Tab)}
-        />
+          {/* セクション（横スクロールカード群） */}
+          {viewData.sections.map((sec, i) => (
+            <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} area={activeTab as string} />
+          ))}
+        </>
+      ) : (
+        <View style={s.emptyWrap}>
+          <MapPin size={36} color={C.subText} strokeWidth={1.6} />
+          <Text style={s.emptyTitle}>{activeTab}の特集は準備中です</Text>
+          <Text style={s.emptyText}>近日公開予定。お楽しみに ✨</Text>
+        </View>
       )}
     </ScrollView>
   );
@@ -1227,165 +1219,275 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
 // 親（index.tsx）の TabBar・SafeAreaView に内包されるため
 // 自前のタブバー・SafeAreaView は持たない
 // ─────────────────────────────────────────────────────────────────────────────
-function buildTabData(records: FeaturedPageRecord[]): Partial<Record<Tab, TabContentData>> {
-  const TABS: Tab[] = [
-    "全国", "北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄",
-    "北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島",
-    "東京", "神奈川", "千葉", "埼玉", "茨城", "栃木", "群馬",
-    "新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜", "静岡", "愛知",
-    "三重", "滋賀", "京都", "大阪", "兵庫", "奈良", "和歌山",
-    "鳥取", "島根", "岡山", "広島", "山口",
-    "徳島", "香川", "愛媛", "高知",
-    "福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄",
-  ];
-  const grouped = Object.fromEntries(TABS.map(t => [t, []])) as unknown as Record<Tab, FeaturedPageRecord[]>;
+// B の県名（"東京都"等の正式名）→ FeatureScreen の Tab（"東京"等の短縮名）
+function fullPrefToTab(pref: string): Tab | null {
+  if (!pref) return null;
+  if (pref === "全国" || pref === "北海道") return pref as Tab;
+  const short = pref.replace(/(都|府|県)$/, "");
+  return short as Tab;
+}
 
-  for (const rec of records) {
-    const matched = TABS.filter((t) => rec.tags.includes(t));
-    if (matched.length === 0) {
-      grouped["全国"].push(rec);
-    } else {
-      matched.forEach((t) => grouped[t].push(rec));
-    }
-  }
-
+// システムB のページ群 → タブ別の表示データ（B直結のシンプル版）
+function buildTabDataFromPages(pages: FeaturedPageV2[]): Partial<Record<Tab, TabContentData>> {
   const result: Partial<Record<Tab, TabContentData>> = {};
-  for (const tab of TABS) {
-    const recs = grouped[tab];
-    if (!recs.length) continue;
-    // 仮サンプル/手書きのリッチなコンテンツをベースに、admin投稿を上に重ねる。
-    // → admin が1件だけ投稿しても下のおすすめが消えず、常に充実したページになる。
-    const base = getBaseTab(tab);
-    const [first, ...rest] = recs;
+
+  for (const page of pages) {
+    const tab = fullPrefToTab(page.prefecture);
+    if (!tab) continue;
+
+    const spots = page.featured_page_spots ?? [];
+    const moods = page.featured_page_moods ?? [];
+    const firstSpot = spots[0];
+
+    // ヒーロー: バナーがあればバナー、無ければ先頭スポット。タップで先頭スポット詳細へ。
+    const hasBanner = !!(page.banner_title || page.banner_image_url);
+    const hero: HeroData = hasBanner
+      ? {
+          image: page.banner_image_url || firstSpot?.image_url || IMG.cafe,
+          label: page.label || "今月の特集",
+          title: page.banner_title || firstSpot?.title || page.prefecture,
+          description: page.banner_description || firstSpot?.catch_copy || "",
+          buttonLabel: "特集を読む",
+          spotId: firstSpot?.id,
+        }
+      : {
+          image: firstSpot?.image_url || IMG.cafe,
+          label: page.label || "今月のおすすめ",
+          title: firstSpot?.title || page.prefecture,
+          description: firstSpot?.catch_copy || firstSpot?.location || "",
+          buttonLabel: "特集を読む",
+          spotId: firstSpot?.id,
+        };
+
+    // 気分カードの見出しをカテゴリチップに（改行はスペースに）
+    const categories = moods.map((m) => (m.title || "").replace(/\n/g, " ").trim()).filter(Boolean);
+
+    // バナーをヒーローに使った場合は全スポットを、そうでない場合は2件目以降をカード化
+    const cardSpots = hasBanner ? spots : spots.slice(1);
+    const sections: SectionData[] = cardSpots.length
+      ? [{
+          title: "おすすめスポット",
+          cards: cardSpots.map((sp) => ({
+            title: sp.title,
+            desc: sp.catch_copy || sp.location || "",
+            image: sp.image_url || IMG.cafe,
+            spotId: sp.id,
+          })),
+        }]
+      : [];
+
     result[tab] = {
-      ...base,
-      hero: {
-        image: first.cover_image_url ?? base.hero.image,
-        label: first.partner_name || "今月のおすすめ",
-        title: first.spot_name,
-        description: first.catch_copy ?? base.hero.description,
-        buttonLabel: "特集を読む",
-        slug: first.slug,
-      },
-      sections: [
-        ...(rest.length
-          ? [{
-              title: "提携・おすすめスポット",
-              cards: rest.map((r) => ({
-                title: r.spot_name,
-                desc: r.catch_copy ?? "",
-                image: r.cover_image_url ?? IMG.cafe,
-                slug: r.slug,
-              })),
-            }]
-          : []),
-        ...base.sections,
-      ],
+      title: `${page.prefecture}の特集`,
+      subtitle: page.banner_description || page.issue || "",
+      hero,
+      categories,
+      sections,
     };
   }
+
   return result;
 }
 
 type NavStage = "map" | "pref-select" | "content";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FeatureScreen — Coming Soon（特集ページは準備中）
-// ※ 既存の地図/エリア/コンテンツ実装（AreaSelectView 等）は将来の公開に向けて
-//   コードはそのまま残し、表示のみ Coming Soon に切り替えている。
-// ─────────────────────────────────────────────────────────────────────────────
-const TEASERS: { Icon: LucideIcon; label: string }[] = [
-  { Icon: Mountain, label: "絶景" },
-  { Icon: Waves, label: "海・自然" },
-  { Icon: Landmark, label: "歴史さんぽ" },
-  { Icon: Sun, label: "季節の特集" },
+// ── 雲ダイブ・トランジション用のパフ配置 ───────────────────────────────────────
+// 画面中心付近からブワッと膨らみ、外へ飛び去る雲の塊。x/y は画面比率、
+// dx/dy は外向きの流れ、maxScale は最終的な膨張倍率。
+const CLOUD_PUFFS: { x: number; y: number; r: number; dx: number; dy: number; maxScale: number }[] = [
+  { x: 0.50, y: 0.50, r: 210, dx: 0,    dy: 0,    maxScale: 2.4 },
+  { x: 0.30, y: 0.40, r: 180, dx: -150, dy: -110, maxScale: 2.2 },
+  { x: 0.72, y: 0.42, r: 190, dx: 160,  dy: -100, maxScale: 2.2 },
+  { x: 0.28, y: 0.66, r: 185, dx: -140, dy: 140,  maxScale: 2.3 },
+  { x: 0.74, y: 0.68, r: 195, dx: 150,  dy: 130,  maxScale: 2.1 },
+  { x: 0.50, y: 0.22, r: 170, dx: 0,    dy: -180, maxScale: 2.0 },
+  { x: 0.50, y: 0.82, r: 175, dx: 0,    dy: 180,  maxScale: 2.0 },
 ];
+
+// 縁が透明にフェードするやわらかい雲（radial gradient）。
+// アニメ中のブラーより軽く、ふわっとした見た目になる。
+function SoftCloud({ size, gradId }: { size: number; gradId: string }) {
+  const r = size / 2;
+  return (
+    <Svg width={size} height={size}>
+      <Defs>
+        <RadialGradient id={gradId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#ffffff" stopOpacity={0.92} />
+          <Stop offset="45%" stopColor="#ffffff" stopOpacity={0.75} />
+          <Stop offset="75%" stopColor="#fbfaff" stopOpacity={0.35} />
+          <Stop offset="100%" stopColor="#fbfaff" stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={r} cy={r} r={r} fill={`url(#${gradId})`} />
+    </Svg>
+  );
+}
 
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
+  const [stage, setStage] = useState<NavStage>("map");
+  const [selectedRegion, setSelectedRegion] = useState<Tab>("全国");
+  const [selectedTab, setSelectedTab] = useState<Tab>("全国");
+  const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, TabContentData>>>({});
 
-  // アイコンのふわっとパルス
-  const pulse = useRef(new Animated.Value(0)).current;
-  // きらめきの回転
-  const spin = useRef(new Animated.Value(0)).current;
+  // 地図画像を先読み（マウント時点でデコード済みにしてラグを防ぐ）
+  useEffect(() => { preloadMaps(); }, []);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
-    ).start();
-    Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true })
-    ).start();
+    apiFetch("/api/featured-pages")
+      .then((r) => r.json())
+      .then(({ ok, data }: { ok: boolean; data: FeaturedPageV2[] }) => {
+        if (ok && data?.length) setApiTabData(buildTabDataFromPages(data));
+      })
+      .catch(() => {});
   }, []);
 
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
-  const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.7] });
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
+  // t: 0=通常表示 → 1=トランジション完了（中間 0.5 で雲が画面を覆い、裏でステージ差替）
+  const t = useRef(new Animated.Value(0)).current;
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+
+  // apply（ステージ差替）を雲が画面を覆う中間点で実行する
+  const runTransition = (apply: () => void) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    t.setValue(0);
+    let swapped = false;
+    const id = t.addListener(({ value }) => {
+      if (!swapped && value >= 0.5) {
+        swapped = true;
+        apply();
+      }
+    });
+    Animated.timing(t, {
+      toValue: 1,
+      duration: 1200,
+      easing: Easing.inOut(Easing.sin),
+      useNativeDriver: true,
+    }).start(() => {
+      t.removeListener(id);
+      if (!swapped) apply();
+      t.setValue(0);
+      busyRef.current = false;
+      setBusy(false);
+    });
+  };
+
+  const handleSelectRegion = (tab: Tab) => {
+    setSelectedRegion(tab);
+    setSelectedTab(tab);
+    runTransition(() => setStage("pref-select"));
+  };
+
+  const handleSelectPref = (tab: Tab) => {
+    setSelectedTab(tab);
+    runTransition(() => setStage("content"));
+  };
+
+  const handleBack = () => {
+    const next: NavStage = stage === "content" ? "pref-select" : "map";
+    runTransition(() => setStage(next));
+  };
+
+  const showBack = stage !== "map";
+
+  // 雲とコンテンツの補間
+  // ヴェールは真っ白の閃光にならないよう、淡いラベンダー白を控えめのピークで。
+  const veilOpacity = t.interpolate({
+    inputRange: [0, 0.4, 0.5, 0.6, 1],
+    outputRange: [0, 0.55, 0.62, 0.55, 0],
+  });
+  const puffOpacity = t.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.8, 1],
+    outputRange: [0, 0.9, 0.95, 0.85, 0],
+  });
+  const contentOpacity = t.interpolate({
+    inputRange: [0, 0.42, 0.58, 1],
+    outputRange: [1, 0, 0, 1],
+  });
+  const contentScale = t.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 1.06, 1],
+  });
 
   return (
-    <View style={cs.root}>
-      {/* 背景グラデーション */}
+    <View style={s.safe}>
+      {/* ── グラデーションヘッダー ── */}
       <LinearGradient
-        colors={["#FAF7FF", "#F3ECFF", "#EAF2FF"]}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* ヘッダー */}
-      <View style={[cs.header, { paddingTop: insets.top + 14 }]}>
-        <Text style={cs.headerTitle}>特集</Text>
-        <Text style={cs.headerSub}>Special Feature</Text>
-      </View>
-
-      <View style={cs.center}>
-        {/* アイコンバッジ */}
-        <View style={cs.badgeWrap}>
-          {/* 後光 */}
-          <Animated.View style={[cs.glow, { opacity: glow, transform: [{ scale }] }]} />
-          {/* 回転するきらめき */}
-          <Animated.View style={[cs.spark, { transform: [{ rotate }] }]} pointerEvents="none">
-            <Sparkles size={20} color="#C084FC" fill="#C084FC" />
-          </Animated.View>
-          <Animated.View style={{ transform: [{ scale }] }}>
-            <LinearGradient
-              colors={GRAD}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={cs.badge}
+        colors={GRAD}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[s.header, { paddingTop: insets.top + 14 }]}
+      >
+        <View style={s.decoCircle1} pointerEvents="none" />
+        <View style={s.decoCircle2} pointerEvents="none" />
+        <View style={s.headerContent}>
+          {showBack ? (
+            <TouchableOpacity
+              style={s.backBtn}
+              activeOpacity={0.72}
+              onPress={handleBack}
             >
-              <MapPin size={40} color="#fff" strokeWidth={2.2} />
-            </LinearGradient>
-          </Animated.View>
-        </View>
-
-        {/* テキスト */}
-        <Text style={cs.comingPill}>準備中</Text>
-        <Text style={cs.title}>Coming Soon</Text>
-        <Text style={cs.lead}>全国のとっておき特集を{"\n"}ただいま編集中です。</Text>
-        <Text style={cs.sub}>絶景・グルメ・季節のおでかけ…{"\n"}ワクワクする特集をお届けします。お楽しみに ✨</Text>
-
-        {/* ティーザーチップ */}
-        <View style={cs.teasers}>
-          {TEASERS.map(({ Icon, label }) => (
-            <View key={label} style={cs.teaser}>
-              <Icon size={15} color="#9B6BFF" strokeWidth={2.2} />
-              <Text style={cs.teaserText}>{label}</Text>
+              <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+              <Text style={s.backText}>特集</Text>
+            </TouchableOpacity>
+          ) : (
+            <View>
+              <Text style={s.headerTitle}>特集</Text>
+              <Text style={s.headerSub}>どこへ行く？</Text>
             </View>
-          ))}
+          )}
         </View>
+      </LinearGradient>
 
-        {/* 進捗バー（演出） */}
-        <View style={cs.barTrack}>
-          <LinearGradient
-            colors={GRAD}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={cs.barFill}
+      {/* ── メインコンテンツ（トランジション中はズーム＆フェード） ── */}
+      <Animated.View style={{ flex: 1, opacity: contentOpacity, transform: [{ scale: contentScale }] }}>
+        {stage === "map" && (
+          <AreaSelectView onSelectRegion={handleSelectRegion} />
+        )}
+        {stage === "pref-select" && (
+          <RegionPrefSelectView region={selectedRegion} onSelectPref={handleSelectPref} />
+        )}
+        {stage === "content" && (
+          <FeatureContentView
+            selectedTab={selectedTab}
+            selectedRegion={selectedRegion}
+            apiTabData={apiTabData}
           />
-        </View>
-        <Text style={cs.barLabel}>準備中… もうすぐ公開</Text>
-      </View>
+        )}
+      </Animated.View>
+
+      {/* ── 雲ダイブ・オーバーレイ ── */}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { opacity: busy ? 1 : 0 }]}
+        pointerEvents={busy ? "auto" : "none"}
+      >
+        {/* 淡いヴェール（やわらかく覆う。真っ白の閃光を避ける） */}
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: "#FBFAFF", opacity: veilOpacity }]} />
+        {/* やわらか雲のパフ（縁がふわっと透明にフェードしながら膨らみ流れる） */}
+        {CLOUD_PUFFS.map((p, i) => (
+          <Animated.View
+            key={i}
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: p.x * W - p.r,
+              top: p.y * H - p.r,
+              width: p.r * 2,
+              height: p.r * 2,
+              opacity: puffOpacity,
+              transform: [
+                { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, p.dx] }) },
+                { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, p.dy] }) },
+                { scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.55, p.maxScale] }) },
+              ],
+            }}
+          >
+            <SoftCloud size={p.r * 2} gradId={`cloudGrad${i}`} />
+          </Animated.View>
+        ))}
+      </Animated.View>
     </View>
   );
 }
@@ -1771,6 +1873,9 @@ const s = StyleSheet.create({
 
   // ── FeatureContentView ──
   contentScroll: { paddingBottom: 16 },
+  emptyWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 90, paddingHorizontal: 32, gap: 10 },
+  emptyTitle: { fontSize: 16, fontWeight: "800", color: C.text, textAlign: "center" },
+  emptyText: { fontSize: 13, color: C.subText, textAlign: "center" },
   contentHeader: {
     paddingHorizontal: 20,
     paddingTop: 18,
