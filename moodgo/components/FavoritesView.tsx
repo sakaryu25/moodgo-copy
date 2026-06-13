@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Heart, MapPin, MessageCircle, Navigation, Trash2 } from 'lucide-react-native';
+import { Heart, MapPin, MessageCircle, Moon, Navigation, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -138,7 +138,12 @@ export default function FavoritesView({
         list.map((item) => (
           <TouchableOpacity key={item.title} style={s.card} activeOpacity={0.75} onPress={() => handlePress(item)}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
-            {item.photoUrl ? (
+            {item.tags?.includes('#心霊スポット') ? (
+              // 心霊はGoogle写真を使わず暗いプレースホルダー
+              <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
+                <Moon size={22} color="rgba(180,160,255,0.6)" strokeWidth={1.5} />
+              </LinearGradient>
+            ) : item.photoUrl ? (
               <Image source={{ uri: item.photoUrl }} style={s.cardImg} contentFit="cover" />
             ) : (
               <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>

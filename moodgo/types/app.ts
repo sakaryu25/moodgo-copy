@@ -68,6 +68,10 @@ export type FavoriteItem = {
   priceLevel?: string;
   phone?: string;
   website?: string;
+  /** スポットのタグ（#心霊スポット 等。詳細での心霊判定に使用） */
+  tags?: string[];
+  /** Supabase places.id（UUID）。投稿写真の照合に使用 */
+  supabaseId?: string;
   /** 'place'=検索結果の場所 / 'post'=みんなの穴場の投稿 */
   kind?: 'place' | 'post';
   /** 投稿(post)の場合の suggestions.id（詳細ページを開くのに使用） */

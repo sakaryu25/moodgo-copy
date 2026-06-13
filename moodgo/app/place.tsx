@@ -343,12 +343,15 @@ export default function PlaceDetailPage() {
   const photoScrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // 心霊スポット判定（タグ） + 利用者がその場で追加した写真
-  const isSpooky = !!rec?.tags?.includes('#心霊スポット');
+  // 心霊スポット判定: タグ or サーバ判定（古いお気に入り＝tag未保存でも拾う）
+  const tagShinrei = !!rec?.tags?.includes('#心霊スポット');
+  const [serverShinrei, setServerShinrei] = useState(false);
+  const isSpooky = tagShinrei || serverShinrei;
   const storePhotos = useSpotPhotos(rec?.supabaseId, rec?.title);
   const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const basePhotos = rec
+  // 心霊は保存済みGoogle写真を一切使わない（利用者投稿/プレースホルダーのみ）
+  const basePhotos = (rec && !isSpooky)
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
   const photos = [...new Set([...storePhotos, ...fetchedPhotos, ...basePhotos])];
@@ -356,19 +359,25 @@ export default function PlaceDetailPage() {
   const showContribute = isSpooky && photos.length > 0;
   const heroPageCount = photos.length + (showContribute ? 1 : 0);
 
-  // 心霊スポットは最新の投稿写真をマウント時に取得（検索後/他ユーザーの追加も反映）
+  // 投稿写真の取得＋心霊判定。tag既知の心霊、またはGoogle placeIdが無い独自スポット
+  // （古いお気に入りで tag 未保存でも判定できる）の時に問い合わせる。
   useEffect(() => {
-    if (!isSpooky || !rec) return;
+    if (!rec) return;
+    if (!tagShinrei && rec.placeId) return;  // 明らかなGoogleスポットは問い合わせ不要
     let active = true;
     const params = new URLSearchParams();
     if (rec.supabaseId) params.set('placeId', rec.supabaseId);
     else if (rec.title) params.set('placeName', rec.title);
     apiFetch(`/api/spot-photo?${params.toString()}`)
       .then(r => r.json())
-      .then(d => { if (active && d?.ok && Array.isArray(d.photos)) setFetchedPhotos(d.photos); })
+      .then(d => {
+        if (!active || !d?.ok) return;
+        if (Array.isArray(d.photos)) setFetchedPhotos(d.photos);
+        if (d.isShinrei) setServerShinrei(true);
+      })
       .catch(() => {});
     return () => { active = false; };
-  }, [isSpooky, rec?.supabaseId, rec?.title]);
+  }, [tagShinrei, rec?.placeId, rec?.supabaseId, rec?.title]);
 
   // 写真を提供（誰でも追加可・削除は管理者のみ）
   const handleAddSpotPhoto = async () => {
@@ -400,6 +409,11 @@ export default function PlaceDetailPage() {
   // Google Place Detail APIから完全な情報を取得
   const fetchDetail = useCallback(async (retries = 1) => {
     if (!rec) return;
+    // 心霊スポットはGoogleを一切使わない（写真・口コミ・営業時間も取得しない）
+    if (rec.tags?.includes('#心霊スポット')) {
+      setExtra(prev => ({ ...prev, loaded: true }));
+      return;
+    }
     setFetchError(false);
     setExtra(prev => ({ ...prev, loaded: false }));
 
@@ -746,8 +760,8 @@ export default function PlaceDetailPage() {
             </TouchableOpacity>
           ) : null}
 
-          {/* 評価バー（データあり時のみ） */}
-          {extra.loaded && displayRating != null && (
+          {/* 評価バー（データあり時のみ。心霊はGoogle評価を出さない） */}
+          {!isSpooky && extra.loaded && displayRating != null && (
             <View style={s.ratingBar}>
               <Text style={s.ratingBig}>{displayRating.toFixed(1)}</Text>
               <View style={s.ratingMid}>
@@ -851,8 +865,8 @@ export default function PlaceDetailPage() {
           </View>
           )}
 
-          {/* ─── 営業時間セクション ─── */}
-          {extra.loaded && hoursRows.length > 0 && (
+          {/* ─── 営業時間セクション（心霊は出さない）─── */}
+          {!isSpooky && extra.loaded && hoursRows.length > 0 && (
             <View style={s.section}>
               <View style={s.sectionHeader}>
                 <Clock size={15} color="#C084FC" strokeWidth={2} />
@@ -883,8 +897,8 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── 口コミセクション ─── */}
-          {(extra.reviews?.length ?? 0) > 0 && (
+          {/* ─── 口コミセクション（心霊は出さない）─── */}
+          {!isSpooky && (extra.reviews?.length ?? 0) > 0 && (
             <View style={s.section}>
               <View style={s.sectionHeader}>
                 <ThumbsUp size={15} color="#C084FC" strokeWidth={2} />

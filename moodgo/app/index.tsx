@@ -829,6 +829,8 @@ export default function Home() {
         stationText:      rec.stationText,
         distanceText:     rec.distanceText,
         priceLevel:       rec.priceLevel,
+        tags:             rec.tags,        // 心霊判定用
+        supabaseId:       rec.supabaseId,  // 投稿写真の照合用
       }, ...prev]);
     }
   };
@@ -858,6 +860,8 @@ export default function Home() {
       priceLevel:       item.priceLevel,
       phone:            item.phone,
       website:          item.website,
+      tags:             item.tags,
+      supabaseId:       item.supabaseId,
     };
     setSelectedPlace(rec);
     router.push('/place');

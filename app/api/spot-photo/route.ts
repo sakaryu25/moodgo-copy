@@ -77,15 +77,26 @@ export async function GET(req: Request) {
       if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, photos: [] }); throw error; }
       return NextResponse.json({ ok: true, photos: data ?? [] });
     }
-    // 一般: スポット単位
+    // 一般: スポット単位（写真一覧＋このスポットが心霊かどうか）
     const placeId = searchParams.get("placeId")?.trim();
     const placeName = searchParams.get("placeName")?.trim();
-    if (!placeId && !placeName) return NextResponse.json({ ok: true, photos: [] });
+    if (!placeId && !placeName) return NextResponse.json({ ok: true, photos: [], isShinrei: false });
     let q = supabase.from("spot_photos").select("id, image_url, created_at").order("created_at", { ascending: false });
     q = placeId ? q.eq("place_id", placeId) : q.eq("place_name", placeName!);
     const { data, error } = await q;
-    if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, photos: [] }); throw error; }
-    return NextResponse.json({ ok: true, photos: (data ?? []).map(r => r.image_url) });
+    if (error && !isMissingTable(error)) throw error;
+    const photos = (data ?? []).map(r => r.image_url);
+
+    // places に #心霊スポット タグがあるか判定（古いお気に入り＝tag未保存でも詳細でGoogleを使わないため）
+    let isShinrei = false;
+    try {
+      if (placeName) {
+        const { data: pl } = await supabase.from("places").select("tags").eq("name", placeName).limit(1).maybeSingle();
+        isShinrei = !!(pl?.tags as string[] | null)?.includes("#心霊スポット");
+      }
+    } catch { /* 判定失敗は false 扱い */ }
+
+    return NextResponse.json({ ok: true, photos, isShinrei });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
