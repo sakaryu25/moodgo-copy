@@ -24,6 +24,7 @@ import {
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppBackground, { APP_BG } from '@/components/AppBackground';
 import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
@@ -378,6 +379,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     setShowGroupSettings(false); setIconBusy(false);
     onChatOpenChange?.(true);
     fetchGroupDetail(g, deviceId);
+    // 右からスライドイン（戻る時と対になる動き）
+    dragX.setValue(SW);
+    Animated.timing(dragX, { toValue: 0, duration: 220, useNativeDriver: true }).start();
   };
 
   // ── アイコン変更（写真を選んで512pxに縮小→アップロード） ──
@@ -424,6 +428,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     setShowFavSheet(false);
     onChatOpenChange?.(false);
     if (deviceId) fetchGroups(deviceId); // 一覧の最新メッセージプレビューを更新
+  };
+
+  // 戻るボタン: スワイプバックと同じスライドアニメで閉じる
+  const animateCloseChat = () => {
+    Animated.timing(dragX, { toValue: SW, duration: 200, useNativeDriver: true }).start(() => {
+      dragX.setValue(0);
+      closeChat();
+    });
   };
   closeChatRef.current = closeChat;
 
@@ -775,14 +787,44 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       );
     };
     return (
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={{ flex: 1 }}>
+        {/* 背面: グループ一覧（スワイプバック時にLINEのように透けて見える。パララックス＋薄暗→明転） */}
         <Animated.View
-          style={[s.root, { paddingTop: insets.top, transform: [{ translateX: dragX }] }]}
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              transform: [{
+                translateX: dragX.interpolate({
+                  inputRange: [0, SW], outputRange: [-SW * 0.28, 0], extrapolate: 'clamp',
+                }),
+              }],
+            },
+          ]}
+        >
+          {renderListScreen()}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: '#000',
+                opacity: dragX.interpolate({ inputRange: [0, SW], outputRange: [0.14, 0], extrapolate: 'clamp' }),
+              },
+            ]}
+          />
+        </Animated.View>
+
+        {/* 前面: チャット（不透明背景＋左端の影付きでスライド） */}
+        <KeyboardAvoidingView style={StyleSheet.absoluteFill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Animated.View
+          style={[s.chatRoot, { paddingTop: insets.top, transform: [{ translateX: dragX }] }]}
           {...chatSwipePan.panHandlers}
         >
+          <AppBackground />
           {/* ヘッダー */}
           <View style={s.header}>
-            <PuniPressable onPress={closeChat} style={s.backCircle}>
+            <PuniPressable onPress={animateCloseChat} style={s.backCircle}>
               <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
             </PuniPressable>
             <View style={{ flex: 1, alignItems: 'center' }}>
@@ -1314,11 +1356,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             </View>
           </Modal>
         </Animated.View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     );
   }
 
+  return renderListScreen();
+
   // ─── グループ一覧画面（LINE風トーク一覧） ────────────────────────────────────
+  // 関数宣言（巻き上げ）にして、チャット画面の背面レイヤーからも描画できるようにする
+  function renderListScreen() {
   const canSubmitNick = !!(nickDraft.trim() || nickname);
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -1453,11 +1500,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       </Modal>
     </View>
   );
+  }
 }
 
 const s = StyleSheet.create({
   // 背景は index.tsx の AppBackground（共通背景）を透過で見せる
   root: { flex: 1, backgroundColor: 'transparent' },
+  // チャットは背面に一覧を透かすため不透明背景＋左端の影（LINE風スワイプバック用）
+  chatRoot: {
+    flex: 1, backgroundColor: APP_BG,
+    shadowColor: '#000', shadowOffset: { width: -6, height: 0 },
+    shadowOpacity: 0.12, shadowRadius: 14, elevation: 24,
+  },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 10, gap: 8,
