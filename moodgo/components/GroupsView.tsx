@@ -10,12 +10,13 @@ import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import {
   Activity, BookOpen, Bot, Camera, Car, Check, ChevronLeft, Coffee, Copy, Dices,
-  Flame, Heart, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle, Moon, Navigation,
-  PartyPopper, Plane, Plus, Send, Settings, ShoppingBag, Shuffle, Sparkles,
-  ThumbsUp, UtensilsCrossed, Users, X,
+  EyeOff, Flame, Heart, Languages, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle,
+  Moon, Navigation, PartyPopper, Plane, Plus, Reply, Send, Settings, ShoppingBag,
+  Shuffle, Sparkles, ThumbsUp, Undo2, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -73,6 +74,7 @@ const isIconUrl = (icon?: string | null): icon is string => !!icon && icon.start
 type Post  = {
   id: string; device_id: string; nickname: string; mood: string; comment: string | null;
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
+  reply_to_name?: string | null; reply_to_text?: string | null;
   created_at: string;
 };
 type Member = { device_id: string; nickname: string; icon?: string | null };
@@ -168,6 +170,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [members, setMembers] = useState<Member[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [reactTarget, setReactTarget] = useState<string | null>(null);  // 長押し中の投稿ID
+  const [replyTo, setReplyTo] = useState<{ id: string; name: string; text: string } | null>(null);
+  const [translated, setTranslated] = useState<Record<string, string>>({});  // postId→翻訳文
+  const [hiddenPosts, setHiddenPosts] = useState<Set<string>>(new Set());     // 自分の端末だけで非表示
   const [reactFrame, setReactFrame] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const bubbleRefs = useRef<Record<string, View | null>>({});
   const pickerAnim = useRef(new Animated.Value(0)).current;             // オーバーレイのヌルッと出現用
@@ -297,10 +302,70 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       setDeviceId(id);
       const nick = (await AsyncStorage.getItem(NICKNAME_KEY)) ?? '';
       setNickname(nick);
+      try {
+        const raw = await AsyncStorage.getItem('moodgo-hidden-posts');
+        if (raw) setHiddenPosts(new Set(JSON.parse(raw) as string[]));
+      } catch { /* ignore */ }
       await fetchGroups(id);
       setLoading(false);
     })();
   }, []);
+
+  // ── 長押しメニューの各アクション ──
+  const HIDDEN_KEY = 'moodgo-hidden-posts';
+  const postText = (p: Post) =>
+    [p.spot_name, p.spot_address, p.mood ? `#${p.mood}` : '', p.comment].filter(Boolean).join(' ').trim();
+
+  const actCopy = async (p: Post) => {
+    await Clipboard.setStringAsync(postText(p) || p.comment || '');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const actReply = (p: Post) => {
+    setReplyTo({ id: p.id, name: p.nickname, text: (p.spot_name || p.comment || `#${p.mood}`).slice(0, 60) });
+  };
+
+  const actTranslate = async (p: Post) => {
+    const src = p.comment || p.spot_name || '';
+    if (!src) return;
+    if (translated[p.id]) { setTranslated(t => { const n = { ...t }; delete n[p.id]; return n; }); return; } // 再タップで戻す
+    try {
+      const res = await apiFetch('/api/translate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: src }),
+      });
+      const data = await res.json();
+      if (data.ok) setTranslated(t => ({ ...t, [p.id]: data.text }));
+      else Alert.alert('翻訳できませんでした', data.error ?? '');
+    } catch { Alert.alert('エラー', '翻訳に失敗しました'); }
+  };
+
+  const actHideForMe = async (p: Post) => {
+    const next = new Set(hiddenPosts); next.add(p.id);
+    setHiddenPosts(next);
+    await AsyncStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])).catch(() => {});
+  };
+
+  const actUnsend = (p: Post) => {
+    if (!active) return;
+    Alert.alert('送信を取り消す', 'このメッセージをみんなの画面から消します。よろしいですか？', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '取り消す', style: 'destructive',
+        onPress: async () => {
+          setPosts(prev => prev.filter(x => x.id !== p.id));   // 楽観的に消す
+          try {
+            const res = await apiFetch('/api/mood-groups', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'unsend', groupId: active.id, deviceId, postId: p.id }),
+            });
+            const data = await res.json();
+            if (!data.ok) { fetchGroupDetail(active, deviceId); Alert.alert('エラー', data.error ?? '取り消しに失敗しました'); }
+          } catch { fetchGroupDetail(active, deviceId); Alert.alert('エラー', '通信に失敗しました'); }
+        },
+      },
+    ]);
+  };
 
   // タブ再タップ → チャットを閉じて一覧へ
   useEffect(() => {
@@ -493,10 +558,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     try {
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'post', groupId: active.id, deviceId, mood: selMood, comment: comment.trim() }),
+        body: JSON.stringify({
+          action: 'post', groupId: active.id, deviceId, mood: selMood, comment: comment.trim(),
+          replyToName: replyTo?.name ?? '', replyToText: replyTo?.text ?? '',
+        }),
       });
       const data = await res.json();
       if (data.ok) {
+        setReplyTo(null);
         setPosts(prev => [data.post, ...prev]);
         setSelMood(''); setComment('');
         // 全員の気分が揃った！ → お祝い＋AI提案の案内（同じ一致では1回だけ）
@@ -707,7 +776,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   // ─── チャット画面 ────────────────────────────────────────────────────────────
   if (active) {
     const canPost = (!!selMood || !!comment.trim()) && !posting;
-    const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
+    // 「自分のトークだけ消す」で隠した投稿を除外して、古い→新しい順に
+    const timeline = posts.filter(p => !hiddenPosts.has(p.id)).slice().reverse();
     const placeFavs = favorites.filter(f => f.kind !== 'post');
     const postFavs  = favorites.filter(f => f.kind === 'post');
 
@@ -783,10 +853,24 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
       return (
         <>
+          {/* 返信の引用 */}
+          {p.reply_to_text ? (
+            <View style={[s.replyQuote, mine && s.replyQuoteMine]}>
+              <Text style={s.replyQuoteName} numberOfLines={1}>{p.reply_to_name || 'メンバー'}</Text>
+              <Text style={s.replyQuoteText} numberOfLines={2}>{p.reply_to_text}</Text>
+            </View>
+          ) : null}
           {/* スポット共有ならカード、気分があれば値札タグ、ひとことだけなら何も出さない */}
           {isSpot ? spotCard() : (p.mood ? moodTag() : null)}
           {p.comment ? (
             <Text style={mine ? s.bubbleMineText : s.bubbleOtherText}>{p.comment}</Text>
+          ) : null}
+          {/* 翻訳結果 */}
+          {translated[p.id] ? (
+            <View style={s.translateBox}>
+              <Text style={s.translateLabel}>翻訳</Text>
+              <Text style={mine ? s.bubbleMineText : s.bubbleOtherText}>{translated[p.id]}</Text>
+            </View>
           ) : null}
           {hasChips && (
             <View style={s.reactChips}>
@@ -977,6 +1061,19 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
           {/* つぶやき入力 */}
           <View style={[s.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            {/* 返信プレビュー */}
+            {replyTo && (
+              <View style={s.replyBar}>
+                <View style={s.replyBarAccent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.replyBarName} numberOfLines={1}>{replyTo.name} に返信</Text>
+                  <Text style={s.replyBarText} numberOfLines={1}>{replyTo.text}</Text>
+                </View>
+                <PuniPressable onPress={() => setReplyTo(null)} style={s.replyBarClose}>
+                  <X size={15} color="#7C3AED" strokeWidth={2.5} />
+                </PuniPressable>
+              </View>
+            )}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1166,33 +1263,58 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     ))}
                   </Animated.View>
 
-                  {/* スポットならバブルの下に投票メニュー */}
-                  {isSpotT && (
-                    <Animated.View
-                      style={[
-                        s.voteMenu,
-                        { top: Math.min(f.y + f.h + 10, SH - 170) },
-                        mineT ? { right: 12 } : { left: Math.max(12, f.x) },
-                        popIn,
-                      ]}
-                    >
-                      <PuniPressable
-                        onPress={() => { sendReaction(tp.id, 'vote', 'want'); closeReactions(); }}
-                        style={s.voteMenuRow}
-                      >
-                        <Heart size={16} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
-                        <Text style={s.voteMenuText}>行きたい</Text>
-                      </PuniPressable>
-                      <View style={s.voteMenuDiv} />
-                      <PuniPressable
-                        onPress={() => { sendReaction(tp.id, 'vote', 'meh'); closeReactions(); }}
-                        style={s.voteMenuRow}
-                      >
-                        <Meh size={16} color="#F97316" strokeWidth={2.2} />
-                        <Text style={[s.voteMenuText, { color: '#F97316' }]}>微妙</Text>
-                      </PuniPressable>
-                    </Animated.View>
-                  )}
+                  {/* バブルの下にLINE風コンテキストメニュー */}
+                  <Animated.View
+                    style={[
+                      s.ctxMenu,
+                      { top: Math.min(f.y + f.h + 10, SH - 320) },
+                      mineT ? { right: 12 } : { left: Math.max(12, f.x) },
+                      popIn,
+                    ]}
+                  >
+                    {isSpotT && (
+                      <>
+                        <PuniPressable onPress={() => { sendReaction(tp.id, 'vote', 'want'); closeReactions(); }} style={s.ctxRow}>
+                          <Heart size={17} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
+                          <Text style={s.ctxText}>行きたい</Text>
+                        </PuniPressable>
+                        <View style={s.ctxDiv} />
+                        <PuniPressable onPress={() => { sendReaction(tp.id, 'vote', 'meh'); closeReactions(); }} style={s.ctxRow}>
+                          <Meh size={17} color="#F97316" strokeWidth={2.2} />
+                          <Text style={s.ctxText}>微妙</Text>
+                        </PuniPressable>
+                        <View style={s.ctxDiv} />
+                      </>
+                    )}
+                    <PuniPressable onPress={() => { actReply(tp); closeReactions(); }} style={s.ctxRow}>
+                      <Reply size={17} color="#7C3AED" strokeWidth={2.2} />
+                      <Text style={s.ctxText}>返信</Text>
+                    </PuniPressable>
+                    <View style={s.ctxDiv} />
+                    <PuniPressable onPress={() => { actCopy(tp); closeReactions(); }} style={s.ctxRow}>
+                      <Copy size={17} color="#7C3AED" strokeWidth={2.2} />
+                      <Text style={s.ctxText}>コピー</Text>
+                    </PuniPressable>
+                    <View style={s.ctxDiv} />
+                    <PuniPressable onPress={() => { actTranslate(tp); closeReactions(); }} style={s.ctxRow}>
+                      <Languages size={17} color="#7C3AED" strokeWidth={2.2} />
+                      <Text style={s.ctxText}>{translated[tp.id] ? '翻訳を消す' : '翻訳'}</Text>
+                    </PuniPressable>
+                    <View style={s.ctxDiv} />
+                    <PuniPressable onPress={() => { actHideForMe(tp); closeReactions(); }} style={s.ctxRow}>
+                      <EyeOff size={17} color="#6B7280" strokeWidth={2.2} />
+                      <Text style={[s.ctxText, { color: '#6B7280' }]}>自分のトークだけ消す</Text>
+                    </PuniPressable>
+                    {mineT && (
+                      <>
+                        <View style={s.ctxDiv} />
+                        <PuniPressable onPress={() => { closeReactions(); actUnsend(tp); }} style={s.ctxRow}>
+                          <Undo2 size={17} color="#F43F5E" strokeWidth={2.2} />
+                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>送信を取り消す</Text>
+                        </PuniPressable>
+                      </>
+                    )}
+                  </Animated.View>
                 </View>
               );
             })()}
@@ -1866,18 +1988,46 @@ const s = StyleSheet.create({
     shadowOpacity: 0.22, shadowRadius: 22, elevation: 16,
   },
   pickerEmoji: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  voteMenu: {
-    position: 'absolute', width: 190,
+  // LINE風コンテキストメニュー
+  ctxMenu: {
+    position: 'absolute', width: 220,
     backgroundColor: '#fff', borderRadius: 18, paddingVertical: 4,
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.22, shadowRadius: 22, elevation: 16,
   },
-  voteMenuRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 13,
+  ctxRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
   },
-  voteMenuText: { fontSize: 14, fontWeight: '800', color: '#10B981' },
-  voteMenuDiv: { height: 1, backgroundColor: '#F3F0FF', marginHorizontal: 12 },
+  ctxText: { fontSize: 14, fontWeight: '700', color: INK },
+  ctxDiv: { height: 1, backgroundColor: '#F3F0FF', marginHorizontal: 12 },
+
+  // 返信プレビュー（コンポーザー上）
+  replyBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#F5F3FF', borderRadius: 12,
+    paddingVertical: 8, paddingHorizontal: 10, marginBottom: 8,
+  },
+  replyBarAccent: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: '#9B6BFF' },
+  replyBarName: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+  replyBarText: { fontSize: 12, color: '#6B7280', marginTop: 1 },
+  replyBarClose: {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: '#EDE9FE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // バブル内の返信引用
+  replyQuote: {
+    borderLeftWidth: 3, borderLeftColor: '#C4B5FD',
+    paddingLeft: 8, paddingVertical: 3, marginBottom: 6,
+  },
+  replyQuoteMine: { borderLeftColor: '#A78BFA' },
+  replyQuoteName: { fontSize: 10, fontWeight: '800', color: '#7C3AED' },
+  replyQuoteText: { fontSize: 11, color: '#8B7BB8', marginTop: 1 },
+
+  // 翻訳結果
+  translateBox: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(124,58,237,0.12)' },
+  translateLabel: { fontSize: 9, fontWeight: '800', color: '#A78BFA', marginBottom: 2 },
 
   // ── ルーレット・気分一致 ──
   diceBtn: {

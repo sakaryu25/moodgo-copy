@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
           // select("*"): icon列が未作成のDBでもエラーにならない
           supabase.from("mood_groups").select("*").eq("id", groupId).single(),
           supabase.from("mood_group_members").select("device_id, nickname, joined_at").eq("group_id", groupId).order("joined_at"),
-          supabase.from("mood_group_posts").select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
+          supabase.from("mood_group_posts").select("*")
             .eq("group_id", groupId).order("created_at", { ascending: false }).limit(50),
         ]);
       if (gErr) throw gErr;
@@ -200,18 +200,26 @@ export async function POST(req: NextRequest) {
 
       // asBot: 気分一致のAI提案などをMoodGo名義で投稿（送信者はメンバーであることが条件）
       const nickname = body.asBot === true ? "MoodGo" : me.nickname;
+      const replyToName = String(body.replyToName ?? "").trim().slice(0, 20);
+      const replyToText = String(body.replyToText ?? "").trim().slice(0, 120);
 
-      const { data: post, error: pErr } = await supabase
-        .from("mood_group_posts")
-        .insert({
-          group_id: groupId, device_id: deviceId, nickname, mood,
-          comment: comment || null,
-          spot_name: spotName || null,
-          spot_address: spotAddress || null,
-          spot_url: spotUrl || null,
-        })
-        .select("id, device_id, nickname, mood, comment, spot_name, spot_address, spot_url, created_at")
-        .single();
+      const baseInsert = {
+        group_id: groupId, device_id: deviceId, nickname, mood,
+        comment: comment || null,
+        spot_name: spotName || null,
+        spot_address: spotAddress || null,
+        spot_url: spotUrl || null,
+      };
+      // reply列が未作成（group-reply.sql 未実行）でも動くようフォールバック
+      const withReply = (replyToName || replyToText)
+        ? { ...baseInsert, reply_to_name: replyToName || null, reply_to_text: replyToText || null }
+        : baseInsert;
+      let { data: post, error: pErr } = await supabase
+        .from("mood_group_posts").insert(withReply).select("*").single();
+      if (pErr && (pErr.code === "42703" || pErr.code === "PGRST204")) {
+        ({ data: post, error: pErr } = await supabase
+          .from("mood_group_posts").insert(baseInsert).select("*").single());
+      }
       if (pErr) throw pErr;
 
       // ── 気分一致の検出 ──
@@ -243,6 +251,27 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ ok: true, post, moodMatch });
+    }
+
+    // ── 送信を取り消す（自分の投稿のみ削除） ──
+    if (body.action === "unsend") {
+      const postId = String(body.postId ?? "").trim();
+      if (!postId) return NextResponse.json({ ok: false, error: "postId必須" }, { status: 400 });
+      const { data: row, error: rErr } = await supabase
+        .from("mood_group_posts")
+        .select("device_id")
+        .eq("id", postId)
+        .maybeSingle();
+      if (rErr) throw rErr;
+      if (!row) return NextResponse.json({ ok: true });   // 既に無い
+      if (row.device_id !== deviceId) {
+        return NextResponse.json({ ok: false, error: "自分の投稿のみ取り消せます" }, { status: 403 });
+      }
+      const { error } = await supabase.from("mood_group_posts").delete().eq("id", postId);
+      if (error) throw error;
+      // 紐づくリアクションも掃除（テーブル未作成なら無視）
+      await supabase.from("mood_group_reactions").delete().eq("post_id", postId).then(() => {}, () => {});
+      return NextResponse.json({ ok: true });
     }
 
     // ── ニックネーム一括変更（設定画面から。参加中の全グループのメンバー名を更新） ──
