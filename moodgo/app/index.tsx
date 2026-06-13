@@ -34,6 +34,7 @@ import {
   loadJSON, saveJSON,
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
+import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
 import * as Location from 'expo-location';
@@ -521,6 +522,9 @@ export default function Home() {
       }
     } catch (e) {
       console.error('[openResults]', e);
+      reportError(e, 'error', { where: 'openResults' });
+      // 静かに空画面で放置せず、原因と再試行を案内（通信失敗/タイムアウト）
+      setApiWarning('検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
     // ローディング終了
@@ -752,6 +756,8 @@ export default function Home() {
       }
     } catch (e) {
       console.error('[handleResearch]', e);
+      reportError(e, 'error', { where: 'handleResearch' });
+      setApiWarning('再検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
     if (loadingTimer.current) clearInterval(loadingTimer.current);
