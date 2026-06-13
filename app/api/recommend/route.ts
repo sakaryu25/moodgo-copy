@@ -6042,8 +6042,8 @@ async function handleRecommend(request: Request) {
         //   スリルは常に両方スキップ（独自データのみ）
         const skipAllSupplements = isProprietaryOnly || sbQualified.length >= 15;
         const skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
-        // Supabaseで賄う件数: スキップ/独自時は15件まで、通常は5件
-        const sbTakeCount = (skipAllSupplements || isProprietaryOnly) ? 15 : 5;
+        // Supabaseで賄う件数: スキップ/独自時は15件、通常は16件（=8件表示＋補填＋OpenAI判別用の広めプール）
+        const sbTakeCount = (skipAllSupplements || isProprietaryOnly) ? 15 : 16;
 
         // 手動追加スポット優先（埋もれ防止）: 人が手入力した source="manual"/"admin"/"user" は
         // Google自動取り込み("google")より上位に出す。最近の流行りカフェ等を埋もれさせない。
@@ -6086,8 +6086,8 @@ async function handleRecommend(request: Request) {
           .slice(0, 8)
           .map(r => r.name);
 
-        // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 を全て並列実行 ──────
-        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap] = await Promise.all([
+        // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
+        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiOrder] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
           //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
           (hasLocation && !skipAllSupplements)
@@ -6101,10 +6101,11 @@ async function handleRecommend(request: Request) {
           // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
           //   B: Supabaseが10件以上 or 15件以上なら Yahoo を呼ばない（コスト削減）
           (hasLocation && !skipAllSupplements && !skipYahooOnly)
+            // Yahoo結果はGoogleで写真補完する（=コスト）。表示は5件なので取得数を10に抑える
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
-                sbNames, 15, minRadiusKm, apiKey
+                sbNames, 10, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
           // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
@@ -6182,6 +6183,27 @@ async function handleRecommend(request: Request) {
             }));
             return stationMap;
           })(),
+          // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
+          //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
+          ((): Promise<number[]> => {
+            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 8) return Promise.resolve([] as number[]);
+            const cand = scored.map((r, i) =>
+              `${i}: ${r.name ?? ""}｜${(r.tags ?? []).filter(t => sbNiceTags.includes(t)).slice(0, 3).join("/")}｜★${r.rating ?? "-"}`
+            ).join("\n");
+            return openai.chat.completions.create({
+              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 240,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: 'あなたは出かけ先の選別AIです。ユーザーの気分・希望に「最も良い順」へ候補番号を並べ替え、{"order":[数値,...]} のみをJSONで返してください。全番号を1回ずつ含めること。' },
+                { role: "user", content: `気分:${answers.mood ?? ""}／深掘り:${effectiveDeepDive || "なし"}／同行:${answers.companion ?? ""}／希望:${answers.freeWord || refinementText || "なし"}\n候補:\n${cand}` },
+              ],
+            }, { signal: AbortSignal.timeout(7000) })
+              .then(rr => {
+                const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
+                return Array.isArray(parsed.order) ? parsed.order.map(Number).filter((n: number) => Number.isInteger(n)) : [];
+              })
+              .catch(() => [] as number[]);
+          })(),
         ]);
 
         // 合計 0 件ならレガシーフローへ
@@ -6189,7 +6211,20 @@ async function handleRecommend(request: Request) {
           throw new Error("No results from Supabase, Google, or Yahoo supplement");
         }
 
-        const supabaseRecs = scored.map(r => {
+        // OpenAIが判別した順に Supabase候補を並べ替え（残りは元の順序で後ろに）
+        let scoredRanked = scored;
+        if (Array.isArray(sbAiOrder) && sbAiOrder.length > 0) {
+          const seenIdx = new Set<number>();
+          const out: typeof scored = [];
+          for (const x of sbAiOrder) {
+            const i = Number(x);
+            if (Number.isInteger(i) && i >= 0 && i < scored.length && !seenIdx.has(i)) { seenIdx.add(i); out.push(scored[i]); }
+          }
+          for (let i = 0; i < scored.length; i++) if (!seenIdx.has(i)) out.push(scored[i]);
+          if (out.length === scored.length) scoredRanked = out;
+        }
+
+        const supabaseRecs = scoredRanked.map(r => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
           // SupabaseのgooglePlaceId（r.idフィールド）をplaceIdとして渡す
           // → ExpoのdetailページでGoogle Places APIから正確な口コミ・営業時間を取得できる
@@ -6339,18 +6374,19 @@ async function handleRecommend(request: Request) {
         const gSorted  = finalizeSource(googleSupplements as Rec[]);
         const ySorted  = finalizeSource(yahooSupplements as Rec[]);
 
-        // 各ソースから最大5件を重複排除しながら取得
+        // ソース配分: Supabase 8 / Google 2 / Yahoo 5（独自DB優先・Google最小化）。
+        // 足りない分は Supabase余り → Yahoo余り → Google余り の順で補填して15件にする。
         const seen: DedupeKey[] = [];
-        const { taken: sbTaken, skipped: sbExtra } = pickUnique(sbSorted, 5, seen);
-        const { taken: gTaken,  skipped: gExtra  } = pickUnique(gSorted,  5, seen);
+        const { taken: sbTaken, skipped: sbExtra } = pickUnique(sbSorted, 8, seen);
+        const { taken: gTaken,  skipped: gExtra  } = pickUnique(gSorted,  2, seen);
         const { taken: yTaken,  skipped: yExtra  } = pickUnique(ySorted,  5, seen);
 
         // ショートフォール補填:
         // 合計15件に足りない分を、他ソースの余り（skipped）から順次補充する。
-        // 優先順: Supabase余り → Google余り → Yahoo余り
+        // 優先順: Supabase余り → Yahoo余り → Google余り（Googleは最後＝最小化）
         const totalTaken = sbTaken.length + gTaken.length + yTaken.length;
         const backfillNeed = Math.max(0, 15 - totalTaken);
-        const backfillPool = sortOrShuffle([...sbExtra, ...gExtra, ...yExtra]);
+        const backfillPool = [...sortOrShuffle(sbExtra), ...sortOrShuffle(yExtra), ...sortOrShuffle(gExtra)];
         const { taken: backfill } = pickUnique(backfillPool, backfillNeed, seen);
 
         let recommendations: typeof supabaseRecs = [
