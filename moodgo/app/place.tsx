@@ -6,14 +6,17 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
-  ArrowLeft, ChevronDown, ChevronUp, Clock, Globe, Heart,
-  MapPin, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
+  ArrowLeft, Camera, ChevronDown, ChevronUp, Clock, Globe, Heart,
+  MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Linking,
   NativeScrollEvent,
@@ -29,7 +32,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace } from '@/lib/selectedPlace';
-import { API_BASE } from '@/lib/api';
+import { API_BASE, apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
@@ -338,9 +342,41 @@ export default function PlaceDetailPage() {
   const photoScrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const photos = rec
+  // 心霊スポット判定（タグ） + 利用者がその場で追加した写真
+  const isSpooky = !!rec?.tags?.includes('#心霊スポット');
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const basePhotos = rec
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
+  const photos = [...uploadedPhotos, ...basePhotos];
+
+  // 写真を提供（誰でも追加可・削除は管理者のみ）
+  const handleAddSpotPhoto = async () => {
+    if (uploadingPhoto || !rec) return;
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { Alert.alert('写真へのアクセスが必要です', '設定アプリからMoodGoに写真の許可をしてください。'); return; }
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+      if (picked.canceled || !picked.assets?.length) return;
+      setUploadingPhoto(true);
+      const small = await ImageManipulator.manipulateAsync(
+        picked.assets[0].uri, [{ resize: { width: 1080 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      const deviceId = await getDeviceId().catch(() => '');
+      const res = await apiFetch('/api/spot-photo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId: rec.supabaseId, placeName: rec.title, address: rec.address ?? '', deviceId, imageBase64: small.base64 }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
+      setUploadedPhotos(prev => [data.url, ...prev]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
+    } finally { setUploadingPhoto(false); }
+  };
 
   // Google Place Detail APIから完全な情報を取得
   const fetchDetail = useCallback(async (retries = 1) => {
@@ -568,6 +604,17 @@ export default function PlaceDetailPage() {
                   style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
               ))}
             </ScrollView>
+          ) : isSpooky ? (
+            <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={s.heroPlaceholder}>
+              <Moon size={48} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
+              <Text style={s.heroSpookyTitle}>この場所の写真がありません</Text>
+              <Text style={s.heroSpookySub}>写真をお持ちの方は、ぜひ提供してください 🙏</Text>
+              <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.8} style={s.heroSpookyBtn}>
+                {uploadingPhoto
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>写真を追加</Text></>}
+              </TouchableOpacity>
+            </LinearGradient>
           ) : (
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroPlaceholder}>
               <Navigation size={56} color="rgba(255,255,255,0.55)" strokeWidth={1.2} />
@@ -599,6 +646,13 @@ export default function PlaceDetailPage() {
             <View style={s.photoCount}>
               <Text style={s.photoCountText}>{photoIdx + 1} / {photos.length}</Text>
             </View>
+          )}
+          {isSpooky && photos.length > 0 && (
+            <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.85} style={s.heroAddMini}>
+              {uploadingPhoto
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <><Camera size={13} color="#fff" strokeWidth={2.2} /><Text style={s.heroAddMiniText}>写真を追加</Text></>}
+            </TouchableOpacity>
           )}
         </View>
 
@@ -904,6 +958,20 @@ const s = StyleSheet.create({
   // ヒーロー
   heroWrap: { position: 'relative', height: 300 },
   heroPlaceholder: { width: '100%', height: 300, alignItems: 'center', justifyContent: 'center' },
+  heroSpookyTitle: { color: 'rgba(225,215,255,0.95)', fontSize: 16, fontWeight: '800', marginTop: 14 },
+  heroSpookySub: { color: 'rgba(195,180,240,0.72)', fontSize: 13, marginTop: 5, textAlign: 'center', paddingHorizontal: 30 },
+  heroSpookyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 18,
+    paddingHorizontal: 20, paddingVertical: 11, borderRadius: 999,
+    backgroundColor: 'rgba(150,110,230,0.55)', borderWidth: 1, borderColor: 'rgba(200,180,255,0.4)',
+  },
+  heroSpookyBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  heroAddMini: {
+    position: 'absolute', bottom: 14, left: 14, flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(20,12,35,0.72)',
+    borderWidth: 1, borderColor: 'rgba(200,180,255,0.35)',
+  },
+  heroAddMiniText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   heroOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 130 },
   arrowBtn: {
     position: 'absolute', top: '50%', marginTop: -20,

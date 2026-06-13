@@ -358,34 +358,35 @@ export default function ResultsView(props: Props) {
   if (notSkipped(selectedArea))       condChips.push({ label: t.condArea,      value: selectedArea,                         Icon: MapPin });
   if (facilityLabel)                  condChips.push({ label: 'コース',         value: facilityLabel,                        Icon: Tag });
 
-  // 心霊スポット時は画面全体を怖い雰囲気（暗い背景＋暗いナビバー）にする
-  const spooky = deepDiveL1 === '心霊';
-  const spookyText = spooky ? '#E7DCFF' : undefined;
+  // 心霊スポット時は画面全体を怖い雰囲気に。ただし「検索中は白、結果が出たら暗く」。
+  const isShinrei = deepDiveL1 === '心霊';
+  const dark = isShinrei && !isLoading;
+  const darkText = dark ? '#E7DCFF' : undefined;
 
   return (
-    <View style={[s.root, spooky && s.rootSpooky]}>
-      {/* 心霊: 画面全体に暗い霧のグラデーション背景を敷く */}
-      {spooky && (
+    <View style={[s.root, dark && s.rootSpooky]}>
+      {/* 心霊: 結果表示後に画面全体へ暗い霧のグラデーション背景を敷く */}
+      {dark && (
         <LinearGradient
-          colors={['#1A1030', '#120A24', '#080414']}
+          colors={['#1B0F33', '#100722', '#050210']}
           start={{ x: 0.3, y: 0 }} end={{ x: 0.7, y: 1 }}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
       )}
       {/* iOS navigation bar */}
-      <View style={[s.navBar, spooky && s.navBarSpooky, { paddingTop: insets.top }]}>
-        <BlurView intensity={spooky ? 40 : 80} tint={spooky ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+      <View style={[s.navBar, dark && s.navBarSpooky, { paddingTop: insets.top }]}>
+        <BlurView intensity={dark ? 40 : 80} tint={dark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <View style={s.navBarBorder} />
         <View style={s.navBarInner}>
           <TouchableOpacity onPress={onReset} style={s.backBtn} activeOpacity={0.6} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={20} color={spooky ? '#C9B6FF' : BRAND} strokeWidth={2.5} />
-            <Text style={[s.backText, spookyText ? { color: spookyText } : null]}>{t.back}</Text>
+            <ChevronLeft size={20} color={dark ? '#C9B6FF' : BRAND} strokeWidth={2.5} />
+            <Text style={[s.backText, darkText ? { color: darkText } : null]}>{t.back}</Text>
           </TouchableOpacity>
           <View style={s.navCenter}>
-            <Text style={[s.navTitle, spookyText ? { color: spookyText } : null]} numberOfLines={1}>{pageTitle}</Text>
+            <Text style={[s.navTitle, darkText ? { color: darkText } : null]} numberOfLines={1}>{pageTitle}</Text>
             {!isLoading && facilityItems.length > 0 && (
-              <Text style={[s.navCount, spooky ? { color: 'rgba(200,185,245,0.7)' } : null]}>{facilityItems.length}{lang === 'ja' ? '件' : ' spots'}</Text>
+              <Text style={[s.navCount, dark ? { color: 'rgba(200,185,245,0.7)' } : null]}>{facilityItems.length}{lang === 'ja' ? '件' : ' spots'}</Text>
             )}
           </View>
           <View style={s.navRight}>
@@ -408,24 +409,24 @@ export default function ResultsView(props: Props) {
           <TouchableOpacity
             onPress={() => setShowConditions((v) => !v)}
             activeOpacity={0.85}
-            style={s.condCard}
+            style={[s.condCard, dark && s.condCardDark]}
           >
             <View style={s.condHeader}>
               <View style={s.condLabelRow}>
-                <List size={14} color="#A78BFA" strokeWidth={2} />
-                <Text style={s.condLabel}>{t.conditionLabel}</Text>
+                <List size={14} color={dark ? '#B79CFF' : '#A78BFA'} strokeWidth={2} />
+                <Text style={[s.condLabel, darkText ? { color: darkText } : null]}>{t.conditionLabel}</Text>
               </View>
               {showConditions
-                ? <ChevronUp size={14} color="#9CA3AF" strokeWidth={2} />
-                : <ChevronDown size={14} color="#9CA3AF" strokeWidth={2} />}
+                ? <ChevronUp size={14} color={dark ? '#8C7BB8' : '#9CA3AF'} strokeWidth={2} />
+                : <ChevronDown size={14} color={dark ? '#8C7BB8' : '#9CA3AF'} strokeWidth={2} />}
             </View>
             {showConditions && (
               <View style={s.condChips}>
                 {condChips.map((c, i) => (
-                  <View key={i} style={s.condChip}>
-                    <c.Icon size={11} color="#A78BFA" strokeWidth={2} />
+                  <View key={i} style={[s.condChip, dark && s.condChipDark]}>
+                    <c.Icon size={11} color={dark ? '#B79CFF' : '#A78BFA'} strokeWidth={2} />
                     <Text style={s.condChipLabel}>{c.label}</Text>
-                    <Text style={s.condChipValue}>{c.value}</Text>
+                    <Text style={[s.condChipValue, dark && { color: '#E7DCFF' }]}>{c.value}</Text>
                   </View>
                 ))}
               </View>
@@ -449,14 +450,14 @@ export default function ResultsView(props: Props) {
                   <TouchableOpacity
                     key={mode}
                     onPress={() => setResultSort(mode)}
-                    style={[s.controlChip, active && s.controlChipActive]}
+                    style={[s.controlChip, dark && s.controlChipDark, active && s.controlChipActive]}
                     activeOpacity={0.75}
                   >
                     {active && (
                       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                     )}
-                    <Icon size={13} color={active ? '#fff' : '#9CA3AF'} strokeWidth={2} />
-                    <Text style={[s.controlChipText, active && s.controlChipTextActive]}>
+                    <Icon size={13} color={active ? '#fff' : (dark ? '#B7A8D9' : '#9CA3AF')} strokeWidth={2} />
+                    <Text style={[s.controlChipText, dark && !active && s.controlChipTextDark, active && s.controlChipTextActive]}>
                       {label}
                     </Text>
                   </TouchableOpacity>
@@ -469,28 +470,28 @@ export default function ResultsView(props: Props) {
               {/* 営業中フィルター */}
               <TouchableOpacity
                 onPress={() => setOpenNowOnly((v) => !v)}
-                style={[s.controlChip, openNowOnly && s.controlChipOpenActive]}
+                style={[s.controlChip, dark && s.controlChipDark, openNowOnly && s.controlChipOpenActive]}
                 activeOpacity={0.75}
               >
                 {openNowOnly && (
                   <LinearGradient colors={['#34C759', '#30D158']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                 )}
                 <View style={[s.openDot, openNowOnly && s.openDotActive]} />
-                <Text style={[s.controlChipText, openNowOnly && s.controlChipTextActive]}>{t.filterOpenNow}</Text>
+                <Text style={[s.controlChipText, dark && !openNowOnly && s.controlChipTextDark, openNowOnly && s.controlChipTextActive]}>{t.filterOpenNow}</Text>
               </TouchableOpacity>
 
               {/* 未見フィルター */}
               {seenPlaceTitles.length > 0 && (
                 <TouchableOpacity
                   onPress={() => setUnseenOnly((v) => !v)}
-                  style={[s.controlChip, unseenOnly && s.controlChipActive]}
+                  style={[s.controlChip, dark && s.controlChipDark, unseenOnly && s.controlChipActive]}
                   activeOpacity={0.75}
                 >
                   {unseenOnly && (
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                   )}
-                  <Eye size={13} color={unseenOnly ? '#fff' : '#9CA3AF'} strokeWidth={2} />
-                  <Text style={[s.controlChipText, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
+                  <Eye size={13} color={unseenOnly ? '#fff' : (dark ? '#B7A8D9' : '#9CA3AF')} strokeWidth={2} />
+                  <Text style={[s.controlChipText, dark && !unseenOnly && s.controlChipTextDark, unseenOnly && s.controlChipTextActive]}>{t.filterUnseen}</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -507,11 +508,11 @@ export default function ResultsView(props: Props) {
             <TouchableOpacity
               onPress={() => onChangeRadius(nextRadius)}
               activeOpacity={0.82}
-              style={s.expandAreaBtn}
+              style={[s.expandAreaBtn, dark && s.expandAreaBtnDark]}
             >
-              <LinearGradient colors={['#E0F2FE', '#EDE9FE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-              <Navigation size={14} color={BRAND} strokeWidth={2.5} />
-              <Text style={s.expandAreaText}>
+              <LinearGradient colors={dark ? ['#2A1A45', '#1A1030'] : ['#E0F2FE', '#EDE9FE']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+              <Navigation size={14} color={dark ? '#C9B6FF' : BRAND} strokeWidth={2.5} />
+              <Text style={[s.expandAreaText, dark && { color: '#D9CBFF' }]}>
                 エリアを広げる（{nextRadius}km圏内）
               </Text>
             </TouchableOpacity>
@@ -520,8 +521,8 @@ export default function ResultsView(props: Props) {
 
         {/* ── 心霊・スリルの注意/免責バナー ─── */}
         {!isLoading && deepDiveL1 === '心霊' && (
-          <View style={s.cautionBanner}>
-            <Text style={s.cautionText}>
+          <View style={[s.cautionBanner, dark && s.cautionBannerDark]}>
+            <Text style={[s.cautionText, dark && { color: '#F0B8A0' }]}>
               ⚠️ 私有地・立入禁止区域には入らないでください。訪問は自己責任で、危険行為・無断侵入は推奨しません。
             </Text>
           </View>
@@ -593,7 +594,8 @@ export default function ResultsView(props: Props) {
             onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
             onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
-            spooky={deepDiveL1 === '心霊'}
+            spooky={isShinrei}
+            darkTheme={isShinrei}
           />
         ))}
 
@@ -784,7 +786,14 @@ export default function ResultsView(props: Props) {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
-  rootSpooky: { backgroundColor: '#080414' },
+  rootSpooky: { backgroundColor: '#050210' },
+  // ── 心霊ダークテーマ ──
+  condCardDark: { backgroundColor: 'rgba(28,18,48,0.92)', borderColor: 'rgba(140,110,210,0.3)' },
+  condChipDark: { backgroundColor: 'rgba(45,30,70,0.9)', borderColor: 'rgba(140,110,210,0.25)' },
+  controlChipDark: { backgroundColor: 'rgba(30,20,50,0.85)', borderColor: 'rgba(140,110,210,0.3)' },
+  controlChipTextDark: { color: '#B7A8D9' },
+  expandAreaBtnDark: { borderColor: 'rgba(150,120,220,0.4)' },
+  cautionBannerDark: { backgroundColor: 'rgba(60,25,20,0.7)', borderColor: 'rgba(180,90,70,0.4)' },
   navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: 'rgba(243,241,239,0.85)', borderBottomWidth: 1, borderBottomColor: 'rgba(192,132,252,0.18)' },
   navBarSpooky: { backgroundColor: 'rgba(12,7,24,0.7)', borderBottomColor: 'rgba(140,110,210,0.25)' },
   navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(192,132,252,0.18)' },

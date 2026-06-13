@@ -216,12 +216,14 @@ type Props = {
   onPressDetail?: () => void;
   /** 心霊・スリル系: 写真なしのとき暗い雰囲気プレースホルダーにする */
   spooky?: boolean;
+  /** 心霊: カード全体を暗い（怖い）テーマにする */
+  darkTheme?: boolean;
 };
 
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
-  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false,
+  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false, darkTheme = false,
 }: Props) {
   const t = T[lang];
   // 利用者がその場で追加した写真（即時表示・Google補強はしない）
@@ -337,7 +339,7 @@ export default function PlaceCard({
   const tags = item.features?.filter(f => f !== description && f.length > 0) ?? [];
 
   return (
-    <Animated.View style={[s.card, { transform: [{ scale }] }]}>
+    <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
 
       {/* ── 写真エリア ────────────────────────────── */}
       <View
@@ -461,15 +463,15 @@ export default function PlaceCard({
         {/* タイトル */}
         {onPressDetail ? (
           <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); }} activeOpacity={0.75}>
-            <Text style={[s.title, s.titleTappable]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+          <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
         )}
 
         {/* 説明文（Web版と同じ small gray text） */}
         {description ? (
-          <Text style={s.description} numberOfLines={2}>{description}</Text>
+          <Text style={[s.description, darkTheme && s.textDimDark]} numberOfLines={2}>{description}</Text>
         ) : null}
 
         {/* 評価 + 営業状態 (ピル) */}
@@ -498,19 +500,19 @@ export default function PlaceCard({
 
         {/* 住所 */}
         {item.address ? (
-          <Text style={s.address} numberOfLines={2}>{item.address}</Text>
+          <Text style={[s.address, darkTheme && s.textDimDark]} numberOfLines={2}>{item.address}</Text>
         ) : null}
 
         {/* 最寄り駅 / 距離 */}
         {item.stationText ? (
           <View style={s.hoursRow}>
-            <Train size={13} color="#9CA3AF" strokeWidth={2} />
-            <Text style={s.hoursText}>{item.stationText}</Text>
+            <Train size={13} color={darkTheme ? '#9C8CC4' : '#9CA3AF'} strokeWidth={2} />
+            <Text style={[s.hoursText, darkTheme && s.textDimDark]}>{item.stationText}</Text>
           </View>
         ) : item.distanceText ? (
           <View style={s.hoursRow}>
-            <Navigation size={13} color="#9CA3AF" strokeWidth={2} />
-            <Text style={s.hoursText}>
+            <Navigation size={13} color={darkTheme ? '#9C8CC4' : '#9CA3AF'} strokeWidth={2} />
+            <Text style={[s.hoursText, darkTheme && s.textDimDark]}>
               {item.distanceText}{item.durationText ? `  /  ${item.durationText}` : ''}
             </Text>
           </View>
@@ -560,11 +562,11 @@ export default function PlaceCard({
             <PuniPressable
               onPress={onMarkVisited}
               disabled={isVisited}
-              style={[s.visitedBtn, isVisited && s.visitedBtnDone]}
+              style={[s.visitedBtn, darkTheme && s.visitedBtnDark, isVisited && s.visitedBtnDone]}
             >
               {isVisited
                 ? <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
-                : <><Map size={13} color="#6B7280" strokeWidth={2} /><Text style={s.visitedBtnText}>{t.visited}</Text></>}
+                : <><Map size={13} color={darkTheme ? '#B7A8D9' : '#6B7280'} strokeWidth={2} /><Text style={[s.visitedBtnText, darkTheme && s.textDimDark]}>{t.visited}</Text></>}
             </PuniPressable>
           ) : null}
 
@@ -580,13 +582,13 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        <View style={s.divider} />
+        <View style={[s.divider, darkTheme && s.dividerDark]} />
 
         {/* ── 気分ボタン ── */}
         {(onMoodMatch || onMoodNotMatch) && (
           <>
             {moodLabel && !moodRating && (
-              <Text style={s.moodQuestion}>{t.moodQuestion(moodLabel)}</Text>
+              <Text style={[s.moodQuestion, darkTheme && s.textDimDark]}>{t.moodQuestion(moodLabel)}</Text>
             )}
             {moodRating ? (
               <View style={s.moodDoneRow}>
@@ -599,11 +601,11 @@ export default function PlaceCard({
               </View>
             ) : (
               <View style={s.moodRow}>
-                <PuniPressable onPress={() => onMoodMatch?.()} style={s.moodMatchBtn} containerStyle={{ flex: 1 }}>
+                <PuniPressable onPress={() => onMoodMatch?.()} style={[s.moodMatchBtn, darkTheme && s.moodMatchBtnDark]} containerStyle={{ flex: 1 }}>
                   <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
                   <Text style={s.moodMatchText}>{t.moodMatch}</Text>
                 </PuniPressable>
-                <PuniPressable onPress={() => onMoodNotMatch?.()} style={s.moodNotMatchBtn} containerStyle={{ flex: 1 }}>
+                <PuniPressable onPress={() => onMoodNotMatch?.()} style={[s.moodNotMatchBtn, darkTheme && s.moodNotMatchBtnDark]} containerStyle={{ flex: 1 }}>
                   <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />
                   <Text style={s.moodNotMatchText}>{t.moodNotMatch}</Text>
                 </PuniPressable>
@@ -629,27 +631,27 @@ export default function PlaceCard({
         <View style={s.footRow}>
           <View style={s.footLeft}>
             <PuniPressable onPress={handleShare} style={s.footBtnShare}>
-              <Share2 size={12} color={COLORS.textMuted} strokeWidth={2} />
-              <Text style={s.footBtnText}>{t.share}</Text>
+              <Share2 size={12} color={darkTheme ? '#8C7BB8' : COLORS.textMuted} strokeWidth={2} />
+              <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>{t.share}</Text>
             </PuniPressable>
             {/* 仲良しグループのチャットへ共有 */}
             <PuniPressable
               onPress={() => shareSpotToGroup({ title: item.title, address: item.address, mapUrl: item.mapUrl })}
               style={s.footBtnShare}
             >
-              <MessageCircle size={12} color={COLORS.textMuted} strokeWidth={2} />
-              <Text style={s.footBtnText}>グループ</Text>
+              <MessageCircle size={12} color={darkTheme ? '#8C7BB8' : COLORS.textMuted} strokeWidth={2} />
+              <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>グループ</Text>
             </PuniPressable>
           </View>
           <View style={s.footRight}>
             {onBlock && (
               <PuniPressable onPress={onBlock} style={s.footBtn}>
-                <Text style={s.footBtnText}>{t.hide}</Text>
+                <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>{t.hide}</Text>
               </PuniPressable>
             )}
             {onReport && (
               <PuniPressable onPress={onReport} style={s.footBtn}>
-                <Text style={s.footBtnText}>{t.report}</Text>
+                <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>{t.report}</Text>
               </PuniPressable>
             )}
           </View>
@@ -682,6 +684,15 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(192,132,252,0.12)',
   },
+  // ── 心霊ダークテーマ ──
+  cardDark: { backgroundColor: '#160C28', borderColor: 'rgba(140,110,210,0.28)', shadowColor: '#000' },
+  titleDark: { color: '#EFE6FF' },
+  textDimDark: { color: '#A99BC4' },
+  dividerDark: { backgroundColor: 'rgba(150,120,220,0.18)' },
+  visitedBtnDark: { backgroundColor: 'rgba(45,30,70,0.85)', borderColor: 'rgba(140,110,210,0.3)' },
+  moodMatchBtnDark: { backgroundColor: 'rgba(16,80,60,0.35)', borderColor: 'rgba(16,185,129,0.4)' },
+  moodNotMatchBtnDark: { backgroundColor: 'rgba(80,25,30,0.35)', borderColor: 'rgba(239,68,68,0.4)' },
+  footBtnTextDark: { color: '#9C8CC4' },
 
   // 写真
   photoWrap:        { position: 'relative' },

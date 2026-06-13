@@ -10,6 +10,8 @@ export type Recommendation = {
   budget?: string;
   time?: string;
   address?: string;
+  /** スポットのタグ（#心霊スポット 等。心霊判定に使用） */
+  tags?: string[];
   mapUrl?: string;
   rating?: number | null;
   userRatingCount?: number | null;
