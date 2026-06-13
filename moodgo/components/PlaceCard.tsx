@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import { Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
 import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import React, { useRef, useState } from 'react';
@@ -208,12 +208,14 @@ type Props = {
   moodLabel?: string;   // 気分ラベル（任意）
   /** タイトルタップで詳細ページへ */
   onPressDetail?: () => void;
+  /** 心霊・スリル系: 写真なしのとき暗い雰囲気プレースホルダーにする */
+  spooky?: boolean;
 };
 
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
-  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail,
+  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false,
 }: Props) {
   const t = T[lang];
   const rawPhotos = (item.photoUrls ?? []).length > 0
@@ -327,6 +329,11 @@ export default function PlaceCard({
           <TouchableOpacity activeOpacity={0.92} onPress={() => setViewerIdx(0)}>
             <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
           </TouchableOpacity>
+        ) : spooky ? (
+          // 心霊・スリル系の雰囲気プレースホルダー（暗い霧／月）
+          <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.photo, s.photoPlaceholder]}>
+            <Moon size={40} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
+          </LinearGradient>
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color={BRAND} strokeWidth={1.5} />

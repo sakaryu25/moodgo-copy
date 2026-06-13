@@ -571,6 +571,7 @@ export default function ResultsView(props: Props) {
             onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
             onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
+            spooky={selectedMood === 'スリル'}
           />
         ))}
 

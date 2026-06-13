@@ -349,6 +349,7 @@ function DetailView({
               onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
               onReport={() => setReportRec(rec)}
               onPressDetail={onPressDetail ? () => onPressDetail(rec) : undefined}
+              spooky={item.mood === 'スリル'}
             />
           ))
           : (
