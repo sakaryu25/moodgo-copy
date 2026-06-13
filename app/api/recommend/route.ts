@@ -6009,9 +6009,16 @@ async function handleRecommend(request: Request) {
 
         // scored を先に計算（同期処理 → OpenAI 並列実行に使う）
         // A-6: Wilson score で評価の信頼度を考慮（少件数の高評価が多件数の平均に勝てないようにする）
-        //   スリル(独自のみ)はジャンル一致するスポットだけに絞る（心霊なら心霊スポットのみ）。
+        //   スリル(独自のみ)はジャンル一致 or 深掘りタグ一致のスポットだけに絞る。
+        //   心霊は地名(常紋トンネル等)が多く名前で判定できないため #心霊スポット タグで一致させる。
+        const THRILL_DEEPDIVE_TAG: Record<string, string> = {
+          "絶叫": "#絶叫", "心霊": "#心霊スポット", "高所": "#高所", "体験型": "#体験型",
+        };
+        const ddTag = THRILL_DEEPDIVE_TAG[effectiveDeepDive] ?? "";
         const scoredPool = isProprietaryOnly
-          ? sbPoolCapped.filter(r => nameMatchesGenre(r.name ?? "", effectiveDeepDive))
+          ? sbPoolCapped.filter(r =>
+              nameMatchesGenre(r.name ?? "", effectiveDeepDive) ||
+              (!!ddTag && (r.tags ?? []).includes(ddTag)))
           : sbPoolCapped;
         const scored = scoredPool
           .map(r => ({
