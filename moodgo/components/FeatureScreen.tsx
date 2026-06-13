@@ -62,6 +62,7 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Coffee,
   Droplets,
   Footprints,
@@ -88,6 +89,9 @@ import PuniPressable from "./PuniPressable";
 // Design Tokens
 // ─────────────────────────────────────────────────────────────────────────────
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+
+// 記事感を出すための明朝系フォント（OS標準。Webフォント読み込み不要）
+const SERIF = Platform.select({ ios: "Hiragino Mincho ProN", android: "serif", default: "serif" });
 
 const C = {
   accent: "#F26A3D",
@@ -197,6 +201,12 @@ type SpotV2 = {
   catch_copy?: string;
   description?: string;
   image_url?: string;
+  gallery_image_urls?: string[];
+  tags?: string[];
+  features?: string[];
+  menu_items?: { name?: string; price?: string }[];
+  events?: { title?: string; start_date?: string; end_date?: string }[];
+  hours?: Record<string, { open?: string; close?: string; closed?: boolean } | string | undefined>;
 };
 type FeaturedPageV2 = {
   id: string;
@@ -1149,14 +1159,130 @@ function PrefectureGrid({ prefectures, onSelectPref }: PrefectureGridProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 // FeatureContentView
 // ─────────────────────────────────────────────────────────────────────────────
+// ── マガジン記事レイアウト ───────────────────────────────────────────────────
+const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+// 代表の営業時間（最初に開いている曜日の "9:00–18:00"）
+function representativeHours(hours?: SpotV2["hours"]): string | null {
+  if (!hours) return null;
+  for (const k of WEEKDAY_KEYS) {
+    const d = hours[k];
+    if (d && typeof d === "object" && !d.closed && (d.open || d.close)) {
+      return `${d.open ?? ""}–${d.close ?? ""}`;
+    }
+  }
+  return null;
+}
+
+// 1スポット = 1記事セクション
+function SpotArticle({ index, spot, onOpen }: { index: number; spot: SpotV2; onOpen: () => void }) {
+  const body = spot.description || spot.catch_copy || spot.location || "";
+  const menuN = spot.menu_items?.length ?? 0;
+  const hrs = representativeHours(spot.hours);
+  const ev = spot.events?.[0]?.title;
+  return (
+    <View style={s.mzArticle}>
+      <View style={s.mzArtHead}>
+        <Text style={s.mzNum}>{String(index).padStart(2, "0")}</Text>
+        <Text style={s.mzArtTitle}>{spot.title}</Text>
+      </View>
+      <TouchableOpacity activeOpacity={0.9} onPress={onOpen}>
+        <ExpoImage
+          source={{ uri: spot.image_url || IMG.cafe }}
+          style={s.mzArtImg}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
+      </TouchableOpacity>
+      {!!body && <Text style={s.mzArtBody}>{body}</Text>}
+      {(menuN > 0 || hrs || ev) && (
+        <View style={s.mzInfoRow}>
+          {menuN > 0 && (
+            <View style={s.mzInfoItem}>
+              <Utensils size={14} color={C.accent} strokeWidth={2} />
+              <Text style={s.mzInfoText}>メニュー{menuN}品</Text>
+            </View>
+          )}
+          {hrs && (
+            <View style={s.mzInfoItem}>
+              <Clock size={14} color={C.accent} strokeWidth={2} />
+              <Text style={s.mzInfoText}>{hrs}</Text>
+            </View>
+          )}
+          {ev && (
+            <View style={s.mzInfoItem}>
+              <Ticket size={14} color={C.accent} strokeWidth={2} />
+              <Text style={s.mzInfoText} numberOfLines={1}>{ev}</Text>
+            </View>
+          )}
+        </View>
+      )}
+      <TouchableOpacity style={s.mzReadRow} activeOpacity={0.7} onPress={onOpen}>
+        <Text style={s.mzReadText}>この店を読む</Text>
+        <ChevronRight size={15} color={C.accent} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function PullQuote({ text }: { text: string }) {
+  return (
+    <View style={s.mzQuoteWrap}>
+      <Text style={s.mzQuote}>「{text}」</Text>
+    </View>
+  );
+}
+
+function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; onOpenSpot: (id: string) => void }) {
+  const spots = page.featured_page_spots ?? [];
+  const cover = page.banner_image_url || spots[0]?.image_url || IMG.cafe;
+  const kicker = page.label || "今月の特集";
+  const title = page.banner_title || `${page.prefecture}特集`;
+  const lead = page.banner_description;
+  const quote = spots[0]?.catch_copy;
+  return (
+    <View>
+      {/* カバー（特集扉） */}
+      <View style={s.mzCover}>
+        <ExpoImage source={{ uri: cover }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+        <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.5)"]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
+        <View style={s.mzCoverKicker}>
+          <Text style={s.mzCoverKickerText}>{kicker}</Text>
+        </View>
+        {!!page.issue && <Text style={s.mzCoverIssue}>{page.issue}</Text>}
+      </View>
+
+      {/* タイトル＋リード */}
+      <View style={s.mzHead}>
+        <Text style={s.mzTitle}>{title}</Text>
+        {!!lead && <Text style={s.mzLead}>{lead}</Text>}
+      </View>
+      <View style={s.mzDivider} />
+
+      {/* 記事セクション（スポット） */}
+      {spots.map((sp, i) => (
+        <View key={sp.id}>
+          <SpotArticle index={i + 1} spot={sp} onOpen={() => onOpenSpot(sp.id)} />
+          {i === 0 && !!quote && <PullQuote text={quote} />}
+        </View>
+      ))}
+      {spots.length === 0 && <Text style={s.mzEmptyNote}>スポットは準備中です。</Text>}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FeatureContentView
+// ─────────────────────────────────────────────────────────────────────────────
 type FeatureContentViewProps = {
   selectedTab: Tab;
   selectedRegion: Tab;
-  apiTabData: Partial<Record<Tab, TabContentData>>;
+  apiTabData: Partial<Record<Tab, FeaturedPageV2>>;
 };
 
 function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>(selectedTab);
 
   useEffect(() => { setActiveTab(selectedTab); }, [selectedTab]);
@@ -1165,8 +1291,7 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
   const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab, activeTab]));
 
   // システムB直結：該当タブのページが無ければ空状態を表示
-  const viewData = apiTabData[activeTab];
-  const regionImg = REGION_BG_IMAGES[TAB_REGION_KEY[activeTab] ?? ""];
+  const page = apiTabData[activeTab];
 
   return (
     <ScrollView
@@ -1176,33 +1301,8 @@ function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: Feature
       {/* ── エリア切替タブ ── */}
       <SegmentedTabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
 
-      {viewData ? (
-        <>
-          {/* 見出し */}
-          <View style={s.contentHeader}>
-            {regionImg && (
-              <ExpoImage
-                source={regionImg}
-                style={s.contentHeaderBgImg}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-              />
-            )}
-            <Text style={s.contentTitle}>{viewData.title}</Text>
-            <Text style={s.contentSubtitle}>{viewData.subtitle}</Text>
-          </View>
-
-          {/* ヒーローカード */}
-          <HeroFeatureCard data={viewData.hero} area={activeTab as string} />
-
-          {/* カテゴリチップ */}
-          {viewData.categories.length > 0 && <CategoryChips categories={viewData.categories} />}
-
-          {/* セクション（横スクロールカード群） */}
-          {viewData.sections.map((sec, i) => (
-            <HorizontalFeatureCards key={i} title={sec.title} cards={sec.cards} area={activeTab as string} />
-          ))}
-        </>
+      {page ? (
+        <MagazineFeature page={page} onOpenSpot={(id) => openSpot(router, { spotId: id, title: "" })} />
       ) : (
         <View style={s.emptyWrap}>
           <MapPin size={36} color={C.subText} strokeWidth={1.6} />
@@ -1227,64 +1327,14 @@ function fullPrefToTab(pref: string): Tab | null {
   return short as Tab;
 }
 
-// システムB のページ群 → タブ別の表示データ（B直結のシンプル版）
-function buildTabDataFromPages(pages: FeaturedPageV2[]): Partial<Record<Tab, TabContentData>> {
-  const result: Partial<Record<Tab, TabContentData>> = {};
-
+// システムB のページ群 → タブ別のページ（マガジン記事レイアウトで描画）
+function buildPagesByTab(pages: FeaturedPageV2[]): Partial<Record<Tab, FeaturedPageV2>> {
+  const result: Partial<Record<Tab, FeaturedPageV2>> = {};
   for (const page of pages) {
     const tab = fullPrefToTab(page.prefecture);
     if (!tab) continue;
-
-    const spots = page.featured_page_spots ?? [];
-    const moods = page.featured_page_moods ?? [];
-    const firstSpot = spots[0];
-
-    // ヒーロー: バナーがあればバナー、無ければ先頭スポット。タップで先頭スポット詳細へ。
-    const hasBanner = !!(page.banner_title || page.banner_image_url);
-    const hero: HeroData = hasBanner
-      ? {
-          image: page.banner_image_url || firstSpot?.image_url || IMG.cafe,
-          label: page.label || "今月の特集",
-          title: page.banner_title || firstSpot?.title || page.prefecture,
-          description: page.banner_description || firstSpot?.catch_copy || "",
-          buttonLabel: "特集を読む",
-          spotId: firstSpot?.id,
-        }
-      : {
-          image: firstSpot?.image_url || IMG.cafe,
-          label: page.label || "今月のおすすめ",
-          title: firstSpot?.title || page.prefecture,
-          description: firstSpot?.catch_copy || firstSpot?.location || "",
-          buttonLabel: "特集を読む",
-          spotId: firstSpot?.id,
-        };
-
-    // 気分カードの見出しをカテゴリチップに（改行はスペースに）
-    const categories = moods.map((m) => (m.title || "").replace(/\n/g, " ").trim()).filter(Boolean);
-
-    // バナーをヒーローに使った場合は全スポットを、そうでない場合は2件目以降をカード化
-    const cardSpots = hasBanner ? spots : spots.slice(1);
-    const sections: SectionData[] = cardSpots.length
-      ? [{
-          title: "おすすめスポット",
-          cards: cardSpots.map((sp) => ({
-            title: sp.title,
-            desc: sp.catch_copy || sp.location || "",
-            image: sp.image_url || IMG.cafe,
-            spotId: sp.id,
-          })),
-        }]
-      : [];
-
-    result[tab] = {
-      title: `${page.prefecture}の特集`,
-      subtitle: page.banner_description || page.issue || "",
-      hero,
-      categories,
-      sections,
-    };
+    result[tab] = page;   // 同タブに複数あれば sort_order 昇順の最初を採用（API側で整列済み）
   }
-
   return result;
 }
 
@@ -1327,7 +1377,7 @@ export default function FeatureScreen() {
   const [stage, setStage] = useState<NavStage>("map");
   const [selectedRegion, setSelectedRegion] = useState<Tab>("全国");
   const [selectedTab, setSelectedTab] = useState<Tab>("全国");
-  const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, TabContentData>>>({});
+  const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, FeaturedPageV2>>>({});
 
   // 地図画像を先読み（マウント時点でデコード済みにしてラグを防ぐ）
   useEffect(() => { preloadMaps(); }, []);
@@ -1336,7 +1386,7 @@ export default function FeatureScreen() {
     apiFetch("/api/featured-pages")
       .then((r) => r.json())
       .then(({ ok, data }: { ok: boolean; data: FeaturedPageV2[] }) => {
-        if (ok && data?.length) setApiTabData(buildTabDataFromPages(data));
+        if (ok && data?.length) setApiTabData(buildPagesByTab(data));
       })
       .catch(() => {});
   }, []);
@@ -1876,6 +1926,39 @@ const s = StyleSheet.create({
   emptyWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 90, paddingHorizontal: 32, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: "800", color: C.text, textAlign: "center" },
   emptyText: { fontSize: 13, color: C.subText, textAlign: "center" },
+
+  // ── マガジン記事レイアウト ──
+  mzCover: { height: 230, justifyContent: "flex-end", backgroundColor: C.segBg, overflow: "hidden" },
+  mzCoverKicker: {
+    position: "absolute", top: 14, left: 16,
+    backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  mzCoverKickerText: { fontSize: 11, fontWeight: "800", color: C.accent, letterSpacing: 0.8 },
+  mzCoverIssue: {
+    position: "absolute", bottom: 14, right: 16,
+    color: "#fff", fontSize: 13, fontFamily: SERIF, letterSpacing: 1,
+  },
+  mzHead: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
+  mzTitle: { fontFamily: SERIF, fontSize: 25, lineHeight: 36, color: C.text, letterSpacing: 0.3 },
+  mzLead: { fontFamily: SERIF, fontSize: 15, lineHeight: 28, color: C.subText, marginTop: 14 },
+  mzDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 20, marginVertical: 18 },
+
+  mzArticle: { paddingHorizontal: 20, paddingBottom: 6 },
+  mzArtHead: { flexDirection: "row", alignItems: "baseline", gap: 10, marginBottom: 12 },
+  mzNum: { fontFamily: SERIF, fontSize: 30, color: C.accent, lineHeight: 32 },
+  mzArtTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: C.text, lineHeight: 26 },
+  mzArtImg: { width: "100%", height: 200, borderRadius: 14, backgroundColor: C.segBg },
+  mzArtBody: { fontSize: 15, lineHeight: 26, color: C.text, marginTop: 14 },
+  mzInfoRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginTop: 14 },
+  mzInfoItem: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: 200 },
+  mzInfoText: { fontSize: 12.5, color: C.subText, fontWeight: "600" },
+  mzReadRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 16 },
+  mzReadText: { fontSize: 14, fontWeight: "800", color: C.accent },
+
+  mzQuoteWrap: { paddingHorizontal: 28, paddingVertical: 24 },
+  mzQuote: { fontFamily: SERIF, fontSize: 20, lineHeight: 34, color: C.text, borderLeftWidth: 2, borderLeftColor: C.accent, paddingLeft: 16 },
+  mzEmptyNote: { fontSize: 14, color: C.subText, textAlign: "center", paddingVertical: 40 },
   contentHeader: {
     paddingHorizontal: 20,
     paddingTop: 18,
