@@ -31,9 +31,6 @@ const GRAD: [string, string, string] = [PINK, PURPLE, BLUE];
 const BG     = '#F5F0FF';
 const { width: W } = Dimensions.get('window');
 
-// 法務ページ（Next.jsバックエンドの公開ページをWebView/ブラウザで開く）
-const LEGAL_BASE = 'https://moodgo-qvmk.vercel.app';
-
 // トーク（グループ）のニックネームと同じキーで保存して同期させる
 const NICKNAME_KEY  = 'moodgo-group-nickname';
 const USER_ICON_KEY = 'moodgo-user-icon';
@@ -202,9 +199,6 @@ export default function SettingsView({
       setLocCanAsk(p.canAskAgain);
     } catch { /* noop */ }
   };
-
-  // 外部URL（法務ページ）を安全に開く
-  const openLink = (url: string) => { Linking.openURL(url).catch(() => {}); };
 
   const handleSave = () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
@@ -513,12 +507,12 @@ export default function SettingsView({
               label={lang === 'ja' ? '規約・サポート' : 'Legal & Support'}
             />
             <View style={s.card}>
-              <TouchableOpacity onPress={() => openLink(`${LEGAL_BASE}/privacy`)} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { onClose(); router.push('/privacy' as Href); }} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
                 <ShieldCheck size={17} color={PURPLE} strokeWidth={2} />
                 <Text style={s.linkRowText}>{lang === 'ja' ? 'プライバシーポリシー' : 'Privacy Policy'}</Text>
                 <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => openLink(`${LEGAL_BASE}/terms`)} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { onClose(); router.push('/terms' as Href); }} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
                 <FileText size={17} color={PURPLE} strokeWidth={2} />
                 <Text style={s.linkRowText}>{lang === 'ja' ? '利用規約' : 'Terms of Service'}</Text>
                 <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
