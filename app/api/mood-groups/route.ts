@@ -183,9 +183,12 @@ export async function POST(req: NextRequest) {
       const spotAddress = String(body.spotAddress ?? "").trim().slice(0, 200);
       const spotUrl     = String(body.spotUrl ?? "").trim().slice(0, 500);
       // スポット共有時は気分なしでもOK
-      const mood = String(body.mood ?? "").trim().slice(0, 20) || (spotName ? "スポット共有" : "");
       const comment = String(body.comment ?? "").trim().slice(0, 200);
-      if (!groupId || !mood) return NextResponse.json({ ok: false, error: "groupIdとmoodは必須です" }, { status: 400 });
+      // 気分・ひとこと・スポットのいずれかがあれば投稿可（mood列はNOT NULL想定なので空文字で保存）
+      const mood = String(body.mood ?? "").trim().slice(0, 20) || (spotName ? "スポット共有" : "");
+      if (!groupId || (!mood && !comment)) {
+        return NextResponse.json({ ok: false, error: "groupIdと、気分かひとことが必要です" }, { status: 400 });
+      }
 
       const { data: me, error: meErr } = await supabase
         .from("mood_group_members")

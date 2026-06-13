@@ -225,23 +225,19 @@ function DetailView({
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
 
-  // 左端からの横スワイプで前のページ（履歴一覧）に戻る。
-  // react-native-gesture-handler を使い、縦スクロール(ScrollView)と両立しつつ
-  // ネイティブのエッジスワイプと同等の感度で動作させる。
+  // 画面のどこからでも右方向の横スワイプで前のページ（履歴一覧）に戻る。
+  // react-native-gesture-handler で縦スクロール(ScrollView)と両立。
+  // 端の制限を外し、他画面と同じ感度でどこからでも戻れるようにする。
   // runOnJS(true) によりコールバックはJSスレッドで実行（worklet/babelプラグイン不要）。
-  const edgeRef = useRef(false);
   const swipeBack = useMemo(
     () =>
       Gesture.Pan()
         .runOnJS(true)
-        .activeOffsetX(16)          // 横16pxでアクティブ化（縦より先に横が動いた時のみ）
-        .failOffsetY([-14, 14])     // 縦14px先行ならスクロール優先で失敗
-        .onBegin((e) => {
-          edgeRef.current = e.absoluteX < 56;  // 画面左端〜56pxから始まったか
-        })
+        .activeOffsetX(20)          // 横20pxでアクティブ化（縦より先に横が動いた時のみ）
+        .failOffsetY([-16, 16])     // 縦16px先行ならスクロール優先で失敗
         .onEnd((e) => {
-          // 左端から始まり、少し動かす or 軽いフリックで戻る（ネイティブ同等の軽さ）
-          if (edgeRef.current && (e.translationX > 42 || (e.translationX > 16 && e.velocityX > 280))) {
+          // 右方向に少し動かす or 軽いフリックで戻る（どこから始めてもOK）
+          if (e.translationX > 50 || (e.translationX > 20 && e.velocityX > 320)) {
             onBack();
           }
         }),

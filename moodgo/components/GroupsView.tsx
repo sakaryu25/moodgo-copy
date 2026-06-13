@@ -257,6 +257,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [comment, setComment] = useState('');
   const [posting, setPosting] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
+  const autoScrollRef = useRef(true);   // 新着メッセージ時だけ最下部へスクロールするフラグ
+  const prevPostLenRef = useRef(0);
 
   // ── 左端スワイプでチャットから一覧へ戻る ──
   const SW = Dimensions.get('window').width;
@@ -477,9 +479,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!active) dragX.setValue(0);
   }, [active]);
 
+  // メッセージ件数が増えたときだけ「最下部へスクロール」を許可（リアクションでは下げない）
+  useEffect(() => {
+    if (posts.length > prevPostLenRef.current) autoScrollRef.current = true;
+    prevPostLenRef.current = posts.length;
+  }, [posts.length]);
+
   // ── つぶやく ──
+  // 気分チップ・ひとことのどちらか一方でも入っていれば送信できる
   const handlePost = async () => {
-    if (!active || !selMood || posting) return;
+    if (!active || (!selMood && !comment.trim()) || posting) return;
     setPosting(true);
     try {
       const res = await apiFetch('/api/mood-groups', {
@@ -697,7 +706,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
   // ─── チャット画面 ────────────────────────────────────────────────────────────
   if (active) {
-    const canPost = !!selMood && !posting;
+    const canPost = (!!selMood || !!comment.trim()) && !posting;
     const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
     const placeFavs = favorites.filter(f => f.kind !== 'post');
     const postFavs  = favorites.filter(f => f.kind === 'post');
@@ -774,7 +783,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
       return (
         <>
-          {isSpot ? spotCard() : moodTag()}
+          {/* スポット共有ならカード、気分があれば値札タグ、ひとことだけなら何も出さない */}
+          {isSpot ? spotCard() : (p.mood ? moodTag() : null)}
           {p.comment ? (
             <Text style={mine ? s.bubbleMineText : s.bubbleOtherText}>{p.comment}</Text>
           ) : null}
@@ -898,7 +908,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}
-            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() => {
+              // 新着メッセージのときだけ最下部へ。リアクション等の高さ変化では下げない
+              if (autoScrollRef.current) {
+                chatScrollRef.current?.scrollToEnd({ animated: true });
+                autoScrollRef.current = false;
+              }
+            }}
             keyboardShouldPersistTaps="handled"
           >
             {timeline.length === 0 ? (
@@ -1437,7 +1453,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         ) : groups.map(g => {
           const lp = g.last_post;
           const preview = lp
-            ? `${lp.nickname}: ${lp.spot_name ? `📍 ${lp.spot_name}` : `#${lp.mood}${lp.comment ? ` ${lp.comment}` : ''}`}`
+            ? `${lp.nickname}: ${lp.spot_name ? `📍 ${lp.spot_name}` : `${lp.mood ? `#${lp.mood} ` : ''}${lp.comment ?? ''}`.trim()}`
             : 'まだつぶやきがないよ';
           return (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
