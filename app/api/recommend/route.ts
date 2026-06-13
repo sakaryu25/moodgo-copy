@@ -5904,6 +5904,11 @@ async function handleRecommend(request: Request) {
       const isSnowyNow = isSnowLikeWeather(sbWeather.weatherCode);
       const isBadWeather = isRainyNow || isSnowyNow;
 
+      // 心霊は登録数が少なく地名ジオコーディングで県庁等に丸まりがち。遠出バイアス(minRadiusKm)で
+      // 近すぎるスポットを除外すると0件になりやすいので、心霊は遠出バイアスを無効化し近い順で出す。
+      const isShinreiDeepDive = (answers.dynamicQs ?? []).some(q => (q.question ?? "").includes("深掘り") && q.answer === "心霊");
+      const sbMinRadiusKm = isShinreiDeepDive ? 0 : minRadiusKm;
+
       // Supabase 検索: radiusKm を上限、minRadiusKm を遠端バイアスとして渡す。
       // → "近場でいい(min0)" なら近い順、"県またぎもあり(min56)/小旅行(min96)" なら
       //    その距離以上を優先（遠出したい意図を尊重）。お腹すいた・近距離設定は min0=近い順。
@@ -5915,7 +5920,7 @@ async function handleRecommend(request: Request) {
         lat: answers.originLat ?? 0,
         lng: answers.originLng ?? 0,
         radiusKm: sbRadiusKm,  // A-4: 食事は近場キャップ適用
-        minRadiusKm,           // 距離設定に応じた遠端バイアス（県またぎ等で遠方優先）
+        minRadiusKm: sbMinRadiusKm,  // 心霊は遠出バイアス無効（近い順で確実に出す）
         transport: answers.transport,
         limit: 20,  // コスト削減B: Supabaseが充足したらGoogle/Yahooをスキップするため多めに取得
         googleApiKey: apiKey,
