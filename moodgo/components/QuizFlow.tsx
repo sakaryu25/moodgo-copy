@@ -81,6 +81,60 @@ const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon; dark?:
   { key: '疲れた・眠い', label: '疲れた・眠い', sub: 'おつかれさま', Icon: Moon, dark: true },
 ];
 
+// ─── 気分テーマ（選んだ気分の色・雰囲気で背景を変える遊び心）──────────────────
+// colors: 背景グラデ / Motif: 背景に浮かぶモチーフアイコン / dark: 文字を白系にするか
+type MoodTheme = { colors: [string, string, string]; Motif: LucideIcon; tint: string; dark?: boolean };
+const MOOD_THEME: Record<string, MoodTheme> = {
+  'お腹すいた':   { colors: ['#FFF1E6', '#FFE0C2', '#FFD0AE'], Motif: UtensilsCrossed, tint: '#FB923C' },
+  'まったり':     { colors: ['#FFF8EE', '#FCEEDC', '#F7E2CB'], Motif: Coffee,          tint: '#D9A066' },
+  '自然':         { colors: ['#EAF7E6', '#D2EFCB', '#BDE7B5'], Motif: Leaf,            tint: '#34C759' },
+  '楽しみたい':   { colors: ['#FCE6F3', '#F3D9FB', '#E7D2FB'], Motif: Sparkles,        tint: '#E879C7' },
+  'ドライブ':     { colors: ['#E1F2F8', '#CBE6F5', '#BBDDF3'], Motif: Car,             tint: '#3FA9D6' },
+  '集中':         { colors: ['#ECEFF7', '#DCE2EF', '#CDD6E8'], Motif: BookOpen,        tint: '#6B7FB0' },
+  '運動':         { colors: ['#EDF7DD', '#DBF0C5', '#CBEAB0'], Motif: Activity,        tint: '#5DB832' },
+  '旅行':         { colors: ['#E1EEFB', '#CFE2FB', '#C2D8FB'], Motif: Plane,           tint: '#5B8DEF' },
+  'ショッピング': { colors: ['#FCE3EC', '#F8D2E1', '#F4C2D6'], Motif: ShoppingBag,     tint: '#EC6F9E' },
+  // スリル: 暗い心霊・絶叫の世界観。文字は白系に
+  'スリル':       { colors: ['#2C1A45', '#1C1030', '#120A22'], Motif: Flame,           tint: '#A855F7', dark: true },
+  '時間潰し':     { colors: ['#F0EBF8', '#E4DCF1', '#DACFEC'], Motif: Shuffle,         tint: '#9B82D6' },
+  // 疲れた・眠い: 夜の世界観。文字は白系に
+  '疲れた・眠い': { colors: ['#211D44', '#161331', '#0F0D24'], Motif: Moon,            tint: '#818CF8', dark: true },
+};
+
+// 背景: 気分テーマのグラデ＋浮遊モチーフ（absoluteで敷く。気分未選択時は描画しない）
+function ThemedQuizBackground({ mood }: { mood: string }) {
+  const theme = MOOD_THEME[mood];
+  const fade = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [mood]);
+  if (!theme) return null;
+  const { Motif, tint } = theme;
+  const mc = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)';
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity: fade }]} pointerEvents="none">
+      <LinearGradient colors={theme.colors} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={StyleSheet.absoluteFill} />
+      {/* 浮遊モチーフ（角に大きく薄く） */}
+      <View style={[qbg.motif, { top: 70, left: -24, transform: [{ rotate: '-14deg' }] }]}>
+        <Motif size={120} color={mc} strokeWidth={1.4} />
+      </View>
+      <View style={[qbg.motif, { top: 220, right: -30, transform: [{ rotate: '12deg' }] }]}>
+        <Motif size={92} color={mc} strokeWidth={1.4} />
+      </View>
+      <View style={[qbg.motif, { bottom: 160, left: 30, transform: [{ rotate: '8deg' }] }]}>
+        <Motif size={70} color={mc} strokeWidth={1.4} />
+      </View>
+      {/* アクセントの淡い光 */}
+      <View style={[qbg.glow, { backgroundColor: tint, top: -60, right: -40 }]} />
+    </Animated.View>
+  );
+}
+const qbg = StyleSheet.create({
+  motif: { position: 'absolute' },
+  glow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, opacity: 0.14 },
+});
+
 // 「疲れた・眠い」を選んだときのねぎらいコメント（ランダム表示）
 const TIRED_KEY = '疲れた・眠い';
 const TIRED_MESSAGES = [
@@ -1326,15 +1380,21 @@ export default function QuizFlow(props: Props) {
     return null;
   };
 
+  // 選んだ気分のテーマ（背景・文字色の遊び心）
+  const moodTheme = MOOD_THEME[selectedMood];
+  const isDarkTheme = !!moodTheme?.dark;
+
   return (
     <View style={[s.root, { paddingTop: insets.top }]} {...swipePan.panHandlers}>
+      {/* 気分テーマ背景（気分を選んだら色・雰囲気が変わる） */}
+      <ThemedQuizBackground mood={selectedMood} />
       {/* スワイプ追従ラッパー — 全コンテンツをまとめてスライド */}
       <Animated.View style={[s.flex, { transform: [{ translateX: swipeDragX }] }]}>
         {/* Nav row */}
         <View style={s.topBar}>
-          <PuniPressable onPress={handleBack} style={s.backCircle}
+          <PuniPressable onPress={handleBack} style={[s.backCircle, isDarkTheme && s.backCircleDark]}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
+            <ChevronLeft size={20} color={isDarkTheme ? '#fff' : '#7C3AED'} strokeWidth={2.5} />
           </PuniPressable>
           <View style={s.dots}>
             {STEP_SEQ.map((_, i) => {
@@ -1351,8 +1411,8 @@ export default function QuizFlow(props: Props) {
         {/* Animated title + scroll */}
         <Animated.View style={[s.flex, { opacity: stepOp, transform: [{ translateX: stepSlX }] }]}>
           <View style={s.titleBlock}>
-            <Text style={s.title}>{meta.title}</Text>
-            <Text style={s.sub}>{meta.sub}</Text>
+            <Text style={[s.title, isDarkTheme && s.titleDark]}>{meta.title}</Text>
+            <Text style={[s.sub, isDarkTheme && s.subDark]}>{meta.sub}</Text>
             {step === 4 && (selectedArea || locationDisplayArea) ? (
               <View style={s.areaTag}>
                 <MapPin size={12} color="#7C3AED" strokeWidth={2} />
@@ -1412,12 +1472,15 @@ const s = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: '#EDE9FE',
     alignItems: 'center', justifyContent: 'center',
   },
+  backCircleDark: { backgroundColor: 'rgba(255,255,255,0.16)' },
   dots: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#DDD6FE', overflow: 'hidden' },
   dotCur: { width: 24, height: 8, borderRadius: 4, overflow: 'hidden' },
   titleBlock: { paddingHorizontal: PAD, paddingTop: 14, paddingBottom: 8 },
   title: { fontSize: 30, fontWeight: '900', color: '#1E0753', marginBottom: 4, letterSpacing: -0.5 },
+  titleDark: { color: '#FFFFFF' },
   sub: { fontSize: 14, color: '#A78BFA', lineHeight: 20 },
+  subDark: { color: 'rgba(255,255,255,0.7)' },
   areaTag: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     alignSelf: 'flex-start', marginTop: 8,
