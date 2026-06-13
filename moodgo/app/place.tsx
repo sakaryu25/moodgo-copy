@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace } from '@/lib/selectedPlace';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
@@ -344,13 +345,13 @@ export default function PlaceDetailPage() {
 
   // 心霊スポット判定（タグ） + 利用者がその場で追加した写真
   const isSpooky = !!rec?.tags?.includes('#心霊スポット');
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const storePhotos = useSpotPhotos(rec?.supabaseId, rec?.title);
   const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const basePhotos = rec
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
-  const photos = [...new Set([...uploadedPhotos, ...fetchedPhotos, ...basePhotos])];
+  const photos = [...new Set([...storePhotos, ...fetchedPhotos, ...basePhotos])];
   // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
   const showContribute = isSpooky && photos.length > 0;
   const heroPageCount = photos.length + (showContribute ? 1 : 0);
@@ -389,7 +390,7 @@ export default function PlaceDetailPage() {
       });
       const data = await res.json().catch(() => ({ ok: false }));
       if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
-      setUploadedPhotos(prev => [data.url, ...prev]);
+      addSpotPhoto(rec.supabaseId, rec.title, data.url);  // 共有ストアへ→一覧にも即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');

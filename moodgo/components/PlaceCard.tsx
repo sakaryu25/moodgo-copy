@@ -10,6 +10,7 @@ import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -226,15 +227,15 @@ export default function PlaceCard({
   moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false, darkTheme = false,
 }: Props) {
   const t = T[lang];
-  // 利用者がその場で追加した写真（即時表示・Google補強はしない）
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  // 利用者がその場で追加した写真（共有ストア＝画面をまたいで即反映）。Google補強はしない
+  const storePhotos = useSpotPhotos(item.supabaseId, item.title);
   const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const basePhotos = (item.photoUrls ?? []).length > 0
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
   // 重複排除しつつ「投稿直後＞最新取得＞検索時点」の順でマージ
-  const rawPhotos = [...new Set([...uploadedPhotos, ...fetchedPhotos, ...basePhotos])];
+  const rawPhotos = [...new Set([...storePhotos, ...fetchedPhotos, ...basePhotos])];
 
   // 心霊スポットは、検索後に追加された写真も出すよう、マウント時に最新の投稿写真を取得
   useEffect(() => {
@@ -281,7 +282,7 @@ export default function PlaceCard({
       });
       const data = await res.json().catch(() => ({ ok: false }));
       if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
-      setUploadedPhotos(prev => [data.url, ...prev]);
+      addSpotPhoto(item.supabaseId, item.title, data.url);  // 共有ストアへ→全画面に即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
