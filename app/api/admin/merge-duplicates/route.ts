@@ -5,6 +5,7 @@ import { supabase as supabaseAdmin } from "@/lib/supabase";
 
 // GET: 同名スポットをグループ化して返す
 export async function GET() {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { data, error } = await supabaseAdmin
     .from("places")
     .select("id, name, address, tags, lat, lng, google_place_id, is_active")
@@ -40,6 +41,7 @@ export async function GET() {
 // POST: タグをマージして重複を削除
 // { keepId: string, deleteIds: string[], mergedTags: string[] }
 export async function POST(request: Request) {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await request.json().catch(() => null);
   if (!body?.keepId || !Array.isArray(body.deleteIds) || !Array.isArray(body.mergedTags)) {
     return NextResponse.json({ ok: false, error: "Invalid params" }, { status: 400 });

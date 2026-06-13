@@ -8,6 +8,7 @@ const GOOGLE_API_KEY =
 
 // GET: 座標未登録のスポット一覧を返す
 export async function GET() {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { data, error } = await supabaseAdmin
     .from("places")
     .select("id, name, address, lat, lng, is_active")
@@ -24,6 +25,7 @@ export async function GET() {
 
 // POST: 住所→ジオコードして座標を保存（単体 or 一括）
 export async function POST(request: Request) {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
 

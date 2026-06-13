@@ -117,6 +117,7 @@ function ensureMinimumTags(tags: string[], name: string): string[] {
 
 // GET: 対象件数の確認
 export async function GET(req: Request) {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { searchParams } = new URL(req.url);
   if (searchParams.get("secret") !== ADMIN_PASSWORD) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -143,6 +144,7 @@ export async function GET(req: Request) {
 
 // POST: 一括再タグ付け
 export async function POST(req: Request) {
+  if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await req.json().catch(() => null);
   if (body?.secret !== ADMIN_PASSWORD) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

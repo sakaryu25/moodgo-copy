@@ -1280,8 +1280,10 @@ async function buildRelaxTextQueryWithAI(
     : c.includes("友達") ? "友達"
     : c || "";
 
-  // 交通手段を分類
-  const transports = Array.isArray(answers.transport) ? answers.transport : [answers.transport].filter(Boolean) as string[];
+  // 交通手段を分類（string でも string[] でも安全に string[] へ正規化）
+  const transports: string[] = ([] as string[])
+    .concat((answers.transport ?? []) as string | string[])
+    .filter((t) => typeof t === "string" && t.length > 0);
   const hasCar    = transports.some(t => t.includes("車") || t.includes("ドライブ"));
   const hasTrain  = transports.some(t => t.includes("電車"));
   const hasBus    = transports.some(t => t.includes("バス"));

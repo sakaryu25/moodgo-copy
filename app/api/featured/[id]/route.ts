@@ -10,6 +10,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { id } = await params;
 
   // まず slug で検索、なければ id で検索
@@ -39,6 +40,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { id } = await params;
   const body = await req.json();
   const { secret, ...fields } = body;
@@ -90,6 +92,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { id } = await params;
   const { secret } = await req.json();
 

@@ -29,7 +29,9 @@ export interface SubcategoryTagsResult {
 // ─────────────────────────────────────────────────────────────────────────────
 export function getOnsenTags(category: OnsenCategory | null): SubcategoryTagsResult {
   const fallbackBase = ["#温泉"];
-  switch (category) {
+  // クライアント(moodgo)は細分化された値(natural_onsen/sento/super_sento等)も送るため
+  // string にキャストして全caseを実行時に有効化（root型は簡略版のため）
+  switch (category as string | null) {
     case "natural_onsen":
       return { tags: ["#温泉"],   fallback: fallbackBase, label: "天然温泉・日帰り温泉",     radiusKm: 20 };
     case "sento":
@@ -136,7 +138,8 @@ export function getDriveTags(subCategory: DriveSubCategory | null): SubcategoryT
 // ─────────────────────────────────────────────────────────────────────────────
 export function getFocusTags(subCategory: FocusSubCategory | null): SubcategoryTagsResult {
   const fallbackBase = ["#集中したい"];
-  switch (subCategory) {
+  // クライアント(moodgo)は細分化された値(family_restaurant/netcafe_library)も送るため string にキャスト
+  switch (subCategory as string | null) {
     case "work_cafe":
       return { tags: ["#カフェ作業"], fallback: fallbackBase, label: "☕ カフェで作業",               radiusKm: 10 };
     case "coworking":

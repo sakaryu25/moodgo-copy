@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  eslint: { ignoreDuringBuilds: true },
+  // Next 16 では eslint 設定キーは廃止（next lint 廃止）。ESLintはビルドと別実行のため記述不要。
   typescript: {
     // recommend/route.ts 等の既存ファイルに pre-existing なTypeScriptエラーが存在するため、
     // Turbopack がクラッシュしないようビルド時のTypeScriptチェックを無効化。

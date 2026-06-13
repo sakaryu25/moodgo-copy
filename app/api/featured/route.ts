@@ -7,6 +7,7 @@ const ADMIN_SECRET = "moodgoadmin123";
 
 // ─── GET: 特集ページ一覧 ───────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { searchParams } = new URL(req.url);
   const secret = searchParams.get("secret");
   const isAdmin = secret === ADMIN_SECRET;
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
 
 // ─── POST: 特集ページ新規作成 ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await req.json();
   const { secret, ...fields } = body;
 
