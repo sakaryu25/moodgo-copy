@@ -9,7 +9,19 @@
 //   CREATE INDEX IF NOT EXISTS idx_places_google_place_id
 //     ON places(google_place_id) WHERE google_place_id IS NOT NULL;
 
+import { after } from "next/server";
 import { supabase } from "@/lib/supabase";
+
+// 応答返却後に実行（Vercelサーバーレスでも凍結されず確実に走る）。
+// setTimeoutのfire-and-forgetは応答後に関数が凍結され実行されない＝保存が消える罠の対策。
+// request context外（テスト等）ではsetTimeoutへフォールバック。
+function runAfterResponse(fn: () => Promise<void>): void {
+  try {
+    after(async () => { await fn().catch(() => {}); });
+  } catch {
+    setTimeout(() => { fn().catch(() => {}); }, 0);
+  }
+}
 
 // ── ジャンルタグ → タグルール（hotpepper-sync-config と同じ体系）───────────────
 const FOOD_TAG_RULES: Record<string, {
@@ -285,9 +297,7 @@ export function scheduleGenericAutoSave(
   delayMs = 3000,
 ): void {
   if (!places.length || !tags.length) return;
-  setTimeout(() => {
-    autoSavePlacesWithTags(places, tags).catch(() => {});
-  }, delayMs);
+  runAfterResponse(() => autoSavePlacesWithTags(places, tags).then(() => {}));
 }
 
 // ── fire-and-forget ラッパー（ルートから呼ぶ用）──────────────────────────────
@@ -297,9 +307,7 @@ export function scheduleAutoSave(
   delayMs = 3000,
 ): void {
   if (!places.length || !FOOD_TAG_RULES[genreTag]) return;
-  setTimeout(() => {
-    autoSaveGooglePlaces(places, genreTag).catch(() => {});
-  }, delayMs);
+  runAfterResponse(() => autoSaveGooglePlaces(places, genreTag).then(() => {}));
 }
 
 // ── ジャンル文字列 → タグキーの変換（recommend route 用）─────────────────────
