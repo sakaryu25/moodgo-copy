@@ -5,6 +5,7 @@
  * - 15秒ごとにフィード自動更新＋新着で自動スクロール
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -136,7 +137,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [members, setMembers] = useState<Member[]>([]);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [reactTarget, setReactTarget] = useState<string | null>(null);  // 長押し中の投稿ID
-  const pickerAnim = useRef(new Animated.Value(0)).current;             // ピッカーのヌルッと出現用
+  const [reactFrame, setReactFrame] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const bubbleRefs = useRef<Record<string, View | null>>({});
+  const pickerAnim = useRef(new Animated.Value(0)).current;             // オーバーレイのヌルッと出現用
 
   useEffect(() => {
     if (!reactTarget) return;
@@ -145,6 +148,21 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       toValue: 1, useNativeDriver: true, mass: 0.6, damping: 11, stiffness: 230,
     }).start();
   }, [reactTarget]);
+
+  // 長押し: バブルの画面位置を測ってインスタ風オーバーレイを開く
+  const openReactions = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const node = bubbleRefs.current[id];
+    if (!node) { setReactFrame(null); setReactTarget(id); return; }
+    node.measureInWindow((x, y, w, h) => {
+      setReactFrame({ x, y, w, h });
+      setReactTarget(id);
+    });
+  };
+  const closeReactions = () => {
+    Animated.timing(pickerAnim, { toValue: 0, duration: 130, useNativeDriver: true })
+      .start(() => setReactTarget(null));
+  };
 
   // ルーレット
   const [showRoulette, setShowRoulette] = useState(false);
@@ -613,6 +631,129 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     const timeline = posts.slice().reverse(); // 古い→新しい（下が最新）
     const placeFavs = favorites.filter(f => f.kind !== 'post');
     const postFavs  = favorites.filter(f => f.kind === 'post');
+
+    // バブルの中身（タイムラインと長押しオーバーレイの両方で使う共通描画）
+    const bubbleInner = (p: Post) => {
+      const isBot = p.nickname === 'MoodGo';
+      const mine = p.device_id === deviceId && !isBot;
+      const darkMood = p.mood === '疲れた・眠い';
+      const isSpot = !!p.spot_name;
+
+      // リアクション集計
+      const rx = reactions.filter(r => r.post_id === p.id);
+      const emojiAgg = new Map<string, { count: number; mine: boolean }>();
+      for (const r of rx) {
+        if (r.rtype !== 'emoji') continue;
+        const e = emojiAgg.get(r.value) ?? { count: 0, mine: false };
+        e.count++;
+        if (r.device_id === deviceId) e.mine = true;
+        emojiAgg.set(r.value, e);
+      }
+      const wantCount = rx.filter(r => r.rtype === 'vote' && r.value === 'want').length;
+      const mehCount  = rx.filter(r => r.rtype === 'vote' && r.value === 'meh').length;
+      const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
+      const decided = members.length >= 2 && wantCount > members.length / 2;
+      const hasChips = emojiAgg.size > 0 || wantCount > 0 || mehCount > 0;
+
+      // 値札タグ風の気分バッジ（尖った先端＋紐穴）
+      const moodTag = () => {
+        const c = darkMood
+          ? { bg: '#1E1B4B', border: '#4338CA', text: '#C7D2FE', hole: mine ? '#C084FC' : '#fff' }
+          : mine
+            ? { bg: '#fff', border: '#fff', text: '#7C3AED', hole: '#C084FC' }
+            : { bg: '#EDE9FE', border: '#DDD6FE', text: '#7C3AED', hole: '#fff' };
+        const TagIcon = moodIcon(p.mood);
+        return (
+          <View style={s.tagRow}>
+            <View style={[s.tagPoint, { backgroundColor: c.bg, borderColor: c.border }]} />
+            <View style={[s.tagBody, { backgroundColor: c.bg, borderColor: c.border }]}>
+              <TagIcon size={12} color={c.text} strokeWidth={2.2} />
+              <Text style={[s.moodTagText, { color: c.text }]}>#{p.mood}</Text>
+            </View>
+            <View style={[s.tagHole, { backgroundColor: c.hole }]} />
+          </View>
+        );
+      };
+
+      // スポット共有: ピンカード（タップで地図アプリを直接開く）
+      const spotCard = () => (
+        <PuniPressable
+          onPress={() => {
+            if (!p.spot_name && !p.spot_url) return;
+            openInGoogleMaps({
+              query: [p.spot_name, p.spot_address].filter(Boolean).join(' '),
+              mapsUri: p.spot_url ?? undefined,
+            });
+          }}
+          style={[s.spotCard, mine ? s.spotCardMine : null]}
+        >
+          <View style={s.spotCardLabelRow}>
+            <MapPin size={10} color="#A78BFA" strokeWidth={2.4} />
+            <Text style={s.spotCardLabel}>おすすめスポット</Text>
+          </View>
+          <Text style={s.spotCardName}>{p.spot_name}</Text>
+          {p.spot_address ? <Text style={s.spotCardAddr} numberOfLines={1}>{p.spot_address}</Text> : null}
+          {p.spot_url ? (
+            <View style={s.spotCardLinkRow}>
+              <MapPin size={11} color="#7C3AED" strokeWidth={2.2} />
+              <Text style={s.spotCardLink}>地図で見る</Text>
+            </View>
+          ) : null}
+        </PuniPressable>
+      );
+
+      return (
+        <>
+          {isSpot ? spotCard() : moodTag()}
+          {p.comment ? (
+            <Text style={mine ? s.bubbleMineText : s.bubbleOtherText}>{p.comment}</Text>
+          ) : null}
+          {hasChips && (
+            <View style={s.reactChips}>
+              {wantCount > 0 && (
+                <PuniPressable
+                  onPress={() => sendReaction(p.id, 'vote', 'want')}
+                  style={[s.reactChip, myVote === 'want' && s.voteChipOnWant]}
+                >
+                  <Heart size={12} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
+                  <Text style={s.reactChipText}>行きたい {wantCount}</Text>
+                </PuniPressable>
+              )}
+              {mehCount > 0 && (
+                <PuniPressable
+                  onPress={() => sendReaction(p.id, 'vote', 'meh')}
+                  style={[s.reactChip, myVote === 'meh' && s.voteChipOnMeh]}
+                >
+                  <Meh size={12} color="#F97316" strokeWidth={2.2} />
+                  <Text style={s.reactChipText}>微妙 {mehCount}</Text>
+                </PuniPressable>
+              )}
+              {decided && (
+                <View style={s.decidedBadge}>
+                  <PartyPopper size={11} color="#92400E" strokeWidth={2.2} />
+                  <Text style={s.decidedText}>決定！</Text>
+                </View>
+              )}
+              {[...emojiAgg.entries()].map(([key, info]) => {
+                const def = reactionDef(key);
+                return (
+                  <PuniPressable
+                    key={key}
+                    onPress={() => sendReaction(p.id, 'emoji', key)}
+                    style={[s.reactChip, info.mine && s.reactChipMine]}
+                  >
+                    {def
+                      ? <def.Icon size={12} color={def.color} fill={def.fill ?? 'none'} strokeWidth={2.2} />
+                      : <Text style={s.reactChipText}>{key}</Text>}
+                    <Text style={s.reactChipText}>{info.count}</Text>
+                  </PuniPressable>
+                );
+              })}
+            </View>
+          )}
+        </>
+      );
+    };
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Animated.View
@@ -668,136 +809,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             ) : timeline.map(p => {
               const isBot = p.nickname === 'MoodGo';
               const mine = p.device_id === deviceId && !isBot;  // AI投稿は常に左側に出す
-              const darkMood = p.mood === '疲れた・眠い';
-              const isSpot = !!p.spot_name;
-
-              // リアクション集計
-              const rx = reactions.filter(r => r.post_id === p.id);
-              const emojiAgg = new Map<string, { count: number; mine: boolean }>();
-              for (const r of rx) {
-                if (r.rtype !== 'emoji') continue;
-                const e = emojiAgg.get(r.value) ?? { count: 0, mine: false };
-                e.count++;
-                if (r.device_id === deviceId) e.mine = true;
-                emojiAgg.set(r.value, e);
-              }
-              const wantCount = rx.filter(r => r.rtype === 'vote' && r.value === 'want').length;
-              const mehCount  = rx.filter(r => r.rtype === 'vote' && r.value === 'meh').length;
-              const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
-              const decided = members.length >= 2 && wantCount > members.length / 2;
-
-              // 投票・リアクションの結果チップ（バブル内の下部）
-              // 投票ボタンは普段は出さず長押しメニューからのみ。誰かが押した時だけ人数チップを表示
-              const hasChips = emojiAgg.size > 0 || wantCount > 0 || mehCount > 0;
-              const extras = () => (
-                <>
-                  {hasChips && (
-                    <View style={s.reactChips}>
-                      {wantCount > 0 && (
-                        <PuniPressable
-                          onPress={() => sendReaction(p.id, 'vote', 'want')}
-                          style={[s.reactChip, myVote === 'want' && s.voteChipOnWant]}
-                        >
-                          <Heart size={12} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
-                          <Text style={s.reactChipText}>行きたい {wantCount}</Text>
-                        </PuniPressable>
-                      )}
-                      {mehCount > 0 && (
-                        <PuniPressable
-                          onPress={() => sendReaction(p.id, 'vote', 'meh')}
-                          style={[s.reactChip, myVote === 'meh' && s.voteChipOnMeh]}
-                        >
-                          <Meh size={12} color="#F97316" strokeWidth={2.2} />
-                          <Text style={s.reactChipText}>微妙 {mehCount}</Text>
-                        </PuniPressable>
-                      )}
-                      {decided && (
-                        <View style={s.decidedBadge}>
-                          <PartyPopper size={11} color="#92400E" strokeWidth={2.2} />
-                          <Text style={s.decidedText}>決定！</Text>
-                        </View>
-                      )}
-                      {[...emojiAgg.entries()].map(([key, info]) => {
-                        const def = reactionDef(key);
-                        return (
-                          <PuniPressable
-                            key={key}
-                            onPress={() => sendReaction(p.id, 'emoji', key)}
-                            style={[s.reactChip, info.mine && s.reactChipMine]}
-                          >
-                            {def
-                              ? <def.Icon size={12} color={def.color} fill={def.fill ?? 'none'} strokeWidth={2.2} />
-                              : <Text style={s.reactChipText}>{key}</Text>}
-                            <Text style={s.reactChipText}>{info.count}</Text>
-                          </PuniPressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </>
-              );
-              // スポット共有: 📍カード（タップで地図を開く）
-              const spotCard = () => (
-                <PuniPressable
-                  onPress={() => {
-                    if (!p.spot_name && !p.spot_url) return;
-                    // Safariを介さずGoogle Mapsアプリを直接開く（未インストール時はURLへ）
-                    openInGoogleMaps({
-                      query: [p.spot_name, p.spot_address].filter(Boolean).join(' '),
-                      mapsUri: p.spot_url ?? undefined,
-                    });
-                  }}
-                  style={[s.spotCard, mine ? s.spotCardMine : null]}
-                >
-                  <View style={s.spotCardLabelRow}>
-                    <MapPin size={10} color="#A78BFA" strokeWidth={2.4} />
-                    <Text style={s.spotCardLabel}>おすすめスポット</Text>
-                  </View>
-                  <Text style={s.spotCardName}>{p.spot_name}</Text>
-                  {p.spot_address ? <Text style={s.spotCardAddr} numberOfLines={1}>{p.spot_address}</Text> : null}
-                  {p.spot_url ? (
-                    <View style={s.spotCardLinkRow}>
-                      <MapPin size={11} color="#7C3AED" strokeWidth={2.2} />
-                      <Text style={s.spotCardLink}>地図で見る</Text>
-                    </View>
-                  ) : null}
-                </PuniPressable>
-              );
-              // 値札タグ風の気分バッジ（尖った先端＋紐穴）
-              const moodTag = (variant: 'mine' | 'other') => {
-                const c = darkMood
-                  ? { bg: '#1E1B4B', border: '#4338CA', text: '#C7D2FE', hole: variant === 'mine' ? '#C084FC' : '#fff' }
-                  : variant === 'mine'
-                    ? { bg: '#fff', border: '#fff', text: '#7C3AED', hole: '#C084FC' }
-                    : { bg: '#EDE9FE', border: '#DDD6FE', text: '#7C3AED', hole: '#fff' };
-                const TagIcon = moodIcon(p.mood);
-                return (
-                  <View style={s.tagRow}>
-                    {/* 先端（回転させた正方形でタグの尖り） */}
-                    <View style={[s.tagPoint, { backgroundColor: c.bg, borderColor: c.border }]} />
-                    {/* 本体 */}
-                    <View style={[s.tagBody, { backgroundColor: c.bg, borderColor: c.border }]}>
-                      <TagIcon size={12} color={c.text} strokeWidth={2.2} />
-                      <Text style={[s.moodTagText, { color: c.text }]}>#{p.mood}</Text>
-                    </View>
-                    {/* 紐穴 */}
-                    <View style={[s.tagHole, { backgroundColor: c.hole }]} />
-                  </View>
-                );
-              };
               if (mine) {
-                // 自分: 右側の紫グラデバブル（長押しで絵文字リアクション）
+                // 自分: 右側の紫グラデバブル（長押しでインスタ風リアクション）
                 return (
                   <View key={p.id} style={s.rowMine}>
                     <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
                     <Pressable
-                      onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setReactTarget(p.id); }}
+                      ref={(r) => { bubbleRefs.current[p.id] = r; }}
+                      onLongPress={() => openReactions(p.id)}
                       delayLongPress={250}
                       style={s.bubbleMine}
                     >
-                      {isSpot ? spotCard() : moodTag('mine')}
-                      {p.comment ? <Text style={s.bubbleMineText}>{p.comment}</Text> : null}
-                      {extras()}
+                      {bubbleInner(p)}
                     </Pressable>
                   </View>
                 );
@@ -814,13 +837,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     <Text style={s.otherNick}>{p.nickname}</Text>
                     <View style={s.rowOtherBubbleLine}>
                       <Pressable
-                        onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setReactTarget(p.id); }}
+                        ref={(r) => { bubbleRefs.current[p.id] = r; }}
+                        onLongPress={() => openReactions(p.id)}
                         delayLongPress={250}
                         style={s.bubbleOther}
                       >
-                        {isSpot ? spotCard() : moodTag('other')}
-                        {p.comment ? <Text style={s.bubbleOtherText}>{p.comment}</Text> : null}
-                        {extras()}
+                        {bubbleInner(p)}
                       </Pressable>
                       <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
                     </View>
@@ -962,53 +984,95 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             </View>
           </Modal>
 
-          {/* リアクションピッカー（バブル長押しでヌルッと出現。スポットには投票も） */}
-          <Modal visible={!!reactTarget} transparent animationType="fade" onRequestClose={() => setReactTarget(null)}>
-            <Pressable style={s.pickerOverlay} onPress={() => setReactTarget(null)}>
-              <Animated.View
-                style={[
-                  s.pickerCard,
-                  {
-                    opacity: pickerAnim,
-                    transform: [
-                      { scale: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }) },
-                      { translateY: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) },
-                    ],
-                  },
-                ]}
-              >
-                {/* スポット投稿なら投票もここから */}
-                {!!posts.find(pp => pp.id === reactTarget)?.spot_name && (
-                  <View style={s.pickerVoteRow}>
-                    <PuniPressable
-                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'vote', 'want'); setReactTarget(null); }}
-                      style={s.pickerVoteBtn}
-                    >
-                      <Heart size={15} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
-                      <Text style={s.pickerVoteText}>行きたい</Text>
-                    </PuniPressable>
-                    <PuniPressable
-                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'vote', 'meh'); setReactTarget(null); }}
-                      style={s.pickerVoteBtn}
-                    >
-                      <Meh size={15} color="#F97316" strokeWidth={2.2} />
-                      <Text style={[s.pickerVoteText, { color: '#F97316' }]}>微妙</Text>
-                    </PuniPressable>
+          {/* インスタ風リアクションオーバーレイ: 背景ブラー＋押したバブルがその場に残り、上にバー・下に投票 */}
+          <Modal visible={!!reactTarget} transparent animationType="none" onRequestClose={closeReactions}>
+            {(() => {
+              const tp = posts.find(pp => pp.id === reactTarget);
+              if (!tp) return <View />;
+              const isBotT = tp.nickname === 'MoodGo';
+              const mineT = tp.device_id === deviceId && !isBotT;
+              const isSpotT = !!tp.spot_name;
+              const SH = Dimensions.get('window').height;
+              const f = reactFrame ?? { x: 16, y: SH * 0.38, w: SW - 32, h: 60 };
+              const BAR_W = REACTIONS.length * 44 + 20;
+              const popIn = {
+                opacity: pickerAnim,
+                transform: [
+                  { scale: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) },
+                  { translateY: pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+                ],
+              };
+              return (
+                <View style={{ flex: 1 }}>
+                  {/* 背景: すりガラスの暗転 */}
+                  <Animated.View style={[StyleSheet.absoluteFill, { opacity: pickerAnim }]}>
+                    <BlurView
+                      intensity={45}
+                      tint="dark"
+                      experimentalBlurMethod="dimezisBlurView"
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(12,6,32,0.35)' }]} />
+                  </Animated.View>
+                  <Pressable style={StyleSheet.absoluteFill} onPress={closeReactions} />
+
+                  {/* 押したバブルをその場に浮かせて表示 */}
+                  <View pointerEvents="none" style={{ position: 'absolute', top: f.y, left: f.x, width: f.w }}>
+                    <View style={[mineT ? s.bubbleMine : s.bubbleOther, { width: f.w, maxWidth: '100%' }]}>
+                      {bubbleInner(tp)}
+                    </View>
                   </View>
-                )}
-                <View style={s.pickerIconRow}>
-                  {REACTIONS.map(r => (
-                    <PuniPressable
-                      key={r.key}
-                      onPress={() => { if (reactTarget) sendReaction(reactTarget, 'emoji', r.key); setReactTarget(null); }}
-                      style={s.pickerEmoji}
+
+                  {/* リアクションバー（バブルの真上にヌルッ） */}
+                  <Animated.View
+                    style={[
+                      s.reactBar,
+                      { top: Math.max(insets.top + 8, f.y - 66) },
+                      mineT ? { right: 12 } : { left: Math.min(Math.max(12, f.x), SW - BAR_W - 12) },
+                      popIn,
+                    ]}
+                  >
+                    {REACTIONS.map(r => (
+                      <PuniPressable
+                        key={r.key}
+                        onPress={() => { sendReaction(tp.id, 'emoji', r.key); closeReactions(); }}
+                        style={s.pickerEmoji}
+                      >
+                        <r.Icon size={24} color={r.color} fill={r.fill ?? 'none'} strokeWidth={2} />
+                      </PuniPressable>
+                    ))}
+                  </Animated.View>
+
+                  {/* スポットならバブルの下に投票メニュー */}
+                  {isSpotT && (
+                    <Animated.View
+                      style={[
+                        s.voteMenu,
+                        { top: Math.min(f.y + f.h + 10, SH - 170) },
+                        mineT ? { right: 12 } : { left: Math.max(12, f.x) },
+                        popIn,
+                      ]}
                     >
-                      <r.Icon size={24} color={r.color} fill={r.fill ?? 'none'} strokeWidth={2} />
-                    </PuniPressable>
-                  ))}
+                      <PuniPressable
+                        onPress={() => { sendReaction(tp.id, 'vote', 'want'); closeReactions(); }}
+                        style={s.voteMenuRow}
+                      >
+                        <Heart size={16} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
+                        <Text style={s.voteMenuText}>行きたい</Text>
+                      </PuniPressable>
+                      <View style={s.voteMenuDiv} />
+                      <PuniPressable
+                        onPress={() => { sendReaction(tp.id, 'vote', 'meh'); closeReactions(); }}
+                        style={s.voteMenuRow}
+                      >
+                        <Meh size={16} color="#F97316" strokeWidth={2.2} />
+                        <Text style={[s.voteMenuText, { color: '#F97316' }]}>微妙</Text>
+                      </PuniPressable>
+                    </Animated.View>
+                  )}
                 </View>
-              </Animated.View>
-            </Pressable>
+              );
+            })()}
           </Modal>
 
           {/* ルーレット: 共有済みスポットから1つに決定 */}
@@ -1622,26 +1686,27 @@ const s = StyleSheet.create({
   },
   reactChipMine: { backgroundColor: '#EDE9FE', borderColor: '#A78BFA' },
   reactChipText: { fontSize: 11, fontWeight: '700', color: INK },
-  pickerOverlay: {
-    flex: 1, backgroundColor: 'rgba(30,7,83,0.3)',
-    alignItems: 'center', justifyContent: 'center',
+  // インスタ風オーバーレイ: バブル上のリアクションバー＋下の投票メニュー
+  reactBar: {
+    position: 'absolute', flexDirection: 'row',
+    backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22, shadowRadius: 22, elevation: 16,
   },
-  pickerCard: {
-    alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 24,
-    paddingHorizontal: 14, paddingVertical: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16, shadowRadius: 18, elevation: 12,
-  },
-  pickerIconRow: { flexDirection: 'row', gap: 4 },
-  pickerVoteRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  pickerVoteBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-    backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#EDE9FE',
-  },
-  pickerVoteText: { fontSize: 12, fontWeight: '800', color: '#10B981' },
   pickerEmoji: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  voteMenu: {
+    position: 'absolute', width: 190,
+    backgroundColor: '#fff', borderRadius: 18, paddingVertical: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22, shadowRadius: 22, elevation: 16,
+  },
+  voteMenuRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 13,
+  },
+  voteMenuText: { fontSize: 14, fontWeight: '800', color: '#10B981' },
+  voteMenuDiv: { height: 1, backgroundColor: '#F3F0FF', marginHorizontal: 12 },
 
   // ── ルーレット・気分一致 ──
   diceBtn: {
