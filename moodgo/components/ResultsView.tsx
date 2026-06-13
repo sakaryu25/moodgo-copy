@@ -603,10 +603,10 @@ export default function ResultsView(props: Props) {
         {!isLoading && visibleCount < facilityItems.length && (
           <PuniPressable
             onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
-            style={[s.loadMoreBtn, { borderColor: accentColor }]}
+            style={[s.loadMoreBtn, dark && s.loadMoreBtnDark, { borderColor: dark ? '#A07BD9' : accentColor }]}
             containerStyle={{ alignSelf: 'center' }}
           >
-            <Text style={[s.loadMoreText, { color: accentColor }]}>
+            <Text style={[s.loadMoreText, { color: dark ? '#C9B6FF' : accentColor }]}>
               {t.loadMore(facilityItems.length - visibleCount)}
             </Text>
           </PuniPressable>
@@ -622,18 +622,18 @@ export default function ResultsView(props: Props) {
 
         {/* Refinement */}
         {!isLoading && facilityItems.length > 0 && (
-          <View style={s.refinementBox}>
+          <View style={[s.refinementBox, dark && s.cardPanelDark]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Search size={16} color="#111827" strokeWidth={2.2} />
-              <Text style={s.refinementTitle}>{t.refineTitle}</Text>
+              <Search size={16} color={dark ? '#C9B6FF' : '#111827'} strokeWidth={2.2} />
+              <Text style={[s.refinementTitle, dark && s.panelTitleDark]}>{t.refineTitle}</Text>
             </View>
             <TextInput
               value={refinementText}
               onChangeText={onSetRefinementText}
               placeholder={t.refinePlaceholder}
-              placeholderTextColor="#C7C7CC"
+              placeholderTextColor={dark ? '#7C6BA8' : '#C7C7CC'}
               multiline
-              style={s.refinementInput}
+              style={[s.refinementInput, dark && s.refinementInputDark]}
             />
             <PuniPressable
               onPress={onRefine}
@@ -652,7 +652,7 @@ export default function ResultsView(props: Props) {
 
         {/* ── この結果はどうでしたか ─────────────────── */}
         {!isLoading && (recommendations.length > 0 || (facilityList?.length ?? 0) > 0) && (
-          <View style={s.feedbackBox}>
+          <View style={[s.feedbackBox, dark && s.cardPanelDark]}>
             {feedbackSubmitted ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Sparkles size={16} color="#10B981" strokeWidth={2.2} />
@@ -661,8 +661,8 @@ export default function ResultsView(props: Props) {
             ) : (
               <>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <MessageSquare size={16} color="#111827" strokeWidth={2.2} />
-                  <Text style={s.feedbackTitle}>{t.feedbackTitle}</Text>
+                  <MessageSquare size={16} color={dark ? '#C9B6FF' : '#111827'} strokeWidth={2.2} />
+                  <Text style={[s.feedbackTitle, dark && s.panelTitleDark]}>{t.feedbackTitle}</Text>
                 </View>
                 <View style={s.stars}>
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -684,8 +684,8 @@ export default function ResultsView(props: Props) {
         {/* ── 条件を見直す / ホームに戻る ──────────── */}
         {!isLoading && (
           <View style={s.bottomBtns}>
-            <PuniPressable onPress={onReviewConditions ?? onReset} style={s.reviewBtn} containerStyle={{ flex: 1 }}>
-              <Text style={s.reviewBtnText}>条件を見直す</Text>
+            <PuniPressable onPress={onReviewConditions ?? onReset} style={[s.reviewBtn, dark && s.reviewBtnDark]} containerStyle={{ flex: 1 }}>
+              <Text style={[s.reviewBtnText, dark && { color: '#C9B6FF' }]}>条件を見直す</Text>
             </PuniPressable>
             <PuniPressable onPress={onReset} style={s.homeBtn} containerStyle={{ flex: 1 }}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.homeBtnInner}>
@@ -794,6 +794,11 @@ const s = StyleSheet.create({
   controlChipTextDark: { color: '#B7A8D9' },
   expandAreaBtnDark: { borderColor: 'rgba(150,120,220,0.4)' },
   cautionBannerDark: { backgroundColor: 'rgba(60,25,20,0.7)', borderColor: 'rgba(180,90,70,0.4)' },
+  loadMoreBtnDark: { backgroundColor: 'rgba(30,20,50,0.85)' },
+  cardPanelDark: { backgroundColor: 'rgba(24,15,42,0.92)', borderColor: 'rgba(140,110,210,0.28)' },
+  panelTitleDark: { color: '#EFE6FF' },
+  refinementInputDark: { backgroundColor: 'rgba(12,7,24,0.7)', borderColor: 'rgba(140,110,210,0.25)', color: '#E7DCFF' },
+  reviewBtnDark: { backgroundColor: 'rgba(30,20,50,0.85)', borderColor: 'rgba(150,120,220,0.4)' },
   navBar: { zIndex: 10, overflow: 'hidden', backgroundColor: 'rgba(243,241,239,0.85)', borderBottomWidth: 1, borderBottomColor: 'rgba(192,132,252,0.18)' },
   navBarSpooky: { backgroundColor: 'rgba(12,7,24,0.7)', borderBottomColor: 'rgba(140,110,210,0.25)' },
   navBarBorder: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(192,132,252,0.18)' },
