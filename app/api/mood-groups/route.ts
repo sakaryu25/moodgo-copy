@@ -59,7 +59,16 @@ export async function GET(req: NextRequest) {
         reactions = rx ?? [];
       }
 
-      return NextResponse.json({ ok: true, group, members: members ?? [], posts: posts ?? [], reactions });
+      // プロフィールアイコン: user-icons/{deviceId}.jpg の公開URLを導出
+      // （未設定の人は404になるのでアプリ側で頭文字にフォールバック。?vは1時間単位で更新検知）
+      const vHour = Math.floor(Date.now() / 3_600_000);
+      const sb = supabase;
+      const membersWithIcon = (members ?? []).map(m => {
+        const { data: pub } = sb.storage.from("user-icons").getPublicUrl(`${m.device_id}.jpg`);
+        return { ...m, icon: `${pub.publicUrl}?v=${vHour}` };
+      });
+
+      return NextResponse.json({ ok: true, group, members: membersWithIcon, posts: posts ?? [], reactions });
     }
 
     // ── 自分の所属グループ一覧 ──

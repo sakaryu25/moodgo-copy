@@ -75,8 +75,39 @@ type Post  = {
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
   created_at: string;
 };
-type Member = { device_id: string; nickname: string };
+type Member = { device_id: string; nickname: string; icon?: string | null };
 type Reaction = { post_id: string; device_id: string; rtype: 'vote' | 'emoji'; value: string };
+
+// メンバーアバター: 設定したプロフィール写真を表示（未設定/読込失敗なら頭文字）
+function MemberAvatar({ icon, label, size = 36, style }: {
+  icon?: string | null; label: string; size?: number; style?: object;
+}) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <View
+      style={[
+        {
+          width: size, height: size, borderRadius: size / 2,
+          backgroundColor: '#DDD6FE', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden',
+        },
+        style,
+      ]}
+    >
+      {icon && !failed ? (
+        <Image
+          source={{ uri: icon }}
+          style={{ width: size, height: size }}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Text style={{ fontSize: Math.round(size * 0.39), fontWeight: '800', color: '#7C3AED' }}>
+          {label.slice(0, 1)}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 // 長押しで選べるリアクション（絵文字ではなくアプリ内アイコンで生成）
 type RIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -120,7 +151,6 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
   const [deviceId, setDeviceId]   = useState('');
   const [nickname, setNickname]   = useState('');
-  const [nickDraft, setNickDraft] = useState('');
 
   const [groups, setGroups]         = useState<Group[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -264,7 +294,6 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       setDeviceId(id);
       const nick = (await AsyncStorage.getItem(NICKNAME_KEY)) ?? '';
       setNickname(nick);
-      setNickDraft(nick);
       await fetchGroups(id);
       setLoading(false);
     })();
@@ -306,21 +335,24 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     } catch { /* keep */ }
   }, []);
 
-  const saveNickname = async () => {
-    const nick = nickDraft.trim().slice(0, 20);
-    if (!nick) return;
-    setNickname(nick);
-    await AsyncStorage.setItem(NICKNAME_KEY, nick);
-  };
-
-  // 入力中のニックネームを確定して返す（作成/参加時に自動保存）
-  const ensureNickname = async (): Promise<string> => {
-    const nick = nickDraft.trim().slice(0, 20) || nickname;
-    if (nick && nick !== nickname) {
-      setNickname(nick);
-      await AsyncStorage.setItem(NICKNAME_KEY, nick);
+  // 名前は設定（プロフィール）で入力したものを使う
+  const requireNickname = (): string | null => {
+    const nick = nickname.trim().slice(0, 20);
+    if (!nick) {
+      Alert.alert(
+        '名前を設定してね',
+        'ホーム右上の⚙設定 → プロフィールの「名前」を入れると、グループを作成・参加できるよ',
+      );
+      return null;
     }
     return nick;
+  };
+
+  // ＋モーダルを開く（設定で変えた名前を読み直す）
+  const openAdd = async () => {
+    const nick = (await AsyncStorage.getItem(NICKNAME_KEY)) ?? '';
+    setNickname(nick);
+    setShowAdd(true);
   };
 
   // ── グループ作成 ──
@@ -329,7 +361,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!name || busy) return;
     setBusy(true);
     try {
-      const nick = await ensureNickname();
+      const nick = requireNickname();
       if (!nick) return;
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -358,7 +390,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!code || busy) return;
     setBusy(true);
     try {
-      const nick = await ensureNickname();
+      const nick = requireNickname();
       if (!nick) return;
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -890,11 +922,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               // メンバー / MoodGo AI: 左側の白バブル＋アバター
               return (
                 <View key={p.id} style={s.rowOther}>
-                  <View style={[s.avatar, isBot && s.avatarBot]}>
-                    {isBot
-                      ? <Bot size={17} color="#7C3AED" strokeWidth={2.2} />
-                      : <Text style={s.avatarText}>{p.nickname.slice(0, 1)}</Text>}
-                  </View>
+                  {isBot ? (
+                    <View style={[s.avatar, s.avatarBot]}>
+                      <Bot size={17} color="#7C3AED" strokeWidth={2.2} />
+                    </View>
+                  ) : (
+                    <MemberAvatar
+                      icon={members.find(m => m.device_id === p.device_id)?.icon}
+                      label={p.nickname}
+                      size={32}
+                      style={{ marginTop: 16 }}
+                    />
+                  )}
                   <View style={{ flex: 1 }}>
                     <Text style={s.otherNick}>{p.nickname}</Text>
                     <View style={s.rowOtherBubbleLine}>
@@ -1027,9 +1066,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   <Text style={[s.label, { marginTop: 18 }]}>メンバー（{members.length}）</Text>
                   {members.map(m => (
                     <View key={m.device_id} style={s.memberRow}>
-                      <View style={s.memberAvatar}>
-                        <Text style={s.avatarText}>{m.nickname.slice(0, 1)}</Text>
-                      </View>
+                      <MemberAvatar icon={m.icon} label={m.nickname} size={36} />
                       <Text style={s.memberNick} numberOfLines={1}>{m.nickname}</Text>
                       {m.device_id === deviceId && <Text style={s.meBadge}>自分</Text>}
                     </View>
@@ -1366,13 +1403,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   // ─── グループ一覧画面（LINE風トーク一覧） ────────────────────────────────────
   // 関数宣言（巻き上げ）にして、チャット画面の背面レイヤーからも描画できるようにする
   function renderListScreen() {
-  const canSubmitNick = !!(nickDraft.trim() || nickname);
+  const canSubmitNick = !!nickname.trim();
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
       <View style={s.header}>
         <View style={{ width: 40 }} />
         <Text style={s.headerTitle}>トーク</Text>
-        <PuniPressable onPress={() => setShowAdd(true)} style={s.addBtn}>
+        <PuniPressable onPress={openAdd} style={s.addBtn}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.addBtnInner}>
             <Plus size={20} color="#fff" strokeWidth={2.5} />
           </LinearGradient>
@@ -1431,25 +1468,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               </PuniPressable>
             </View>
 
-            {/* ニックネーム */}
-            <Text style={s.label}>ニックネーム</Text>
-            <Text style={s.hint}>グループ内でこの名前が表示されます</Text>
-            <View style={s.inputRow}>
-              <TextInput
-                value={nickDraft}
-                onChangeText={setNickDraft}
-                placeholder="例: りゅうき"
-                placeholderTextColor="#C4B5FD"
-                style={[s.input, { flex: 1 }]}
-                maxLength={20}
-              />
-              {nickDraft.trim() !== nickname && nickDraft.trim() !== '' && (
-                <PuniPressable onPress={saveNickname} style={s.nickSaveBtn}>
-                  <Text style={s.nickSaveText}>保存</Text>
-                </PuniPressable>
-              )}
-            </View>
-            {!canSubmitNick && <Text style={s.warnText}>↑ 先にニックネームを入れてね</Text>}
+            {/* 名前は設定（プロフィール）のものを使用 */}
+            {nickname.trim() ? (
+              <View style={s.myNameRow}>
+                <Text style={s.myNameLabel}>あなたの名前</Text>
+                <Text style={s.myNameValue}>{nickname}</Text>
+                <Text style={s.myNameHint}>（設定で変更できます）</Text>
+              </View>
+            ) : (
+              <Text style={s.warnText}>
+                先にホーム右上の⚙設定 → プロフィールで「名前」を入れてね
+              </Text>
+            )}
 
             {/* 作成 */}
             <Text style={[s.label, { marginTop: 20 }]}>グループを作る</Text>
@@ -1584,6 +1614,15 @@ const s = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: { fontSize: 16, fontWeight: '800', color: INK },
+  // ＋モーダル: 設定済みの名前の表示行
+  myNameRow: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 6,
+    backgroundColor: '#F5F3FF', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 11,
+  },
+  myNameLabel: { fontSize: 11, fontWeight: '700', color: '#A78BFA' },
+  myNameValue: { fontSize: 14, fontWeight: '800', color: INK },
+  myNameHint:  { fontSize: 10, color: '#C4B5FD' },
   modalClose: {
     width: 34, height: 34, borderRadius: 17, backgroundColor: '#F5F3FF',
     alignItems: 'center', justifyContent: 'center',
