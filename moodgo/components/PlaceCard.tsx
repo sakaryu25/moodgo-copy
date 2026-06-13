@@ -11,6 +11,7 @@ import { shareSpotToGroup } from '@/lib/groupShare';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
+import { sendEngagement } from '@/lib/engagement';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -352,6 +353,7 @@ export default function PlaceCard({
     if (item.address) parts.push(item.address);
     if (item.mapUrl)  parts.push(item.mapUrl);
     Share.share({ message: parts.join('\n') });
+    sendEngagement(item.title, 'share', moodLabel);  // ② 学習ループ: 共有=強い好意シグナル
   };
 
   // 説明文：featuresの中で長い文はdescription扱い
@@ -663,7 +665,7 @@ export default function PlaceCard({
             </PuniPressable>
             {/* 仲良しグループのチャットへ共有 */}
             <PuniPressable
-              onPress={() => shareSpotToGroup({ title: item.title, address: item.address, mapUrl: item.mapUrl })}
+              onPress={() => { shareSpotToGroup({ title: item.title, address: item.address, mapUrl: item.mapUrl }); sendEngagement(item.title, 'share', moodLabel); }}
               style={s.footBtnShare}
             >
               <MessageCircle size={12} color={darkTheme ? '#8C7BB8' : COLORS.textMuted} strokeWidth={2} />

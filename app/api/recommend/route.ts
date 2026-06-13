@@ -1,6 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { AsyncLocalStorage } from "async_hooks";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
@@ -410,12 +410,17 @@ function scheduleInterpretationLog(freeword: string, interpretation: unknown): v
 // （fire-and-forget・失敗無視・上書きしないので安全）。
 function schedulePhotoWriteBack(name: string, url: string): void {
   if (!supabase || !name || !url) return;
-  void supabase
-    .from("places")
-    .update({ photo_url: url })
-    .is("photo_url", null)
-    .eq("name", name)
-    .then(() => {}, () => {});
+  // Vercelサーバーレスでは応答後のfire-and-forgetは凍結され実行されない。
+  // after() で応答返却後に確実に走らせ、places.photo_url を恒久保存する
+  // （photo_url が NULL の行のみ・上書きしない・失敗無視で安全）。
+  const sb = supabase;
+  const run = () =>
+    sb.from("places").update({ photo_url: url }).is("photo_url", null).eq("name", name).then(() => {}, () => {});
+  try {
+    after(async () => { await run(); });
+  } catch {
+    void run();  // request context 外（テスト等）はそのまま実行
+  }
 }
 
 // ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
@@ -5657,18 +5662,42 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 }
 
+// 検索メトリクスを search_metrics に記録（Google依存度の可視化）。after()で応答後・失敗無視。
+function logSearchMetric(row: Record<string, unknown>): void {
+  if (!supabase) return;
+  const sb = supabase;
+  const run = () => sb.from("search_metrics").insert(row).then(() => {}, () => {});
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
+
 // 計測ラッパー: API呼び出しカウンタを用意してハンドラを実行し、最後に1行ログ出力する。
 export async function POST(request: Request): Promise<Response> {
   const counts = newApiCounts();
   const t0 = Date.now();
+  // メトリクス用に気分/エリアを先読み（cloneなので本処理に影響なし）
+  let meta: { mood: string; area: string; deepDive: string } = { mood: "", area: "", deepDive: "" };
+  try {
+    const b = await request.clone().json();
+    const a = b?.answers ?? {};
+    const dd = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "").includes("深掘り"));
+    meta = { mood: a.mood ?? "", area: a.selectedArea ?? a.areaLabel ?? "", deepDive: dd?.answer ?? "" };
+  } catch { /* noop */ }
   return apiCounterStore.run({ counts }, async () => {
     const res = await handleRecommend(request);
     const total = counts.searchText + counts.searchNearby + counts.geocode + counts.routes + counts.photo + counts.other;
     const elapsed = Date.now() - t0;
     console.log(`[api-count] total=${total} searchText=${counts.searchText} searchNearby=${counts.searchNearby} geocode=${counts.geocode} routes=${counts.routes} photo=${counts.photo} other=${counts.other} elapsed=${elapsed}ms`);
     // 計測値をレスポンスにも埋め込む（_apiCount）。アプリは未知フィールドを無視するため無害。
+    let recCount = 0, source = "";
     try {
       const body = await res.clone().json();
+      recCount = Array.isArray(body?.recommendations) ? body.recommendations.length : 0;
+      source = body?.source ?? "";
+      logSearchMetric({
+        mood: meta.mood, area: meta.area, deep_dive: meta.deepDive,
+        google_calls: counts.searchText + counts.searchNearby + counts.photo,
+        total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
+      });
       return NextResponse.json(
         { ...body, _apiCount: { total, ...counts, elapsedMs: elapsed } },
         { status: res.status },

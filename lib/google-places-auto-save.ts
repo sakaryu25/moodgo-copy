@@ -15,7 +15,7 @@ import { supabase } from "@/lib/supabase";
 // 応答返却後に実行（Vercelサーバーレスでも凍結されず確実に走る）。
 // setTimeoutのfire-and-forgetは応答後に関数が凍結され実行されない＝保存が消える罠の対策。
 // request context外（テスト等）ではsetTimeoutへフォールバック。
-function runAfterResponse(fn: () => Promise<void>): void {
+export function runAfterResponse(fn: () => Promise<void>): void {
   try {
     after(async () => { await fn().catch(() => {}); });
   } catch {
