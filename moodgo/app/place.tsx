@@ -621,6 +621,11 @@ export default function PlaceDetailPage() {
             </LinearGradient>
           )}
 
+          {/* 心霊: 写真も暗く沈ませて統一した怖い雰囲気に */}
+          {isSpooky && photos.length > 0 && (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(8,4,20,0.45)' }]} />
+          )}
+
           <LinearGradient colors={GRAD_DARK} style={s.heroOverlay} pointerEvents="none" />
 
           {photos.length > 1 && (

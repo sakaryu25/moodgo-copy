@@ -399,6 +399,11 @@ export default function PlaceCard({
           </LinearGradient>
         )}
 
+        {/* 心霊: 写真も暗く沈ませて全カードを統一した怖い雰囲気にする */}
+        {darkTheme && photos.length > 0 && (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, s.spookyPhotoTint]} />
+        )}
+
         <LinearGradient
           colors={['transparent', 'rgba(15,10,30,0.45)']}
           style={s.photoOverlay}
@@ -693,6 +698,7 @@ const s = StyleSheet.create({
   moodMatchBtnDark: { backgroundColor: 'rgba(16,80,60,0.35)', borderColor: 'rgba(16,185,129,0.4)' },
   moodNotMatchBtnDark: { backgroundColor: 'rgba(80,25,30,0.35)', borderColor: 'rgba(239,68,68,0.4)' },
   footBtnTextDark: { color: '#9C8CC4' },
+  spookyPhotoTint: { backgroundColor: 'rgba(8,4,20,0.45)' },
 
   // 写真
   photoWrap:        { position: 'relative' },
