@@ -206,8 +206,9 @@ export default function CommunitySpotScreen() {
           {spot.address ? (
             <View style={s.areaChip}>
               <MapPin size={13} color={PURPLE} strokeWidth={2.2} />
-              <Text style={s.areaChipText} numberOfLines={1}>
-                {spot.address.replace(/^日本[、,]\s*/, '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').slice(0, 16)}
+              {/* 下の住所欄と同じ住所を全文表示（固定文字数で切ると番地が欠けて別住所に見える） */}
+              <Text style={s.areaChipText} numberOfLines={1} ellipsizeMode="tail">
+                {spot.address.replace(/^日本[、,]\s*/, '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '')}
               </Text>
             </View>
           ) : null}
@@ -410,11 +411,11 @@ const s = StyleSheet.create({
   mapPillText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   areaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%',
     backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16,
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
   },
-  areaChipText: { fontSize: 12, fontWeight: '700', color: '#6D28D9' },
+  areaChipText: { fontSize: 12, fontWeight: '700', color: '#6D28D9', flexShrink: 1 },
 
   // Comment (大目玉)
   commentCard: {
