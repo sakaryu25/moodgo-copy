@@ -338,20 +338,25 @@ function DetailView({
       {/* スポット一覧 */}
       <View style={{ paddingTop: 8 }}>
         {item.recommendations && item.recommendations.length > 0
-          ? item.recommendations.map((rec, i) => (
+          ? (() => { const histShinrei = (sa as { deepDiveL1?: string }).deepDiveL1 === '心霊'; return item.recommendations.map((rec, i) => (
             <PlaceCard
               key={`${rec.title}-${i}`}
-              item={rec}
+              // 心霊は保存済みのGoogle写真を使わず、利用者投稿/プレースホルダーにする
+              item={histShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : rec}
               isFavorited={(favorites ?? []).some((f) => f.title === rec.title)}
               onToggleFavorite={() => onToggleFavorite?.(rec)}
               lang={lang}
               isVisited={visitedSet.has(rec.title)}
               onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
               onReport={() => setReportRec(rec)}
-              onPressDetail={onPressDetail ? () => onPressDetail(rec) : undefined}
-              spooky={(sa as { deepDiveL1?: string }).deepDiveL1 === '心霊'}
+              onPressDetail={onPressDetail
+                ? () => onPressDetail(histShinrei
+                    ? { ...rec, photoUrl: undefined, photoUrls: undefined, tags: [...(rec.tags ?? []), ...(rec.tags?.includes('#心霊スポット') ? [] : ['#心霊スポット'])] }
+                    : rec)
+                : undefined}
+              spooky={histShinrei}
             />
-          ))
+          )); })()
           : (
             <View style={s.emptyBox}>
               <Text style={s.emptyText}>{t.noRecs}</Text>
