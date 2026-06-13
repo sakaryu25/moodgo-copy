@@ -26,6 +26,7 @@ export interface NearbyPlaceRow {
   area: string | null;
   description: string | null;
   photo_url: string | null;
+  image_urls: string[] | null;
   open_hours: string | null;
   close_day: string | null;
   budget: string | null;
@@ -134,12 +135,13 @@ export function nearbyRowToPlaceResponse(
     name:         row.name,
     category:     categoryTag.replace(/^#/, ""),
     description:  row.description ?? `${row.name}のスポット情報`,
-    imageUrl:     row.photo_url ?? "",
+    imageUrl:     (row.image_urls && row.image_urls.length > 0 ? row.image_urls[0] : row.photo_url) ?? "",
     rating:       null,
     reviewCount:  null,
     address:      row.address ?? "",
     distanceInfo: formatDistanceFromM(row.distance_m, transport),
-    photoUrls:    row.photo_url ? [row.photo_url] : [],
+    // 保存済みの複数写真があればそれを、無ければ単発photo_url（SQL未実行でも安全）
+    photoUrls:    (row.image_urls && row.image_urls.length > 0) ? row.image_urls : (row.photo_url ? [row.photo_url] : []),
     openNow:      null,
     openingHours: row.open_hours ?? null,
     priceLevel:   null,

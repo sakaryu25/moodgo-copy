@@ -408,19 +408,36 @@ function scheduleInterpretationLog(freeword: string, interpretation: unknown): v
 // 実行時にGoogleで補完した写真URLを places.photo_url に保存し、次回以降の
 // searchText 呼び出しを削減する。photo_url が NULL の行のみ名前一致で埋める
 // （fire-and-forget・失敗無視・上書きしないので安全）。
-function schedulePhotoWriteBack(name: string, url: string): void {
-  if (!supabase || !name || !url) return;
-  // Vercelサーバーレスでは応答後のfire-and-forgetは凍結され実行されない。
-  // after() で応答返却後に確実に走らせ、places.photo_url を恒久保存する
-  // （photo_url が NULL の行のみ・上書きしない・失敗無視で安全）。
+// 検索/詳細で取得したエンリッチ情報（写真・複数写真・最寄り駅・営業時間）を
+// places に恒久保存する。Vercelの「応答後fire-and-forgetは凍結」罠を after() で回避。
+// 各列は「NULLの行のみ」更新＝上書きしない・失敗無視で安全。営業時間のみTTLで上書き許容。
+// （image_urls 等の列が未作成でもエラーは握りつぶす＝SQL未実行でも安全）。
+function schedulePlaceWriteBack(
+  name: string,
+  fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string },
+): void {
+  if (!supabase || !name) return;
   const sb = supabase;
-  const run = () =>
-    sb.from("places").update({ photo_url: url }).is("photo_url", null).eq("name", name).then(() => {}, () => {});
-  try {
-    after(async () => { await run(); });
-  } catch {
-    void run();  // request context 外（テスト等）はそのまま実行
-  }
+  const run = async () => {
+    if (fields.photoUrl) {
+      await sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null).eq("name", name).then(() => {}, () => {});
+    }
+    if (fields.imageUrls && fields.imageUrls.length > 0) {
+      await sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null).eq("name", name).then(() => {}, () => {});
+    }
+    if (fields.station) {
+      await sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null).eq("name", name).then(() => {}, () => {});
+    }
+    if (fields.openHours) {
+      // 営業時間は変わるので last_checked_at 付きで上書き許容（NULL条件なし）
+      await sb.from("places").update({ open_hours: fields.openHours, last_checked_at: new Date().toISOString() }).eq("name", name).then(() => {}, () => {});
+    }
+  };
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
+// 後方互換ラッパー（既存呼び出し用・写真URL単発）
+function schedulePhotoWriteBack(name: string, url: string): void {
+  if (url) schedulePlaceWriteBack(name, { photoUrl: url });
 }
 
 // ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
@@ -4951,7 +4968,7 @@ async function fetchYahooSupplement(
               "X-Goog-Api-Key": googleApiKey,
               // 写真に加えて評価(rating/userRatingCount)もここで補完する
             // YahooはratingAPIを持たないため、GooglePlaces検索で評価を取得してYahoo結果に付与
-            "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount,places.currentOpeningHours,places.priceLevel",
+            "X-Goog-FieldMask": "places.id,places.photos,places.rating,places.userRatingCount,places.currentOpeningHours,places.priceLevel",
             },
             body: JSON.stringify({
               textQuery: `${r.title} ${r.address ?? ""}`.trim(),
@@ -4966,6 +4983,8 @@ async function fetchYahooSupplement(
           const sdata = await sres.json().catch(() => null);
           const place = sdata?.places?.[0];
           if (!place) return;
+          // Yahoo結果にGoogle Place IDを紐付け（自動保存で重複排除＆詳細精度UP＝item4）
+          if (typeof place.id === "string" && place.id) r.placeId = place.id;
           // 評価・営業状態・価格を補完（YahooはこれらのAPIを持たないため）
           if (typeof place.rating === "number") r.rating = place.rating;
           if (typeof place.userRatingCount === "number") r.userRatingCount = place.userRatingCount;
@@ -6156,7 +6175,7 @@ async function handleRecommend(request: Request) {
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
                   photoMap.set(name, urls);
-                  schedulePhotoWriteBack(name, urls[0]);          // places.photo_url(単発)
+                  schedulePlaceWriteBack(name, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                   await ltCachePut(`enr:${name.slice(0, 80)}`, { photoUrls: urls });  // 長期キャッシュ
                 }
               } catch { /* 写真取得失敗は無視 */ }
@@ -6178,7 +6197,10 @@ async function handleRecommend(request: Request) {
               }
               if (typeof r.lat === "number" && typeof r.lng === "number") {
                 const st = await findNearestStation(r.lat, r.lng, apiKey);
-                if (st) stationMap.set(r.name, st);
+                if (st) {
+                  stationMap.set(r.name, st);
+                  schedulePlaceWriteBack(r.name, { station: st });  // 最寄り駅を恒久保存→次回以降ゼロ
+                }
               }
             }));
             return stationMap;
@@ -6647,7 +6669,7 @@ async function handleRecommend(request: Request) {
           const yahooEntries = (yahooSupplements as Array<Record<string, unknown>>)
             .filter(y => y.title && typeof y.lat === "number" && typeof y.lng === "number")
             .map(y => ({
-              googlePlaceId: "",
+              googlePlaceId: String(y.placeId ?? ""),  // 写真補完で取得したGoogle Place ID（item4）
               name: String(y.title ?? ""),
               address: String(y.address ?? ""),
               lat: y.lat as number,
@@ -6797,7 +6819,7 @@ async function handleRecommend(request: Request) {
                 const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
                 if (urls.length > photoUrls.length) {
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
-                  if (urls[0]) schedulePhotoWriteBack(rec.title ?? "", urls[0]);  // places.photo_urlにも単発保存
+                  if (urls[0]) schedulePlaceWriteBack(rec.title ?? "", { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                 }
                 if (urls.length > 0) enrSave.photoUrls = urls;
               }
@@ -6813,7 +6835,10 @@ async function handleRecommend(request: Request) {
                 };
                 const periods = (place.currentOpeningHours as { periods?: GooglePeriod[] })?.periods;
                 if (periods) enrSave.periods = periods;
-                if (wd?.length) enrSave.weekday = wd;
+                if (wd?.length) {
+                  enrSave.weekday = wd;
+                  schedulePlaceWriteBack(rec.title ?? "", { openHours: wd.join("\n") });  // 営業時間を恒久保存(TTL)
+                }
               }
               // 長期キャッシュへ保存。データが無い店も checked:true を記憶し
               //   「聞いても無い店」への再問い合わせを止める（次回以降call0）
