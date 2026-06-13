@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
       spots.map((s: any, i: number) => ({
         page_id: pageId,
         title: s.title ?? "",
+        shop_name: s.shop_name ?? "",
         location: s.location ?? "",
         catch_copy: s.catch_copy ?? "",
         description: s.description ?? "",

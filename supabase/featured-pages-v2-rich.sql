@@ -11,6 +11,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 ALTER TABLE featured_page_spots
+  ADD COLUMN IF NOT EXISTS shop_name          text    DEFAULT '',
   ADD COLUMN IF NOT EXISTS catch_copy         text    DEFAULT '',
   ADD COLUMN IF NOT EXISTS tags               text[]  DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS features           text[]  DEFAULT '{}',
@@ -32,6 +33,7 @@ ALTER TABLE featured_page_spots
 -- 既存行の NULL を空デフォルトで埋める（古い行対策）
 UPDATE featured_page_spots
 SET
+  shop_name          = COALESCE(shop_name, ''),
   catch_copy         = COALESCE(catch_copy, ''),
   tags               = COALESCE(tags, '{}'),
   features           = COALESCE(features, '{}'),

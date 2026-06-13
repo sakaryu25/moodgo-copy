@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CalendarClock, Check, ChevronDown, ChevronLeft, Clock, MapPin, Phone, Search, Train, Users, Utensils } from 'lucide-react-native';
+import { CalendarClock, Check, ChevronDown, ChevronLeft, Clock, MapPin, Phone, Search, Store, Train, Users, Utensils } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,6 +29,7 @@ type Hours = Partial<Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun
 type FeaturedSpot = {
   id: string;
   title: string;
+  shop_name?: string;
   location?: string;
   catch_copy?: string;
   description?: string;
@@ -191,6 +192,12 @@ export default function FeatureSpotPage() {
 
         {/* ── リード（キャッチ）＋本文 ── */}
         <View style={s.body}>
+          {!!spot.shop_name && (
+            <View style={s.shopNameRow}>
+              <Store size={15} color={ACCENT} strokeWidth={2} />
+              <Text style={s.shopName}>{spot.shop_name}</Text>
+            </View>
+          )}
           {!!spot.catch_copy && <Text style={s.lead}>{spot.catch_copy}</Text>}
 
           {!!(spot.tags && spot.tags.length) && (
@@ -398,6 +405,8 @@ const s = StyleSheet.create({
 
   // 本文
   body: { paddingHorizontal: 22, paddingTop: 22 },
+  shopNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  shopName: { fontSize: 15, fontWeight: '700', color: SUB, letterSpacing: 0.3 },
   lead: { fontFamily: SERIF, fontSize: 19, lineHeight: 32, color: INK },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
   tag: { fontSize: 13, color: ACCENT, fontWeight: '700' },

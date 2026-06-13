@@ -121,6 +121,7 @@ function emptyHours(): HoursDraft {
 
 interface SpotDraft {
   title: string;
+  shop_name: string;
   location: string;
   catch_copy: string;
   description: string;
@@ -142,7 +143,7 @@ interface SpotDraft {
 
 function emptySpot(): SpotDraft {
   return {
-    title: "", location: "", catch_copy: "", description: "", image_url: "",
+    title: "", shop_name: "", location: "", catch_copy: "", description: "", image_url: "",
     gallery_image_urls: [], tags: [], features: [],
     address: "", access: "", phone: "", website: "", instagram: "",
     congestion_info: "", closed_days: "", hours: emptyHours(),
@@ -156,6 +157,7 @@ function normalizeSpot(s: any): SpotDraft {
   return {
     ...base,
     title: s.title ?? "",
+    shop_name: s.shop_name ?? "",
     location: s.location ?? "",
     catch_copy: s.catch_copy ?? "",
     description: s.description ?? "",
@@ -598,8 +600,12 @@ function SpotEditor({ spots, onChange }: {
             {/* 基本 */}
             <div style={{ display: "grid", gap: "8px" }}>
               <div>
-                <label style={css.label}>スポット名 *</label>
+                <label style={css.label}>記事見出し（大きく出る名前）*</label>
                 <input value={s.title} onChange={(e) => update(i, "title", e.target.value)} style={css.input} placeholder="雨音に包まれるカフェ時間" />
+              </div>
+              <div>
+                <label style={css.label}>店名（正式名称）</label>
+                <input value={s.shop_name} onChange={(e) => update(i, "shop_name", e.target.value)} style={css.input} placeholder="喫茶 木漏れ日" />
               </div>
               <div>
                 <label style={css.label}>エリア・場所</label>

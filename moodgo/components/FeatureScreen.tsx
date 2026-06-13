@@ -197,6 +197,7 @@ type MoodV2 = {
 type SpotV2 = {
   id: string;
   title: string;
+  shop_name?: string;
   location?: string;
   catch_copy?: string;
   description?: string;
@@ -1184,7 +1185,10 @@ function SpotArticle({ index, spot, onOpen }: { index: number; spot: SpotV2; onO
     <View style={s.mzArticle}>
       <View style={s.mzArtHead}>
         <Text style={s.mzNum}>{String(index).padStart(2, "0")}</Text>
-        <Text style={s.mzArtTitle}>{spot.title}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.mzArtTitle}>{spot.title}</Text>
+          {!!spot.shop_name && <Text style={s.mzShopName}>{spot.shop_name}</Text>}
+        </View>
       </View>
       <TouchableOpacity activeOpacity={0.9} onPress={onOpen}>
         <ExpoImage
@@ -1947,7 +1951,8 @@ const s = StyleSheet.create({
   mzArticle: { paddingHorizontal: 20, paddingBottom: 6 },
   mzArtHead: { flexDirection: "row", alignItems: "baseline", gap: 10, marginBottom: 12 },
   mzNum: { fontFamily: SERIF, fontSize: 30, color: C.accent, lineHeight: 32 },
-  mzArtTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: C.text, lineHeight: 26 },
+  mzArtTitle: { fontSize: 18, fontWeight: "800", color: C.text, lineHeight: 26 },
+  mzShopName: { fontSize: 12.5, color: C.subText, fontWeight: "600", marginTop: 2 },
   mzArtImg: { width: "100%", height: 200, borderRadius: 14, backgroundColor: C.segBg },
   mzArtBody: { fontSize: 15, lineHeight: 26, color: C.text, marginTop: 14 },
   mzInfoRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginTop: 14 },
