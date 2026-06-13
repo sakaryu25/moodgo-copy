@@ -461,26 +461,45 @@ export default function Home() {
         : answers;
 
       // ── POST /api/recommend ──────────────────────────────────────────────
+      const baseBody = {
+        answers:            refinedAnswers,
+        pastFeedback:       pastFeedback.slice(0, 5),  // 直近5件のフィードバックを渡す
+        seenPlaces:         [...seenSet],
+        showUnseenOnly:     showUnseenOnly || excludeShown,
+        refinementText:     refineText ?? '',
+        userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
+      };
       const res = await apiFetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          answers:            refinedAnswers,
-          pastFeedback:       pastFeedback.slice(0, 5),  // 直近5件のフィードバックを渡す
-          seenPlaces:         [...seenSet],
-          showUnseenOnly:     showUnseenOnly || excludeShown,
-          refinementText:     refineText ?? '',
-          userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
-        }),
+        body: JSON.stringify(baseBody),
       });
 
-      const d = await res.json();
-      const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
+      let d = await res.json();
+      let recs: Recommendation[] = d.recommendations ?? d.data ?? [];
+      let exhaustedNote = '';
+
+      // シャッフル/未見のみで在庫が尽きて0件になったら、除外を解いて再表示
+      // （箱根など候補が少ないエリアで「空っぽ画面」になるのを防ぐ）
+      if (recs.length === 0 && (excludeShown || showUnseenOnly)) {
+        const res2 = await apiFetch('/api/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...baseBody, seenPlaces: [], showUnseenOnly: false }),
+        });
+        const d2 = await res2.json();
+        const recs2: Recommendation[] = d2.recommendations ?? d2.data ?? [];
+        if (recs2.length > 0) {
+          d = d2;
+          recs = recs2;
+          exhaustedNote = '新しい場所が見つからなかったので、もう一度おすすめを表示しています。';
+        }
+      }
 
       setApiRecommendations(recs);
       // B-2: ワーニングはAPIの warning をそのまま表示（API側で既に「範囲を広げました」を含むため
       //   アプリ側で同文を重ねない＝重複表示の修正）
-      setApiWarning(d.warning ?? '');
+      setApiWarning(exhaustedNote || d.warning || '');
 
       // ── 履歴保存（新規検索のみ）────────────────────────────────────────────
       if (recs.length > 0 && !isRefinement) {
