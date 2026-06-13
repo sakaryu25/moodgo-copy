@@ -6116,7 +6116,11 @@ async function handleRecommend(request: Request) {
           // 最寄り駅を並列検索（Supabase スポット用）
           (async (): Promise<Map<string, string>> => {
             const stationMap = new Map<string, string>();
-            if (!apiKey) return stationMap;
+            // スリルは独自データのみ＝駅補完のGoogle検索もしない（保存済みstationInfoのみ使用）
+            if (!apiKey || isProprietaryOnly) {
+              for (const r of scored) if (r.stationInfo) stationMap.set(r.name, r.stationInfo);
+              return stationMap;
+            }
             await Promise.all(scored.map(async (r) => {
               if (r.stationInfo) {
                 stationMap.set(r.name, r.stationInfo);
