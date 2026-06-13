@@ -6690,6 +6690,42 @@ async function handleRecommend(request: Request) {
           } catch { /* 駅なしは無視 */ }
         }));
 
+        // ── LLMリランカー: 気分・希望に「ぴったり来る順」へ並べ替え ──────────────
+        //   体験系の気分のみ（飲食=近い順優先/スリル=独自少数 は対象外）。
+        //   ジャンルフィルタでは拾えない「それっぽさ」をLLMに汲み取らせる。
+        //   候補は全て実在データなので幻覚ゼロ。失敗・タイムアウト時は元の順序を維持。
+        if (openai && !isFoodMood && !isProprietaryOnly && recommendations.length >= 5) {
+          try {
+            const cand = recommendations.slice(0, 15).map((r, i) =>
+              `${i}: ${r.title ?? ""}｜${(r.features ?? []).slice(0, 3).join("/")}｜${r.distanceText ?? ""}｜★${r.rating ?? "-"}`
+            ).join("\n");
+            const rr = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              temperature: 0.2,
+              max_tokens: 160,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: 'あなたは出かけ先の並べ替えAIです。ユーザーの気分・希望に「最もぴったり来る順」に候補番号を並べ替え、{"order":[数値,...]} のみをJSONで返してください。全ての番号を1回ずつ含めること。' },
+                { role: "user", content: `気分:${answers.mood ?? ""}／深掘り:${effectiveDeepDive || "なし"}／同行:${answers.companion ?? ""}／希望:${answers.freeWord || refinementText || "なし"}\n候補:\n${cand}` },
+              ],
+            }, { signal: AbortSignal.timeout(7000) });
+            const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
+            const order: unknown[] = Array.isArray(parsed.order) ? parsed.order : [];
+            if (order.length > 0) {
+              const seen = new Set<number>();
+              const out: typeof recommendations = [];
+              for (const x of order) {
+                const i = Number(x);
+                if (Number.isInteger(i) && i >= 0 && i < recommendations.length && !seen.has(i)) {
+                  seen.add(i); out.push(recommendations[i]);
+                }
+              }
+              for (let i = 0; i < recommendations.length; i++) if (!seen.has(i)) out.push(recommendations[i]);
+              if (out.length === recommendations.length) recommendations = out;
+            }
+          } catch { /* 失敗時は元の順序を維持（品質劣化させない） */ }
+        }
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
