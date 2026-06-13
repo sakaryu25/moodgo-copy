@@ -5633,6 +5633,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   // 正規店（用心棒・一蘭 等）は除外されない。
   const genreFidelityFilter = <T extends { title?: string }>(arr: T[]): T[] => {
     if (!effectiveDeepDive) return arr;
+    // 心霊は地名スポット（八木山橋・恐山等）が大半で名前にジャンル語を含まない。
+    // #心霊スポットタグで識別済みなので、名前ベースのジャンルフィルタは掛けない（誤除外防止）。
+    if (effectiveDeepDive === "心霊") return arr;
     {
       const cdd = canonDeepDive(effectiveDeepDive);
       if (!GENRE_NEGATIVE_RE[cdd] && !GENRE_POSITIVE_REQUIRED[cdd]) return arr;
