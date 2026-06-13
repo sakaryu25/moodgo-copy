@@ -345,11 +345,26 @@ export default function PlaceDetailPage() {
   // 心霊スポット判定（タグ） + 利用者がその場で追加した写真
   const isSpooky = !!rec?.tags?.includes('#心霊スポット');
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const basePhotos = rec
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
-  const photos = [...uploadedPhotos, ...basePhotos];
+  const photos = [...new Set([...uploadedPhotos, ...fetchedPhotos, ...basePhotos])];
+
+  // 心霊スポットは最新の投稿写真をマウント時に取得（検索後/他ユーザーの追加も反映）
+  useEffect(() => {
+    if (!isSpooky || !rec) return;
+    let active = true;
+    const params = new URLSearchParams();
+    if (rec.supabaseId) params.set('placeId', rec.supabaseId);
+    else if (rec.title) params.set('placeName', rec.title);
+    apiFetch(`/api/spot-photo?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => { if (active && d?.ok && Array.isArray(d.photos)) setFetchedPhotos(d.photos); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isSpooky, rec?.supabaseId, rec?.title]);
 
   // 写真を提供（誰でも追加可・削除は管理者のみ）
   const handleAddSpotPhoto = async () => {

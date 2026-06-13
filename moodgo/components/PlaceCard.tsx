@@ -10,7 +10,7 @@ import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -228,11 +228,27 @@ export default function PlaceCard({
   const t = T[lang];
   // 利用者がその場で追加した写真（即時表示・Google補強はしない）
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const basePhotos = (item.photoUrls ?? []).length > 0
     ? item.photoUrls!
     : item.photoUrl ? [item.photoUrl] : [];
-  const rawPhotos = [...uploadedPhotos, ...basePhotos];
+  // 重複排除しつつ「投稿直後＞最新取得＞検索時点」の順でマージ
+  const rawPhotos = [...new Set([...uploadedPhotos, ...fetchedPhotos, ...basePhotos])];
+
+  // 心霊スポットは、検索後に追加された写真も出すよう、マウント時に最新の投稿写真を取得
+  useEffect(() => {
+    if (!spooky) return;
+    let active = true;
+    const params = new URLSearchParams();
+    if (item.supabaseId) params.set('placeId', item.supabaseId);
+    else if (item.title) params.set('placeName', item.title);
+    apiFetch(`/api/spot-photo?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => { if (active && d?.ok && Array.isArray(d.photos)) setFetchedPhotos(d.photos); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [spooky, item.supabaseId, item.title]);
 
   // 心霊スポット等への写真投稿：誰でも追加できる（削除は管理者のみ）
   const handleAddPhoto = async () => {
