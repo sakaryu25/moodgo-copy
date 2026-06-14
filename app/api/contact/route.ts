@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const ADMIN = "moodgoadmin123";
 
@@ -17,6 +18,10 @@ function isMissingTable(error: { code?: string } | null): boolean {
 export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  }
+  // 連投抑止: 1IPあたり1分で5件まで
+  if (!rateLimit(`contact:${clientIp(request)}`, 5, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });
   }
   try {
     const body = await request.json().catch(() => null);

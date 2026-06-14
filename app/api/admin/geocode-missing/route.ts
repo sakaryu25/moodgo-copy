@@ -1,14 +1,16 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabase as supabaseAdmin } from "@/lib/supabase";
+import { isAdminRequest, requireAdminFromReq } from "@/lib/admin-auth";
 
 const GOOGLE_API_KEY =
   process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 // GET: 座標未登録のスポット一覧を返す
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  if (!requireAdminFromReq(req)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   const { data, error } = await supabaseAdmin
     .from("places")
     .select("id, name, address, lat, lng, is_active")
@@ -24,10 +26,11 @@ export async function GET() {
 }
 
 // POST: 住所→ジオコードして座標を保存（単体 or 一括）
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
+  if (!isAdminRequest(request, body?.secret)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   // 手動座標登録: { placeId, lat, lng }
   if (body.placeId && body.lat != null && body.lng != null) {

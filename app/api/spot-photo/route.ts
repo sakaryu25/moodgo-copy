@@ -8,16 +8,32 @@
 export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
-const ADMIN = "moodgoadmin123";
+const ADMIN = ADMIN_SECRET;
 const BUCKET = "spot-photos";
+let bucketEnsured = false; // createBucketは毎回叩かず1インスタンス1回だけ
 
 function isMissingTable(e: { code?: string } | null): boolean {
   return e?.code === "42P01" || e?.code === "PGRST205" || e?.code === "PGRST204";
 }
 
+// 画像base64の形式・サイズ検証（任意バイト列の投入を防ぐ）
+function isValidImageBase64(b64: string): boolean {
+  // data URLプレフィックスは許容しつつ、jpeg/png/webp/heic のみ
+  const m = b64.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,/i);
+  const payload = m ? b64.slice(b64.indexOf(",") + 1) : b64;
+  if (payload.length < 100) return false;
+  return /^[A-Za-z0-9+/=\r\n]+$/.test(payload.slice(0, 256)); // 先頭がbase64文字のみか
+}
+
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  // 連投抑止: 1IPあたり1分で8枚まで
+  if (!rateLimit(`spot-photo:${clientIp(req)}`, 8, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });
+  }
   try {
     const body = await req.json().catch(() => null);
     const imageBase64 = String(body?.imageBase64 ?? "");
@@ -30,8 +46,14 @@ export async function POST(req: Request) {
     if (imageBase64.length > 4_000_000) {
       return NextResponse.json({ ok: false, error: "画像が大きすぎます" }, { status: 400 });
     }
+    if (!isValidImageBase64(imageBase64)) {
+      return NextResponse.json({ ok: false, error: "画像の形式が不正です" }, { status: 400 });
+    }
 
-    await supabase.storage.createBucket(BUCKET, { public: true }); // 既存ならエラーは無視
+    if (!bucketEnsured) {
+      await supabase.storage.createBucket(BUCKET, { public: true }).then(() => {}, () => {}); // 既存ならエラー無視
+      bucketEnsured = true;
+    }
     // 端末＋時刻でユニークなパス（同一スポットに複数枚OK）
     const safe = (placeId ?? placeName).replace(/[^0-9a-zA-Z]/g, "").slice(0, 24) || "spot";
     const rand = Math.abs(((deviceId ?? "x").split("").reduce((a, c) => a + c.charCodeAt(0), 0)));

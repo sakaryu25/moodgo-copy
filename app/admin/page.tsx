@@ -2272,8 +2272,8 @@ export default function AdminPage() {
     setReportsLoading(true);
     setReportsError("");
     Promise.all([
-      fetch("/api/reports?secret=moodgoadmin123").then(r => r.json()),
-      fetch("/api/admin/block-place").then(r => r.json()),
+      fetch("/api/reports", { headers: { "x-admin-secret": ADMIN_PASSWORD } }).then(r => r.json()),
+      fetch("/api/admin/block-place", { headers: { "x-admin-secret": ADMIN_PASSWORD } }).then(r => r.json()),
     ]).then(([reportData, blockData]) => {
       if (reportData.ok) setReports(reportData.reports ?? []);
       else setReportsError(reportData.error ?? "取得に失敗しました");
@@ -2291,7 +2291,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/block-place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spot_name: report.spot_name, spot_address: report.spot_address, reason: report.reason, report_id: report.id }),
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, spot_name: report.spot_name, spot_address: report.spot_address, reason: report.reason, report_id: report.id }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -2314,7 +2314,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/block-place", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spot_name: spotName }),
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, spot_name: spotName }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -2332,7 +2332,7 @@ export default function AdminPage() {
     if (!authed || tab !== "merge") return;
     setMergeLoading(true);
     setMergeResult("");
-    fetch("/api/admin/merge-duplicates")
+    fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
       .then(r => r.json())
       .then(d => { if (d.ok) setMergeGroups(d.groups ?? []); })
       .catch(() => {})
@@ -2344,7 +2344,7 @@ export default function AdminPage() {
     if (!authed || tab !== "geocode") return;
     setGeoLoading(true);
     setGeoBulkResult("");
-    fetch("/api/admin/geocode-missing")
+    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
       .then(r => r.json())
       .then(d => { if (d.ok) setGeoPlaces(d.data ?? []); })
       .catch(() => {})
@@ -7012,7 +7012,7 @@ export default function AdminPage() {
                 onClick={() => {
                   setMergeLoading(true);
                   setMergeResult("");
-                  fetch("/api/admin/merge-duplicates")
+                  fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
                     .then(r => r.json())
                     .then(d => { if (d.ok) setMergeGroups(d.groups ?? []); })
                     .finally(() => setMergeLoading(false));
@@ -7060,7 +7060,7 @@ export default function AdminPage() {
                             const res = await fetch("/api/admin/merge-duplicates", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ keepId, deleteIds, mergedTags }),
+                              body: JSON.stringify({ secret: ADMIN_PASSWORD, keepId, deleteIds, mergedTags }),
                             });
                             const d = await res.json();
                             if (d.ok) {
@@ -7154,7 +7154,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => {
                     setGeoLoading(true);
-                    fetch("/api/admin/geocode-missing")
+                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
                       .then(r => r.json())
                       .then(d => { if (d.ok) setGeoPlaces(d.data ?? []); })
                       .finally(() => setGeoLoading(false));
@@ -7171,12 +7171,12 @@ export default function AdminPage() {
                     const res = await fetch("/api/admin/geocode-missing", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ bulkAll: true }),
+                      body: JSON.stringify({ secret: ADMIN_PASSWORD, bulkAll: true }),
                     });
                     const d = await res.json();
                     setGeoBulkResult(`完了: ${d.succeeded ?? 0} / ${d.total ?? 0} 件成功`);
                     // リスト再取得
-                    fetch("/api/admin/geocode-missing")
+                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
                       .then(r => r.json())
                       .then(d2 => { if (d2.ok) setGeoPlaces(d2.data ?? []); });
                     setGeoBulkRunning(false);
@@ -7223,7 +7223,7 @@ export default function AdminPage() {
                             const res = await fetch("/api/admin/geocode-missing", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ placeId: place.id, address: place.address }),
+                              body: JSON.stringify({ secret: ADMIN_PASSWORD, placeId: place.id, address: place.address }),
                             });
                             const d = await res.json();
                             if (d.ok) {
@@ -7280,7 +7280,7 @@ export default function AdminPage() {
                               const res = await fetch("/api/admin/geocode-missing", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ placeId: place.id, lat, lng }),
+                                body: JSON.stringify({ secret: ADMIN_PASSWORD, placeId: place.id, lat, lng }),
                               });
                               const d = await res.json();
                               if (d.ok) {

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ALL_PREDEFINED_TAGS, buildFacilityTaggingPrompt } from "@/lib/predefined-tags";
 import { findNgWord } from "@/lib/ngwords";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 import OpenAI from "openai";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -26,6 +27,10 @@ async function autoTagFacility(
 export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  }
+  // 連投抑止: 1IPあたり1分で6件まで（穴場投稿）
+  if (!rateLimit(`suggestions:${clientIp(request)}`, 6, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });
   }
 
   try {
