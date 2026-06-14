@@ -120,3 +120,23 @@ create table if not exists search_snapshots (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_snapshots_created on search_snapshots (created_at desc);
+
+-- item8 バックフィル（任意・一度きり）: 既存の spot_engagement 履歴を affinity表へ集約。
+--   recommend は affinity表に1行でも入ると「affinity優先」に切替わるため、過去の
+--   エンゲージメントを先に集約しておかないと移行時に履歴が一瞬欠落する。再実行も安全。
+--   ※2026-06-14に本番でサービスキー経由実行済み（6ペア投入）。再構築時はこれを流す。
+insert into place_mood_affinity (place_name, mood, score, updated_at)
+select place_name, mood,
+  sum(case action
+        when 'visited'     then 5
+        when 'favorite'    then 3
+        when 'share'       then 3
+        when 'detail_view' then 1
+        when 'map_click'   then 1
+        else 1 end)::int,
+  now()
+from spot_engagement
+where mood is not null and place_name is not null
+group by place_name, mood
+on conflict (place_name, mood)
+do update set score = excluded.score, updated_at = now();
