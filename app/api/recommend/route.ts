@@ -423,11 +423,16 @@ async function fetchFreewordRules(): Promise<FwRule[]> {
 }
 function scheduleInterpretationLog(freeword: string, interpretation: unknown): void {
   if (!supabase || !freeword) return;
+  const sb = supabase;
   const norm = freeword.trim().toLowerCase().replace(/[\s。、！!？?]+/g, "");
-  void supabase
-    .from("freeword_interpretations")
-    .insert({ freeword_norm: norm.slice(0, 120), freeword_raw: freeword.slice(0, 300), interpretation })
-    .then(() => {}, () => {});
+  // ⚠ Vercelは応答後のfire-and-forgetを凍結するため after() で確実に走らせる
+  //   （これまで void .then() で学習ログ(freeword蒸留の素)が保存されていなかった）
+  const run = async () => {
+    await sb.from("freeword_interpretations")
+      .insert({ freeword_norm: norm.slice(0, 120), freeword_raw: freeword.slice(0, 300), interpretation })
+      .then(() => {}, () => {});
+  };
+  try { after(async () => { await run(); }); } catch { void run(); }
 }
 
 // ── 写真のplaces書き戻し（APIコスト削減）─────────────────────────────────────
@@ -3781,15 +3786,21 @@ async function getSupplementDbCache(key: string): Promise<Record<string, unknown
     return null;
   }
 }
-async function setSupplementDbCache(key: string, data: Record<string, unknown>[]): Promise<void> {
+function setSupplementDbCache(key: string, data: Record<string, unknown>[]): void {
   if (!supabase || data.length === 0) return;
-  try {
-    const expiresAt = new Date(Date.now() + SUPPLEMENT_DB_CACHE_TTL_SEC * 1000).toISOString();
-    await supabase.from("api_cache").upsert(
-      { cache_key: key, data, expires_at: expiresAt, updated_at: new Date().toISOString() },
-      { onConflict: "cache_key" },
-    );
-  } catch { /* テーブル未作成等は無視 */ }
+  const sb = supabase;
+  // ⚠ Vercelは応答後のfire-and-forgetを凍結するため after() で確実に走らせる
+  //   （これまで void で呼ばれ、60分キャッシュがほぼ保存されていなかった）
+  const run = async () => {
+    try {
+      const expiresAt = new Date(Date.now() + SUPPLEMENT_DB_CACHE_TTL_SEC * 1000).toISOString();
+      await sb.from("api_cache").upsert(
+        { cache_key: key, data, expires_at: expiresAt, updated_at: new Date().toISOString() },
+        { onConflict: "cache_key" },
+      );
+    } catch { /* テーブル未作成等は無視 */ }
+  };
+  try { after(async () => { await run(); }); } catch { void run(); }
 }
 
 // ─── 汎用長期キャッシュ（Google APIコスト削減・結果は完全同一）────────────────
@@ -4503,7 +4514,7 @@ async function fetchGooglePlacesSupplement(
     // E-2/D: 結果をインメモリ(5分)とSupabase永続(60分)の両方にキャッシュ
     //   （existingNames はキーに含めないため、シャッフル再検索も同キャッシュにヒット=E）
     setSupplementCache(cacheKey, result);
-    void setSupplementDbCache(cacheKey, result); // fire-and-forget（待たない）
+    setSupplementDbCache(cacheKey, result); // after()で応答後に確実に保存
     return result;
   } catch (e) {
     console.error("[recommend] Google supplement search failed:", e);

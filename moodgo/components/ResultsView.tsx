@@ -168,6 +168,8 @@ type Props = {
   isLoading: boolean;
   loadingMessage: string;
   apiWarning: string;
+  searchFailed?: boolean;
+  onRetrySearch?: () => void;
   favorites: FavoriteItem[];
   onToggleFavorite: (rec: Recommendation) => void;
   placeRatings: Record<string, 'good' | 'bad'>;
@@ -261,7 +263,7 @@ export default function ResultsView(props: Props) {
     focusFacilities, focusSubCategoryLabel,
     sportsFacilities, sportsSubCategoryLabel,
     travelFacilities, travelSubCategoryLabel,
-    isLoading, loadingMessage, apiWarning,
+    isLoading, loadingMessage, apiWarning, searchFailed, onRetrySearch,
     favorites, onToggleFavorite, blockedPlaces, onBlockPlace,
     placeRatings, onSetPlaceRatings,
     feedbackRating, feedbackSubmitted, onSubmitFeedback,
@@ -560,10 +562,15 @@ export default function ResultsView(props: Props) {
         {/* Loading */}
         {isLoading && <LoadingCard message={loadingMessage} />}
 
-        {/* Warning */}
+        {/* Warning（失敗時は再試行ボタンも出す） */}
         {apiWarning && !isLoading ? (
           <View style={s.warningBox}>
             <Text style={s.warningText}>{apiWarning}</Text>
+            {searchFailed && onRetrySearch && (
+              <PuniPressable onPress={onRetrySearch} style={s.retryBtn}>
+                <Text style={s.retryBtnText}>{lang === 'ja' ? 'もう一度試す' : 'Try again'}</Text>
+              </PuniPressable>
+            )}
           </View>
         ) : null}
 
@@ -612,8 +619,8 @@ export default function ResultsView(props: Props) {
           </PuniPressable>
         )}
 
-        {/* Empty state */}
-        {!isLoading && facilityItems.length === 0 && (
+        {/* Empty state（検索失敗時は上の警告＋再試行を出すので、矛盾する「該当なし」は出さない） */}
+        {!isLoading && facilityItems.length === 0 && !searchFailed && (
           <View style={s.emptyBox}>
             <Search size={48} color="#C7C7CC" strokeWidth={1.5} />
             <Text style={s.emptyText}>{t.empty}</Text>
@@ -863,6 +870,8 @@ const s = StyleSheet.create({
   loadingText: { fontSize: 15, color: '#7C3AED', textAlign: 'center', lineHeight: 22, fontWeight: '600' },
   warningBox: { backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },
   warningText: { fontSize: 13, color: '#92600A', lineHeight: 20 },
+  retryBtn: { marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 18 },
+  retryBtnText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 14 },
   emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
   refinementBox: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 4, marginBottom: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },

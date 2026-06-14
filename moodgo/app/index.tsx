@@ -143,6 +143,7 @@ export default function Home() {
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const [loadingMsgIdx,          setLoadingMsgIdx]          = useState(0);
   const [apiWarning,             setApiWarning]             = useState('');
+  const [searchFailed,           setSearchFailed]           = useState(false);  // 通信/タイムアウト等の失敗（0件とは区別）
   const [refinementText,         setRefinementText]         = useState('');
   const [isRefining,             setIsRefining]             = useState(false);
   const [selectedPrefecture,     setSelectedPrefecture]     = useState('');
@@ -387,6 +388,7 @@ export default function Home() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const openResults = async (refineText = '', isRefinement = false, radiusOverride?: number, excludeShown = false, aiChatText?: string) => {
+    setSearchFailed(false);  // 新しい試行のたびに失敗フラグをリセット
     // 新規検索時: 前回結果・評価をクリアしてから結果画面へ
     if (!isRefinement) {
       setApiRecommendations([]);
@@ -474,6 +476,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(baseBody),
+        timeoutMs: 30000,  // 未キャッシュ検索は10s前後かかるため余裕を持たせる（既定12sだと誤タイムアウト）
       });
 
       let d = await res.json();
@@ -487,6 +490,7 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...baseBody, seenPlaces: [], showUnseenOnly: false }),
+          timeoutMs: 30000,
         });
         const d2 = await res2.json();
         const recs2: Recommendation[] = d2.recommendations ?? d2.data ?? [];
@@ -524,6 +528,7 @@ export default function Home() {
       console.error('[openResults]', e);
       reportError(e, 'error', { where: 'openResults' });
       // 静かに空画面で放置せず、原因と再試行を案内（通信失敗/タイムアウト）
+      setSearchFailed(true);
       setApiWarning('検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
@@ -721,6 +726,7 @@ export default function Home() {
 
     setApiRecommendations([]);
     setApiWarning('');
+    setSearchFailed(false);
     setPlaceRatings({});
     setSelectedHistoryItem(null);
     setHomeView('home');
@@ -747,16 +753,17 @@ export default function Home() {
           refinementText:     '',
           userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
         }),
+        timeoutMs: 30000,
       });
       const d = await res.json();
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
-      if (recs.length > 0) {
-        setApiRecommendations(recs);
-        setApiWarning(d.warning ?? '');  // 重複表示の修正（API warning をそのまま使用）
-      }
+      setApiRecommendations(recs);
+      // 0件でも黙らず案内（従来は無反応だった）
+      setApiWarning(recs.length > 0 ? (d.warning ?? '') : (d.warning || '条件に合う場所が見つかりませんでした。条件を変えてお試しください。'));
     } catch (e) {
       console.error('[handleResearch]', e);
       reportError(e, 'error', { where: 'handleResearch' });
+      setSearchFailed(true);
       setApiWarning('再検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
@@ -1006,6 +1013,8 @@ export default function Home() {
             isLoading={isLoadingRecommendations}
             loadingMessage={LOADING_MESSAGES[loadingMsgIdx]}
             apiWarning={apiWarning}
+            searchFailed={searchFailed}
+            onRetrySearch={() => openResults(refinementText || '')}
             // ── お気に入り ────────────────────────────────────────────────────
             favorites={favorites}
             onToggleFavorite={toggleFavorite}

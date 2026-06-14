@@ -174,8 +174,9 @@ export default function FavoritesView({
           <Text style={s.emptySub}>{emptySub}</Text>
         </View>
       ) : (
-        list.map((item) => (
-          <TouchableOpacity key={item.title} style={s.card} activeOpacity={0.75} onPress={() => handlePress(item)}>
+        list.map((item, idx) => (
+          // 同名スポットでもReactキーが衝突しないよう複合キー（id優先・無ければ index 付与）
+          <TouchableOpacity key={`${item.kind ?? 'place'}-${item.supabaseId ?? item.placeId ?? item.spotId ?? item.title}-${idx}`} style={s.card} activeOpacity={0.75} onPress={() => handlePress(item)}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
             <FavoriteCardImage item={item} />
             <View style={s.cardBody}>
