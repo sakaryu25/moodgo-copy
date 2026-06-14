@@ -4556,7 +4556,7 @@ export default function AdminPage() {
                       : (spSearchIsTag
                           ? `🏷️ ${spSearchKeyword} タグ付きスポット ${spSearchResults.length}件`
                           : spSearchIsSource
-                              ? `🗂️ source「${spSearchKeyword.slice("source:".length)}」 ${spSearchResults.length}件${spSearchResults.length >= 2000 ? "（上限2000表示・全件削除は下のボタンで）" : ""}`
+                              ? `🗂️ source「${spSearchKeyword.slice("source:".length)}」 ${spSearchResults.length}件${spSearchResults.length >= 1000 ? "（最大1000件表示・これ以上ある場合も下の『このsourceを全件削除』で全件消せます）" : ""}`
                               : `✅ ${spSearchResults.length}件 登録済み`)}
                   </div>
                   {/* 一括削除バー */}
