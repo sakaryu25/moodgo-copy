@@ -400,25 +400,8 @@ export default function HistoryView({
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [resetKey]);
 
-  // ── 詳細ビュー ──
-  if (selectedHistoryItem) {
-    return (
-      <DetailView
-        item={selectedHistoryItem}
-        t={t}
-        lang={lang}
-        isFav={isFav}
-        favorites={favorites}
-        onToggleFavorite={onToggleFavorite}
-        onResearch={onResearch}
-        onPressDetail={onPressDetail}
-        insets={insets}
-        onBack={() => onSelectHistoryItem(null)}
-      />
-    );
-  }
-
-  // ── 一覧ビュー ──
+  // ── 一覧ビュー（常に描画し、詳細はこの上にオーバーレイ表示する）──
+  //   こうすると詳細を右スワイプで戻すとき、背面に一覧が見える（白画面にならない）。
   const grouped: Record<string, HistoryItem[]> = {};
   for (const item of history) {
     const group = getDateGroup(item.createdAt, t);
@@ -430,6 +413,7 @@ export default function HistoryView({
   );
 
   return (
+    <View style={{ flex: 1 }}>
     <View style={s.root}>
       {/* グラデーションヘッダー */}
       <LinearGradient
@@ -522,6 +506,25 @@ export default function HistoryView({
           ))
         )}
       </ScrollView>
+    </View>
+
+    {/* 詳細ビュー: 一覧の上にオーバーレイ（右スワイプで戻すと背面の一覧が見える） */}
+    {selectedHistoryItem && (
+      <View style={StyleSheet.absoluteFill}>
+        <DetailView
+          item={selectedHistoryItem}
+          t={t}
+          lang={lang}
+          isFav={isFav}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
+          onResearch={onResearch}
+          onPressDetail={onPressDetail}
+          insets={insets}
+          onBack={() => onSelectHistoryItem(null)}
+        />
+      </View>
+    )}
     </View>
   );
 }
