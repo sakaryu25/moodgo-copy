@@ -438,36 +438,53 @@ function scheduleInterpretationLog(freeword: string, interpretation: unknown): v
 // places に恒久保存する。Vercelの「応答後fire-and-forgetは凍結」罠を after() で回避。
 // 各列は「NULLの行のみ」更新＝上書きしない・失敗無視で安全。営業時間のみTTLで上書き許容。
 // （image_urls 等の列が未作成でもエラーは握りつぶす＝SQL未実行でも安全）。
+// 書き戻し先を「最も具体的な一意キー」で1行に絞る指定。
+//   id(places.uuid) > google_place_id > name+address > name の優先順。
+//   ⚠ name だけだと同名チェーン（スタバ等）全店に書き込んで写真/駅/営業時間が
+//     混線するため、可能な限り id か name+address で絞る。
+type PlaceMatch = { name: string; id?: string; googlePlaceId?: string; address?: string };
+function selectPlace<Q extends { eq(col: string, val: string): Q }>(q: Q, m: PlaceMatch): Q {
+  if (m.id) return q.eq("id", m.id);
+  if (m.googlePlaceId) return q.eq("google_place_id", m.googlePlaceId);
+  if (m.address) return q.eq("name", m.name).eq("address", m.address);
+  return q.eq("name", m.name);
+}
+// scored/recの id フィールド（"sb-<uuid>" or google_place_id）から PlaceMatch を作る
+function toPlaceMatch(name: string, id?: string, address?: string): PlaceMatch {
+  if (typeof id === "string" && id.startsWith("sb-")) return { name, id: id.slice(3), address };
+  if (typeof id === "string" && id) return { name, googlePlaceId: id, address };
+  return { name, address };
+}
 function schedulePlaceWriteBack(
-  name: string,
+  match: PlaceMatch,
   fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string; description?: string },
 ): void {
-  if (!supabase || !name) return;
+  if (!supabase || !match?.name) return;
   const sb = supabase;
   const run = async () => {
     if (fields.photoUrl) {
-      await sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null).eq("name", name).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null), match).then(() => {}, () => {});
     }
     if (fields.imageUrls && fields.imageUrls.length > 0) {
-      await sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null).eq("name", name).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null), match).then(() => {}, () => {});
     }
     if (fields.station) {
-      await sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null).eq("name", name).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null), match).then(() => {}, () => {});
     }
     if (fields.description) {
       // 説明文はNULLの場所だけ補完（既存の手書き説明は壊さない）→次回以降は生成不要
-      await sb.from("places").update({ description: fields.description }).is("description", null).eq("name", name).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ description: fields.description }).is("description", null), match).then(() => {}, () => {});
     }
     if (fields.openHours) {
       // 営業時間は変わるので last_checked_at 付きで上書き許容（NULL条件なし）
-      await sb.from("places").update({ open_hours: fields.openHours, last_checked_at: new Date().toISOString() }).eq("name", name).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ open_hours: fields.openHours, last_checked_at: new Date().toISOString() }), match).then(() => {}, () => {});
     }
   };
   try { after(async () => { await run(); }); } catch { void run(); }
 }
 // 後方互換ラッパー（既存呼び出し用・写真URL単発）
 function schedulePhotoWriteBack(name: string, url: string): void {
-  if (url) schedulePlaceWriteBack(name, { photoUrl: url });
+  if (url) schedulePlaceWriteBack({ name }, { photoUrl: url });
 }
 
 // ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
@@ -5458,7 +5475,7 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
 // 検索レスポンスの遅延はゼロ。気分非依存＝全検索で再利用でき、次回以降は生成不要。
 // 推薦理由(generateSupabaseReasons=気分依存・非永続)とは別物。コストはGoogleの約1/100。
 function scheduleDescriptionGeneration(
-  spots: { name?: string; title?: string; tags?: string[]; description?: string | null }[],
+  spots: { name?: string; title?: string; tags?: string[]; description?: string | null; id?: string; address?: string }[],
 ): void {
   if (!supabase || !openai) return;
   const sb = supabase;
@@ -5472,9 +5489,11 @@ function scheduleDescriptionGeneration(
   };
   // 説明が無い場所だけ対象。重複名を除き最大10件（トークン/コスト上限）。
   const targets = spots
-    .map(s => ({ name: String(s.name ?? s.title ?? "").trim(), tags: s.tags ?? [], desc: s.description }))
+    .map(s => ({ name: String(s.name ?? s.title ?? "").trim(), tags: s.tags ?? [], desc: s.description, id: s.id, address: s.address }))
     .filter(s => s.name && needsDesc(s.name, s.desc));
   const dedup = Array.from(new Map(targets.map(t => [t.name, t])).values()).slice(0, 10);
+  // 生成された名前→書き戻し先（同名チェーン混線を防ぐため id/住所で絞る）
+  const matchByName = new Map(dedup.map(t => [t.name, toPlaceMatch(t.name, t.id, t.address)]));
   if (dedup.length === 0) return;
 
   const run = async () => {
@@ -5503,8 +5522,9 @@ JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
         //   恒久書き込みしてしまい（以後needsDesc=falseで再生成もされず）永続ゴミになる。
         if (typeof desc !== "string") continue;
         const text = desc.trim().slice(0, 120);
-        // NULLの場所だけ補完（既存の手書き説明は壊さない）
-        if (text) await sb.from("places").update({ description: text }).is("description", null).eq("name", name).then(() => {}, () => {});
+        // NULLの場所だけ補完（既存の手書き説明は壊さない）。id/住所で1行に絞る
+        const m = matchByName.get(name) ?? { name };
+        if (text) await selectPlace(sb.from("places").update({ description: text }).is("description", null), m).then(() => {}, () => {});
       }
     } catch { /* OpenAI/DB失敗は握りつぶす（次回検索で再試行される） */ }
   };
@@ -6243,6 +6263,8 @@ async function handleRecommend(request: Request) {
           .filter(r => !r.imageUrl || isLegacyPhotoUrl(r.imageUrl))
           .slice(0, 8)
           .map(r => r.name);
+        // 書き戻し先を一意キーで絞るための name→行 ルックアップ（同名チェーン混線防止）
+        const sbRowByName = new Map(scored.map(r => [r.name, r]));
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiOrder] = await Promise.all([
@@ -6314,7 +6336,8 @@ async function handleRecommend(request: Request) {
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
                   photoMap.set(name, urls);
-                  schedulePlaceWriteBack(name, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
+                  const row = sbRowByName.get(name);
+                  schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                   await ltCachePut(`enr:${name.slice(0, 80)}`, { photoUrls: urls });  // 長期キャッシュ
                 }
               } catch { /* 写真取得失敗は無視 */ }
@@ -6338,7 +6361,7 @@ async function handleRecommend(request: Request) {
                 const st = await findNearestStation(r.lat, r.lng, apiKey);
                 if (st) {
                   stationMap.set(r.name, st);
-                  schedulePlaceWriteBack(r.name, { station: st });  // 最寄り駅を恒久保存→次回以降ゼロ
+                  schedulePlaceWriteBack(toPlaceMatch(r.name, r.id, r.address), { station: st });  // 最寄り駅を恒久保存→次回以降ゼロ
                 }
               }
             }));
@@ -6989,7 +7012,7 @@ async function handleRecommend(request: Request) {
                 const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
                 if (urls.length > photoUrls.length) {
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
-                  if (urls[0]) schedulePlaceWriteBack(rec.title ?? "", { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
+                  if (urls[0]) schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                 }
                 if (urls.length > 0) enrSave.photoUrls = urls;
               }
@@ -7007,7 +7030,7 @@ async function handleRecommend(request: Request) {
                 if (periods) enrSave.periods = periods;
                 if (wd?.length) {
                   enrSave.weekday = wd;
-                  schedulePlaceWriteBack(rec.title ?? "", { openHours: wd.join("\n") });  // 営業時間を恒久保存(TTL)
+                  schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { openHours: wd.join("\n") });  // 営業時間を恒久保存(TTL)
                 }
               }
               // 長期キャッシュへ保存。データが無い店も checked:true を記憶し
