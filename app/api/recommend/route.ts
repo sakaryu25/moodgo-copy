@@ -5463,10 +5463,17 @@ function scheduleDescriptionGeneration(
   if (!supabase || !openai) return;
   const sb = supabase;
   const ai = openai;
-  // 説明文が空の場所だけ対象。重複名を除き最大10件（トークン/コスト上限）。
+  // 「説明が無い」判定: 空 or 読み取り時フォールバック「{店名}のスポット情報」
+  //   （spatial-search.ts が NULL の description にこの定型文を当てるため、
+  //    DB上は NULL でも r.description は定型文になっている＝生成対象として拾う）。
+  const needsDesc = (name: string, desc: string | null | undefined): boolean => {
+    const d = String(desc ?? "").trim();
+    return d.length === 0 || d === `${name}のスポット情報`;
+  };
+  // 説明が無い場所だけ対象。重複名を除き最大10件（トークン/コスト上限）。
   const targets = spots
     .map(s => ({ name: String(s.name ?? s.title ?? "").trim(), tags: s.tags ?? [], desc: s.description }))
-    .filter(s => s.name && !(s.desc && String(s.desc).trim().length > 0));
+    .filter(s => s.name && needsDesc(s.name, s.desc));
   const dedup = Array.from(new Map(targets.map(t => [t.name, t])).values()).slice(0, 10);
   if (dedup.length === 0) return;
 
