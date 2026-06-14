@@ -5689,18 +5689,60 @@ function logSearchMetric(row: Record<string, unknown>): void {
   try { after(async () => { await run(); }); } catch { void run(); }
 }
 
+// item10: 検索スナップショット。同条件の再検索をパイプライン丸ごとスキップ（最速・最安）。
+//   パーソナライズ要素（freeWord/絞り込み/未見のみ）が無い標準検索のみ・短TTLで鮮度を担保。
+const SNAPSHOT_TTL_MS = 10 * 60 * 1000;  // 10分
+async function readSnapshot(key: string): Promise<Record<string, unknown> | null> {
+  if (!supabase || !key) return null;
+  try {
+    const { data } = await supabase.from("search_snapshots").select("result, created_at").eq("cache_key", key).maybeSingle();
+    if (!data?.created_at) return null;
+    if (Date.now() - new Date(data.created_at as string).getTime() > SNAPSHOT_TTL_MS) return null;
+    return (data.result as Record<string, unknown>) ?? null;
+  } catch { return null; }
+}
+function writeSnapshot(key: string, result: Record<string, unknown>): void {
+  if (!supabase || !key) return;
+  const sb = supabase;
+  const run = () => sb.from("search_snapshots").upsert({ cache_key: key, result, created_at: new Date().toISOString() }).then(() => {}, () => {});
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
+// 標準検索のみキャッシュ対象にし、結果に影響する入力でキーを作る（無ければ "" = キャッシュしない）
+function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): string {
+  const a = (body?.answers ?? {}) as Record<string, unknown>;
+  const lat = a.originLat, lng = a.originLng;
+  if (typeof lat !== "number" || typeof lng !== "number") return "";
+  if (a.freeWord || body?.refinementText || body?.showUnseenOnly || body?.excludeShown) return "";
+  if (deepDive === "心霊") return "";  // 心霊は投稿写真が変わるのでキャッシュしない
+  return [
+    a.mood ?? "", lat.toFixed(2), lng.toFixed(2), a.radiusKm ?? "",
+    a.distanceFeeling ?? "", deepDive, a.companion ?? "",
+  ].join("|");
+}
+
 // 計測ラッパー: API呼び出しカウンタを用意してハンドラを実行し、最後に1行ログ出力する。
 export async function POST(request: Request): Promise<Response> {
   const counts = newApiCounts();
   const t0 = Date.now();
-  // メトリクス用に気分/エリアを先読み（cloneなので本処理に影響なし）
+  // メトリクス用に気分/エリアを先読み＋スナップショットキー算出（cloneなので本処理に影響なし）
   let meta: { mood: string; area: string; deepDive: string } = { mood: "", area: "", deepDive: "" };
+  let snapKey = "";
   try {
     const b = await request.clone().json();
     const a = b?.answers ?? {};
     const dd = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "").includes("深掘り"));
     meta = { mood: a.mood ?? "", area: a.selectedArea ?? a.areaLabel ?? "", deepDive: dd?.answer ?? "" };
+    snapKey = buildSnapshotKey(b, meta.deepDive);
   } catch { /* noop */ }
+
+  // スナップショットヒット → パイプライン丸ごとスキップ（API 0・即返却）
+  if (snapKey) {
+    const hit = await readSnapshot(snapKey);
+    if (hit) {
+      return NextResponse.json({ ...hit, _apiCount: { total: 0, cached: true, elapsedMs: Date.now() - t0 } });
+    }
+  }
+
   return apiCounterStore.run({ counts }, async () => {
     const res = await handleRecommend(request);
     const total = counts.searchText + counts.searchNearby + counts.geocode + counts.routes + counts.photo + counts.other;
@@ -5717,6 +5759,8 @@ export async function POST(request: Request): Promise<Response> {
         google_calls: counts.searchText + counts.searchNearby + counts.photo,
         total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
       });
+      // 15件揃った標準検索のみスナップショット保存（薄い/失敗結果はキャッシュしない）
+      if (snapKey && res.status === 200 && recCount >= 12) writeSnapshot(snapKey, body);
       return NextResponse.json(
         { ...body, _apiCount: { total, ...counts, elapsedMs: elapsed } },
         { status: res.status },
