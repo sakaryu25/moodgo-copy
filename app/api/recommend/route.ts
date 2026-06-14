@@ -331,18 +331,44 @@ async function fetchEngagementAgg(): Promise<EngagementAgg> {
   const agg: EngagementAgg = new Map();
   try {
     if (supabase) {
-      const { data } = await supabase
-        .from("spot_engagement")
-        .select("place_name, mood, action")
-        .order("created_at", { ascending: false })
-        .limit(8000);
-      for (const row of data ?? []) {
-        const mg = moodGroup(row.mood ?? "") || (row.mood ?? "");
-        const key = `${mg}||${String(row.place_name ?? "").toLowerCase().trim()}`;
-        agg.set(key, (agg.get(key) ?? 0) + (ENGAGEMENT_WEIGHTS[row.action ?? ""] ?? 0));
+      // item8(学習加速): まず事前集計済みの place_mood_affinity を読む。
+      //   bump_affinity が行動のたびに原子的に加算した「場所×気分の好まれ度」を
+      //   そのまま使うため、raw spot_engagement の8000行スキャン＋都度再集計が不要。
+      //   さらに raw は直近8000件で頭打ちだが、affinityは全履歴を保持＝学習が劣化しない。
+      let usedAffinity = false;
+      try {
+        const { data: aff } = await supabase
+          .from("place_mood_affinity")
+          .select("place_name, mood, score")
+          .gt("score", 0)
+          .order("score", { ascending: false })
+          .limit(20000);
+        if (aff && aff.length) {
+          for (const row of aff) {
+            const mg = moodGroup(row.mood ?? "") || (row.mood ?? "");
+            const key = `${mg}||${String(row.place_name ?? "").toLowerCase().trim()}`;
+            // 気分グループ内の全気分スコアを合算（learnScoreの対数減衰で過大評価は飽和）
+            agg.set(key, (agg.get(key) ?? 0) + (Number(row.score) || 0));
+          }
+          usedAffinity = true;
+        }
+      } catch { /* place_mood_affinity 未作成 → raw spot_engagement にフォールバック */ }
+
+      // フォールバック: affinity表が空/未作成なら従来どおり raw を集計（移行期も学習が途切れない）
+      if (!usedAffinity) {
+        const { data } = await supabase
+          .from("spot_engagement")
+          .select("place_name, mood, action")
+          .order("created_at", { ascending: false })
+          .limit(8000);
+        for (const row of data ?? []) {
+          const mg = moodGroup(row.mood ?? "") || (row.mood ?? "");
+          const key = `${mg}||${String(row.place_name ?? "").toLowerCase().trim()}`;
+          agg.set(key, (agg.get(key) ?? 0) + (ENGAGEMENT_WEIGHTS[row.action ?? ""] ?? 0));
+        }
       }
     }
-  } catch { /* テーブル未作成等は無視（SQL: supabase/learning-tables.sql）*/ }
+  } catch { /* テーブル未作成等は無視（SQL: supabase/learning-tables.sql / db-accumulation.sql）*/ }
   _engCache = { at: Date.now(), agg };
   return agg;
 }
@@ -414,7 +440,7 @@ function scheduleInterpretationLog(freeword: string, interpretation: unknown): v
 // （image_urls 等の列が未作成でもエラーは握りつぶす＝SQL未実行でも安全）。
 function schedulePlaceWriteBack(
   name: string,
-  fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string },
+  fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string; description?: string },
 ): void {
   if (!supabase || !name) return;
   const sb = supabase;
@@ -427,6 +453,10 @@ function schedulePlaceWriteBack(
     }
     if (fields.station) {
       await sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null).eq("name", name).then(() => {}, () => {});
+    }
+    if (fields.description) {
+      // 説明文はNULLの場所だけ補完（既存の手書き説明は壊さない）→次回以降は生成不要
+      await sb.from("places").update({ description: fields.description }).is("description", null).eq("name", name).then(() => {}, () => {});
     }
     if (fields.openHours) {
       // 営業時間は変わるので last_checked_at 付きで上書き許容（NULL条件なし）
@@ -5422,6 +5452,54 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
   return result;
 }
 
+// ─── OpenAIで説明文を蓄積（item3+OpenAI賢く: 説明文生成）──────────────────────────
+// description が空のスポットに「場所そのものを表す中立的な一言」を生成して
+// places.description へ永続化する。生成は応答後(after)に1回のバッチ呼び出しで行うので
+// 検索レスポンスの遅延はゼロ。気分非依存＝全検索で再利用でき、次回以降は生成不要。
+// 推薦理由(generateSupabaseReasons=気分依存・非永続)とは別物。コストはGoogleの約1/100。
+function scheduleDescriptionGeneration(
+  spots: { name?: string; title?: string; tags?: string[]; description?: string | null }[],
+): void {
+  if (!supabase || !openai) return;
+  const sb = supabase;
+  const ai = openai;
+  // 説明文が空の場所だけ対象。重複名を除き最大10件（トークン/コスト上限）。
+  const targets = spots
+    .map(s => ({ name: String(s.name ?? s.title ?? "").trim(), tags: s.tags ?? [], desc: s.description }))
+    .filter(s => s.name && !(s.desc && String(s.desc).trim().length > 0));
+  const dedup = Array.from(new Map(targets.map(t => [t.name, t])).values()).slice(0, 10);
+  if (dedup.length === 0) return;
+
+  const run = async () => {
+    try {
+      const list = dedup.map((s, i) => `${i + 1}. ${s.name}（${(s.tags ?? []).slice(0, 6).join("・")}）`).join("\n");
+      const res = await ai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.5,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `各スポットについて、その場所そのものを説明する中立的な一文（25〜45字）を書いてください。
+気分・同伴者・あなたの推薦には言及せず、その場所の特徴・雰囲気・名物だけを淡々と。
+事実が不明な点はタグから自然に推測してよいが、誇張や断定的な営業文句は避けること。
+JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
+          },
+          { role: "user", content: list },
+        ],
+        max_tokens: 600,
+      });
+      const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
+      for (const [name, desc] of Object.entries(parsed.descriptions ?? {})) {
+        const text = String(desc).trim().slice(0, 120);
+        // NULLの場所だけ補完（既存の手書き説明は壊さない）
+        if (text) await sb.from("places").update({ description: text }).is("description", null).eq("name", name).then(() => {}, () => {});
+      }
+    } catch { /* OpenAI/DB失敗は握りつぶす（次回検索で再試行される） */ }
+  };
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
+
 // ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
 // 経路ごとにバラバラだった「フィルタ / ソート / 重複排除 / 15件化」のロジックを
 // 1か所(createFinalizeHelpers)に集約する。挙動は従来(経路2: Supabase-first)と完全同一。
@@ -6289,6 +6367,10 @@ async function handleRecommend(request: Request) {
           for (let i = 0; i < scored.length; i++) if (!seenIdx.has(i)) out.push(scored[i]);
           if (out.length === scored.length) scoredRanked = out;
         }
+
+        // OpenAIで説明文を蓄積: 説明が空の場所に中立的な一言を生成→places.descriptionへ永続化。
+        //   応答後(after)にバッチ生成するので検索レスポンスは遅延ゼロ。次回以降は再利用される。
+        scheduleDescriptionGeneration(scoredRanked);
 
         const supabaseRecs = scoredRanked.map(r => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
