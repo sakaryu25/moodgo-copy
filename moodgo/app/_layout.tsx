@@ -9,6 +9,7 @@ import SplashScreen from '@/components/SplashScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
 import ConsentGate from '@/components/ConsentGate';
+import CopyToast from '@/components/CopyToast';
 import { setupGlobalErrorHandlers } from '@/lib/crashReporting';
 import { initSentry } from '@/lib/sentry';
 
@@ -42,6 +43,8 @@ export default function RootLayout() {
           <OfflineBanner />
           {/* 初回起動の利用規約同意ゲート（最前面） */}
           <ConsentGate />
+          {/* コピー等のトースト通知（全画面の最前面・自動消去） */}
+          <CopyToast />
           <StatusBar style="auto" />
         </ErrorBoundary>
       </SafeAreaProvider>
