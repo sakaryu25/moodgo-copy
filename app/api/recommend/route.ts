@@ -5498,7 +5498,11 @@ JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
       });
       const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
       for (const [name, desc] of Object.entries(parsed.descriptions ?? {})) {
-        const text = String(desc).trim().slice(0, 120);
+        // LLMが文字列以外（ネストしたオブジェクト等）を返した場合はスキップ。
+        //   String()強制だと "[object Object]" を description にNULLのみ補完で
+        //   恒久書き込みしてしまい（以後needsDesc=falseで再生成もされず）永続ゴミになる。
+        if (typeof desc !== "string") continue;
+        const text = desc.trim().slice(0, 120);
         // NULLの場所だけ補完（既存の手書き説明は壊さない）
         if (text) await sb.from("places").update({ description: text }).is("description", null).eq("name", name).then(() => {}, () => {});
       }
