@@ -14,27 +14,32 @@ export async function POST(req: NextRequest) {
   const keyword: string = (body.keyword ?? "").trim();
   if (!keyword) return NextResponse.json({ ok: false, error: "keyword が必要です" }, { status: 400 });
 
-  // ── #タグ 検索 ──────────────────────────────────────────────────────────────
-  // "#温泉" のように # で始まる場合は tags 配列を contains で検索
-  const isTagSearch = keyword.startsWith("#");
+  // ── 検索モード ────────────────────────────────────────────────────────────────
+  //   "source:ghostmap" … source_type 完全一致（投入データの管理用）
+  //   "#温泉"           … tags 配列 contains（タグ検索）
+  //   それ以外          … 名前・住所 あいまい検索
+  const isSourceSearch = keyword.startsWith("source:");
+  const isTagSearch = !isSourceSearch && keyword.startsWith("#");
 
   let query = supabase
     .from("places")
-    .select("id, name, address, tags, is_active, google_place_id")
+    .select("id, name, address, tags, is_active, google_place_id, source_type")
     .order("name")
     .limit(2000);
 
-  if (isTagSearch) {
-    // 完全一致タグ検索（例: "#温泉"）
+  if (isSourceSearch) {
+    query = query.eq("source_type", keyword.slice("source:".length).trim());
+  } else if (isTagSearch) {
     query = query.contains("tags", [keyword]);
   } else {
-    // 名前・住所 あいまい検索
-    query = query.or(`name.ilike.%${keyword}%,address.ilike.%${keyword}%`);
+    // ilike用に入力をサニタイズ（% _ , () を無害化＝フィルタ崩れ/注入防止）
+    const safe = keyword.replace(/[%_,()]/g, " ").trim();
+    query = query.or(`name.ilike.%${safe}%,address.ilike.%${safe}%`);
   }
 
   const { data, error } = await query;
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, count: (data ?? []).length, places: data ?? [], isTagSearch });
+  return NextResponse.json({ ok: true, count: (data ?? []).length, places: data ?? [], isTagSearch, isSourceSearch });
 }

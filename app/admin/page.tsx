@@ -1372,30 +1372,72 @@ export default function AdminPage() {
   // ─── Supabase スポット検索 ───────────────────────────────────────────────────
   const [spSearchKeyword, setSpSearchKeyword] = useState("");
   const [spSearchLoading, setSpSearchLoading] = useState(false);
-  const [spSearchResults, setSpSearchResults] = useState<Array<{ id: string; name: string; address: string; tags: string[]; is_active: boolean; google_place_id: string | null }> | null>(null);
+  const [spSearchResults, setSpSearchResults] = useState<Array<{ id: string; name: string; address: string; tags: string[]; is_active: boolean; google_place_id: string | null; source_type: string | null }> | null>(null);
   const [spSearchError, setSpSearchError]     = useState("");
   const [spSearchIsTag, setSpSearchIsTag]     = useState(false);
+  const [spSearchIsSource, setSpSearchIsSource] = useState(false);
+  const [spBulkDeleting, setSpBulkDeleting]   = useState(false);
   const [spDeleteConfirm, setSpDeleteConfirm] = useState<string | null>(null); // 削除確認中のスポットID
   const [spDeleting, setSpDeleting]           = useState<Set<string>>(new Set()); // 削除処理中のID集合
   const [spTagRemoving, setSpTagRemoving]     = useState<Set<string>>(new Set()); // タグ削除処理中 "spotId::tag"
   const [spTagAddInputs, setSpTagAddInputs]   = useState<Record<string, string>>({}); // spotId → 入力中テキスト
   const [spTagAdding, setSpTagAdding]         = useState<Set<string>>(new Set()); // タグ追加処理中 "spotId::tag"
 
-  const handleSpSearch = async () => {
-    const kw = spSearchKeyword.trim();
+  const handleSpSearch = async (overrideKeyword?: string) => {
+    const kw = (overrideKeyword ?? spSearchKeyword).trim();
     if (!kw) return;
-    setSpSearchLoading(true); setSpSearchError(""); setSpSearchResults(null); setSpSearchIsTag(false);
+    if (overrideKeyword !== undefined) setSpSearchKeyword(overrideKeyword);
+    setSpSearchLoading(true); setSpSearchError(""); setSpSearchResults(null); setSpSearchIsTag(false); setSpSearchIsSource(false);
     try {
       const res = await fetch("/api/admin/search-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: spSearchKeyword.trim() }),
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: kw }),
       });
       const data = await res.json();
       if (!data.ok) setSpSearchError(data.error ?? "エラーが発生しました");
-      else { setSpSearchResults(data.places); setSpSearchIsTag(data.isTagSearch ?? false); }
+      else { setSpSearchResults(data.places); setSpSearchIsTag(data.isTagSearch ?? false); setSpSearchIsSource(data.isSourceSearch ?? false); }
     } catch (e) { setSpSearchError(String(e)); }
     setSpSearchLoading(false);
+  };
+
+  // 検索結果（表示中）をまとめて削除
+  const handleSpBulkDeleteShown = async () => {
+    const rows = spSearchResults ?? [];
+    if (rows.length === 0) return;
+    if (!confirm(`表示中の ${rows.length} 件をすべて削除します。元に戻せません。よろしいですか？`)) return;
+    setSpBulkDeleting(true);
+    try {
+      const res = await fetch("/api/admin/bulk-delete-places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, ids: rows.map(r => r.id) }),
+      });
+      const data = await res.json();
+      if (!data.ok) alert("一括削除失敗: " + (data.error ?? "不明なエラー"));
+      else { alert(`${data.deleted}件を削除しました`); setSpSearchResults([]); }
+    } catch (e) { alert("一括削除失敗: " + String(e)); }
+    setSpBulkDeleting(false);
+  };
+
+  // source_type 全件削除（検索の2000件上限を超えて、そのsourceを丸ごと削除）
+  const handleSpBulkDeleteSource = async () => {
+    const src = spSearchKeyword.trim().slice("source:".length).trim();
+    if (!src) return;
+    const typed = prompt(`source_type「${src}」のスポットを"全件"削除します（検索表示の${(spSearchResults ?? []).length}件以上を含む全件）。\n誤操作防止のため、下に「${src}」と入力してください。`);
+    if (typed !== src) { if (typed !== null) alert("入力が一致しませんでした。中止します。"); return; }
+    setSpBulkDeleting(true);
+    try {
+      const res = await fetch("/api/admin/bulk-delete-places", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: ADMIN_PASSWORD, source: src, confirm: src }),
+      });
+      const data = await res.json();
+      if (!data.ok) alert("一括削除失敗: " + (data.error ?? "不明なエラー"));
+      else { alert(`source「${src}」を ${data.deleted}件 削除しました`); setSpSearchResults([]); }
+    } catch (e) { alert("一括削除失敗: " + String(e)); }
+    setSpBulkDeleting(false);
   };
 
   const handleSpTagRemove = async (spotId: string, tagToRemove: string) => {
@@ -4476,9 +4518,21 @@ export default function AdminPage() {
 
             {/* ── Supabase スポット検索 ──────────────────────────────── */}
             <div style={card}>
-              <div style={{ ...titleStyle, color: "#0891b2" }}>🔎 登録済みスポット検索</div>
-              <div style={{ fontSize: "13px", color: "#164e63", marginBottom: "14px", lineHeight: 1.7 }}>
-                名前・住所で検索できます。<strong>#温泉</strong> のように # から入力するとそのタグを持つスポットを一覧表示します。
+              <div style={{ ...titleStyle, color: "#0891b2" }}>🔎 登録済みスポット検索・削除</div>
+              <div style={{ fontSize: "13px", color: "#164e63", marginBottom: "10px", lineHeight: 1.7 }}>
+                名前・住所で検索。<strong>#温泉</strong> でタグ検索、<strong>source:ghostmap</strong> で投入元(source_type)検索ができます。検索結果は個別削除のほか「表示中を全件削除」も可能です。
+              </div>
+              {/* 投入データ管理のショートカット */}
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "10px" }}>
+                {[
+                  { label: "🪦 心霊(ghostmap)投入分", kw: "source:ghostmap" },
+                  { label: "#心霊スポット", kw: "#心霊スポット" },
+                ].map(b => (
+                  <button key={b.kw} onClick={() => handleSpSearch(b.kw)}
+                    style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", fontWeight: 700, background: "#ecfeff", color: "#0e7490", border: "1px solid #a5f3fc", borderRadius: "999px" }}>
+                    {b.label}
+                  </button>
+                ))}
               </div>
               <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
                 <input
@@ -4488,7 +4542,7 @@ export default function AdminPage() {
                   placeholder="例: 旭山動物園、渋谷、#温泉..."
                   style={{ flex: 1, height: "44px", borderRadius: "10px", border: "1.5px solid #a5f3fc", padding: "0 14px", fontSize: "14px", fontFamily: font, outline: "none" }}
                 />
-                <button onClick={handleSpSearch} disabled={spSearchLoading || !spSearchKeyword.trim()}
+                <button onClick={() => handleSpSearch()} disabled={spSearchLoading || !spSearchKeyword.trim()}
                   style={{ ...btnBase, padding: "0 20px", height: "44px", background: spSearchLoading ? "#ccc" : "linear-gradient(135deg, #0891b2, #0e7490)", color: "#fff", fontSize: "14px", fontWeight: 800, whiteSpace: "nowrap" }}>
                   {spSearchLoading ? "検索中..." : "検索"}
                 </button>
@@ -4501,8 +4555,26 @@ export default function AdminPage() {
                       ? (spSearchIsTag ? `⚠️ ${spSearchKeyword} を持つスポットなし` : "⚠️ 該当なし（未登録）")
                       : (spSearchIsTag
                           ? `🏷️ ${spSearchKeyword} タグ付きスポット ${spSearchResults.length}件`
-                          : `✅ ${spSearchResults.length}件 登録済み`)}
+                          : spSearchIsSource
+                              ? `🗂️ source「${spSearchKeyword.slice("source:".length)}」 ${spSearchResults.length}件${spSearchResults.length >= 2000 ? "（上限2000表示・全件削除は下のボタンで）" : ""}`
+                              : `✅ ${spSearchResults.length}件 登録済み`)}
                   </div>
+                  {/* 一括削除バー */}
+                  {spSearchResults.length > 0 && (
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "10px", padding: "8px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px" }}>
+                      <span style={{ fontSize: "12px", color: "#991b1b", fontWeight: 700 }}>⚠ 一括削除（元に戻せません）:</span>
+                      <button onClick={handleSpBulkDeleteShown} disabled={spBulkDeleting}
+                        style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", fontWeight: 800, background: spBulkDeleting ? "#ccc" : "#dc2626", color: "#fff", border: "none", borderRadius: "6px" }}>
+                        {spBulkDeleting ? "削除中…" : `表示中の${spSearchResults.length}件を全削除`}
+                      </button>
+                      {spSearchIsSource && (
+                        <button onClick={handleSpBulkDeleteSource} disabled={spBulkDeleting}
+                          style={{ ...btnBase, padding: "4px 12px", fontSize: "12px", fontWeight: 800, background: spBulkDeleting ? "#ccc" : "#991b1b", color: "#fff", border: "none", borderRadius: "6px" }}>
+                          このsourceを全件削除（2000件超含む）
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {spSearchResults.length > 0 && (
                     <div style={{ display: "grid", gap: "6px", maxHeight: "600px", overflowY: "auto" }}>
                       {spSearchResults.map(p => (
@@ -4521,6 +4593,7 @@ export default function AdminPage() {
                             <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: p.is_active ? "#d1fae5" : "#fee2e2", color: p.is_active ? "#065f46" : "#991b1b", flexShrink: 0 }}>
                               {p.is_active ? "公開中" : "非公開"}
                             </span>
+                            {p.source_type && <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "999px", background: "#f1f5f9", color: "#475569", flexShrink: 0 }}>{p.source_type}</span>}
                             {p.google_place_id && <span style={{ fontSize: "10px", color: "#6b7280", flexShrink: 0 }}>Google</span>}
                             {/* 削除ボタン */}
                             {spDeleteConfirm === p.id ? (
