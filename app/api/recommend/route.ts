@@ -5532,6 +5532,7 @@ type FinalizeRec = {
   hasUserPhotos?: boolean;
   features?: string[];
   source?: string;   // 手動追加(manual/admin/user)優先のために参照
+  _aiRank?: number;  // OpenAI判別順位(0=最良)。Supabase候補のみ付与。sortOrShuffleで昇格boostに使う
 };
 
 type FinalizeContext = {
@@ -5698,10 +5699,15 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     }
     // 通常: D-1学習 + D-4天気 + E-3写真品質 + #7営業中 + 手動追加優先 をシャッフルに加味
     const isCurated = (src?: string) => src === "manual" || src === "admin" || src === "user";
+    // OpenAI判別順の昇格: 上位ほど大きなboost（rank0=+16…）。random[0,10]より大きいので
+    //   「OpenAIが選んだ大局的な順」が支配しつつ、近い順位どうしはrandomで適度に入れ替わる
+    //   （＝毎回同一にならず多様性も維持）。_aiRank未付与(Google/Yahoo)は0で従来挙動。
+    const aiRankBoost = (r: FinalizeRec) => (typeof r._aiRank === "number" ? Math.max(0, 16 - r._aiRank) : 0);
     return [...arr]
       .map(r => ({
         r,
         score: (Math.random() * 10)
+          + aiRankBoost(r)                       // OpenAI判別順を主signalに（埋もれ防止）
           + weatherBoost(r)
           + photoQualityScore(r)
           + (r.openNow === true ? 2 : 0)         // #7: 営業中の店を優先
@@ -6342,15 +6348,38 @@ async function handleRecommend(request: Request) {
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
           ((): Promise<number[]> => {
             if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 8) return Promise.resolve([] as number[]);
-            const cand = scored.map((r, i) =>
-              `${i}: ${r.name ?? ""}｜${(r.tags ?? []).filter(t => sbNiceTags.includes(t)).slice(0, 3).join("/")}｜★${r.rating ?? "-"}`
-            ).join("\n");
+            // 候補に「住所・距離・説明文（実説明のみ）」を載せて判別材料を増やす。
+            //   Supabaseは rating/reviewCount が常にnull（★-）なので評価は使わず、
+            //   テーマ合致を見抜ける具体情報（説明・立地）を渡すのが精度の鍵。
+            const cand = scored.map((r, i) => {
+              // 住所は「都道府県＋市区＋町名」だけに整形（郵便番号・番地は判別ノイズなので除去）。
+              //   ※郵便番号は先頭にあるので、番地カット(数字以降)より先に必ず除去する。
+              const addr = String(r.address ?? "")
+                .replace(/^日本[,、]?\s*/, "")
+                .replace(/〒?\s*\d{3}-?\d{4}\s*/, "")
+                .replace(/[0-9０-９].*$/, "")
+                .slice(0, 20);
+              const d = String(r.description ?? "").trim();
+              const realDesc = (d && d !== `${r.name}のスポット情報`) ? d.slice(0, 48) : "";
+              const tg = (r.tags ?? []).filter(t => sbNiceTags.includes(t)).slice(0, 3).join("/");
+              const dist = r.distanceInfo ? String(r.distanceInfo) : "";
+              return `${i}: ${r.name ?? ""}｜${addr}｜${dist}｜${realDesc || tg}`;
+            }).join("\n");
             return openai.chat.completions.create({
               model: "gpt-4o-mini", temperature: 0.2, max_tokens: 240,
               response_format: { type: "json_object" },
               messages: [
-                { role: "system", content: 'あなたは出かけ先の選別AIです。ユーザーの気分・希望に「最も良い順」へ候補番号を並べ替え、{"order":[数値,...]} のみをJSONで返してください。全番号を1回ずつ含めること。' },
-                { role: "user", content: `気分:${answers.mood ?? ""}／深掘り:${effectiveDeepDive || "なし"}／同行:${answers.companion ?? ""}／希望:${answers.freeWord || refinementText || "なし"}\n候補:\n${cand}` },
+                { role: "system", content: `あなたは観光・お出かけ先のキュレーターです。ユーザーの「気分・深掘りテーマ・同行者」に対し、各候補が"その体験"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
+
+重視する順:
+1. 深掘りテーマへの本質的な合致を最優先。例「圧倒的な絶景」なら、名前・住所・説明から実際に雄大な自然景観や眺望が広がる場所を上位へ。市役所・オフィスビル・商業施設の最上階など、タグが一致していてもテーマと噛み合わない場所は下位へ。
+2. 説明文がある候補は、その内容（景観・雰囲気・名物）を根拠に具体的に判断する。
+3. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然向き、繁華街・ビル街＝都会的 等）。
+4. 同行者に合うか（友達＝映え・盛り上がる、恋人＝雰囲気、一人＝静けさ・落ち着き）。
+5. 上位が似た場所ばかりに偏らないよう、適度な多様性も保つ。
+
+出力は {"order":[数値,...]} のみをJSONで。全番号を必ず1回ずつ含めること。` },
+                { role: "user", content: `気分:${answers.mood ?? ""}／深掘りテーマ:${effectiveDeepDive || "なし"}／同行:${answers.companion ?? ""}／希望:${answers.freeWord || refinementText || "なし"}\n各候補【番号: 名前｜住所｜距離｜説明orタグ】:\n${cand}` },
               ],
             }, { signal: AbortSignal.timeout(7000) })
               .then(rr => {
@@ -6368,6 +6397,7 @@ async function handleRecommend(request: Request) {
 
         // OpenAIが判別した順に Supabase候補を並べ替え（残りは元の順序で後ろに）
         let scoredRanked = scored;
+        let aiRanked = false;  // OpenAI判別順が実際に適用されたか（後段でその順位を昇格boostに使う）
         if (Array.isArray(sbAiOrder) && sbAiOrder.length > 0) {
           const seenIdx = new Set<number>();
           const out: typeof scored = [];
@@ -6376,14 +6406,14 @@ async function handleRecommend(request: Request) {
             if (Number.isInteger(i) && i >= 0 && i < scored.length && !seenIdx.has(i)) { seenIdx.add(i); out.push(scored[i]); }
           }
           for (let i = 0; i < scored.length; i++) if (!seenIdx.has(i)) out.push(scored[i]);
-          if (out.length === scored.length) scoredRanked = out;
+          if (out.length === scored.length) { scoredRanked = out; aiRanked = true; }
         }
 
         // OpenAIで説明文を蓄積: 説明が空の場所に中立的な一言を生成→places.descriptionへ永続化。
         //   応答後(after)にバッチ生成するので検索レスポンスは遅延ゼロ。次回以降は再利用される。
         scheduleDescriptionGeneration(scoredRanked);
 
-        const supabaseRecs = scoredRanked.map(r => {
+        const supabaseRecs = scoredRanked.map((r, _aiIdx) => {
           const matchedTags = (r.tags ?? []).filter(t => [...sbMustTags, ...sbNiceTags].includes(t));
           // SupabaseのgooglePlaceId（r.idフィールド）をplaceIdとして渡す
           // → ExpoのdetailページでGoogle Places APIから正確な口コミ・営業時間を取得できる
@@ -6398,6 +6428,9 @@ async function handleRecommend(request: Request) {
           return {
             title: r.name,
             address: r.address,
+            // OpenAI判別順位（0=最良）。後段sortOrShuffleでこの順位を昇格boostに使い、
+            //   ランダムシャッフルに埋もれず「OpenAIが選んだ順」を最終結果に反映させる。
+            _aiRank: aiRanked ? _aiIdx : undefined,
             // 心霊(独自モード)は Google由来/places保存の写真を一切使わない（利用者投稿のみ）。
             //   → ここでは空にし、後段の spot_photos ブロックでユーザー投稿だけを添付する。
             // 旧形式の photo_reference (AU_ZVEF...) はv1 API非対応 → sbPhotoMap で上書きを優先。
