@@ -466,6 +466,7 @@ export default function HistoryView({
                     onPress={() => onSelectHistoryItem(item)}
                     style={s.card}
                     activeOpacity={0.75}
+                    hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                   >
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
                     <View style={s.cardBody}>
@@ -482,7 +483,7 @@ export default function HistoryView({
                           <Text style={s.timeText}>{formatTime(item.createdAt, lang)}</Text>
                         </View>
                       </View>
-                      <Text style={s.spotName} numberOfLines={1} onLongPress={() => copyPlaceName(item.topRecommendation)} suppressHighlighting>{item.topRecommendation}</Text>
+                      <Text style={s.spotName} numberOfLines={1} onPress={() => onSelectHistoryItem(item)} onLongPress={() => copyPlaceName(item.topRecommendation)} suppressHighlighting>{item.topRecommendation}</Text>
                       <View style={s.tagRow}>
                         {item.area ? (
                           <View style={s.tagChip}>
