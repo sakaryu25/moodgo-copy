@@ -14,7 +14,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import {
   Activity, BookOpen, Bot, Camera, Car, Check, ChevronLeft, Coffee, Copy, Dices,
-  EyeOff, Flame, Heart, Languages, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle,
+  EyeOff, Flag, Flame, Heart, Languages, Laugh, Leaf, LogOut, MapPin, Meh, MessageCircle,
   Moon, Navigation, PartyPopper, Plane, Plus, Reply, Send, Settings, ShoppingBag,
   Shuffle, Sparkles, ThumbsUp, Undo2, UtensilsCrossed, Users, X,
 } from 'lucide-react-native';
@@ -30,6 +30,9 @@ import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
+import { findNgWord } from '@/lib/ngwords';
+import ReportModal from '@/components/ReportModal';
 import type { FavoriteItem } from '@/types/app';
 
 // ─── tokens ───────────────────────────────────────────────────────────────────
@@ -173,6 +176,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [replyTo, setReplyTo] = useState<{ id: string; name: string; text: string } | null>(null);
   const [translated, setTranslated] = useState<Record<string, string>>({});  // postId→翻訳文
   const [hiddenPosts, setHiddenPosts] = useState<Set<string>>(new Set());     // 自分の端末だけで非表示
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);             // ブロックした投稿者(device_id)
+  const [reportTarget, setReportTarget] = useState<Post | null>(null);        // 通報対象の投稿
   const [reactFrame, setReactFrame] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const bubbleRefs = useRef<Record<string, View | null>>({});
   const pickerAnim = useRef(new Animated.Value(0)).current;             // オーバーレイのヌルッと出現用
@@ -184,6 +189,22 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       toValue: 1, useNativeDriver: true, mass: 0.6, damping: 11, stiffness: 230,
     }).start();
   }, [reactTarget]);
+
+  // ブロックした投稿者を読み込み（端末ローカル・コミュニティフィードと共通のキー）
+  useEffect(() => {
+    loadJSON<string[]>(BLOCKED_USERS_KEY, []).then(setBlockedUsers).catch(() => {});
+  }, []);
+
+  // 投稿者をブロック（以後その端末の投稿を非表示に・App Store 1.2のブロック要件）
+  const handleBlockUser = useCallback((blockId: string) => {
+    if (!blockId) return;
+    setBlockedUsers(prev => {
+      if (prev.includes(blockId)) return prev;
+      const next = [...prev, blockId];
+      saveJSON(BLOCKED_USERS_KEY, next);
+      return next;
+    });
+  }, []);
 
   // 長押し: バブルの画面位置を測ってインスタ風オーバーレイを開く
   const openReactions = (id: string) => {
@@ -554,6 +575,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   // 気分チップ・ひとことのどちらか一方でも入っていれば送信できる
   const handlePost = async () => {
     if (!active || (!selMood && !comment.trim()) || posting) return;
+    // 不適切語のクライアント側フィルタ（サーバー側でも再チェック）
+    const ng = findNgWord(comment.trim());
+    if (ng) { Alert.alert('投稿できません', '不適切な表現が含まれています。'); return; }
     setPosting(true);
     try {
       const res = await apiFetch('/api/mood-groups', {
@@ -777,7 +801,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   if (active) {
     const canPost = (!!selMood || !!comment.trim()) && !posting;
     // 「自分のトークだけ消す」で隠した投稿を除外して、古い→新しい順に
-    const timeline = posts.filter(p => !hiddenPosts.has(p.id)).slice().reverse();
+    const timeline = posts.filter(p => !hiddenPosts.has(p.id) && !blockedUsers.includes(p.device_id)).slice().reverse();
     const placeFavs = favorites.filter(f => f.kind !== 'post');
     const postFavs  = favorites.filter(f => f.kind === 'post');
 
@@ -1305,6 +1329,15 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                       <EyeOff size={17} color="#6B7280" strokeWidth={2.2} />
                       <Text style={[s.ctxText, { color: '#6B7280' }]}>自分のトークだけ消す</Text>
                     </PuniPressable>
+                    {!mineT && !isBotT && (
+                      <>
+                        <View style={s.ctxDiv} />
+                        <PuniPressable onPress={() => { const target = tp; closeReactions(); setReportTarget(target); }} style={s.ctxRow}>
+                          <Flag size={17} color="#F43F5E" strokeWidth={2.2} />
+                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>報告・ブロック</Text>
+                        </PuniPressable>
+                      </>
+                    )}
                     {mineT && (
                       <>
                         <View style={s.ctxDiv} />
@@ -1672,6 +1705,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 通報・ブロック（App Store 1.2: 通報＋ブロック手段） */}
+      <ReportModal
+        visible={!!reportTarget}
+        spotName={reportTarget ? (reportTarget.spot_name || reportTarget.comment || `#${reportTarget.mood}`).slice(0, 80) : ''}
+        suggestionId={reportTarget?.id}
+        posterId={reportTarget?.device_id}
+        onBlockUser={handleBlockUser}
+        onClose={() => setReportTarget(null)}
+      />
     </View>
   );
   }

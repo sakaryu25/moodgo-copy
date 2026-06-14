@@ -13,6 +13,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { findNgWord } from "@/lib/ngwords";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 // 紛らわしい文字（0/O, 1/I）を除いた招待コード用文字セット
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -123,6 +125,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  // 連投抑止: 1IPあたり1分で30件まで（チャット投稿が多いので緩め）
+  if (!rateLimit(`mood-groups:${clientIp(req)}`, 30, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });
+  }
   try {
     const body = await req.json().catch(() => null);
     if (!body?.action) return NextResponse.json({ ok: false, error: "action必須" }, { status: 400 });
@@ -134,6 +140,8 @@ export async function POST(req: NextRequest) {
       const name = String(body.name ?? "").trim().slice(0, 30);
       const nickname = String(body.nickname ?? "").trim().slice(0, 20);
       if (!name || !nickname) return NextResponse.json({ ok: false, error: "グループ名とニックネームは必須です" }, { status: 400 });
+      const ngCreate = findNgWord(name) || findNgWord(nickname);
+      if (ngCreate) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
 
       // 招待コードの衝突は引き直しでリトライ
       let group = null;
@@ -189,6 +197,9 @@ export async function POST(req: NextRequest) {
       if (!groupId || (!mood && !comment)) {
         return NextResponse.json({ ok: false, error: "groupIdと、気分かひとことが必要です" }, { status: 400 });
       }
+      // NGワード（メンバー全員に表示される投稿テキスト＝App Store 1.2のフィルタ要件）
+      const ngPost = findNgWord(comment) || findNgWord(mood);
+      if (ngPost) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
 
       const { data: me, error: meErr } = await supabase
         .from("mood_group_members")

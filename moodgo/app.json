@@ -14,6 +14,7 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "現在地周辺のおすすめスポットを探すために位置情報を使用します。",
+        "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
           "comgooglemaps",
           "googlemaps"
@@ -29,13 +30,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "現在地を使ってエリアを自動入力します。"
+          "locationWhenInUsePermission": "現在地周辺のおすすめスポットを探すために位置情報を使用します。"
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "グループのアイコンに使う写真を選択します。"
+          "photosPermission": "スポットの写真投稿や、グループ・プロフィールのアイコン設定のために写真ライブラリにアクセスします。"
         }
       ],
       [

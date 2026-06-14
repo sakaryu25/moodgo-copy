@@ -8,6 +8,7 @@ import GroupShareSheet from '@/components/GroupShareSheet';
 import SplashScreen from '@/components/SplashScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
+import ConsentGate from '@/components/ConsentGate';
 import { setupGlobalErrorHandlers } from '@/lib/crashReporting';
 import { initSentry } from '@/lib/sentry';
 
@@ -39,6 +40,8 @@ export default function RootLayout() {
           <GroupShareSheet />
           {/* オフライン時のバナー（全画面に重ねる） */}
           <OfflineBanner />
+          {/* 初回起動の利用規約同意ゲート（最前面） */}
+          <ConsentGate />
           <StatusBar style="auto" />
         </ErrorBoundary>
       </SafeAreaProvider>
