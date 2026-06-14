@@ -35,6 +35,7 @@ import { getSelectedPlace } from '@/lib/selectedPlace';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
+import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
@@ -641,7 +642,7 @@ export default function PlaceDetailPage() {
               ))}
               {showContribute && (
                 <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-                  style={[{ width: photoWidth, height: 300 }, s.heroPlaceholder]}>
+                  style={[s.heroPlaceholder, { width: photoWidth, height: 300 }]}>
                   <Moon size={44} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
                   <Text style={s.heroSpookyTitle}>写真を提供してください</Text>
                   <Text style={s.heroSpookySub}>あなたの写真でこの場所を伝えてください 🙏</Text>
@@ -704,7 +705,7 @@ export default function PlaceDetailPage() {
           {/* タイトル + マップボタン（同一行）+ vibeバッジ */}
           <View style={s.titleBlock}>
             <View style={s.titleRow}>
-              <Text style={s.title}>{rec.title}</Text>
+              <Text style={s.title} onLongPress={() => copyPlaceName(rec.title)} suppressHighlighting>{rec.title}</Text>
               {displayMapUrl ? (
                 <TouchableOpacity
                   onPress={() => {

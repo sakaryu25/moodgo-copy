@@ -24,6 +24,7 @@ import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
 import ReportModal from './ReportModal';
+import { copyPlaceName } from '@/lib/clipboard';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 
@@ -497,7 +498,7 @@ export default function HistoryView({
                           <Text style={s.timeText}>{formatTime(item.createdAt, lang)}</Text>
                         </View>
                       </View>
-                      <Text style={s.spotName} numberOfLines={1}>{item.topRecommendation}</Text>
+                      <Text style={s.spotName} numberOfLines={1} onLongPress={() => copyPlaceName(item.topRecommendation)} suppressHighlighting>{item.topRecommendation}</Text>
                       <View style={s.tagRow}>
                         {item.area ? (
                           <View style={s.tagChip}>

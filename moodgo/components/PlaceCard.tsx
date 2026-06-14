@@ -12,6 +12,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { sendEngagement } from '@/lib/engagement';
+import { copyPlaceName } from '@/lib/clipboard';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -491,11 +492,14 @@ export default function PlaceCard({
 
         {/* タイトル */}
         {onPressDetail ? (
-          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); }} activeOpacity={0.75}>
+          <TouchableOpacity
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); }}
+            onLongPress={() => copyPlaceName(item.title)}
+            activeOpacity={0.75}>
             <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
+          <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
         )}
 
         {/* 説明文（Web版と同じ small gray text） */}
