@@ -5507,7 +5507,7 @@ function scheduleDescriptionGeneration(
   const targets = spots
     .map(s => ({ name: String(s.name ?? s.title ?? "").trim(), tags: s.tags ?? [], desc: s.description, id: s.id, address: s.address }))
     .filter(s => s.name && needsDesc(s.name, s.desc));
-  const dedup = Array.from(new Map(targets.map(t => [t.name, t])).values()).slice(0, 10);
+  const dedup = Array.from(new Map(targets.map(t => [t.name, t])).values()).slice(0, 20);  // 1検索あたり上限(after実行=遅延ゼロ)。バックログは /api/admin/describe-all で一括消化
   // 生成された名前→書き戻し先（同名チェーン混線を防ぐため id/住所で絞る）
   const matchByName = new Map(dedup.map(t => [t.name, toPlaceMatch(t.name, t.id, t.address)]));
   if (dedup.length === 0) return;
