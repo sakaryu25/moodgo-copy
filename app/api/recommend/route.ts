@@ -6728,10 +6728,11 @@ async function handleRecommend(request: Request) {
               const MOODGO_RATING_MIN = 3;
               for (const rec of supabaseRecs) {
                 const a = rec.supabaseId ? agg.get(rec.supabaseId) : undefined;
-                if (a && a.n >= MOODGO_RATING_MIN) {
-                  rec.rating = Math.round((a.sum / a.n) * 10) / 10;
-                  rec.userRatingCount = a.n;
-                }
+                if (!a || a.n === 0) continue;
+                // 件数は常にMoodGo評価分を加算＝『○○件の評価』が利用者の評価で増える
+                rec.userRatingCount = (rec.userRatingCount ?? 0) + a.n;
+                // 値は3件以上たまったらMoodGo平均へ移行（未満はGoogle保存値のまま）
+                if (a.n >= MOODGO_RATING_MIN) rec.rating = Math.round((a.sum / a.n) * 10) / 10;
               }
             }
           } catch { /* spot_ratings未作成・取得失敗はGoogle評価のまま安全 */ }

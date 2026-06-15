@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
+import { showToast } from '@/lib/toast';
 
 const MOODS = ['#まったりしたい', '#自然感じたい', '#わいわい楽しみたい', '#お腹すいた', '#ドライブしたい', '#集中したい', '#体動かしたい', '#遠くに行きたい', '#ショッピング', '#スリル味わいたい'];
 const COMPANIONS = ['ひとり', '友達', '恋人', '家族', 'グループ'];
@@ -65,10 +66,10 @@ export default function MoodLogScreen() {
   const toggle = <T,>(arr: T[], v: T, set: (x: T[]) => void) => set(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
   const submit = async () => {
-    if (!licenseOk) { Alert.alert('確認が必要です', '「自分で撮影した、または使用許可のある写真です」にチェックしてください。'); return; }
-    if (moodTags.length === 0) { Alert.alert('気分タグを選んでください', 'この場所が合う気分を1つ以上選んでください。'); return; }
+    if (!licenseOk) { showToast('権利確認が必要です', '「自分で撮影／使用許可あり」にチェックしてください'); return; }
+    if (moodTags.length === 0) { showToast('気分タグを選んでください', 'この場所が合う気分を1つ以上タップ'); return; }
     const ng = findNgWord(caption);
-    if (ng) { Alert.alert('不適切な表現', '記入内容を見直してください。'); return; }
+    if (ng) { showToast('不適切な表現があります', '記入内容を見直してください'); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
@@ -84,11 +85,11 @@ export default function MoodLogScreen() {
         timeoutMs: 30000,
       });
       const d = await res.json();
-      if (!d?.ok) { Alert.alert('投稿できませんでした', d?.error ?? 'しばらくしてからお試しください。'); setSubmitting(false); return; }
-      Alert.alert('投稿しました', d.status === 'pending' ? '確認後に公開されます。ありがとうございます！' : '公開しました。ありがとうございます！', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch { Alert.alert('エラー', '投稿に失敗しました。通信環境をご確認ください。'); setSubmitting(false); }
+      if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくしてからお試しください'); setSubmitting(false); return; }
+      // MoodGoらしいトースト表示＋すぐ詳細へ戻る（トーストはルートマウントなので画面遷移後も表示される）
+      showToast(d.status === 'pending' ? '送信しました📸' : 'Moodログを公開しました✨', d.status === 'pending' ? '確認後に公開されます。ありがとう！' : 'みんなの穴場にも載りました。ありがとう！');
+      router.back();
+    } catch { showToast('投稿に失敗しました', '通信環境を確認して再度お試しください'); setSubmitting(false); }
   };
 
   return (

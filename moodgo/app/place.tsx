@@ -301,6 +301,7 @@ export default function PlaceDetailPage() {
   const insets = useSafeAreaInsets();
   const place = getSelectedPlace();
   const [rec, setRec] = useState<Recommendation | null>(place);
+  const [ratingDelta, setRatingDelta] = useState(0);  // 自分が今セッションで新規評価した分(件数を即時+1)
   const [extra, setExtra] = useState<ExtraDetail>({
     phone: place?.phone ?? null,
     website: place?.website ?? null,
@@ -562,7 +563,8 @@ export default function PlaceDetailPage() {
   // APIデータを優先、なければ rec のデータにフォールバック
   const areaName = extractAreaName(extra.loaded ? (extra.address || rec.address) : rec.address);
   const displayRating = extra.loaded ? (extra.rating ?? rec.rating) : rec.rating;
-  const displayUserRatingCount = extra.loaded ? (extra.userRatingCount ?? rec.userRatingCount) : rec.userRatingCount;
+  const baseRatingCount = extra.loaded ? (extra.userRatingCount ?? rec.userRatingCount) : rec.userRatingCount;
+  const displayUserRatingCount = (baseRatingCount ?? 0) + ratingDelta;  // MoodGo評価を押すたびに『○○件の評価』が増える
   const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
   const displayPriceLevel = extra.loaded ? (extra.priceLevel ?? rec.priceLevel) : rec.priceLevel;
   const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
@@ -770,14 +772,14 @@ export default function PlaceDetailPage() {
               <View style={s.ratingMid}>
                 <StarRow rating={displayRating} size={16} />
                 {displayUserRatingCount ? (
-                  <Text style={s.ratingCount}>{displayUserRatingCount.toLocaleString('ja-JP')}件の口コミ</Text>
+                  <Text style={s.ratingCount}>{displayUserRatingCount.toLocaleString('ja-JP')}件の評価</Text>
                 ) : null}
               </View>
             </View>
           )}
 
           {/* MoodGo独自の星評価セレクタ（全スポット・総合星の下にちょこんと） */}
-          {!isSpooky && <SpotRating placeId={rec.supabaseId} placeName={rec.title} />}
+          {!isSpooky && <SpotRating placeId={rec.supabaseId} placeName={rec.title} onFirstRate={() => setRatingDelta(d => d + 1)} />}
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (

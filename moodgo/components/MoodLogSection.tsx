@@ -3,9 +3,9 @@
 // GET /api/spot-posts で承認済み投稿を取得し、写真・気分タグ・ひとこと・誰と・時間帯・
 // また行きたい・リアクション（いいね/参考になった/また行きたい）・通報を表示。
 // 「Moodログを投稿」ボタンは mood-log 画面へ遷移（スポット情報をparamsで渡す）。
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Repeat2, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
@@ -47,7 +47,8 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
     } catch { /* 取得失敗は空 */ } finally { setLoading(false); }
   }, [placeId, placeName]);
 
-  useEffect(() => { load(); }, [load]);
+  // 画面がフォーカスされるたびに再取得（投稿→戻った直後に新しいMoodログが表示される）
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // 新規ルート（expo-routerの型は次回生成で解決・実行時はファイルベースで有効）→ unknown経由でHrefにキャスト
   const goPost = () => router.push({ pathname: '/mood-log', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
