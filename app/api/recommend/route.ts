@@ -755,7 +755,8 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
         rankPreference: "DISTANCE",
         languageCode: "ja",
         locationRestriction: {
-          circle: { center: { latitude: lat, longitude: lng }, radius: 1500 },
+          // HeartRails失敗時の救済。最寄り駅を必ず返すため50kmまで広げる(rank=DISTANCEで最近傍)。
+          circle: { center: { latitude: lat, longitude: lng }, radius: 50000 },
         },
       }),
       cache: "no-store",
@@ -778,8 +779,10 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
       }
     }
     if (!nearest) { _stationCache.set(ckey, { ts: Date.now(), val: "" }); return ""; }
-    const minutes = Math.ceil(nearest.dist / 80);
-    const val = `${nearest.name}から徒歩約${minutes}分`;
+    // 2km以内は徒歩分、超過は「約X.Xkm」で必ず最寄り駅を表示（HeartRailsと同形式）
+    const val = nearest.dist <= 2000
+      ? `${nearest.name}から徒歩約${Math.max(1, Math.ceil(nearest.dist / 80))}分`
+      : `${nearest.name}から約${(nearest.dist / 1000).toFixed(1)}km`;
     _stationCache.set(ckey, { ts: Date.now(), val });  // A: 結果をキャッシュ
     await ltCachePut(`st2:${ckey}`, val);               // 永続(30日・全インスタンス共有)
     return val;
