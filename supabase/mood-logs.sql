@@ -66,7 +66,22 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 -- insert/update/delete は service_role のみ（ポリシー未定義＝anon不可）。spot_photos も同様運用。
 
--- ── 5) リアクションのカウンタ加算RPC（原子的・任意。未作成でもAPIはread→+1でフォールバック）──
+-- ── 6) spot_ratings（MoodGo独自の星評価。Google評価から自前評価へ移行する受け皿）──────
+--   ユーザーが詳細画面でちょこんと付ける1〜5の星。十分件数が貯まったら検索/詳細の表示評価を
+--   Google保存値(places.rating)からこのMoodGo平均に切り替える。1ユーザー1スポット1票(更新可)。
+create table if not exists spot_ratings (
+  id uuid primary key default gen_random_uuid(),
+  place_id   text,                 -- placesのUUID(sb除去後) or google_place_id（識別子）
+  place_name text,
+  device_id  text not null,
+  stars      int  not null check (stars between 1 and 5),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz default now(),
+  unique (place_id, device_id)
+);
+create index if not exists idx_spot_ratings_place on spot_ratings (place_id);
+
+-- ── 7) リアクションのカウンタ加算RPC（原子的・任意。未作成でもAPIはread→+1でフォールバック）──
 create or replace function increment_spot_post_counter(p_post uuid, p_col text)
 returns void language plpgsql as $$
 begin

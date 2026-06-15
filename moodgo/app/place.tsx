@@ -36,6 +36,7 @@ import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
+import SpotRating from '@/components/SpotRating';
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import type { Recommendation, FavoriteItem } from '@/types/app';
@@ -775,6 +776,9 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
+          {/* MoodGo独自の星評価セレクタ（全スポット・総合星の下にちょこんと） */}
+          {!isSpooky && <SpotRating placeId={rec.supabaseId} placeName={rec.title} />}
+
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (
             <View style={s.pricePill}>
@@ -904,20 +908,7 @@ export default function PlaceDetailPage() {
             <MoodLogSection placeId={rec.supabaseId} placeName={rec.title} address={rec.address} />
           )}
 
-          {/* ─── 口コミセクション（心霊は出さない）─── */}
-          {!isSpooky && (extra.reviews?.length ?? 0) > 0 && (
-            <View style={s.section}>
-              <View style={s.sectionHeader}>
-                <ThumbsUp size={15} color="#C084FC" strokeWidth={2} />
-                <Text style={s.sectionTitle}>口コミ</Text>
-                <Text style={s.reviewSubLabel}>いいね順 Top {extra.reviews!.length}</Text>
-              </View>
-              {extra.reviews!.map((review, i) => (
-                <ReviewCard key={i} review={review} index={i} />
-              ))}
-            </View>
-          )}
-
+          {/* Google口コミ欄は廃止。MoodGo独自の「みんなのMoodログ」(上)に一本化。 */}
 
         </View>
       </Animated.ScrollView>

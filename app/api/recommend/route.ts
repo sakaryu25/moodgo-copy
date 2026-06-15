@@ -6709,6 +6709,31 @@ async function handleRecommend(request: Request) {
           } catch { /* spot_posts未作成・取得失敗はバッジ無しで安全 */ }
         }
 
+        // ── MoodGo独自の星評価で表示評価を上書き（Google→自前へ移行）────────────────
+        //   spot_ratings の平均が一定件数(3)以上貯まったスポットは、表示評価をGoogle保存値から
+        //   MoodGo平均に切り替える。データ0でも無害（従来のrating表示のまま）。
+        if (!isProprietaryOnly && supabase) {
+          try {
+            const uuids3 = supabaseRecs.map(r => r.supabaseId).filter((x): x is string => !!x);
+            if (uuids3.length > 0) {
+              const { data } = await supabase.from("spot_ratings").select("place_id, stars").in("place_id", uuids3).limit(5000);
+              const agg = new Map<string, { sum: number; n: number }>();
+              for (const row of (data ?? []) as Array<{ place_id: string; stars: number }>) {
+                const a = agg.get(row.place_id) ?? { sum: 0, n: 0 };
+                a.sum += Number(row.stars) || 0; a.n++; agg.set(row.place_id, a);
+              }
+              const MOODGO_RATING_MIN = 3;
+              for (const rec of supabaseRecs) {
+                const a = rec.supabaseId ? agg.get(rec.supabaseId) : undefined;
+                if (a && a.n >= MOODGO_RATING_MIN) {
+                  rec.rating = Math.round((a.sum / a.n) * 10) / 10;
+                  rec.userRatingCount = a.n;
+                }
+              }
+            }
+          } catch { /* spot_ratings未作成・取得失敗はGoogle評価のまま安全 */ }
+        }
+
         // ── 結果の結合 ─────────────────────────────────────────────────────────
         // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
         // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う

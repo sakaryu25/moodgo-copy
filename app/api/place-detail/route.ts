@@ -45,7 +45,7 @@ const FIELD_MASK = [
   "priceLevel",
   "location",
   "types",
-  "reviews",
+  // "reviews" は廃止: MoodGoは独自の「みんなのMoodログ」に一本化（Google口コミは取得・表示しない＝コスト減）
 ].join(",");
 
 async function fetchPlaceDetail(placeId: string, apiKey: string) {
