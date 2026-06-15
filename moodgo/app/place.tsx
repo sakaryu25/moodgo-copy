@@ -35,6 +35,7 @@ import { getSelectedPlace } from '@/lib/selectedPlace';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
+import MoodLogSection from '@/components/MoodLogSection';
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import type { Recommendation, FavoriteItem } from '@/types/app';
@@ -897,6 +898,11 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
+
+          {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊以外）─── */}
+          {!isSpooky && (
+            <MoodLogSection placeId={rec.supabaseId} placeName={rec.title} address={rec.address} />
+          )}
 
           {/* ─── 口コミセクション（心霊は出さない）─── */}
           {!isSpooky && (extra.reviews?.length ?? 0) > 0 && (
