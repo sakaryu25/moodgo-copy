@@ -5897,7 +5897,9 @@ export async function POST(request: Request): Promise<Response> {
   if (snapKey) {
     const hit = await readSnapshot(snapKey);
     if (hit) {
-      return NextResponse.json({ ...hit, _apiCount: { total: 0, cached: true, elapsedMs: Date.now() - t0 } });
+      // キャッシュ応答にも毎回新しい searchId を振る（ファネルで1検索を識別するため）
+      const searchId = `s_${t0.toString(36)}_${Math.round((t0 * 9301 + 49297) % 233280).toString(36)}`;
+      return NextResponse.json({ ...hit, searchId, _apiCount: { total: 0, cached: true, elapsedMs: Date.now() - t0 } });
     }
   }
 
@@ -5945,6 +5947,9 @@ async function handleRecommend(request: Request) {
     const pastFeedback = (body?.pastFeedback || []) as FeedbackItem[];
     const seenPlaces = (body?.seenPlaces || []) as string[];
     const showUnseenOnly = body?.showUnseenOnly === true;
+    // ファネル計測用: この1検索を識別するID。応答に載せ、フロントが engagement 送信時に同梱する
+    //   → 検索→詳細→ナビ→来店 の経路を再構成できる（[[improvement-backlog]] 🟢）。
+    const searchId = `s_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
     const refinementText = (body?.refinementText || "") as string;
     const userPreferenceHints = (body?.userPreferenceHints || []) as string[];
 
@@ -7161,6 +7166,7 @@ async function handleRecommend(request: Request) {
         return json({
           recommendations,
           source: "supabase",
+          searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
           warning: hasLocation
@@ -8690,6 +8696,7 @@ async function handleRecommend(request: Request) {
     return json({
       recommendations: finalResults,
       usedAI: !!aiPlans,
+      searchId,
       warning: "",
     });
   } catch (error) {

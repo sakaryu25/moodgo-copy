@@ -18,16 +18,28 @@ const VALID_ACTIONS = new Set(["map_click", "detail_view", "favorite", "visited"
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { place_name, mood, action } = body ?? {};
+    const { place_name, mood, action, place_id, device_id, search_id, position } = body ?? {};
     if (!place_name || !VALID_ACTIONS.has(action)) {
       return NextResponse.json({ ok: false, error: "place_name と有効な action が必須です" }, { status: 400 });
     }
     if (!supabase) return NextResponse.json({ ok: true, skipped: true });
 
     const name = String(place_name).slice(0, 200);
-    const { error } = await supabase
-      .from("spot_engagement")
-      .insert({ place_name: name, mood: mood ?? null, action });
+    // ファネル計測列(place_id/device_id/search_id/position)も保存。
+    //   funnel-tracking.sql 未適用(列なし)の場合は 42703/PGRST204 になるので
+    //   コア列のみで再挿入し、後方互換を保つ（学習ループの記録を止めない）。
+    const core = { place_name: name, mood: mood ?? null, action };
+    const enriched = {
+      ...core,
+      place_id: place_id ? String(place_id).slice(0, 200) : null,
+      device_id: device_id ? String(device_id).slice(0, 128) : null,
+      search_id: search_id ? String(search_id).slice(0, 64) : null,
+      position: typeof position === "number" ? position : null,
+    };
+    let { error } = await supabase.from("spot_engagement").insert(enriched);
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      ({ error } = await supabase.from("spot_engagement").insert(core));
+    }
 
     // item8: 場所×気分アフィニティを加算（visited=5/favorite=3/share=3/detail=1/map=1）。
     //   協調フィルタ（似たユーザーの好み）を都度計算でなく集計テーブルで高速・高精度に。

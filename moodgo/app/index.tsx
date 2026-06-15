@@ -34,6 +34,7 @@ import {
   loadJSON, saveJSON,
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
+import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
@@ -188,6 +189,8 @@ export default function Home() {
   const [reportDone,       setReportDone]       = useState(false);
 
   const loadingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ファネル計測: 直近検索の searchId を保持し engagement 送信時に同梱する
+  const searchIdRef = useRef<string>('');
 
   // ─── Load from AsyncStorage ──────────────────────────────────────────────
 
@@ -501,6 +504,7 @@ export default function Home() {
         }
       }
 
+      searchIdRef.current = (d as { searchId?: string })?.searchId ?? '';  // ファネル計測用
       setApiRecommendations(recs);
       // B-2: ワーニングはAPIの warning をそのまま表示（API側で既に「範囲を広げました」を含むため
       //   アプリ側で同文を重ねない＝重複表示の修正）
@@ -553,11 +557,15 @@ export default function Home() {
   //   地図クリック/詳細閲覧/お気に入り/行った！を記録 → 検索結果の昇格学習に使われる
   const sendEngagement = (placeName: string, action: 'map_click' | 'detail_view' | 'favorite' | 'visited' | 'share') => {
     if (!placeName) return;
-    apiFetch('/api/engagement', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ place_name: placeName, mood: selectedMood, action }),
-    }).catch(() => {});
+    // ファネル計測: 店舗ID(placeId/supabaseId)・掲載順位・検索ID・端末IDを同梱して送る。
+    //   呼び出し側は従来通り (title, action) のままで、ここで結果一覧から自動解決する。
+    const idx = apiRecommendations.findIndex((r) => r.title === placeName);
+    const rec = idx >= 0 ? apiRecommendations[idx] : undefined;
+    libSendEngagement(placeName, action, selectedMood, {
+      placeId: rec?.placeId ?? rec?.supabaseId,
+      searchId: searchIdRef.current || undefined,
+      position: idx >= 0 ? idx : undefined,
+    });
   };
 
   // ── ⑤ 端末プロファイル: お気に入り・高評価のタグ頻度から「好みヒント」を生成 ───
@@ -757,6 +765,7 @@ export default function Home() {
       });
       const d = await res.json();
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
+      searchIdRef.current = (d as { searchId?: string })?.searchId ?? '';  // ファネル計測用
       setApiRecommendations(recs);
       // 0件でも黙らず案内（従来は無反応だった）
       setApiWarning(recs.length > 0 ? (d.warning ?? '') : (d.warning || '条件に合う場所が見つかりませんでした。条件を変えてお試しください。'));
