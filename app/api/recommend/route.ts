@@ -7158,6 +7158,46 @@ async function handleRecommend(request: Request) {
           } catch { /* 失敗時は元の順序を維持（品質劣化させない） */ }
         }
 
+        // ── 有料掲載（スポンサー枠）を最上位に確保（PR表示）──────────────────────
+        //   SPONSORED_LISTINGS_ENABLED=1 のときのみ作動（SQL未適用時の無駄なクエリを回避）。
+        //   心霊(独自)・現在地なしは対象外。気分タグ一致＋半径内のみ＝無関係な広告は出さない。
+        //   全ソート/エンリッチ後にprependするため確実に先頭。isSponsored で PR バッジを出す。
+        if (process.env.SPONSORED_LISTINGS_ENABLED === "1" && hasLocation && !isProprietaryOnly) {
+          try {
+            const { fetchSponsoredPlaces } = await import("@/lib/sponsored");
+            const sponsored = await fetchSponsoredPlaces({
+              lat: answers.originLat!, lng: answers.originLng!,
+              radiusKm, moodTags: userTags.mustTags, max: 2,
+            });
+            if (sponsored.length > 0) {
+              const normSp = (s: string) => (s ?? "").normalize("NFKC").toLowerCase().replace(/[^0-9a-z぀-ヿ一-鿿ｦ-ﾟ]+/g, "");
+              const spRecs = sponsored.map((s) => {
+                const km = (typeof s.lat === "number" && typeof s.lng === "number")
+                  ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000 : undefined;
+                const imgs = (s.image_urls && s.image_urls.length > 0 ? s.image_urls : (s.photo_url ? [s.photo_url] : [])).map(wrapWithPhotoProxy);
+                return {
+                  title: s.name, address: s.address ?? "",
+                  photoUrl: imgs[0] ?? "", photoUrls: imgs,
+                  rating: null, userRatingCount: null, openNow: undefined,
+                  openStatusBadge: undefined, openingHoursText: undefined,
+                  mapUrl: "", googleMapsUrl: "",
+                  reason: s.description ?? "", features: (s.tags ?? []).slice(0, 5),
+                  distanceText: km != null ? formatDistText(km, answers.transport) : "",
+                  distanceKm: km, distanceM: null, lat: s.lat ?? undefined, lng: s.lng ?? undefined,
+                  durationText: "", stationText: s.nearest_station ?? "",
+                  vibe: "", budget: "", time: "", priceLevel: undefined,
+                  placeId: s.google_place_id ?? undefined, supabaseId: s.id,
+                  source: "admin", isUserSpot: false, hasUserPhotos: false, userPhotoCount: 0,
+                  routesByMode: undefined, tags: s.tags ?? [], isSponsored: true,
+                };
+              }) as unknown as typeof recommendations;
+              const spKeys = new Set(spRecs.map((r) => normSp(r.title ?? "")));
+              const rest = recommendations.filter((r) => !spKeys.has(normSp(r.title ?? "")));
+              recommendations = [...spRecs, ...rest].slice(0, Math.max(15, spRecs.length));
+            }
+          } catch { /* スポンサー取得失敗は通常結果で続行 */ }
+        }
+
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"

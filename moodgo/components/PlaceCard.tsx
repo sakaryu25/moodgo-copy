@@ -490,6 +490,13 @@ export default function PlaceCard({
       {/* ── ボディ ────────────────────────────────── */}
       <View style={s.body}>
 
+        {/* 有料掲載ラベル（景表法/ストア審査の広告明示要件） */}
+        {item.isSponsored && (
+          <View style={s.prBadge}>
+            <Text style={s.prBadgeText}>{lang === 'ja' ? 'PR・広告' : 'Sponsored'}</Text>
+          </View>
+        )}
+
         {/* タイトル */}
         {onPressDetail ? (
           <TouchableOpacity
@@ -773,6 +780,8 @@ const s = StyleSheet.create({
 
   // ボディ
   body:        { padding: 16, gap: 8 },
+  prBadge:       { alignSelf: 'flex-start', backgroundColor: '#EEE7FA', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 5 },
+  prBadgeText:   { fontSize: 10.5, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.3 },
   title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
   titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },

@@ -33,6 +33,8 @@ export type Recommendation = {
   stationText?: string;
   routesByMode?: RouteByMode[];
   source?: 'hotpepper' | 'google' | 'admin' | 'user';
+  /** 有料掲載（スポンサー枠）。true なら PR/広告ラベルを表示する（景表法/審査対応） */
+  isSponsored?: boolean;
   hotpepperUrl?: string;
   /** Supabase places.id（UUID）。report-closed API で使用する閉店報告用 */
   supabaseId?: string;
