@@ -371,6 +371,28 @@ async function fetchEngagementAgg(): Promise<EngagementAgg> {
           agg.set(key, (agg.get(key) ?? 0) + (ENGAGEMENT_WEIGHTS[row.action ?? ""] ?? 0));
         }
       }
+
+      // Moodログ(気分ベース口コミ)を学習スコアへ反映: 投稿の気分タグ→気分グループ別に加点。
+      //   自然投稿多→自然検索で加点／恋人投稿多→デート系で加点／また行きたい・参考になった を重み付け。
+      //   同じ agg(key=`気分グループ||店名`) に足すため learnScore がそのまま拾う。データ0でも無害。
+      try {
+        const { data: posts } = await supabase
+          .from("spot_posts")
+          .select("place_name, mood_tags, want_revisit, helpful_count")
+          .eq("status", "approved").in("visibility", ["spot_public_anonymous", "public"])
+          .limit(5000);
+        for (const row of posts ?? []) {
+          const nm = String(row.place_name ?? "").toLowerCase().trim();
+          if (!nm) continue;
+          const w = 2 + (row.want_revisit ? 2 : 0) + Math.min(2, Number(row.helpful_count) || 0);
+          for (const tag of (row.mood_tags as string[] | null) ?? []) {
+            const mg = moodGroup(String(tag).replace(/^#/, ""));
+            if (!mg) continue;
+            const key = `${mg}||${nm}`;
+            agg.set(key, (agg.get(key) ?? 0) + w);
+          }
+        }
+      } catch { /* spot_posts 未作成は無視 */ }
     }
   } catch { /* テーブル未作成等は無視（SQL: supabase/learning-tables.sql / db-accumulation.sql）*/ }
   _engCache = { at: Date.now(), agg };
@@ -6653,6 +6675,38 @@ async function handleRecommend(request: Request) {
               }
             }
           } catch { /* spot_photos未作成・取得失敗は従来表示で安全 */ }
+        }
+
+        // ── Moodログ集計（カードのMoodGo独自バッジ用: 件数・支配的気分・また行きたい数）──────
+        //   spot_posts(approved・公開)を place_id で一括集計してrecに付与。データ0でも無害。
+        if (!isProprietaryOnly && supabase) {
+          try {
+            const uuids2 = supabaseRecs.map(r => r.supabaseId).filter((x): x is string => !!x);
+            if (uuids2.length > 0) {
+              const { data } = await supabase.from("spot_posts")
+                .select("place_id, mood_tags, companion, want_revisit, helpful_count")
+                .in("place_id", uuids2).eq("status", "approved").in("visibility", ["spot_public_anonymous", "public"]).limit(2000);
+              type Agg = { count: number; moods: Record<string, number>; comps: Record<string, number>; revisit: number; helpful: number };
+              const agg = new Map<string, Agg>();
+              for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+                const k = String(row.place_id);
+                const a = agg.get(k) ?? { count: 0, moods: {}, comps: {}, revisit: 0, helpful: 0 };
+                a.count++;
+                for (const t of (row.mood_tags as string[] | null) ?? []) a.moods[t] = (a.moods[t] ?? 0) + 1;
+                if (row.companion) { const c = String(row.companion); a.comps[c] = (a.comps[c] ?? 0) + 1; }
+                if (row.want_revisit) a.revisit++;
+                a.helpful += typeof row.helpful_count === "number" ? row.helpful_count : 0;
+                agg.set(k, a);
+              }
+              const top = (o: Record<string, number>) => Object.entries(o).sort((x, y) => y[1] - x[1])[0]?.[0];
+              for (const rec of supabaseRecs) {
+                const a = rec.supabaseId ? agg.get(rec.supabaseId) : undefined;
+                if (a && a.count > 0) {
+                  (rec as Record<string, unknown>).moodLog = { count: a.count, topMood: top(a.moods), topCompanion: top(a.comps), revisit: a.revisit, helpful: a.helpful };
+                }
+              }
+            }
+          } catch { /* spot_posts未作成・取得失敗はバッジ無しで安全 */ }
         }
 
         // ── 結果の結合 ─────────────────────────────────────────────────────────

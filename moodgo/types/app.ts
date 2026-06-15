@@ -35,6 +35,8 @@ export type Recommendation = {
   source?: 'hotpepper' | 'google' | 'admin' | 'user';
   /** 有料掲載（スポンサー枠）。true なら PR/広告ラベルを表示する（景表法/審査対応） */
   isSponsored?: boolean;
+  /** Moodログ集計（MoodGo独自の気分ベース口コミ反応。カードのバッジ表示用） */
+  moodLog?: { count: number; topMood?: string; topCompanion?: string; revisit?: number; helpful?: number };
   hotpepperUrl?: string;
   /** Supabase places.id（UUID）。report-closed API で使用する閉店報告用 */
   supabaseId?: string;

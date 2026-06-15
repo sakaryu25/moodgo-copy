@@ -514,6 +514,16 @@ export default function PlaceCard({
           <Text style={[s.description, darkTheme && s.textDimDark]} numberOfLines={2}>{description}</Text>
         ) : null}
 
+        {/* MoodGo独自バッジ（気分ベース口コミの反応・Google評価の代わり） */}
+        {item.moodLog && item.moodLog.count > 0 ? (
+          <View style={s.moodLogRow}>
+            <Text style={s.moodLogMain}>📝 Moodログ {item.moodLog.count}件</Text>
+            {item.moodLog.topMood ? <Text style={s.moodLogSub}>{item.moodLog.topMood.replace(/^#/, '').replace(/したい$|感じたい$/, '')}多め</Text> : null}
+            {item.moodLog.topCompanion ? <Text style={s.moodLogSub}>{item.moodLog.topCompanion}向き</Text> : null}
+            {item.moodLog.revisit ? <Text style={s.moodLogSub}>また行きたい{item.moodLog.revisit}</Text> : null}
+          </View>
+        ) : null}
+
         {/* 評価 + 営業状態 (ピル) */}
         <View style={s.pillRow}>
           {item.rating != null && (
@@ -782,6 +792,9 @@ const s = StyleSheet.create({
   body:        { padding: 16, gap: 8 },
   prBadge:       { alignSelf: 'flex-start', backgroundColor: '#EEE7FA', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 5 },
   prBadgeText:   { fontSize: 10.5, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.3 },
+  moodLogRow:    { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 },
+  moodLogMain:   { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
+  moodLogSub:    { fontSize: 11, fontWeight: '700', color: '#A06CB8', backgroundColor: '#F7EEFB', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
   titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
