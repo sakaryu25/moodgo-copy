@@ -6177,7 +6177,10 @@ async function handleRecommend(request: Request) {
         radiusKm: sbRadiusKm,  // A-4: 食事は近場キャップ適用
         minRadiusKm: sbMinRadiusKm,  // 心霊は遠出バイアス無効（近い順で確実に出す）
         transport: answers.transport,
-        limit: 20,  // コスト削減B: Supabaseが充足したらGoogle/Yahooをスキップするため多めに取得
+        // コスト削減B: Supabaseが充足したらGoogle/Yahooをスキップするため多めに取得。
+        // 再検索(showUnseenOnly)時は既出分(seenPlaces)が後段で除外され在庫が痩せるため、
+        //   既出件数だけ取得上限を引き上げ「他のスポットを見る」の枯渇・同一反復を防ぐ(上限60)。
+        limit: showUnseenOnly ? Math.min(20 + seenPlaces.length, 60) : 20,
         googleApiKey: apiKey,
       });
 
@@ -6986,15 +6989,21 @@ async function handleRecommend(request: Request) {
             return m ? parseFloat(m[1]) : 9999;
           };
           const jitterKm = Math.min(radiusKm * 0.12, 12);
+          // OpenAI判別順(_aiRank: 0=最良)を距離ボーナスに換算。近場でもAIが「体験に合う」と
+          //   判断した上位スポットを前に出す（従来は近距離設定で_aiRankが完全に無視され、
+          //   絶景/自然/楽しみ系で『近いだけの平凡スポット』が上位化していた）。
+          //   rank0で約+3.2km分有利・rank8以降は0。距離を覆すほど強くはしない（バランス維持）。
+          const aiBonusKm = (r: { _aiRank?: number }): number =>
+            typeof r._aiRank === "number" ? Math.max(0, 8 - r._aiRank) * 0.4 : 0;
           recommendations = [...recommendations]
             .sort((a, b) => {
               // ジャンル一致を最優先（混在補填の異ジャンルがジャンル一致より上に来ないように）
               const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
               const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
               if (ga !== gb) return ga - gb;
-              // 学習スコアを距離ボーナス換算（👍/エンゲージメント高は最大3km分有利）
-              const la = ratingJudge.learnScore(a.title ?? "") * 3;
-              const lb = ratingJudge.learnScore(b.title ?? "") * 3;
+              // 学習スコア + AI判別順 を距離ボーナス換算（小さいほど上位）
+              const la = ratingJudge.learnScore(a.title ?? "") * 3 + aiBonusKm(a);
+              const lb = ratingJudge.learnScore(b.title ?? "") * 3 + aiBonusKm(b);
               return ((kmOfRec(a) - la) - (kmOfRec(b) - lb)) + (Math.random() - 0.5) * jitterKm * 2;
             })
             .slice(0, 15);

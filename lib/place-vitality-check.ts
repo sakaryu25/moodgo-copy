@@ -18,6 +18,16 @@ const CHECK_INTERVAL_DAYS = 7;           // 再チェックまでの間隔
 const BATCH_CONCURRENCY   = 5;           // 同時処理数（APIレート制限対策）
 const API_TIMEOUT_MS      = 5000;        // Google API タイムアウト
 
+// 閉店概念が薄く vitality-check の対象外にする source_type（自然/PD/心霊/図書館/道の駅等）。
+//   places 68k のうち過半がこれら＝cronで巡回しても閉店検知の意味が薄く、closeable な
+//   飲食/商業/遊興施設のチェックを永久に後回しにしていた。これらを除外し対象を大幅縮小する。
+//   ※ source_type=NULL（旧admin/google等）は closeable 扱いで対象に残す。
+//   ※ osm/jichitai-od は venue（カラオケ/ジム等の閉店しうる施設）を含むため対象に残す。
+const NON_CLOSEABLE_SOURCES = [
+  "wikidata", "env-wetland", "wikipedia-tanada", "wikipedia-hyakusen",
+  "michi-no-eki", "ndl", "ghostmap",
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 型定義
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,23 +228,17 @@ export async function fetchVitalityTargets(
 ): Promise<VitalityTarget[]> {
   if (!supabase) return [];
 
-  // RPC を試みる（PostGIS マイグレーション済みの場合）
-  const { data: rpcData, error: rpcErr } = await supabase.rpc(
-    "find_places_needing_vitality_check",
-    { batch_size: batchSize, max_age_days: CHECK_INTERVAL_DAYS }
-  );
-
-  if (!rpcErr && rpcData) {
-    return rpcData as VitalityTarget[];
-  }
-
-  // RPC が使えない場合は直接クエリ
+  // 直接クエリで closeable な source_type のみを対象にする。
+  //   RPC(find_places_needing_vitality_check)は source_type で絞れず自然/PD/心霊を含む
+  //   68k全件を返してしまい、closeable施設のチェックが永久に後回しになっていた。
+  //   → source_type が NON_CLOSEABLE 以外（NULL含む）に限定して対象を縮小する。
   const cutoff = new Date(Date.now() - CHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from("places")
     .select("id, name, google_place_id, hotpepper_id, address, source_type, last_checked_at")
     .eq("is_active", true)
     .or(`last_checked_at.is.null,last_checked_at.lt.${cutoff}`)
+    .or(`source_type.is.null,source_type.not.in.(${NON_CLOSEABLE_SOURCES.join(",")})`)
     .order("last_checked_at", { ascending: true, nullsFirst: true })
     .limit(batchSize);
 

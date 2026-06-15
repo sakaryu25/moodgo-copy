@@ -46,7 +46,9 @@ export async function GET(req: NextRequest) {
   console.log(`[cron/vitality-check] 開始: ${startedAt}`);
 
   // ── チェック対象を取得（直近 7 日以内に確認済みのスポットを除く） ──
-  const targets = await fetchVitalityTargets(50);
+  // closeable な source_type に限定されたため対象が大幅縮小。maxDuration=300 の範囲で
+  //   1回あたりの処理量を増やしバックログ消化を加速（concurrency=5・5s timeout で十分収まる）。
+  const targets = await fetchVitalityTargets(150);
 
   if (targets.length === 0) {
     console.log("[cron/vitality-check] チェック対象なし（全スポット確認済み）");
