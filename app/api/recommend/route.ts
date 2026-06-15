@@ -1,5 +1,8 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// 実トラフィックの中核。キャッシュミス時はAIプラン生成＋Google searchText(実測9s)＋
+// Yahoo補完＋駅/写真エンリッチを行うため、既定タイムアウトでの断続切断を防ぐべく明示。
+export const maxDuration = 60;
 import { NextResponse, after } from "next/server";
 import { AsyncLocalStorage } from "async_hooks";
 import OpenAI from "openai";

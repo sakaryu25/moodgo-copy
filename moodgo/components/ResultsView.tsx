@@ -340,8 +340,15 @@ export default function ResultsView(props: Props) {
     ? facilityList.filter((f) => !blockedPlaces.includes(f.name)).map((f) => placeToRec(f, facilityLabel))
     : recommendations.filter((r) => !blockedPlaces.includes(r.title));
 
+  // フィルタ適用前の件数を保持（0件時に「検索で0件」か「フィルタで0件」かを区別するため）
+  const preFilterCount = facilityItems.length;
+  const anyFilterActive = !!selectedPrefecture || openNowOnly || unseenOnly;
+
   if (selectedPrefecture) facilityItems = facilityItems.filter((i) => i.address?.includes(selectedPrefecture));
-  if (openNowOnly) facilityItems = facilityItems.filter((i) => i.openNow === true);
+  // 営業中フィルタは3値ロジック: openNow===false（明確に閉店中）のみ除外し、
+  // 営業情報を持たないDBスポット(openNow=undefined/null、OSM/Wikidata等多数)は残す。
+  // ※ 厳密一致(===true)だと営業情報なしの数万件が全消えし「営業中の店がほぼ無い」状態になっていた。
+  if (openNowOnly) facilityItems = facilityItems.filter((i) => i.openNow !== false);
   if (unseenOnly) facilityItems = facilityItems.filter((i) => !seenPlaceTitles.includes(i.title));
   if (resultSort === 'rating') facilityItems = [...facilityItems].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
   else if (resultSort === 'near') facilityItems = [...facilityItems].sort((a, b) => parseDistanceM(a.distanceText) - parseDistanceM(b.distanceText));
@@ -629,7 +636,25 @@ export default function ResultsView(props: Props) {
         {!isLoading && facilityItems.length === 0 && !searchFailed && (
           <View style={s.emptyBox}>
             <Search size={48} color="#C7C7CC" strokeWidth={1.5} />
-            <Text style={s.emptyText}>{t.empty}</Text>
+            {preFilterCount > 0 && anyFilterActive ? (
+              // フィルタ起因の0件: 検索自体は結果ありなので、原因明示＋ワンタップ解除を出す
+              <>
+                <Text style={s.emptyText}>
+                  {lang === 'ja'
+                    ? `絞り込み条件に合うスポットがありません。\n（${preFilterCount}件中0件）`
+                    : `No spots match the current filters.\n(0 of ${preFilterCount})`}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setOpenNowOnly(false); setUnseenOnly(false); onSelectPrefecture?.(''); }}
+                  style={[s.retryBtn, { backgroundColor: accentColor }]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.retryBtnText}>{lang === 'ja' ? 'フィルタを解除' : 'Clear filters'}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={s.emptyText}>{t.empty}</Text>
+            )}
           </View>
         )}
 
