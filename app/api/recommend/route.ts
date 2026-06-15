@@ -7436,6 +7436,7 @@ async function handleRecommend(request: Request) {
               address: s.address,
               lat: s.lat,
               lng: s.lng,
+              placeId: s.id || undefined,   // Google Place ID（詳細ページで口コミ/営業時間を取得）
               mapUrl: s.url,
               googleMapsUrl: s.url,
               photoUrl: s.photoUrl,
@@ -8499,6 +8500,35 @@ async function handleRecommend(request: Request) {
     const preFiltered = sorted.filter(i => keepSet.has(i));
 
     const finalItems = chooseFinalResults(preFiltered, answers.mood);
+
+    // ── 距離表示を全経路と統一（レガシー経路の最終仕上げ）──────────────────────────
+    //   ① Google Places結果は実距離(Route Matrix由来の "12.3km")＋実所要時間(durationText
+    //      "15分")を持つ → 値はそのまま、形式だけ統一形 "車で約15分 / 12.3km" に寄せる。
+    //   ② 管理者/チェーン注入スポットは distanceText が空だった → 座標(location)から
+    //      haversineで距離を補完し統一形式で表示（従来は距離が出ていなかった）。
+    //   ※ ドライブ時間フィルタ(上流 mergedMap で durationText="N分" をパース)は本処理より
+    //      前に実行済みのため、ここで durationText を統一形式へ畳んでクリアしても影響しない。
+    //   ※ routesByMode(複数交通手段チップ)は後段で別途構築され表示を上書きするため不変。
+    {
+      const lo = answers.originLat, ln = answers.originLng;
+      const hasLegacyOrigin = typeof lo === "number" && typeof ln === "number";
+      for (const it of finalItems) {
+        let km: number | undefined;
+        const kmM = it.distanceText.match(/([\d.]+)\s*km/);
+        const mM = it.distanceText.match(/([\d.]+)\s*m(?![a-z])/i);
+        if (kmM) km = parseFloat(kmM[1]);
+        else if (mM) km = parseFloat(mM[1]) / 1000;
+        else if (hasLegacyOrigin && it.location
+          && typeof it.location.latitude === "number" && typeof it.location.longitude === "number") {
+          km = haversineMeters(lo!, ln!, it.location.latitude, it.location.longitude) / 1000;
+        }
+        if (km != null && Number.isFinite(km)) {
+          // 実所要時間(durationText)があれば温存し、無ければ推定（formatDistText内）
+          it.distanceText = formatDistText(km, answers.transport, it.durationText || undefined);
+          it.durationText = "";
+        }
+      }
+    }
 
     // ── 夜モード：夕方〜深夜の場合、各スポットの夜景写真を取得して置き換え ──
     const isNightTime = timeContext.isEvening || timeContext.isLateNight;

@@ -325,9 +325,15 @@ export default function ResultsView(props: Props) {
 
   const parseDistanceM = (s?: string) => {
     if (!s) return Infinity;
-    const m = s.match(/[\d.]+/);
-    const n = m ? parseFloat(m[0]) : Infinity;
-    return s.includes('km') ? n * 1000 : n;
+    // 統一形式 "車で約15分 / 12.3km" は距離(km)がスラッシュの後ろにある。
+    // 先頭の "約15分"(所要時間)を距離と誤認しないよう、まず "Nkm"/"Nm" を優先抽出する。
+    // 旧形式 "12.3km" / "500m" / 裸の数値 にも後方互換。
+    const km = s.match(/([\d.]+)\s*km/);
+    if (km) return parseFloat(km[1]) * 1000;
+    const m = s.match(/([\d.]+)\s*m(?![a-z])/i);
+    if (m) return parseFloat(m[1]);
+    const any = s.match(/[\d.]+/);
+    return any ? parseFloat(any[0]) : Infinity;
   };
 
   let facilityItems = facilityList
