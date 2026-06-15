@@ -704,8 +704,8 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
   const cached = _stationCache.get(ckey);
   if (cached && Date.now() - cached.ts < STATION_CACHE_TTL_MS) return cached.val;
   // 永続キャッシュ（駅は変化しないため30日。コールドスタート跨ぎ・全ユーザー共有）
-  const ltHit = await ltCacheGetMany([`st:${ckey}`]);
-  const ltVal = ltHit.get(`st:${ckey}`);
+  const ltHit = await ltCacheGetMany([`st2:${ckey}`]);
+  const ltVal = ltHit.get(`st2:${ckey}`);
   if (typeof ltVal === "string") {
     _stationCache.set(ckey, { ts: Date.now(), val: ltVal });
     return ltVal;
@@ -734,7 +734,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
             ? `${st.name}駅から徒歩約${Math.max(1, Math.ceil(distM / 80))}分`
             : `${st.name}駅から約${(distM / 1000).toFixed(1)}km`;
           _stationCache.set(ckey, { ts: Date.now(), val });
-          await ltCachePut(`st:${ckey}`, val);
+          await ltCachePut(`st2:${ckey}`, val);
           return val;
         }
       }
@@ -781,7 +781,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     const minutes = Math.ceil(nearest.dist / 80);
     const val = `${nearest.name}から徒歩約${minutes}分`;
     _stationCache.set(ckey, { ts: Date.now(), val });  // A: 結果をキャッシュ
-    await ltCachePut(`st:${ckey}`, val);               // 永続(30日・全インスタンス共有)
+    await ltCachePut(`st2:${ckey}`, val);               // 永続(30日・全インスタンス共有)
     return val;
   } catch {
     return "";
