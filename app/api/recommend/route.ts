@@ -7422,7 +7422,40 @@ async function handleRecommend(request: Request) {
             })),
             "#高層ビル料理"
           );
-          return json({ recommendations: hiShops, usedAI: true, warning: "" });
+          // ── 出力形状を全経路共通(title/distanceText)に統一 ───────────────────────
+          //   旧来この経路だけ gourmet形状(name/url/genre)を返しており、アプリの
+          //   Recommendation型(title必須)と不一致でタイトル/距離が表示されなかった。
+          //   距離は単一ソース(formatDistText)で付与。目的地型グルメのため近い順ソートはしない。
+          const hiHasOrigin = typeof answers.originLat === "number" && typeof answers.originLng === "number";
+          const hiFinal = hiShops.map(s => {
+            const km = hiHasOrigin
+              ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000
+              : undefined;
+            return {
+              title: s.name,
+              address: s.address,
+              lat: s.lat,
+              lng: s.lng,
+              mapUrl: s.url,
+              googleMapsUrl: s.url,
+              photoUrl: s.photoUrl,
+              photoUrls: s.photoUrls,
+              rating: s.rating,
+              userRatingCount: s.reviewCount,
+              openNow: s.openNow ?? undefined,
+              distanceText: km != null ? formatDistText(km, answers.transport) : "",
+              distanceKm: km,
+              reason: s.genreCatch || "",
+              features: [] as string[],
+              vibe: "",
+              budget: "",
+              time: "",
+              stationText: "",
+              durationText: "",
+              source: "google" as const,
+            };
+          });
+          return json({ recommendations: hiFinal, usedAI: true, warning: "" });
         }
       }
     }
@@ -7620,6 +7653,10 @@ async function handleRecommend(request: Request) {
             isUserSpot,
             hasUserPhotos: false,
             userPhotoCount: 0,
+            // 距離の単一ソース化用に座標をトップレベルへ（normalizeDistance が参照）
+            lat: typeof place.location?.latitude === "number" ? place.location.latitude : undefined,
+            lng: typeof place.location?.longitude === "number" ? place.location.longitude : undefined,
+            distanceKm: undefined as number | undefined,
             location: (typeof place.location?.latitude === "number" && typeof place.location?.longitude === "number")
               ? { latitude: place.location.latitude, longitude: place.location.longitude }
               : undefined,
@@ -7640,7 +7677,15 @@ async function handleRecommend(request: Request) {
           if (y.location?.latitude && y.location?.longitude) {
             stationText = await findNearestStation(y.location.latitude, y.location.longitude, apiKey).catch(() => "");
           }
-          return { ...y, stationText, reason: relaxAiResult?.reason || y.vibe || "" };
+          return {
+            ...y,
+            // 距離の単一ソース化用に座標をトップレベルへ（normalizeDistance が参照）
+            lat: typeof y.location?.latitude === "number" ? y.location.latitude : undefined,
+            lng: typeof y.location?.longitude === "number" ? y.location.longitude : undefined,
+            distanceKm: undefined as number | undefined,
+            stationText,
+            reason: relaxAiResult?.reason || y.vibe || "",
+          };
         })
       );
       // ── Step 3: まったり経路にも共通の品質フィルタを適用（createFinalizeHelpers）──
@@ -7664,11 +7709,14 @@ async function handleRecommend(request: Request) {
         relaxHelpers.foodSanitize(relaxPool.filter(r => !isProtectedRelax(r)))
       );
       const relaxKeepSet = new Set([...relaxPool.filter(isProtectedRelax), ...relaxCleaned]);
-      // Google + Yahoo をランダムシャッフルして最大10件
-      const merged = relaxPool
-        .filter(r => relaxKeepSet.has(r))
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 10);
+      // ── 距離ロジックを全経路と統一 ──────────────────────────────────────────────
+      //   ① normalizeDistance: 座標(location→lat/lng)から距離テキスト/kmを単一ソースで付与
+      //      （まったり経路はこれまで距離を一切表示していなかった。交通手段も反映）。
+      //   ② sortOrShuffle: 主経路と同じ並び。遠出mood(minRadiusKm>0)は遠方優先、
+      //      通常moodは品質boost付きシャッフル（純ランダムをやめ、写真/営業中/学習を加味）。
+      const relaxKept = relaxPool.filter(r => relaxKeepSet.has(r));
+      relaxHelpers.normalizeDistance(relaxKept);
+      const merged = relaxHelpers.sortOrShuffle(relaxKept).slice(0, 10);
       console.log(`[Relax] マージ後: Google=${relaxResults.length}件 + Yahoo=${yahooWithStation.length}件 → フィルタ後表示${merged.length}件`);
 
       // 5. 複数交通手段ごとの所要時間（必要な場合）
