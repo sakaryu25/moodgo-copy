@@ -6611,6 +6611,50 @@ async function handleRecommend(request: Request) {
           } catch { /* spot_photos未作成・取得失敗はプレースホルダー表示で安全 */ }
         }
 
+        // ── 全スポット: 承認済み&再利用OKのユーザー投稿写真(Moodログ)を最優先で採用 ──────
+        //   写真が無い既存スポット(自然/穴場/公園/夜景等)の見た目を強化し、Google依存を下げる。
+        //   spot_photos拡張列(moderation_status='approved' AND can_use_as_spot_photo)で絞り、
+        //   各recの先頭にprepend(=カード/詳細のメイン画像がユーザー投稿写真になる)。
+        //   心霊(独自)は上で処理済みのため除外。列未作成(mood-logs.sql未適用)時は安全にスキップ。
+        if (!isProprietaryOnly && supabase) {
+          try {
+            const sbUP = supabase;
+            const uuids = supabaseRecs.map(r => r.supabaseId).filter((x): x is string => !!x);
+            const names = supabaseRecs.map(r => r.title).filter((n): n is string => !!n);
+            const SEL = "place_id, place_name, image_url, is_primary, score, created_at";
+            const byIdRows: Array<Record<string, unknown>> = [];
+            const byNameRows: Array<Record<string, unknown>> = [];
+            if (uuids.length > 0) {
+              const { data } = await sbUP.from("spot_photos").select(SEL)
+                .eq("moderation_status", "approved").eq("can_use_as_spot_photo", true).in("place_id", uuids)
+                .order("is_primary", { ascending: false }).order("score", { ascending: false }).order("created_at", { ascending: false });
+              if (data) byIdRows.push(...(data as Array<Record<string, unknown>>));
+            }
+            if (names.length > 0) {
+              const { data } = await sbUP.from("spot_photos").select(SEL)
+                .eq("moderation_status", "approved").eq("can_use_as_spot_photo", true).in("place_name", names)
+                .order("is_primary", { ascending: false }).order("score", { ascending: false }).order("created_at", { ascending: false });
+              if (data) byNameRows.push(...(data as Array<Record<string, unknown>>));
+            }
+            const byId = new Map<string, string[]>();
+            const byName = new Map<string, string[]>();
+            const push = (m: Map<string, string[]>, k: string, u: string) => { const a = m.get(k) ?? []; if (!a.includes(u)) a.push(u); m.set(k, a); };
+            for (const row of byIdRows) { if (row.place_id) push(byId, String(row.place_id), String(row.image_url)); }
+            for (const row of byNameRows) { if (row.place_name) push(byName, String(row.place_name), String(row.image_url)); }
+            if (byId.size > 0 || byName.size > 0) {
+              for (const rec of supabaseRecs) {
+                const up = (rec.supabaseId ? byId.get(rec.supabaseId) : undefined) ?? byName.get(rec.title) ?? [];
+                if (up.length === 0) continue;
+                const merged = [...up, ...(rec.photoUrls ?? []).filter(u => !up.includes(u))];
+                rec.photoUrls = merged;
+                rec.photoUrl = merged[0];
+                rec.hasUserPhotos = true;
+                rec.userPhotoCount = up.length;
+              }
+            }
+          } catch { /* spot_photos未作成・取得失敗は従来表示で安全 */ }
+        }
+
         // ── 結果の結合 ─────────────────────────────────────────────────────────
         // API-only deepDive（動物カフェ等）: Google/Yahoo が結果を返したら Supabase 結果は除外
         // Google/Yahoo が0件の場合のみ Supabase 結果をフォールバックとして使う
