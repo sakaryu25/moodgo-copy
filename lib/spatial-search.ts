@@ -7,6 +7,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { calcRadiusKm } from "@/lib/calc-radius";
+import { formatDistText } from "@/lib/distance";
 import type { PlaceResponse } from "@/types/onsen";
 import { searchPlacesByTags } from "@/lib/supabase-places";
 import { scheduleBackgroundVitalityCheck } from "@/lib/place-vitality-check";
@@ -86,33 +87,7 @@ export async function findNearbyPlacesRaw(
   return (data ?? []) as NearbyPlaceRow[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 距離テキスト生成（transport に応じた所要時間表示）
-// ─────────────────────────────────────────────────────────────────────────────
-function formatDistanceFromM(distM: number, transport: string | string[]): string {
-  const km = distM / 1000;
-  const t = Array.isArray(transport) ? transport.join(",") : (transport ?? "");
-
-  let speedKmh: number;
-  let mode: string;
-  if (t.includes("車") || t.includes("バイク") || t.includes("なんでも")) {
-    speedKmh = 40; mode = "車";
-  } else if (t.includes("電車") || t.includes("バス")) {
-    speedKmh = 30; mode = "電車";
-  } else if (t.includes("自転車")) {
-    speedKmh = 12; mode = "自転車";
-  } else if (t.includes("徒歩")) {
-    speedKmh = 4; mode = "歩き";
-  } else {
-    speedKmh = 40; mode = "車";
-  }
-
-  const mins = Math.round((km / speedKmh) * 60);
-  if (mins < 60) return `${mode}で約${mins}分 / ${km.toFixed(1)}km`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${mode}で約${h}時間${m > 0 ? m + "分" : ""} / ${km.toFixed(1)}km`;
-}
+// 距離テキストは lib/distance.ts の formatDistText に一本化（全経路で同一表示）
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NearbyPlaceRow → PlaceResponse 軽量変換
@@ -139,7 +114,8 @@ export function nearbyRowToPlaceResponse(
     rating:       null,
     reviewCount:  null,
     address:      row.address ?? "",
-    distanceInfo: formatDistanceFromM(row.distance_m, transport),
+    distanceM:    row.distance_m,                                  // 精密距離[m]を保持（距離の単一ソース）
+    distanceInfo: formatDistText((row.distance_m ?? 0) / 1000, transport),
     // 保存済みの複数写真があればそれを、無ければ単発photo_url（SQL未実行でも安全）
     photoUrls:    (row.image_urls && row.image_urls.length > 0) ? row.image_urls : (row.photo_url ? [row.photo_url] : []),
     openNow:      null,

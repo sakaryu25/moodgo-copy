@@ -5,6 +5,7 @@ import { AsyncLocalStorage } from "async_hooks";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import { MOOD_TAG_MAP } from "@/lib/predefined-tags";
+import { distanceKmFor, formatDistText } from "@/lib/distance";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -3388,17 +3389,9 @@ function formatDistance(distanceMeters?: number) {
 
 // km と移動手段から「車で約N分 / X.Xkm」形式の距離テキストを生成
 // （Google/Yahoo 補足結果に距離表示を付与し、遠端優先ソートにも使う）
+// 距離テキストは lib/distance.ts の formatDistText に一本化（後方互換ラッパー）
 function formatDistTextFromKm(km: number, transport?: string | string[]): string {
-  const t = Array.isArray(transport) ? transport.join(",") : (transport ?? "");
-  let speed = 40, mode = "車";
-  if (t.includes("電車") || t.includes("バス")) { speed = 30; mode = "電車"; }
-  else if (t.includes("自転車"))                { speed = 12; mode = "自転車"; }
-  else if (t.includes("徒歩"))                  { speed = 4;  mode = "歩き"; }
-  const mins = Math.round((km / speed) * 60);
-  const timeStr = mins < 60
-    ? `${mins}分`
-    : `${Math.floor(mins / 60)}時間${mins % 60 > 0 ? (mins % 60) + "分" : ""}`;
-  return `${mode}で約${timeStr} / ${km.toFixed(1)}km`;
+  return formatDistText(km, transport);
 }
 
 function formatDuration(duration?: string) {
@@ -5555,6 +5548,7 @@ type FinalizeRec = {
   lng?: number;
   distanceKm?: number;
   distanceText?: string;
+  distanceM?: number | null;  // PostGIS精密距離[m]（あれば距離の最優先ソース）
   openNow?: boolean;
   rating?: number | null;
   photoUrl?: string;
@@ -5575,6 +5569,9 @@ type FinalizeContext = {
   showUnseenOnly: boolean;
   effectiveDeepDive: string;
   mood?: string;   // 飲食店除外の判定（お腹すいた/カフェ系以外は飲食店を出さない）
+  originLat?: number;   // 距離の単一化に使う現在地
+  originLng?: number;
+  transport?: string | string[];  // 距離テキストの交通手段
 };
 
 type FinalizeDedupeKey = { key: string; lat?: number; lng?: number };
@@ -5670,6 +5667,24 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     return { taken, skipped };
   };
 
+  // ── 距離の単一化（全経路共通）──────────────────────────────────────────────
+  //   各recの distanceKm と distanceText を「同じ1つのkm」から作り直す。
+  //   優先: distanceM(PostGIS) → 座標haversine → 既存distanceKm。
+  //   これでソート用と表示用のズレ・null座標バグ・交通手段未反映・3形式混在を解消。
+  const normalizeDistance = <T extends FinalizeRec>(arr: T[]): T[] => {
+    for (const r of arr) {
+      const km = distanceKmFor({
+        distanceM: r.distanceM, lat: r.lat, lng: r.lng,
+        originLat: ctx.originLat, originLng: ctx.originLng,
+        fallbackKm: typeof r.distanceKm === "number" ? r.distanceKm : undefined,
+      });
+      if (km != null) {
+        r.distanceKm = km;
+        r.distanceText = formatDistText(km, ctx.transport);
+      }
+    }
+    return arr;
+  };
   const kmOf = (r: FinalizeRec): number => (
     typeof r.distanceKm === "number"
       ? r.distanceKm
@@ -5770,7 +5785,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
 
   // 品質フィルタ（B2B除外 + 写真なし&評価少を除外）
-  const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null }>(arr: T[]): T[] =>
+  const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null; source?: string }>(arr: T[]): T[] =>
     arr.filter(r => {
       const name = r.title ?? "";
       if (FINALIZE_NG_BIZ_RE.test(name)) return false;
@@ -5779,7 +5794,11 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (effectiveDeepDive === "心霊") return true;
       const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
       const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
-      if (!hasPhoto && reviews < 5) return false;
+      // 写真なし&低評価ゲートは Google/Yahoo の低品質補足のみに適用する。
+      //   Supabase(キュレーション:温泉/図書館/観光/滝/道の駅/オープンデータ等)は写真が無く
+      //   reviewCountもnullが正常なので、ここで除外すると投入済みの数万件が出なくなる。
+      const isSupplement = r.source === "google" || r.source === "yahoo";
+      if (!hasPhoto && reviews < 5 && isSupplement) return false;
       return true;
     });
 
@@ -5800,7 +5819,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
 
   return {
     shuffleArr, applyMallFilter, normalizeName, namesOverlap, pickUnique,
-    kmOf, weatherBoost, photoQualityScore, sortOrShuffle,
+    kmOf, normalizeDistance, weatherBoost, photoQualityScore, sortOrShuffle,
     foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
     seenLower, isFoodMoodReq,
     NON_FOOD_NAME_RE: FINALIZE_NON_FOOD_NAME_RE,
@@ -5841,8 +5860,9 @@ function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): stri
   if (a.freeWord || body?.refinementText || body?.showUnseenOnly || body?.excludeShown) return "";
   if (deepDive === "心霊") return "";  // 心霊は投稿写真が変わるのでキャッシュしない
   return [
+    "v2",  // 距離単一化/ランキング統一でフォーマット変更 → 旧スナップショットを無効化
     a.mood ?? "", lat.toFixed(2), lng.toFixed(2), a.radiusKm ?? "",
-    a.distanceFeeling ?? "", deepDive, a.companion ?? "",
+    a.distanceFeeling ?? "", deepDive, a.companion ?? "", a.transport ?? "",
   ].join("|");
 }
 
@@ -6246,11 +6266,20 @@ async function handleRecommend(request: Request) {
           "絶叫": "#絶叫", "心霊": "#心霊スポット", "高所": "#高所", "体験型": "#体験型",
         };
         const ddTag = THRILL_DEEPDIVE_TAG[effectiveDeepDive] ?? "";
+        // ジャンル不一致を「16件キャップの前」に除去する（精度）。従来は genreFidelityFilter が
+        //   キャップ＆OpenAI判別の後に効いていたため、rank17以降の良いジャンル一致が落ち、
+        //   逆に異ジャンルが候補枠と判別予算を消費していた。心霊以外の深掘りにも前段適用。
+        const cddForPool = effectiveDeepDive ? canonDeepDive(effectiveDeepDive) : "";
+        const hasGenreRule = !!cddForPool && (!!GENRE_NEGATIVE_RE[cddForPool] || !!GENRE_POSITIVE_REQUIRED[cddForPool]);
         const scoredPool = isProprietaryOnly
           ? sbPoolCapped.filter(r =>
               nameMatchesGenre(r.name ?? "", effectiveDeepDive) ||
               (!!ddTag && (r.tags ?? []).includes(ddTag)))
-          : sbPoolCapped;
+          : (hasGenreRule
+              ? sbPoolCapped.filter(r =>
+                  nameMatchesGenre(r.name ?? "", effectiveDeepDive) ||
+                  (!!ddTag && (r.tags ?? []).includes(ddTag)))
+              : sbPoolCapped);
         const scored = scoredPool
           .map(r => ({
             ...r,
@@ -6488,6 +6517,7 @@ async function handleRecommend(request: Request) {
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,
+            distanceM: r.distanceM,   // PostGIS精密距離→normalizeDistanceで表示/ソートを単一化
             lat: typeof r.lat === "number" ? r.lat : undefined,
             lng: typeof r.lng === "number" ? r.lng : undefined,
             durationText: "",
@@ -6568,13 +6598,14 @@ async function handleRecommend(request: Request) {
         //   経路2(Supabase-first)で従来と完全に同一の絞り込みを行う。
         //   （将来 経路5(レガシー)等もこのヘルパーを呼ぶことで改善が全経路に波及する）
         const {
-          applyMallFilter, normalizeName, pickUnique, sortOrShuffle,
+          applyMallFilter, normalizeName, pickUnique, sortOrShuffle, normalizeDistance,
           foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
           seenLower, isFoodMoodReq, NON_FOOD_NAME_RE,
         } = createFinalizeHelpers({
           isFoodMood, minRadiusKm, isBadWeather,
           goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive,
           mood: answers.mood,
+          originLat: answers.originLat, originLng: answers.originLng, transport: answers.transport,
         });
 
         // 各ソースにモール/飲食/既出/品質/ジャンル(#1)/飲食NGフィルターを適用 → ソート
@@ -6593,7 +6624,8 @@ async function handleRecommend(request: Request) {
           return [...boosted, ...demoted];
         };
         const finalizeSource = (arr: Rec[]): Rec[] => {
-          const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(arr))))))));
+          // 距離を最初に単一化（distanceKm=distanceText が同じkm・交通手段反映）→ 以降のソート/表示が一致
+          const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(normalizeDistance(arr)))))))));
           return diversifyFood ? diversifyByCoarseGenre(sorted, 2) : sorted;
         };
         const sbSorted = finalizeSource(mergedSb);
@@ -7615,6 +7647,7 @@ async function handleRecommend(request: Request) {
         seenPlaces,
         showUnseenOnly: false,      // まったりは別途seen除外していないため二重適用にはならない
         effectiveDeepDive: "",
+        originLat: answers.originLat, originLng: answers.originLng, transport: answers.transport,
       });
       const relaxPool = [...relaxResults, ...yahooWithStation];
       const isProtectedRelax = (r: { isUserSpot?: boolean }) => r.isUserSpot === true;
@@ -8397,6 +8430,7 @@ async function handleRecommend(request: Request) {
       seenPlaces,
       showUnseenOnly: false,   // seen除外は mergedMap で実施済み → 二重適用回避
       effectiveDeepDive: legacyDeepDive,  // 喫茶/レトロ系の老舗除外免除に使用（モールフィルタは未呼出）
+      originLat: answers.originLat, originLng: answers.originLng, transport: answers.transport,
     });
     const isProtectedLegacy = (i: ScoredItem) => i.isPinned === true || i.score >= 100;
     const protectedItems = sorted.filter(isProtectedLegacy);
