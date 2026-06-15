@@ -221,12 +221,15 @@ type Props = {
   spooky?: boolean;
   /** 心霊: カード全体を暗い（怖い）テーマにする */
   darkTheme?: boolean;
+  /** 2カラム表示用のコンパクトモード（説明/営業時間/各種ボタンを省きタップで詳細へ） */
+  compact?: boolean;
 };
 
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
   moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false, darkTheme = false,
+  compact = false,
 }: Props) {
   const t = T[lang];
   // 利用者がその場で追加した写真（共有ストア＝画面をまたいで即反映）。Google補強はしない
@@ -381,7 +384,7 @@ export default function PlaceCard({
             scrollEventThrottle={16}
             bounces={false}
             onMomentumScrollEnd={onPhotoScrollEnd}
-            style={{ width: photoWidth, height: 220 }}
+            style={{ width: photoWidth, height: compact ? 150 : 220 }}
           >
             {photos.map((uri, i) => (
               <TouchableOpacity
@@ -391,7 +394,7 @@ export default function PlaceCard({
               >
                 <Image
                   source={{ uri }}
-                  style={{ width: photoWidth, height: 220 }}
+                  style={{ width: photoWidth, height: compact ? 150 : 220 }}
                   contentFit="cover"
                   transition={200}
                   onError={() => onImgError(uri)}
@@ -402,7 +405,7 @@ export default function PlaceCard({
             {showContribute && (
               <LinearGradient
                 colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-                style={[{ width: photoWidth, height: 220 }, s.photoPlaceholder]}
+                style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}
               >
                 <Moon size={32} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
                 <Text style={s.spookyAskTitle}>写真を提供してください</Text>
@@ -579,6 +582,8 @@ export default function PlaceCard({
           </View>
         ) : null}
 
+        {/* コンパクト(2カラム)では説明文の下の操作系を省略し、タップで詳細へ誘導 */}
+        {!compact && (<>
         {/* ── AI相談時のみ: なぜおすすめか ── */}
         {item.aiReason ? (
           <View style={s.aiReasonBox}>
@@ -709,6 +714,7 @@ export default function PlaceCard({
             )}
           </View>
         </View>
+        </>)}
       </View>
 
       {/* 写真の全画面ビューア */}

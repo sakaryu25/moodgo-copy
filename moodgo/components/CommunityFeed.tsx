@@ -25,6 +25,8 @@ import {
 import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
 import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
+import { setSelectedPlace } from '@/lib/selectedPlace';
+import type { Recommendation } from '@/types/app';
 import ReportModal from './ReportModal';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -44,6 +46,9 @@ type FeedItem = {
   poster_name?: string | null;
   poster_icon?: string | null;
   poster_id?: string | null;
+  kind?: string;                 // 'suggestion'(穴場) | 'moodlog'(Moodログ)
+  place_id?: string | null;      // moodlog用: 場所詳細を開くID
+  place_name?: string;
 };
 
 type IconComp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -162,10 +167,19 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
   );
 }
 
-// カードタップ → 詳細ページへ
-function openSpot(id: string) {
+// カードタップ → 詳細ページへ。Moodログは場所詳細(/place)、穴場は /community-spot。
+function openSpot(item: FeedItem) {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  router.push({ pathname: '/community-spot', params: { id } });
+  if (item.kind === 'moodlog') {
+    setSelectedPlace({
+      title: item.place_name || item.spot_name,
+      supabaseId: item.place_id ?? undefined,
+      address: item.address ?? undefined,
+    } as Recommendation);
+    router.push('/place');
+    return;
+  }
+  router.push({ pathname: '/community-spot', params: { id: item.id } });
 }
 
 // ─── PhotoCard ───────────────────────────────────────────────────────────────
@@ -175,7 +189,7 @@ function PhotoCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem)
   const { Icon, color } = tagIcon(item.auto_tags);
 
   return (
-    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item.id)}>
+    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item)}>
       {/* Image area */}
       <View style={s.imgWrap}>
         {imgUri ? (
@@ -221,7 +235,7 @@ function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) 
   const bg = avatarBg(item.spot_name);
 
   return (
-    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item.id)}>
+    <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item)}>
       <View style={s.cardBody}>
         {/* ヘッダー: サムネ + スポット名 */}
         <View style={s.textCardHeader}>

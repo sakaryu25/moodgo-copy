@@ -108,14 +108,63 @@ export async function GET(request: Request) {
       };
     });
 
-    // タイムラインでは Google 画像補強をしない。
-    // 投稿者が画像を添付していなければ画像なし（テキストカード）で表示する。
-    // ※ 場所をタップした詳細(/api/community-spot)では住所からGoogle写真を補強する。
+    // ── みんなのMoodログ(spot_posts)も全国穴場フィードに合流 ────────────────────
+    //   承認済み・公開(spot_public_anonymous/public)の投稿を同じカード形に整形して混ぜる。
+    //   タップ時は場所詳細(/place)を開くため kind='moodlog'＋place_id を付ける。未作成でも安全。
+    let moodItems: Array<Record<string, unknown>> = [];
+    try {
+      const { data: posts } = await supabase
+        .from("spot_posts")
+        .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility")
+        .eq("status", "approved").in("visibility", ["spot_public_anonymous", "public"])
+        .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      const plist = (posts ?? []) as Array<Record<string, unknown>>;
+      if (plist.length > 0) {
+        const postIds = plist.map(p => String(p.id));
+        const placeIds = [...new Set(plist.map(p => p.place_id).filter(Boolean).map(String))];
+        // 各投稿の写真
+        const photoByPost = new Map<string, string[]>();
+        const { data: phs } = await supabase.from("spot_photos").select("post_id, image_url")
+          .in("post_id", postIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected");
+        for (const ph of (phs ?? []) as Array<Record<string, unknown>>) {
+          const k = String(ph.post_id); if (!photoByPost.has(k)) photoByPost.set(k, []);
+          if (!isLegacyPhotoUrl(String(ph.image_url))) photoByPost.get(k)!.push(String(ph.image_url));
+        }
+        // place_id → 都道府県(places.address)
+        const prefByPlace = new Map<string, string>();
+        if (placeIds.length > 0) {
+          const { data: pls } = await supabase.from("places").select("id, address").in("id", placeIds);
+          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
+            const a = String(pl.address ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
+            const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+            prefByPlace.set(String(pl.id), m ? m[1].replace(/[都道府県]$/, "") : "");
+          }
+        }
+        moodItems = plist.map(p => {
+          const anon = p.visibility === "spot_public_anonymous";
+          return {
+            id: `ml-${p.id}`, kind: "moodlog",
+            place_id: p.place_id ?? null, place_name: String(p.place_name ?? ""),
+            spot_name: String(p.place_name ?? ""),
+            prefecture: prefByPlace.get(String(p.place_id)) ?? "",
+            description: p.caption ?? "", address: null,
+            image_urls: photoByPost.get(String(p.id)) ?? [],
+            auto_tags: p.mood_tags ?? [], lat: null, lng: null, created_at: p.created_at,
+            poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
+            poster_icon: anon ? null : iconFor(p.device_id),
+            poster_id: (p.device_id as string | null) ?? null,
+          };
+        });
+      }
+    } catch { /* spot_posts未作成は穴場のみ表示 */ }
 
-    // cleanAddr は内部用なので返却から除外
-    const out = items.map(({ cleanAddr, ...rest }) => rest);
+    // cleanAddr は内部用なので返却から除外。suggestions(kind=suggestion)＋Moodログを新着順マージ。
+    const out = items.map(({ cleanAddr, ...rest }) => ({ kind: "suggestion", ...rest }));
+    const merged = [...out, ...moodItems]
+      .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+      .slice(0, limit);
 
-    return NextResponse.json({ ok: true, items: out });
+    return NextResponse.json({ ok: true, items: merged });
   } catch (e) {
     console.error("[community-feed]", e);
     return NextResponse.json({ ok: false, items: [], error: String(e) });
