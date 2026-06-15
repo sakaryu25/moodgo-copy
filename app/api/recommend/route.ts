@@ -727,16 +727,16 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
       const st = hd?.response?.station?.[0];
       if (st?.name && st?.distance) {
         const distM = parseInt(String(st.distance).replace(/[^0-9]/g, ""), 10);
-        if (Number.isFinite(distM) && distM <= 2000) {
-          const val = `${st.name}駅から徒歩約${Math.max(1, Math.ceil(distM / 80))}分`;
+        if (Number.isFinite(distM)) {
+          // 最寄り駅は必ず返す: 2km以内は「徒歩約N分」、超過は「約X.Xkm」(駅から遠い=車必須の目安)。
+          //   従来は2km超で空にしていたため山間部スポット等で駅情報が出なかった→必ず表示に変更。
+          const val = distM <= 2000
+            ? `${st.name}駅から徒歩約${Math.max(1, Math.ceil(distM / 80))}分`
+            : `${st.name}駅から約${(distM / 1000).toFixed(1)}km`;
           _stationCache.set(ckey, { ts: Date.now(), val });
           await ltCachePut(`st:${ckey}`, val);
           return val;
         }
-        // 2km超=最寄り駅なし扱い（従来のGoogle radius1500と同等の振る舞い）
-        _stationCache.set(ckey, { ts: Date.now(), val: "" });
-        await ltCachePut(`st:${ckey}`, "");
-        return "";
       }
     }
   } catch { /* HeartRails失敗 → Googleへフォールバック */ }
@@ -7251,7 +7251,11 @@ async function handleRecommend(request: Request) {
           if (typeof rec.lat !== "number" || typeof rec.lng !== "number") return;
           try {
             const st = await findNearestStation(rec.lat, rec.lng, apiKey);
-            if (st) recommendations[idx] = { ...recommendations[idx], stationText: st };
+            if (st) {
+              recommendations[idx] = { ...recommendations[idx], stationText: st };
+              // 駅情報を places に自動保存（NULL行のみ）→次回以降は外部呼び出しゼロで即表示
+              schedulePlaceWriteBack({ name: rec.title ?? "", id: rec.supabaseId, googlePlaceId: rec.placeId, address: rec.address }, { station: st });
+            }
           } catch { /* 駅なしは無視 */ }
         }));
 

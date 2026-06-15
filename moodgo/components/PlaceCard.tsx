@@ -553,18 +553,21 @@ export default function PlaceCard({
           <Text style={[s.address, darkTheme && s.textDimDark]} numberOfLines={2}>{item.address}</Text>
         ) : null}
 
-        {/* 最寄り駅 / 距離 */}
-        {item.stationText ? (
-          <View style={s.hoursRow}>
-            <Train size={13} color={darkTheme ? '#9C8CC4' : '#9CA3AF'} strokeWidth={2} />
-            <Text style={[s.hoursText, darkTheme && s.textDimDark]}>{item.stationText}</Text>
-          </View>
-        ) : item.distanceText ? (
+        {/* 現在地からの所要（車で何分か）— マスト表示 */}
+        {item.distanceText ? (
           <View style={s.hoursRow}>
             <Navigation size={13} color={darkTheme ? '#9C8CC4' : '#9CA3AF'} strokeWidth={2} />
             <Text style={[s.hoursText, darkTheme && s.textDimDark]}>
               {item.distanceText}{item.durationText ? `  /  ${item.durationText}` : ''}
             </Text>
+          </View>
+        ) : null}
+
+        {/* 最寄り駅から何分か — マスト表示（自動保存・HeartRails無料） */}
+        {item.stationText ? (
+          <View style={s.hoursRow}>
+            <Train size={13} color={darkTheme ? '#9C8CC4' : '#9CA3AF'} strokeWidth={2} />
+            <Text style={[s.hoursText, darkTheme && s.textDimDark]}>{item.stationText}</Text>
           </View>
         ) : null}
 

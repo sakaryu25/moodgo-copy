@@ -799,15 +799,8 @@ export default function PlaceDetailPage() {
               </View>
             ) : null}
 
-            {/* 最寄り駅 / 距離 */}
-            {rec.stationText ? (
-              <View style={[s.infoRow, s.infoRowBorder]}>
-                <View style={s.infoIconWrap}>
-                  <Train size={15} color="#C084FC" strokeWidth={2} />
-                </View>
-                <Text style={s.infoText}>{rec.stationText}</Text>
-              </View>
-            ) : rec.distanceText ? (
+            {/* 現在地からの所要（車で何分か）— マスト表示 */}
+            {rec.distanceText ? (
               <View style={[s.infoRow, s.infoRowBorder]}>
                 <View style={s.infoIconWrap}>
                   <Navigation size={15} color="#C084FC" strokeWidth={2} />
@@ -815,6 +808,16 @@ export default function PlaceDetailPage() {
                 <Text style={s.infoText}>
                   {rec.distanceText}{rec.durationText ? `  /  ${rec.durationText}` : ''}
                 </Text>
+              </View>
+            ) : null}
+
+            {/* 最寄り駅から何分か — マスト表示（自動保存・HeartRails無料） */}
+            {rec.stationText ? (
+              <View style={[s.infoRow, s.infoRowBorder]}>
+                <View style={s.infoIconWrap}>
+                  <Train size={15} color="#C084FC" strokeWidth={2} />
+                </View>
+                <Text style={s.infoText}>{rec.stationText}</Text>
               </View>
             ) : null}
 
