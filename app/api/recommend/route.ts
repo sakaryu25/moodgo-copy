@@ -764,7 +764,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
     if (!res.ok) return "";
     const data = await res.json();
     const places: Array<{ displayName?: { text?: string }; location?: { latitude?: number; longitude?: number } }> = data.places ?? [];
-    if (places.length === 0) { _stationCache.set(ckey, { ts: Date.now(), val: "" }); return ""; }
+    if (places.length === 0) return "";  // 空はキャッシュしない＝次回検索で再取得(必ず駅表示に近づける)
 
     // 全駅の距離を計算して最も近いものを選ぶ
     let nearest: { name: string; dist: number } | null = null;
@@ -778,7 +778,7 @@ async function findNearestStation(lat: number, lng: number, apiKey: string): Pro
         nearest = { name, dist };
       }
     }
-    if (!nearest) { _stationCache.set(ckey, { ts: Date.now(), val: "" }); return ""; }
+    if (!nearest) return "";  // 空はキャッシュしない＝次回再取得
     // 2km以内は徒歩分、超過は「約X.Xkm」で必ず最寄り駅を表示（HeartRailsと同形式）
     const val = nearest.dist <= 2000
       ? `${nearest.name}から徒歩約${Math.max(1, Math.ceil(nearest.dist / 80))}分`
