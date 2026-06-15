@@ -466,11 +466,18 @@ function toPlaceMatch(name: string, id?: string, address?: string): PlaceMatch {
 }
 function schedulePlaceWriteBack(
   match: PlaceMatch,
-  fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string; description?: string },
+  fields: { photoUrl?: string; imageUrls?: string[]; station?: string; openHours?: string; description?: string; rating?: number | null; ratingCount?: number | null },
 ): void {
   if (!supabase || !match?.name) return;
   const sb = supabase;
   const run = async () => {
+    if (typeof fields.rating === "number" && fields.rating >= 0) {
+      // 評価は変動するので rating_updated_at 付きで上書き許容（NULL条件なし）。
+      //   列(place-ratings.sql)未適用なら 42703 で握りつぶし＝安全。
+      const ratingPatch: Record<string, unknown> = { rating: fields.rating, rating_updated_at: new Date().toISOString() };
+      if (typeof fields.ratingCount === "number") ratingPatch.rating_count = fields.ratingCount;
+      await selectPlace(sb.from("places").update(ratingPatch), match).then(() => {}, () => {});
+    }
     if (fields.photoUrl) {
       await selectPlace(sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null), match).then(() => {}, () => {});
     }
@@ -6271,8 +6278,11 @@ async function handleRecommend(request: Request) {
         //   スリルは常に両方スキップ（独自データのみ）
         const skipAllSupplements = isProprietaryOnly || sbQualified.length >= 15;
         const skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
-        // Supabaseで賄う件数: スキップ/独自時は15件、通常は16件（=8件表示＋補填＋OpenAI判別用の広めプール）
-        const sbTakeCount = (skipAllSupplements || isProprietaryOnly) ? 15 : 16;
+        // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
+        //   ユーザー要件「Supabaseから出てきた情報(全件)を必ずOpenAIに渡す」を満たすため
+        //   16/15の狭いキャップを撤廃し、取得した候補をほぼ全件(上限30)OpenAIに渡す。
+        //   ※表示は後段 pickUnique(SB8件)＋G2＋Y5＝15件で変わらず。候補が増える＝AI選定の質が上がる。
+        const sbTakeCount = 30;
 
         // 手動追加スポット優先（埋もれ防止）: 人が手入力した source="manual"/"admin"/"user" は
         // Google自動取り込み("google")より上位に出す。最近の流行りカフェ等を埋もれさせない。
@@ -7196,6 +7206,45 @@ async function handleRecommend(request: Request) {
               recommendations = [...spRecs, ...rest].slice(0, Math.max(15, spRecs.length));
             }
           } catch { /* スポンサー取得失敗は通常結果で続行 */ }
+        }
+
+        // ── ★評価の自動充填・永続化（事業化①）──────────────────────────────────
+        //   ① 表示recのうち評価済み(live Google/Yahoo)＋placeIdあり → 既知の★をそのまま
+        //      places へ永続化（次回SBキャッシュ表示でも★が残る）。API呼び出しゼロ。
+        //   ② 評価なし＋placeIdあり(SBキャッシュのgoogle由来＝都市の食事/娯楽で★が欠落) →
+        //      Place Detailsで★取得→永続化。最大10件・after()・失敗無視。次回からキャッシュ表示で
+        //      Place Details呼び出しが逓減。心霊(独自)は対象外。列未作成(place-ratings.sql未適用)も安全。
+        if (!isProprietaryOnly && supabase) {
+          const sbW = supabase;
+          const withRating = recommendations.filter(r => r.placeId && typeof r.rating === "number");
+          const needRating = apiKey
+            ? recommendations.filter(r => r.placeId && r.rating == null).slice(0, 10)
+            : [];
+          if (withRating.length > 0 || needRating.length > 0) {
+            after(async () => {
+              await Promise.all(withRating.map(r =>
+                sbW.from("places")
+                  .update({ rating: r.rating, rating_count: r.userRatingCount ?? null, rating_updated_at: new Date().toISOString() })
+                  .eq("google_place_id", r.placeId!).then(() => {}, () => {})
+              ));
+              await Promise.all(needRating.map(async (r) => {
+                try {
+                  const pr = await gfetch(`https://places.googleapis.com/v1/places/${r.placeId}`, {
+                    method: "GET",
+                    headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "rating,userRatingCount" },
+                    cache: "no-store", signal: AbortSignal.timeout(5000),
+                  });
+                  if (!pr.ok) return;
+                  const pd = await pr.json().catch(() => null);
+                  if (pd && typeof pd.rating === "number") {
+                    await sbW.from("places")
+                      .update({ rating: pd.rating, rating_count: typeof pd.userRatingCount === "number" ? pd.userRatingCount : null, rating_updated_at: new Date().toISOString() })
+                      .eq("google_place_id", r.placeId!).then(() => {}, () => {});
+                  }
+                } catch { /* Place Details失敗は無視 */ }
+              }));
+            });
+          }
         }
 
         // B-2: 検索幅を広げた場合のワーニングメッセージ

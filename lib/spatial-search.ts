@@ -35,6 +35,8 @@ export interface NearbyPlaceRow {
   source_type: string | null;
   report_count: number;
   last_checked_at: string | null;
+  rating: number | null;        // place-ratings.sql 適用後に返る（未適用時はundefined）
+  rating_count: number | null;
   distance_m: number;
 }
 
@@ -111,8 +113,8 @@ export function nearbyRowToPlaceResponse(
     category:     categoryTag.replace(/^#/, ""),
     description:  row.description ?? `${row.name}のスポット情報`,
     imageUrl:     (row.image_urls && row.image_urls.length > 0 ? row.image_urls[0] : row.photo_url) ?? "",
-    rating:       null,
-    reviewCount:  null,
+    rating:       typeof row.rating === "number" ? row.rating : null,        // place-ratings.sql 適用後に反映
+    reviewCount:  typeof row.rating_count === "number" ? row.rating_count : null,
     address:      row.address ?? "",
     distanceM:    row.distance_m,                                  // 精密距離[m]を保持（距離の単一ソース）
     distanceInfo: formatDistText((row.distance_m ?? 0) / 1000, transport),
