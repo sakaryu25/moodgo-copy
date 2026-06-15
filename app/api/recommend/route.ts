@@ -2834,9 +2834,18 @@ function scoreExternalItem(
       * Math.cos(item.location.latitude * Math.PI / 180)
       * Math.sin(dLng / 2) ** 2;
     const distKm = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    if (distKm < 1.0) score += 8;
-    else if (distKm < 3.0) score += 4;
-    else if (distKm > 10.0) score -= 6;
+    // 遠出したい気分は「遠い場所ほど良い」＝主経路の遠出バイアスと向きを揃える。
+    //   従来は全moodで >10km を一律 -6 し、小旅行/県またぎで遠方を逆に減点していた。
+    const FAR_FEELINGS = new Set(["ちょっと遠くてもOK", "県またぎもあり", "小旅行気分", "どこでも行きたい"]);
+    if (FAR_FEELINGS.has(answers.distanceFeeling ?? "")) {
+      if (distKm > 50) score += 7;
+      else if (distKm > 20) score += 4;
+      else if (distKm > 8) score += 2;   // 近距離も減点しない（遠出時は近場を罰しない）
+    } else {
+      if (distKm < 1.0) score += 8;
+      else if (distKm < 3.0) score += 4;
+      else if (distKm > 10.0) score -= 6;
+    }
   }
 
   return score;
