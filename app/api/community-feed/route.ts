@@ -130,15 +130,22 @@ export async function GET(request: Request) {
           const k = String(ph.post_id); if (!photoByPost.has(k)) photoByPost.set(k, []);
           if (!isLegacyPhotoUrl(String(ph.image_url))) photoByPost.get(k)!.push(String(ph.image_url));
         }
-        // place_id → 都道府県(places.address)
+        // 都道府県(places.address) を id と name の両方で引けるようにする（place_idがgoogle_id/nullでも名前で補完）
+        const toPref = (addr: unknown): string => {
+          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
+          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+          return m ? m[1].replace(/[都道府県]$/, "") : "";
+        };
         const prefByPlace = new Map<string, string>();
+        const prefByName = new Map<string, string>();
+        const names2 = [...new Set(plist.map(p => p.place_name).filter(Boolean).map(String))];
         if (placeIds.length > 0) {
           const { data: pls } = await supabase.from("places").select("id, address").in("id", placeIds);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
-            const a = String(pl.address ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
-            const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-            prefByPlace.set(String(pl.id), m ? m[1].replace(/[都道府県]$/, "") : "");
-          }
+          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) prefByPlace.set(String(pl.id), toPref(pl.address));
+        }
+        if (names2.length > 0) {
+          const { data: pls } = await supabase.from("places").select("name, address").in("name", names2);
+          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) prefByName.set(String(pl.name), toPref(pl.address));
         }
         moodItems = plist.map(p => {
           const anon = p.visibility === "spot_public_anonymous";
@@ -146,7 +153,7 @@ export async function GET(request: Request) {
             id: `ml-${p.id}`, kind: "moodlog",
             place_id: p.place_id ?? null, place_name: String(p.place_name ?? ""),
             spot_name: String(p.place_name ?? ""),
-            prefecture: prefByPlace.get(String(p.place_id)) ?? "",
+            prefecture: prefByPlace.get(String(p.place_id)) || prefByName.get(String(p.place_name)) || "",
             description: p.caption ?? "", address: null,
             image_urls: photoByPost.get(String(p.id)) ?? [],
             auto_tags: p.mood_tags ?? [], lat: null, lng: null, created_at: p.created_at,

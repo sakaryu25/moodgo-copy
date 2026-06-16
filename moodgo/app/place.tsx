@@ -779,7 +779,7 @@ export default function PlaceDetailPage() {
           )}
 
           {/* MoodGo独自の星評価セレクタ（全スポット・総合星の下にちょこんと） */}
-          {!isSpooky && <SpotRating placeId={rec.supabaseId} placeName={rec.title} onFirstRate={() => setRatingDelta(d => d + 1)} />}
+          {!isSpooky && <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} onFirstRate={() => setRatingDelta(d => d + 1)} />}
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (
@@ -910,7 +910,7 @@ export default function PlaceDetailPage() {
 
           {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊以外）─── */}
           {!isSpooky && (
-            <MoodLogSection placeId={rec.supabaseId} placeName={rec.title} address={rec.address} />
+            <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
           )}
 
           {/* Google口コミ欄は廃止。MoodGo独自の「みんなのMoodログ」(上)に一本化。 */}
