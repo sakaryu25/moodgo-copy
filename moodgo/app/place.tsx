@@ -122,6 +122,17 @@ type Review = {
   relativeTime: string;
 };
 
+// 鮮度ラベル: ISO日時 → 「今日/昨日/N日前/Nヶ月前」（情報の最終確認の目安表示）
+function freshnessLabel(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  if (days <= 0) return '今日';
+  if (days === 1) return '昨日';
+  if (days < 30) return `${days}日前`;
+  return `${Math.floor(days / 30)}ヶ月前`;
+}
+
 type ExtraDetail = {
   phone?: string | null;
   website?: string | null;
@@ -134,6 +145,7 @@ type ExtraDetail = {
   priceLevel?: string | null;
   address?: string | null;
   mapUrl?: string | null;   // Google Places の正しいURL（2枚目のページ）
+  checkedAt?: string | null;  // 情報の最終確認日時（鮮度表示用）
   loaded?: boolean;
 };
 
@@ -467,6 +479,7 @@ export default function PlaceDetailPage() {
         priceLevel: (p.priceLevel as string) ?? null,
         address: (p.address as string) || null,
         mapUrl: (p.mapUrl as string) || null,
+        checkedAt: (p.checkedAt as string) || null,
         loaded: true,
       });
       setRec(prev => prev ? {
@@ -923,6 +936,9 @@ export default function PlaceDetailPage() {
                   </View>
                 ))}
               </View>
+              {extra.checkedAt && (
+                <Text style={s.hoursChecked}>営業時間の最終確認: {freshnessLabel(extra.checkedAt)}</Text>
+              )}
             </View>
           )}
 
@@ -1150,6 +1166,7 @@ const s = StyleSheet.create({
 
   // 営業時間
   hoursTable: { gap: 2 },
+  hoursChecked: { fontSize: 11, color: '#A78BCA', marginTop: 8, textAlign: 'right' },
   hoursRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 9,

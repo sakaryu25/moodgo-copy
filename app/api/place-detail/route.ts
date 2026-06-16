@@ -206,6 +206,7 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
       lat: d.location?.latitude ?? null,
       lng: d.location?.longitude ?? null,
       reviews,
+      checkedAt: new Date().toISOString(),  // 情報を取得した日時（鮮度表示「最終確認◯日前」用）。キャッシュに同梱され次回もこの時刻を返す
     };
 
     writeDetailCache(placeId, place);  // 詳細をキャッシュ→次回30日間はGoogle不要（item6）
