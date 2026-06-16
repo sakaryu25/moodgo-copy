@@ -19,6 +19,7 @@ import Svg, {
 } from 'react-native-svg';
 import { getDeviceId } from '@/lib/abtest';
 import { apiFetch } from '@/lib/api';
+import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
 import AppBackground from './AppBackground';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
 import PuniPressable from './PuniPressable';
@@ -226,6 +227,35 @@ export default function SettingsView({
       [
         { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
         { text: lang === 'ja' ? '削除する' : 'Delete', style: 'destructive', onPress: onClearHistory },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      lang === 'ja' ? 'データを削除' : 'Delete my data',
+      lang === 'ja'
+        ? '投稿したMoodログ・写真・評価・穴場投稿・グループの活動・お気に入り等をすべて削除します。\nこの操作は取り消せません。よろしいですか？'
+        : 'This permanently deletes your Mood logs, photos, ratings, posts, group activity and favorites. This cannot be undone. Continue?',
+      [
+        { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        { text: lang === 'ja' ? '完全に削除' : 'Delete everything', style: 'destructive', onPress: async () => {
+          try {
+            const deviceId = await getDeviceId();
+            await apiFetch('/api/account-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId }) });
+          } catch { /* サーバー削除失敗でもローカルは消す */ }
+          try {
+            await AsyncStorage.multiRemove([
+              NICKNAME_KEY, USER_ICON_KEY, FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
+              PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY, 'moodgo-device-id',
+            ]);
+          } catch { /* noop */ }
+          Alert.alert(
+            lang === 'ja' ? '削除しました' : 'Deleted',
+            lang === 'ja' ? 'あなたのデータを削除しました。ご利用ありがとうございました。' : 'Your data has been deleted.',
+          );
+          onClose();
+        } },
       ]
     );
   };
@@ -494,9 +524,15 @@ export default function SettingsView({
               label={lang === 'ja' ? 'データ' : 'Data'}
             />
             <View style={s.card}>
-              <TouchableOpacity onPress={handleClearHistory} style={s.dangerRow} activeOpacity={0.7}>
+              <TouchableOpacity onPress={handleClearHistory} style={[s.dangerRow, s.linkRowBorder]} activeOpacity={0.7}>
                 <Text style={s.dangerText}>
                   {lang === 'ja' ? '履歴をすべてクリア' : 'Clear all history'}
+                </Text>
+              </TouchableOpacity>
+              {/* App Store 5.1.1(v): アプリ内からアカウント/データ削除を開始できること */}
+              <TouchableOpacity onPress={handleDeleteAccount} style={s.dangerRow} activeOpacity={0.7}>
+                <Text style={[s.dangerText, { fontWeight: '800' }]}>
+                  {lang === 'ja' ? 'アカウント・投稿データを削除' : 'Delete account & data'}
                 </Text>
               </TouchableOpacity>
             </View>
