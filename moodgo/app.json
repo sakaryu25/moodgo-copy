@@ -51,6 +51,7 @@
           }
         }
       ],
+      "expo-notifications",
       "@sentry/react-native"
     ],
     "experiments": {

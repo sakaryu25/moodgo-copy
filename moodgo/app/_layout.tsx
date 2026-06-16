@@ -12,6 +12,7 @@ import ConsentGate from '@/components/ConsentGate';
 import CopyToast from '@/components/CopyToast';
 import { setupGlobalErrorHandlers } from '@/lib/crashReporting';
 import { initSentry } from '@/lib/sentry';
+import { registerForPushNotificationsAsync } from '@/lib/push';
 
 // 起動時に一度だけ：グローバルなJSエラー捕捉＋（DSNがあれば）Sentry初期化
 setupGlobalErrorHandlers();
@@ -19,6 +20,11 @@ initSentry();
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+
+  // プッシュ通知の基盤: 起動後にトークン登録を試みる（best-effort・未対応/未設定はno-op）
+  useEffect(() => {
+    if (ready) { registerForPushNotificationsAsync().catch(() => {}); }
+  }, [ready]);
 
   if (!ready) {
     return (
