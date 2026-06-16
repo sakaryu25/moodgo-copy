@@ -9,6 +9,7 @@ import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import { MOOD_TAG_MAP } from "@/lib/predefined-tags";
 import { distanceKmFor, formatDistText } from "@/lib/distance";
+import { logServerError, scheduleServerError } from "@/lib/server-log";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -456,7 +457,7 @@ function scheduleInterpretationLog(freeword: string, interpretation: unknown): v
   const run = async () => {
     await sb.from("freeword_interpretations")
       .insert({ freeword_norm: norm.slice(0, 120), freeword_raw: freeword.slice(0, 300), interpretation })
-      .then(() => {}, () => {});
+      .then(() => {}, (e) => logServerError("interpretation_log", e));
   };
   try { after(async () => { await run(); }); } catch { void run(); }
 }
@@ -498,24 +499,24 @@ function schedulePlaceWriteBack(
       //   列(place-ratings.sql)未適用なら 42703 で握りつぶし＝安全。
       const ratingPatch: Record<string, unknown> = { rating: fields.rating, rating_updated_at: new Date().toISOString() };
       if (typeof fields.ratingCount === "number") ratingPatch.rating_count = fields.ratingCount;
-      await selectPlace(sb.from("places").update(ratingPatch), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update(ratingPatch), match).then(() => {}, (e) => logServerError("writeback.rating", e, { name: match.name }));
     }
     if (fields.photoUrl) {
-      await selectPlace(sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null), match).then(() => {}, (e) => logServerError("writeback.photo", e, { name: match.name }));
     }
     if (fields.imageUrls && fields.imageUrls.length > 0) {
-      await selectPlace(sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null), match).then(() => {}, (e) => logServerError("writeback.image_urls", e, { name: match.name }));
     }
     if (fields.station) {
-      await selectPlace(sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null), match).then(() => {}, (e) => logServerError("writeback.station", e, { name: match.name }));
     }
     if (fields.description) {
       // 説明文はNULLの場所だけ補完（既存の手書き説明は壊さない）→次回以降は生成不要
-      await selectPlace(sb.from("places").update({ description: fields.description }).is("description", null), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ description: fields.description }).is("description", null), match).then(() => {}, (e) => logServerError("writeback.description", e, { name: match.name }));
     }
     if (fields.openHours) {
       // 営業時間は変わるので last_checked_at 付きで上書き許容（NULL条件なし）
-      await selectPlace(sb.from("places").update({ open_hours: fields.openHours, last_checked_at: new Date().toISOString() }), match).then(() => {}, () => {});
+      await selectPlace(sb.from("places").update({ open_hours: fields.openHours, last_checked_at: new Date().toISOString() }), match).then(() => {}, (e) => logServerError("writeback.open_hours", e, { name: match.name }));
     }
   };
   try { after(async () => { await run(); }); } catch { void run(); }
@@ -3835,7 +3836,7 @@ function setSupplementDbCache(key: string, data: Record<string, unknown>[]): voi
         { cache_key: key, data, expires_at: expiresAt, updated_at: new Date().toISOString() },
         { onConflict: "cache_key" },
       );
-    } catch { /* テーブル未作成等は無視 */ }
+    } catch (e) { await logServerError("supplement_cache", e); }
   };
   try { after(async () => { await run(); }); } catch { void run(); }
 }
@@ -5574,7 +5575,7 @@ JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
         const m = matchByName.get(name) ?? { name };
         if (text) await selectPlace(sb.from("places").update({ description: text }).is("description", null), m).then(() => {}, () => {});
       }
-    } catch { /* OpenAI/DB失敗は握りつぶす（次回検索で再試行される） */ }
+    } catch (e) { await logServerError("describe_gen", e); }
   };
   try { after(async () => { await run(); }); } catch { void run(); }
 }
@@ -7396,6 +7397,7 @@ async function handleRecommend(request: Request) {
       }
     } catch (err) {
       console.error("[recommend] Supabase-first flow error, falling back:", err);
+      scheduleServerError("recommend.sbfirst", err);
     }
     // ─── Supabaseで結果不足の場合は既存 Google Places フローへ ────────────────
 
@@ -8921,6 +8923,7 @@ async function handleRecommend(request: Request) {
     });
   } catch (error) {
     console.error(error);
+    scheduleServerError("recommend.fatal", error);
     return json(
       {
         error: "おすすめの取得に失敗しました。",
