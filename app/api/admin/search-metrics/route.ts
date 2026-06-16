@@ -5,8 +5,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN = "moodgoadmin123";
+const ADMIN = ADMIN_SECRET;
 
 export async function GET(request: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });

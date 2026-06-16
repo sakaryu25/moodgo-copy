@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

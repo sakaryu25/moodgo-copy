@@ -2,8 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-const ADMIN_SECRET = "moodgoadmin123";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 // ─── GET: 特集ページ詳細（slug または id で取得） ──────────────────────────
 export async function GET(

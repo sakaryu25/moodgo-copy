@@ -10,12 +10,13 @@
 
 import { NextResponse } from "next/server";
 import { supabase as sb } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const ADMIN_PASSWORD = process.env.ADMIN_SECRET || "moodgoadmin123";
+const ADMIN_PASSWORD = ADMIN_SECRET;
 const GROUP_SIZE = 15;  // 1回のOpenAI呼び出しに渡すスポット数（トークン上限内）
 
 export async function GET(req: Request) {

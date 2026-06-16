@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 function isTikTokUrl(input: string): boolean {

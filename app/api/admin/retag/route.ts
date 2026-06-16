@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import { ALL_PREDEFINED_TAGS, buildFacilityTaggingPrompt } from "@/lib/predefined-tags";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { secret, ids, overwrite = false } = body;
 
-    if (secret !== "moodgoadmin123") {
+    if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!openai) {
@@ -142,7 +143,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  if (searchParams.get("secret") !== "moodgoadmin123") {
+  if (searchParams.get("secret") !== ADMIN_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

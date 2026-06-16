@@ -16,8 +16,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 export const runtime = "nodejs";

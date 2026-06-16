@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { ALL_PREDEFINED_TAGS, MOOD_TAGS } from "@/lib/predefined-tags";
 import { supabase as supabaseAdmin } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const ADMIN_PASSWORD = "moodgoadmin123";
+const ADMIN_PASSWORD = ADMIN_SECRET;
 
 // 深掘りタグ（気分タグ以外）
 const DRILL_DOWN_TAGS = ALL_PREDEFINED_TAGS.filter(t => !MOOD_TAGS.includes(t));

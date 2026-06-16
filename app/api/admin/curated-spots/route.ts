@@ -2,8 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-const ADMIN_SECRET = "moodgoadmin123";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 // ─── タグ別キュレーションスポット保管テーブル（curated_spots）の管理API ───────────
 //   各 # タグ（#テーマパーク / #鑑賞 / #服アクセサリー 等）ごとに、運営が手動で

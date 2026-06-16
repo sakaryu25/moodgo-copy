@@ -13,8 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5分まで許容

@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
     if (!body) return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
-    if (body.secret !== "moodgoadmin123") {
+    if (body.secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

@@ -2,7 +2,7 @@
 // ⑥ 品質劣化の自動検知: 低評価が続く 気分×エリア や、👎が偏る気分を集計して
 // adminにアラートを返す（成長の逆＝退化の早期発見）。
 //
-// GET ?secret=moodgoadmin123
+// GET ?secret=<ADMIN_SECRET>
 // 判定:
 //   ・feedback: 同一 気分×エリア で件数>=3 かつ 平均星<=2.5 → アラート
 //   ・mood_place_ratings: 気分単位で 総数>=5 かつ 👎率>=60% → アラート
@@ -12,8 +12,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-const ADMIN_SECRET = "moodgoadmin123";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

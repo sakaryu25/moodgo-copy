@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN = "moodgoadmin123";
+const ADMIN = ADMIN_SECRET;
 
 function isMissingTable(error: { code?: string } | null): boolean {
   return error?.code === "42P01" || error?.code === "PGRST205" || error?.code === "PGRST204";

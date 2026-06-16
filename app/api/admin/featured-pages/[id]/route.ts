@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
+const SECRET = ADMIN_SECRET;
 
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

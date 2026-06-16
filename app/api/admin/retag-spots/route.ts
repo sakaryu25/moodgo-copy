@@ -10,8 +10,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_PASSWORD = "moodgoadmin123";
+const ADMIN_PASSWORD = ADMIN_SECRET;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

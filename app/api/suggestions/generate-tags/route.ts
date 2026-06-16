@@ -8,6 +8,7 @@ import {
   buildFacilityTaggingPrompt,
   TAG_CATEGORIES,
 } from "@/lib/predefined-tags";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { spotName, description, placeTypes, placeName, secret } = body;
 
-    if (secret !== "moodgoadmin123") {
+    if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

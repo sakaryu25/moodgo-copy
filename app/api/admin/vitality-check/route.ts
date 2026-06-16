@@ -16,8 +16,8 @@ import {
   batchVitalityCheck,
   type VitalityResult,
 } from "@/lib/place-vitality-check";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_SECRET  = process.env.ADMIN_SECRET ?? "moodgoadmin123";
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 export const runtime    = "nodejs";

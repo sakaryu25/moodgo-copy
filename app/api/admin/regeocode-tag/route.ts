@@ -9,8 +9,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN = process.env.ADMIN_SECRET ?? "moodgoadmin123";
+const ADMIN = ADMIN_SECRET;
 const GKEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 // 都道府県中心など「丸められた座標」に複数スポットが固まっているのを検知するためのヘルパは不要。

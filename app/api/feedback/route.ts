@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function POST(request: Request) {
   if (!supabase) {
@@ -51,7 +52,7 @@ export async function DELETE(request: Request) {
   }
   try {
     const body = await request.json().catch(() => null);
-    if (body?.secret !== "moodgoadmin123") {
+    if (body?.secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!body?.id) {
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
   const mode = searchParams.get("mode");
 
   // 管理者向け：全フィードバック一覧（訪問データ管理用）
-  if (mode === "all" && secret === "moodgoadmin123") {
+  if (mode === "all" && secret === ADMIN_SECRET) {
     const { data, error } = await supabase
       .from("feedback")
       .select("id, mood, area, age, gender, companion, atmosphere, priority, top_recommendations, rating, visited_place, liked_places, map_clicked_places, created_at")

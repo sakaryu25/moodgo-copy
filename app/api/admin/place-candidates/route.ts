@@ -14,8 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import { supabase } from "@/lib/supabase";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_PASSWORD = "moodgoadmin123";
+const ADMIN_PASSWORD = ADMIN_SECRET;
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 // 横浜市金沢区の座標

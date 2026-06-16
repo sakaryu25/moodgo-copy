@@ -2,11 +2,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 // C-1: エリア×ジャンルのSupabase登録数を返す
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  if (searchParams.get("secret") !== "moodgoadmin123") {
+  if (searchParams.get("secret") !== ADMIN_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   if (!supabase) {

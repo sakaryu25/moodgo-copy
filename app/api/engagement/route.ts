@@ -4,15 +4,15 @@
 // 検索結果の昇格に利用する＝検索させるたびにAIが成長する仕組みの暗黙シグナル側。
 //
 // POST body: { place_name: string, mood?: string, action: "map_click"|"detail_view"|"favorite"|"visited"|"share" }
-// GET (admin): ?secret=moodgoadmin123 → 気分×スポット別の集計
+// GET (admin): ?secret=<ADMIN_SECRET> → 気分×スポット別の集計
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
-const ADMIN_SECRET = "moodgoadmin123";
 const VALID_ACTIONS = new Set(["map_click", "detail_view", "favorite", "visited", "share"]);
 
 export async function POST(req: NextRequest) {

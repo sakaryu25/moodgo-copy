@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { ALL_PREDEFINED_TAGS, buildFacilityTaggingPrompt } from "@/lib/predefined-tags";
 import { findNgWord } from "@/lib/ngwords";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 import OpenAI from "openai";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -185,7 +186,7 @@ export async function POST(request: Request) {
     }
 
     // 管理者からの直接投稿は即承認
-    const isAdmin = secret === "moodgoadmin123";
+    const isAdmin = secret === ADMIN_SECRET;
     const status = (isAdmin && source === "admin") ? "approved" : "pending";
 
     // コアペイロード（必ず存在するカラムのみ）
@@ -248,7 +249,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get("secret");
-  if (secret !== "moodgoadmin123") {
+  if (secret !== ADMIN_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -293,7 +294,7 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const { id, status, adminNote, secret, googlePlaceId, googleMapsUri, googlePlaceName, autoTags } = body;
 
-    if (secret !== "moodgoadmin123") {
+    if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!id) {
@@ -436,7 +437,7 @@ export async function DELETE(request: Request) {
 
   try {
     const body = await request.json().catch(() => null);
-    if (body?.secret !== "moodgoadmin123") {
+    if (body?.secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     if (!body?.id) {

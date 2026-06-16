@@ -1,13 +1,14 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { spotName, address, lat, lng, secret } = body;
 
-    if (secret !== "moodgoadmin123") {
+    if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

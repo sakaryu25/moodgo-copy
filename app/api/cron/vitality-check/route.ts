@@ -13,10 +13,10 @@ import {
   fetchVitalityTargets,
   batchVitalityCheck,
 } from "@/lib/place-vitality-check";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 // Vercel Cron が付与する Authorization ヘッダーの検証用
 const CRON_SECRET   = process.env.CRON_SECRET   ?? "";
-const ADMIN_SECRET  = process.env.ADMIN_SECRET  ?? "moodgoadmin123";
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 export const runtime    = "nodejs";

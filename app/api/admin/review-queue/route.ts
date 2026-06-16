@@ -2,8 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-const ADMIN_SECRET = "moodgoadmin123";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 // C-2: AIタグ検証キュー
 // GET  — 未レビュー(tags_reviewed=false)のスポット一覧を返す

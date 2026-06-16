@@ -7,16 +7,15 @@
 //   verdict     string   "good" | "bad"
 //
 // GET (admin):
-//   ?secret=moodgoadmin123  → 全集計データを返す
+//   ?secret=<ADMIN_SECRET>  → 全集計データを返す
 //   ?secret=...&threshold=20 → 合わない件数がthreshold以上のみ
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const ADMIN_SECRET = "moodgoadmin123";
 
 export async function POST(req: NextRequest) {
   try {

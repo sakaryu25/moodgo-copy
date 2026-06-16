@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function POST(request: Request) {
   if (!supabase) {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
 
     const secret = formData.get("secret") as string | null;
-    if (secret !== "moodgoadmin123") {
+    if (secret !== ADMIN_SECRET) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
