@@ -12,10 +12,22 @@ create extension if not exists vector;
 -- 2) embedding カラム（1536次元）
 alter table places add column if not exists embedding vector(1536);
 
--- 3) 近似最近傍インデックス（HNSW・cosine）。209k件でも高速にkNN。
---    ※ embedding 投入後に作ると構築が速い。未投入でも作成は可能。
-create index if not exists idx_places_embedding
-  on places using hnsw (embedding vector_cosine_ops);
+-- 3) 近似最近傍インデックス（HNSW・cosine）。【任意・FREEプランでは作成不可】
+--    ⚠ 209k×1536次元のHNSW構築は大きなRAMが必要で、Supabase FREE（共有CPU/少RAM・500MB上限）
+--      では SQL Editor の上流タイムアウト(約1〜2分)で中断・ロールバックされる（＝作れない）。
+--    ✅ 無くても match_places_semantic は動く: RPCは「半径で絞ってからベクトル順」なので、
+--       近傍検索は半径内の数百〜数千件だけが対象＝実用速度。しかも厳密kNN＝再現率100%（HNSWは近似）。
+--    → 当面は作成不要。recommend は graceful に動作する。
+--    ▼ 作るなら Supabase Pro 等にアップグレード後、ダッシュボードではなく直接接続(psql)で:
+--        psql "postgresql://postgres:<PASS>@db.<ref>.supabase.co:5432/postgres"
+--        set statement_timeout = 0;            -- ゲートウェイのタイムアウト回避
+--        set maintenance_work_mem = '512MB';   -- 構築を速く（プランの範囲で）
+--        create index if not exists idx_places_embedding
+--          on places using hnsw (embedding vector_cosine_ops);
+--      （より軽い IVFFlat 代替: using ivfflat (embedding vector_cosine_ops) with (lists = 200);
+--        query側で set ivfflat.probes = 20; で再現率調整）
+-- create index if not exists idx_places_embedding
+--   on places using hnsw (embedding vector_cosine_ops);
 
 -- 4) 半径内のセマンティック近傍検索 RPC。
 --    返却は to_jsonb(p)-'embedding'（巨大なベクトルは除外）＋距離＋類似度。
