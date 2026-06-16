@@ -587,47 +587,37 @@ export default function ResultsView(props: Props) {
           </View>
         ) : null}
 
-        {/* Results — 2カラムのマソンリー配置（みんなの穴場フィードと同じ見た目） */}
-        {!isLoading && facilityItems.length > 0 && (() => {
-          const shown = facilityItems.slice(0, visibleCount);
-          const renderCard = (item: typeof shown[number], key: string) => (
-            <PlaceCard
-              key={key}
-              item={item}
-              compact
-              isFavorited={isFav(item.title)}
-              onToggleFavorite={() => onToggleFavorite(item)}
-              onBlock={() => Alert.alert(
-                lang === 'ja' ? 'このスポットを非表示にしますか？' : 'Hide this spot?',
-                lang === 'ja'
-                  ? `「${item.title}」を今後の検索結果に表示しなくなります。\n設定 →「非表示にしたスポット」からいつでも解除できます。`
-                  : `"${item.title}" will no longer appear in search results.\nYou can undo this anytime from Settings → Hidden spots.`,
-                [
-                  { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
-                  { text: lang === 'ja' ? '非表示にする' : 'Hide', style: 'destructive', onPress: () => onBlockPlace(item.title) },
-                ],
-              )}
-              onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '', supabaseId: item.supabaseId })}
-              onMarkVisited={() => { setVisitingSpot(item); setVisitingRating(0); }}
-              isVisited={visitedTitles.includes(item.title)}
-              accentColor={accentColor}
-              lang={lang}
-              moodRating={placeRatings[item.title] ?? null}
-              onMoodMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' }); onSubmitPlaceRating?.(item.title, 'good'); }}
-              onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
-              moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
-              onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
-              spooky={isShinrei}
-              darkTheme={isShinrei}
-            />
-          );
-          return (
-            <View style={s.resultCols}>
-              <View style={s.resultCol}>{shown.filter((_, i) => i % 2 === 0).map((it, i) => renderCard(it, `L${i}-${it.title}`))}</View>
-              <View style={s.resultCol}>{shown.filter((_, i) => i % 2 === 1).map((it, i) => renderCard(it, `R${i}-${it.title}`))}</View>
-            </View>
-          );
-        })()}
+        {/* Results — 1カラム（元の表示）。各カードはフル幅で操作系も表示。 */}
+        {!isLoading && facilityItems.length > 0 && facilityItems.slice(0, visibleCount).map((item, i) => (
+          <PlaceCard
+            key={`${item.title}-${i}`}
+            item={item}
+            isFavorited={isFav(item.title)}
+            onToggleFavorite={() => onToggleFavorite(item)}
+            onBlock={() => Alert.alert(
+              lang === 'ja' ? 'このスポットを非表示にしますか？' : 'Hide this spot?',
+              lang === 'ja'
+                ? `「${item.title}」を今後の検索結果に表示しなくなります。\n設定 →「非表示にしたスポット」からいつでも解除できます。`
+                : `"${item.title}" will no longer appear in search results.\nYou can undo this anytime from Settings → Hidden spots.`,
+              [
+                { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+                { text: lang === 'ja' ? '非表示にする' : 'Hide', style: 'destructive', onPress: () => onBlockPlace(item.title) },
+              ],
+            )}
+            onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '', supabaseId: item.supabaseId })}
+            onMarkVisited={() => { setVisitingSpot(item); setVisitingRating(0); }}
+            isVisited={visitedTitles.includes(item.title)}
+            accentColor={accentColor}
+            lang={lang}
+            moodRating={placeRatings[item.title] ?? null}
+            onMoodMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' }); onSubmitPlaceRating?.(item.title, 'good'); }}
+            onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
+            moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
+            onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
+            spooky={isShinrei}
+            darkTheme={isShinrei}
+          />
+        ))}
 
         {/* Load more */}
         {!isLoading && visibleCount < facilityItems.length && (
@@ -913,8 +903,6 @@ const s = StyleSheet.create({
   warningText: { fontSize: 13, color: '#92600A', lineHeight: 20 },
   retryBtn: { marginTop: 10, alignSelf: 'flex-start', backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 18 },
   retryBtnText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
-  resultCols: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  resultCol: { flex: 1, gap: 0 },
   emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 14 },
   emptyText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
   refinementBox: { backgroundColor: '#fff', borderRadius: 18, padding: 16, marginTop: 4, marginBottom: 12, gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6' },
