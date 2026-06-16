@@ -2024,6 +2024,36 @@ function extractKeywords(text: string): string[] {
   return [...new Set(tokens)].slice(0, 5);
 }
 
+// 自由ワード/絞り込みを OpenAI(gpt-4o-mini) で「検索用の語」に解釈する。
+//   形態素解析の無い extractKeywords は形容詞に弱いので、抽象語を施設種別の名詞＋気分タグに翻訳させる。
+//   例「静かに過ごせる所」→ keywords:[図書館,カフェ] moodTags:[#集中したい]／「映えるデート」→[展望台,夜景] [#自然感じたい]
+const MOOD_TAG_SET = new Set([
+  "#まったりしたい", "#自然感じたい", "#わいわい楽しみたい", "#お腹すいた", "#ドライブしたい",
+  "#集中したい", "#体動かしたい", "#遠くに行きたい", "#ショッピング", "#スリル味わいたい",
+]);
+async function interpretFreeword(text: string): Promise<{ keywords: string[]; moodTags: string[] }> {
+  const fallback = { keywords: extractKeywords(text), moodTags: [] as string[] };
+  if (!openai || !text.trim()) return fallback;
+  try {
+    const ai = openai;
+    const res = await ai.chat.completions.create({
+      model: "gpt-4o-mini", temperature: 0.2, max_tokens: 200,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: `ユーザーの自由記述(お出かけの希望)を、場所検索用に解釈します。
+- moodTags: 次から合うものだけ0〜3個: #まったりしたい #自然感じたい #わいわい楽しみたい #お腹すいた #ドライブしたい #集中したい #体動かしたい #遠くに行きたい #ショッピング #スリル味わいたい
+- keywords: DBの名前・説明から探すための具体的な検索語を2〜5個(日本語の名詞中心。例:夜景,公園,海,カフェ,温泉,美術館,展望台)。抽象的な形容詞は施設種別の名詞に翻訳する(静か→図書館/カフェ、映え→展望台/夜景、落ち着く→カフェ/庭園)。
+出力JSONのみ: {"moodTags":["#..."],"keywords":["..."]}` },
+        { role: "user", content: text.slice(0, 300) },
+      ],
+    }, { signal: AbortSignal.timeout(7000) });
+    const p = JSON.parse(res.choices?.[0]?.message?.content ?? "{}");
+    const moodTags = Array.isArray(p.moodTags) ? p.moodTags.filter((t: unknown): t is string => typeof t === "string" && MOOD_TAG_SET.has(t)).slice(0, 3) : [];
+    const keywords = Array.isArray(p.keywords) ? p.keywords.filter((k: unknown): k is string => typeof k === "string" && k.trim().length >= 2).slice(0, 5) : [];
+    return { keywords: keywords.length ? keywords : fallback.keywords, moodTags };
+  } catch { return fallback; }
+}
+
 function buildSearchPlans(answers: Answers): SearchPlan[] {
   const area = answers.area?.trim() || "現在地周辺";
   const mood = answers.mood?.trim() || "";
@@ -6296,22 +6326,25 @@ async function handleRecommend(request: Request) {
       //   後段の OpenAI 並べ替え(sbAiOrder)が「希望」を見て上位化する。OpenAIに架空生成させない。
       // （心霊などの独自データ専用モードは後段 scoredPool で #タグ一致に絞られるため、ここで混ぜても安全）
       if ((answers.freeWord || refinementText) && hasLocation) {
-        const kw = extractKeywords([answers.freeWord, refinementText].filter(Boolean).join(" "));
-        if (kw.length > 0) {
-          try {
-            const { searchPlacesByText } = await import("@/lib/spatial-search");
-            const textHits = await searchPlacesByText({
-              keywords: kw, lat: answers.originLat!, lng: answers.originLng!,
-              radiusKm: sbRadiusKm, transport: answers.transport, limit: 30,
-            });
-            const have = new Set(sbResults.map(r => r.name));
-            for (const t of textHits) {
-              if (have.has(t.name)) continue;
-              if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
-              sbResults.push(t); have.add(t.name);
-            }
-          } catch { /* テキスト検索失敗は気分タグ候補のみで続行 */ }
-        }
+        try {
+          // ②自由ワードをOpenAIで解釈 → (a)検索語でテキスト一致 (b)気分タグでタグ一致 を候補に合流。
+          const interp = await interpretFreeword([answers.freeWord, refinementText].filter(Boolean).join(" "));
+          const { searchPlacesByText } = await import("@/lib/spatial-search");
+          const [textHits, tagHits] = await Promise.all([
+            interp.keywords.length
+              ? searchPlacesByText({ keywords: interp.keywords, lat: answers.originLat!, lng: answers.originLng!, radiusKm: sbRadiusKm, transport: answers.transport, limit: 30 })
+              : Promise.resolve([]),
+            interp.moodTags.length
+              ? spatialSearch({ mustTags: [], fallbackTags: interp.moodTags, lat: answers.originLat!, lng: answers.originLng!, radiusKm: sbRadiusKm, minRadiusKm: sbMinRadiusKm, transport: answers.transport, limit: 20, googleApiKey: apiKey })
+              : Promise.resolve([]),
+          ]);
+          const have = new Set(sbResults.map(r => r.name));
+          for (const t of [...textHits, ...tagHits]) {
+            if (have.has(t.name)) continue;
+            if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+            sbResults.push(t); have.add(t.name);
+          }
+        } catch { /* 解釈/テキスト検索失敗は気分タグ候補のみで続行 */ }
       }
 
       // Supabase が 0 件でも GPS がある場合は Google 補足で賄う（レガシーフローへの落下を防ぐ）
