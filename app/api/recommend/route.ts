@@ -2054,6 +2054,32 @@ async function interpretFreeword(text: string): Promise<{ keywords: string[]; mo
   } catch { return fallback; }
 }
 
+// #1 セマンティック検索: クエリ文を埋め込み → match_places_semantic RPC で半径内の意味的近傍を取得。
+//   返却は spatialSearch と同型(PlaceResponse)。RPC/embedding未整備(PGRST202等)は graceful に [] を返す。
+async function semanticSearchPlaces(
+  queryText: string, lat: number, lng: number, radiusKm: number,
+  transport?: string | string[], limit = 30,
+): Promise<import("@/types/onsen").PlaceResponse[]> {
+  if (!openai || !supabase || !queryText.trim()) return [];
+  try {
+    const ai = openai, sb = supabase;
+    const emb = await ai.embeddings.create({ model: "text-embedding-3-small", input: queryText.slice(0, 500) });
+    const vec = emb.data?.[0]?.embedding;
+    if (!vec || vec.length === 0) return [];
+    const { data, error } = await sb.rpc("match_places_semantic", {
+      query_embedding: vec, user_lat: lat, user_lng: lng, radius_m: radiusKm * 1000, match_limit: limit,
+    });
+    if (error || !Array.isArray(data)) return [];
+    const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
+    return (data as Array<{ place: Record<string, unknown>; distance_m: number }>).map(row =>
+      nearbyRowToPlaceResponse(
+        { ...(row.place as object), distance_m: row.distance_m } as unknown as import("@/lib/spatial-search").NearbyPlaceRow,
+        transport,
+      ),
+    );
+  } catch { return []; }
+}
+
 function buildSearchPlans(answers: Answers): SearchPlan[] {
   const area = answers.area?.trim() || "現在地周辺";
   const mood = answers.mood?.trim() || "";
@@ -6330,7 +6356,10 @@ async function handleRecommend(request: Request) {
           // ②自由ワードをOpenAIで解釈 → (a)検索語でテキスト一致 (b)気分タグでタグ一致 を候補に合流。
           const interp = await interpretFreeword([answers.freeWord, refinementText].filter(Boolean).join(" "));
           const { searchPlacesByText } = await import("@/lib/spatial-search");
-          const [textHits, tagHits] = await Promise.all([
+          // 意味検索クエリ（気分＋自由文＋同行者＋解釈キーワード）。embedding未整備なら semanticSearchPlaces が[]を返す。
+          const semQuery = [answers.mood, answers.freeWord, refinementText, answers.companion, interp.keywords.join(" ")].filter(Boolean).join(" ");
+          const [semHits, textHits, tagHits] = await Promise.all([
+            semanticSearchPlaces(semQuery, answers.originLat!, answers.originLng!, sbRadiusKm, answers.transport, 30),
             interp.keywords.length
               ? searchPlacesByText({ keywords: interp.keywords, lat: answers.originLat!, lng: answers.originLng!, radiusKm: sbRadiusKm, transport: answers.transport, limit: 30 })
               : Promise.resolve([]),
@@ -6339,7 +6368,7 @@ async function handleRecommend(request: Request) {
               : Promise.resolve([]),
           ]);
           const have = new Set(sbResults.map(r => r.name));
-          for (const t of [...textHits, ...tagHits]) {
+          for (const t of [...semHits, ...textHits, ...tagHits]) {
             if (have.has(t.name)) continue;
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
