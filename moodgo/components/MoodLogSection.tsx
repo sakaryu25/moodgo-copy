@@ -79,6 +79,54 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
     ]);
   };
 
+  // 1枚のMoodログカード（2カラム配置で左右どちらの列にも描画する）
+  const renderPost = (post: MoodPost) => (
+    <View key={post.id} style={s.card}>
+      <View style={s.cardTop}>
+        <Text style={s.author} numberOfLines={1}>{post.author}{post.isOwn ? '（あなた）' : ''}</Text>
+        <Text style={s.time}>{timeAgo(post.createdAt)}</Text>
+        <TouchableOpacity onPress={() => report(post)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Flag size={13} color="#C4B5D6" strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+
+      {post.photos.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.photoRow}>
+          {post.photos.map((u, i) => (
+            <Image key={i} source={{ uri: u }} style={s.photo} />
+          ))}
+        </ScrollView>
+      )}
+
+      {(post.moodTags.length > 0 || post.companion || post.timeOfDay || post.wantRevisit) && (
+        <View style={s.chips}>
+          {post.moodTags.slice(0, 4).map(t => <View key={t} style={s.chip}><Text style={s.chipText}>{t}</Text></View>)}
+          {post.companion ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.companion}</Text></View> : null}
+          {post.timeOfDay ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.timeOfDay}</Text></View> : null}
+          {post.wantRevisit ? <View style={s.chipGood}><Text style={s.chipGoodText}>また行きたい</Text></View> : null}
+          {post.matchesPhoto ? <View style={s.chipGood}><Text style={s.chipGoodText}>写真どおり</Text></View> : null}
+        </View>
+      )}
+
+      {post.caption ? <Text style={s.caption}>{post.caption}</Text> : null}
+
+      <View style={s.reactions}>
+        <TouchableOpacity style={[s.reactBtn, post.myLike && s.reactOn]} onPress={() => react(post, 'like')} activeOpacity={0.7}>
+          <ThumbsUp size={12} color={post.myLike ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
+          <Text style={[s.reactText, post.myLike && s.reactTextOn]}>いいね {post.likeCount || ''}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.reactBtn, post.myHelpful && s.reactOn]} onPress={() => react(post, 'helpful')} activeOpacity={0.7}>
+          <Sparkles size={12} color={post.myHelpful ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
+          <Text style={[s.reactText, post.myHelpful && s.reactTextOn]}>参考 {post.helpfulCount || ''}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.reactBtn, post.myRevisit && s.reactOn]} onPress={() => react(post, 'revisit')} activeOpacity={0.7}>
+          <Repeat2 size={12} color={post.myRevisit ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
+          <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>また {post.revisitCount || ''}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <View style={s.section}>
       <View style={s.header}>
@@ -97,58 +145,20 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
         </TouchableOpacity>
       )}
 
-      {posts.map(post => (
-        <View key={post.id} style={s.card}>
-          <View style={s.cardTop}>
-            <Text style={s.author}>{post.author}{post.isOwn ? '（あなた）' : ''}</Text>
-            <Text style={s.time}>{timeAgo(post.createdAt)}</Text>
-            <TouchableOpacity onPress={() => report(post)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Flag size={13} color="#C4B5D6" strokeWidth={2} />
-            </TouchableOpacity>
-          </View>
-
-          {post.photos.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.photoRow}>
-              {post.photos.map((u, i) => (
-                <Image key={i} source={{ uri: u }} style={s.photo} />
-              ))}
-            </ScrollView>
-          )}
-
-          {(post.moodTags.length > 0 || post.companion || post.timeOfDay || post.wantRevisit) && (
-            <View style={s.chips}>
-              {post.moodTags.slice(0, 4).map(t => <View key={t} style={s.chip}><Text style={s.chipText}>{t}</Text></View>)}
-              {post.companion ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.companion}</Text></View> : null}
-              {post.timeOfDay ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.timeOfDay}</Text></View> : null}
-              {post.wantRevisit ? <View style={s.chipGood}><Text style={s.chipGoodText}>また行きたい</Text></View> : null}
-              {post.matchesPhoto ? <View style={s.chipGood}><Text style={s.chipGoodText}>写真どおり</Text></View> : null}
-            </View>
-          )}
-
-          {post.caption ? <Text style={s.caption}>{post.caption}</Text> : null}
-
-          <View style={s.reactions}>
-            <TouchableOpacity style={[s.reactBtn, post.myLike && s.reactOn]} onPress={() => react(post, 'like')} activeOpacity={0.7}>
-              <ThumbsUp size={13} color={post.myLike ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-              <Text style={[s.reactText, post.myLike && s.reactTextOn]}>いいね {post.likeCount || ''}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.reactBtn, post.myHelpful && s.reactOn]} onPress={() => react(post, 'helpful')} activeOpacity={0.7}>
-              <Sparkles size={13} color={post.myHelpful ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-              <Text style={[s.reactText, post.myHelpful && s.reactTextOn]}>参考になった {post.helpfulCount || ''}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.reactBtn, post.myRevisit && s.reactOn]} onPress={() => react(post, 'revisit')} activeOpacity={0.7}>
-              <Repeat2 size={13} color={post.myRevisit ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-              <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>また行きたい {post.revisitCount || ''}</Text>
-            </TouchableOpacity>
-          </View>
+      {posts.length > 0 && (
+        <View style={s.cols}>
+          <View style={s.col}>{posts.filter((_, i) => i % 2 === 0).map(renderPost)}</View>
+          <View style={s.col}>{posts.filter((_, i) => i % 2 === 1).map(renderPost)}</View>
         </View>
-      ))}
+      )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   section: { marginTop: 18 },
+  cols: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },   // 横2カラム
+  col: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   title: { fontSize: 15, fontWeight: '800', color: '#3A1D6E' },
   count: { fontSize: 12, color: '#9B89BE', fontWeight: '700' },
@@ -161,7 +171,7 @@ const s = StyleSheet.create({
   author: { fontSize: 13, fontWeight: '800', color: '#4A2D7E' },
   time: { fontSize: 11, color: '#B0A2C8', marginRight: 'auto' },
   photoRow: { marginBottom: 8 },
-  photo: { width: 120, height: 90, borderRadius: 10, marginRight: 8, backgroundColor: '#EEE' },
+  photo: { width: 108, height: 82, borderRadius: 10, marginRight: 8, backgroundColor: '#EEE' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 6 },
   chip: { backgroundColor: '#EEE7FA', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
   chipText: { fontSize: 11, color: '#7C3AED', fontWeight: '700' },
@@ -170,9 +180,9 @@ const s = StyleSheet.create({
   chipGood: { backgroundColor: '#FCE7F3', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
   chipGoodText: { fontSize: 11, color: '#DB2777', fontWeight: '700' },
   caption: { fontSize: 13.5, color: '#3F3550', lineHeight: 20, marginBottom: 8 },
-  reactions: { flexDirection: 'row', gap: 6 },
-  reactBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingVertical: 5, paddingHorizontal: 8 },
+  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },   // 半幅カードで折り返す
+  reactBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 11, paddingVertical: 4, paddingHorizontal: 7 },
   reactOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  reactText: { fontSize: 11, color: '#A78BCA', fontWeight: '700' },
+  reactText: { fontSize: 10.5, color: '#A78BCA', fontWeight: '700' },
   reactTextOn: { color: '#fff' },
 });
