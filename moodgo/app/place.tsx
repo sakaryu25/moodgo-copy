@@ -343,6 +343,8 @@ export default function PlaceDetailPage() {
     await saveJSON(FAVORITES_KEY, next);
   };
   const [photoIdx, setPhotoIdx] = useState(0);
+  // API削減: 1枚目だけ即読込み、残りは到達ページまで読み込む（未到達はImage描画せず=Google解決を遅延）
+  const [maxLoaded, setMaxLoaded] = useState(0);
   const [photoWidth, setPhotoWidth] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -535,9 +537,11 @@ export default function PlaceDetailPage() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setPhotoIdx(idx);
     }
+    setMaxLoaded(m => Math.max(m, idx));
   }, [photoWidth, photoIdx]);
 
   const scrollToPhoto = (idx: number) => {
+    setMaxLoaded(m => Math.max(m, idx));
     photoScrollRef.current?.scrollTo({ x: idx * photoWidth, animated: true });
     setPhotoIdx(idx);
   };
@@ -651,8 +655,13 @@ export default function PlaceDetailPage() {
               style={{ width: photoWidth, height: 300 }}
             >
               {photos.map((uri, i) => (
-                <Image key={i} source={{ uri }}
-                  style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
+                i <= maxLoaded ? (
+                  <Image key={i} source={{ uri }}
+                    style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
+                ) : (
+                  // 未到達ページ: 画像を読み込まずプレースホルダ（スクロールで読み込む＝API削減）
+                  <View key={i} style={{ width: photoWidth, height: 300, backgroundColor: '#EFEAF7' }} />
+                )
               ))}
               {showContribute && (
                 <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}

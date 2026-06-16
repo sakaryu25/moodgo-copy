@@ -304,6 +304,9 @@ export default function PlaceCard({
   const onImgError = (uri: string) =>
     setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
   const [photoIdx, setPhotoIdx] = useState(0);
+  // API削減: 1枚目だけ即読込み、残りはスクロール(またはタップ)で到達した分だけ読み込む。
+  //   未到達ページは <Image> を描画しない＝Google写真の photo-proxy 解決(課金)を遅延させる。
+  const [maxLoaded, setMaxLoaded] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
   const [photoWidth, setPhotoWidth] = useState(0);
   // タップで全画面拡大するビューア（null = 非表示）
@@ -317,11 +320,13 @@ export default function PlaceCard({
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setPhotoIdx(newIdx);
     }
+    setMaxLoaded(m => Math.max(m, newIdx));   // 到達ページまで読み込み許可
   };
 
   // 矢印ボタン用: 指定ページへスムーズスクロール
   const scrollToPhoto = (idx: number) => {
     if (photoWidth <= 0) return;
+    setMaxLoaded(m => Math.max(m, idx));      // スクロール先を読み込み許可
     photoScrollRef.current?.scrollTo({ x: idx * photoWidth, animated: true });
     setPhotoIdx(idx);
   };
@@ -392,13 +397,18 @@ export default function PlaceCard({
                 activeOpacity={0.92}
                 onPress={() => setViewerIdx(i)}
               >
-                <Image
-                  source={{ uri }}
-                  style={{ width: photoWidth, height: compact ? 150 : 220 }}
-                  contentFit="cover"
-                  transition={200}
-                  onError={() => onImgError(uri)}
-                />
+                {i <= maxLoaded ? (
+                  <Image
+                    source={{ uri }}
+                    style={{ width: photoWidth, height: compact ? 150 : 220 }}
+                    contentFit="cover"
+                    transition={200}
+                    onError={() => onImgError(uri)}
+                  />
+                ) : (
+                  // 未到達ページ: 画像を読み込まず軽量プレースホルダ（スクロールで読み込む）
+                  <View style={{ width: photoWidth, height: compact ? 150 : 220, backgroundColor: '#EFEAF7' }} />
+                )}
               </TouchableOpacity>
             ))}
             {/* 末尾の「写真を提供してください」スライド（スライドすると出る） */}

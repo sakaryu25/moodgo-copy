@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import PlaceCard from './PlaceCard';
+import { fetchUserPhotoMaps, userPhotosFor, mergeUserPhotos, type UserPhotoMaps } from '@/lib/userPhotos';
 import ReportModal from './ReportModal';
 import { copyPlaceName } from '@/lib/clipboard';
 
@@ -227,6 +228,16 @@ function DetailView({
   const sa = item.savedAnswers ?? {};
   const [visitedSet, setVisitedSet] = useState<Set<string>>(new Set());
   const [reportRec, setReportRec] = useState<Recommendation | null>(null);
+  // 履歴は保存時のGoogle写真を持つ。開いた時点の利用者投稿写真をDBから取得し先頭に差し込む。
+  const [upMaps, setUpMaps] = useState<UserPhotoMaps>({ byId: {}, byName: {} });
+  useEffect(() => {
+    const recs = item.recommendations ?? [];
+    if (recs.length === 0) return;
+    let active = true;
+    fetchUserPhotoMaps(recs.map(r => ({ name: r.title, supabaseId: r.supabaseId })))
+      .then(m => { if (active) setUpMaps(m); });
+    return () => { active = false; };
+  }, [item]);
 
   // 画面のどこからでも右スワイプで前のページ（履歴一覧）に戻る。
   // iOSネイティブ同様、指に追従して画面がスライドし、1/3超 or 軽いフリックで確定。
@@ -343,11 +354,15 @@ function DetailView({
             // 心霊判定はスポットのタグで（保存データに deepDiveL1 が無くても確実に拾える）
             const recShinrei = (sa as { deepDiveL1?: string }).deepDiveL1 === '心霊'
               || !!rec.tags?.includes('#心霊スポット');
+            // 利用者投稿写真を先頭に（3枚以上ならGoogleを使わない）。心霊は別処理。
+            const up = userPhotosFor(upMaps, rec.supabaseId, rec.title);
+            const merged = mergeUserPhotos(rec.photoUrls ?? (rec.photoUrl ? [rec.photoUrl] : []), up);
+            const enriched = up.length > 0 ? { ...rec, photoUrls: merged, photoUrl: merged[0] } : rec;
             return (
             <PlaceCard
               key={`${rec.title}-${i}`}
               // 心霊は保存済みのGoogle写真を使わず、利用者投稿/プレースホルダーにする
-              item={recShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : rec}
+              item={recShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : enriched}
               isFavorited={(favorites ?? []).some((f) => f.title === rec.title)}
               onToggleFavorite={() => onToggleFavorite?.(rec)}
               lang={lang}

@@ -20,6 +20,7 @@ import { shareSpotToGroup } from '@/lib/groupShare';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { apiFetch } from '@/lib/api';
 import { useSpotPhotos } from '@/lib/spotPhotos';
+import { fetchUserPhotoMaps, userPhotosFor, type UserPhotoMaps } from '@/lib/userPhotos';
 import { copyPlaceName } from '@/lib/clipboard';
 import PuniPressable from './PuniPressable';
 
@@ -80,7 +81,7 @@ const T = {
 };
 
 // お気に入りカードのサムネ。心霊は投稿写真があればそれ、無ければ暗いPH。Google写真は使わない。
-function FavoriteCardImage({ item }: { item: FavoriteItem }) {
+function FavoriteCardImage({ item, maps }: { item: FavoriteItem; maps: UserPhotoMaps }) {
   const isShinrei = !!item.tags?.includes('#心霊スポット');
   const storePhotos = useSpotPhotos(item.supabaseId, item.title);
   const [fetched, setFetched] = useState<string[]>([]);
@@ -107,8 +108,10 @@ function FavoriteCardImage({ item }: { item: FavoriteItem }) {
       </LinearGradient>
     );
   }
-  return item.photoUrl ? (
-    <Image source={{ uri: item.photoUrl }} style={s.cardImg} contentFit="cover" />
+  // 通常スポット: 利用者投稿写真があればそれを最優先（無ければ保存済みGoogle写真）
+  const img = userPhotosFor(maps, item.supabaseId, item.title)[0] ?? item.photoUrl;
+  return img ? (
+    <Image source={{ uri: img }} style={s.cardImg} contentFit="cover" />
   ) : (
     <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.cardImg, s.cardImgPlaceholder]}>
       <Navigation size={22} color="#C084FC" strokeWidth={1.5} />
@@ -123,6 +126,15 @@ export default function FavoritesView({
   const t = T[lang];
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState(0);   // 0=場所, 1=投稿
+  // 開いた時点の利用者投稿写真をDBから取得（保存済みGoogle写真より優先表示）
+  const [upMaps, setUpMaps] = useState<UserPhotoMaps>({ byId: {}, byName: {} });
+  useEffect(() => {
+    if (favorites.length === 0) return;
+    let active = true;
+    fetchUserPhotoMaps(favorites.map(f => ({ name: f.title, supabaseId: f.supabaseId })))
+      .then(m => { if (active) setUpMaps(m); });
+    return () => { active = false; };
+  }, [favorites]);
 
   useEffect(() => {
     if (resetKey === undefined) return;
@@ -179,7 +191,7 @@ export default function FavoritesView({
           // 同名スポットでもReactキーが衝突しないよう複合キー（id優先・無ければ index 付与）
           <TouchableOpacity key={`${item.kind ?? 'place'}-${item.supabaseId ?? item.placeId ?? item.spotId ?? item.title}-${idx}`} style={s.card} activeOpacity={0.75} onPress={() => handlePress(item)}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
-            <FavoriteCardImage item={item} />
+            <FavoriteCardImage item={item} maps={upMaps} />
             <View style={s.cardBody}>
               <Text style={s.cardTitle} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
               {item.area ? (
