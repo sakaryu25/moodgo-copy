@@ -40,6 +40,22 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const action = String(body?.action ?? "create");
 
+  // ── moderate（管理者: 承認/却下/非表示）────────────────────────────────────────
+  if (action === "moderate") {
+    if (body?.secret !== ADMIN_SECRET) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const postId = String(body?.postId ?? "").trim();
+    const status = String(body?.status ?? "");
+    if (!postId || !["approved", "rejected", "hidden"].includes(status)) {
+      return NextResponse.json({ ok: false, error: "postId と status(approved|rejected|hidden) が必要です" }, { status: 400 });
+    }
+    try {
+      await supabase.from("spot_posts").update({ status }).eq("id", postId).then(() => {}, () => {});
+      // 写真の表示可否も投稿に連動（approved=承認済みのみスポット写真候補に残る）
+      await supabase.from("spot_photos").update({ moderation_status: status }).eq("post_id", postId).then(() => {}, () => {});
+      return NextResponse.json({ ok: true, status });
+    } catch (e) { return NextResponse.json({ ok: false, error: String(e) }, { status: 500 }); }
+  }
+
   // ── react / report は軽量 ───────────────────────────────────────────────────
   if (action === "react" || action === "report") {
     if (!rateLimit(`spot-post-act:${clientIp(req)}`, 40, 60_000)) {
