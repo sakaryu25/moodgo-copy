@@ -48,11 +48,12 @@ export async function POST(request: Request) {
       )
     );
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY || !openai) {
       // AI未設定時はルールベースでタグ生成（定義済みリストからのみ）
       const tags = generateRuleBasedPredefinedTags(description ?? "", hintTags);
       return NextResponse.json({ ok: true, tags });
     }
+    const ai = openai;
 
     // ── AI によるタグ選別（定義済みリストから厳格に選択） ──
     const systemPrompt = buildFacilityTaggingPrompt(ALL_PREDEFINED_TAGS);
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
 定義済みタグリストの中から、このスポットに確実に当てはまるタグのみを選んでください。`;
 
-    const response = await openai.chat.completions.create({
+    const response = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },

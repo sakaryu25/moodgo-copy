@@ -944,11 +944,11 @@ async function buildSearchPlansWithAI(
     const bm = answers.budgetMin;
     if (b === undefined) return "予算未定・制限なし（価格帯を気にせず最適な場所を探す）";
     if (b === 0) return "無料・無予算";
-    if (bm != null && bm > 0) return `${bm.toLocaleString("ja-JP")}円〜${b.toLocaleString("ja-JP")}円（この範囲の価格帯のみ提案）`;
-    if (b <= 1000)  return `${b.toLocaleString("ja-JP")}円以内（低予算）`;
-    if (b <= 5000)  return `${b.toLocaleString("ja-JP")}円以内（手頃）`;
-    if (b <= 15000) return `${b.toLocaleString("ja-JP")}円以内（中価格帯）`;
-    return `${b.toLocaleString("ja-JP")}円以内（高め）`;
+    if (bm != null && bm! > 0) return `${bm!.toLocaleString("ja-JP")}円〜${b!.toLocaleString("ja-JP")}円（この範囲の価格帯のみ提案）`;
+    if (b! <= 1000)  return `${b!.toLocaleString("ja-JP")}円以内（低予算）`;
+    if (b! <= 5000)  return `${b!.toLocaleString("ja-JP")}円以内（手頃）`;
+    if (b! <= 15000) return `${b!.toLocaleString("ja-JP")}円以内（中価格帯）`;
+    return `${b!.toLocaleString("ja-JP")}円以内（高め）`;
   })();
 
 
@@ -1063,7 +1063,7 @@ async function buildSearchPlansWithAI(
     nonDriveTravelRadiusContext,
     answers.age && `【年代】${answers.age}`,
     answers.gender && `【性別】${answers.gender}`,
-    answers.companion && `【同行者】${companionMap[answers.companion] ?? answers.companion}`,
+    answers.companion && `【同行者】${companionMap[answers.companion!] ?? answers.companion}`,
     (() => {
       const transports = getTransports(answers.transport);
       if (transports.length === 0) return null;
@@ -1290,13 +1290,14 @@ featuresのルール:
 - **前回の結果への追加要望**がある場合は、その要望を最優先でクエリに反映する`;
 
   try {
-    const response = await openai.chat.completions.create({
+    const ai = openai!; // OPENAI_API_KEY 未設定時は上の早期 return で到達しない
+    const response = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `以下のユーザー情報に基づいて検索クエリを生成してください:\n\n${userContext}${feedbackContext}${globalStatsContext}${timeContext ? `\n\n【現在の状況（必ず考慮）】\n${weatherTimePromptContext(weather, timeContext)}` : ""}`,
+          content: `以下のユーザー情報に基づいて検索クエリを生成してください:\n\n${userContext}${feedbackContext}${globalStatsContext}${timeContext ? `\n\n【現在の状況（必ず考慮）】\n${weatherTimePromptContext(weather, timeContext!)}` : ""}`,
         },
       ],
       temperature: 0.95,
@@ -1339,7 +1340,7 @@ featuresのルール:
     for (const plan of plans) {
       if (plan.reasonData) {
         const key = (plan.placeName ?? plan.query).toLowerCase().replace(/\s+/g, "");
-        if (!aiReasons.has(key)) aiReasons.set(key, plan.reasonData);
+        if (!aiReasons.has(key)) aiReasons.set(key, plan.reasonData!);
       }
     }
 
@@ -1371,7 +1372,7 @@ async function buildRelaxTextQueryWithAI(
   const cityMatch = rawArea.match(/^(.+?市)/);
   const wardMatch = rawArea.match(/^(.+?区)/);
   const area = rawArea
-    ? (cityMatch ? cityMatch[1] : wardMatch ? wardMatch[1] : rawArea.split(/[丁目番地０-９0-9]/)[0].trim() || rawArea)
+    ? (cityMatch ? cityMatch![1] : wardMatch ? wardMatch![1] : rawArea.split(/[丁目番地０-９0-9]/)[0].trim() || rawArea)
     : "";
 
   // 動的質問の回答からキーワードを取得（relax_sub_choiceの「検索キーワード: 〜」部分を抽出）
@@ -1380,7 +1381,7 @@ async function buildRelaxTextQueryWithAI(
   const subChoiceRaw = dynQs.find(dq => dq.question.includes("どんな") || dq.question.includes("カフェで") || dq.question.includes("どんな景色") || dq.question.includes("どんなスタイル") || dq.question.includes("自然の中で"))?.answer ?? "";
   // 「〜（検索キーワード: X Y Z）」から X Y Z だけ抽出
   const keywordsMatch = subChoiceRaw.match(/検索キーワード:\s*(.+?)）/);
-  const apiKeywords = keywordsMatch ? keywordsMatch[1].trim() : "";
+  const apiKeywords = keywordsMatch ? keywordsMatch![1].trim() : "";
   const subChoiceText = subChoiceRaw.replace(/（検索キーワード:.*?）/, "").trim();
 
   // 同行者情報（reason生成用のみ。textQueryには含めない）
@@ -1452,7 +1453,8 @@ ${area
   ].filter(Boolean).join("\n");
 
   try {
-    const response = await openai.chat.completions.create({
+    const ai = openai!; // OPENAI_API_KEY 未設定時は上の早期 return で到達しない
+    const response = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
@@ -1533,7 +1535,7 @@ async function generateRecommendationReason(
     answers.mood && `気分: ${answers.mood}`,
     answers.age && `${answers.age}`,
     answers.gender && `${answers.gender}`,
-    answers.companion && `${companionMap[answers.companion] ?? answers.companion}`,
+    answers.companion && `${companionMap[answers.companion!] ?? answers.companion}`,
     answers.atmosphere && `雰囲気: ${answers.atmosphere}`,
     answers.priority && `優先: ${answers.priority}`,
     ...getDynamicQs(answers).map((dq, i) => `詳細${["①","②","③","④","⑤","⑥","⑦","⑧"][i] ?? `(${i+1})`}: ${dq.question}→${dq.answer}`),
@@ -1554,7 +1556,8 @@ async function generateRecommendationReason(
     .join("\n");
 
   try {
-    const response = await openai.chat.completions.create({
+    const ai = openai!; // OPENAI_API_KEY 未設定時は上の早期 return で到達しない
+    const response = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
@@ -1609,14 +1612,14 @@ featuresのルール:
     const result: Record<string, { reason: string; features: string[]; targetUser?: string; whyMatch?: string }> = {};
     for (const [k, v] of Object.entries(parsed)) {
       if (typeof v === "string") {
-        result[k] = { reason: v, features: [] };
+        result[k] = { reason: v as string, features: [] };
       } else if (typeof v === "object" && v !== null) {
         const obj = v as Record<string, unknown>;
         result[k] = {
-          reason: typeof obj.reason === "string" ? obj.reason : "",
+          reason: typeof obj.reason === "string" ? (obj.reason as string) : "",
           features: Array.isArray(obj.features) ? (obj.features as string[]) : [],
-          targetUser: typeof obj.targetUser === "string" ? obj.targetUser : undefined,
-          whyMatch: typeof obj.whyMatch === "string" ? obj.whyMatch : undefined,
+          targetUser: typeof obj.targetUser === "string" ? (obj.targetUser as string) : undefined,
+          whyMatch: typeof obj.whyMatch === "string" ? (obj.whyMatch as string) : undefined,
         };
       }
     }
@@ -5477,7 +5480,8 @@ async function generateSupabaseReasons(
   niceTags: string[],
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
-  if (!process.env.OPENAI_API_KEY || spots.length === 0) return result;
+  if (!process.env.OPENAI_API_KEY || !openai || spots.length === 0) return result;
+  const ai = openai;
   try {
     const moodDesc      = answers.mood ?? "";
     const companionDesc = answers.companion ?? "";
@@ -5491,7 +5495,7 @@ async function generateSupabaseReasons(
       `${i + 1}. ${s.name}（タグ: ${(s.tags ?? []).filter(t => [...mustTags, ...niceTags].includes(t)).join(" ")}）`
     ).join("\n");
 
-    const res = await openai.chat.completions.create({
+    const res = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.7,
       response_format: { type: "json_object" },

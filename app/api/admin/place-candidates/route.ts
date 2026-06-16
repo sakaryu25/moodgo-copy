@@ -26,7 +26,8 @@ const DEFAULT_LNG = 139.6236;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export interface PlaceCandidate {
+// route.ts は HTTPメソッド/セグメント設定以外を export 不可（Next.js型チェック）。外部未使用のため module-local。
+interface PlaceCandidate {
   placeId: string;
   name: string;
   address: string;

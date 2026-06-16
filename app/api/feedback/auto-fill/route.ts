@@ -24,9 +24,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "placeName is required" }, { status: 400 });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY || !openai) {
       return NextResponse.json({ ok: false, error: "OpenAI未設定" }, { status: 503 });
     }
+    const ai = openai;
 
     // エリアは住所から抽出する（都道府県・市区町村）
     const addressHint = address
@@ -57,7 +58,7 @@ ${typesHint}
 - areaは住所から都市名・エリア名のみ抽出（番地は不要）
 - ratingは4（良い体験）をデフォルトにしてください`;
 
-    const response = await openai.chat.completions.create({
+    const response = await ai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {

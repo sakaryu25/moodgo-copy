@@ -71,7 +71,8 @@ const PREFECTURE_CITIES: Record<string, Array<[string, number, number, number]>>
 };
 
 // 地方グループ（UI用）
-export const REGION_GROUPS: Record<string, string[]> = {
+// route.ts は HTTPメソッド/セグメント設定以外を export 不可（Next.js型チェック）。外部未使用のため module-local。
+const REGION_GROUPS: Record<string, string[]> = {
   "北海道・東北": ["北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島"],
   "関東":         ["茨城", "栃木", "群馬", "埼玉", "千葉", "東京", "神奈川"],
   "中部":         ["新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜", "静岡", "愛知"],

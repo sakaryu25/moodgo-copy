@@ -3,10 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Next 16 では eslint 設定キーは廃止（next lint 廃止）。ESLintはビルドと別実行のため記述不要。
   typescript: {
-    // recommend/route.ts 等の既存ファイルに pre-existing なTypeScriptエラーが存在するため、
-    // Turbopack がクラッシュしないようビルド時のTypeScriptチェックを無効化。
-    // 実行時エラーは発生しておらず、本番動作に影響しない。
-    ignoreBuildErrors: true,
+    // 全TypeScriptエラーを解消済み（2026-06-16・#37）。ビルド時の型チェックを有効化し、
+    // 以後の型崩れをデプロイ前に検出する。万一ビルドが型で止まる場合のみ一時的に true へ。
+    ignoreBuildErrors: false,
   },
   // Vercel デプロイ時: VERCEL_URL 環境変数から自動的にベースURLを設定
   env: {
