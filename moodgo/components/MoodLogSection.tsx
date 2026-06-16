@@ -4,7 +4,7 @@
 // また行きたい・リアクション（いいね/参考になった/また行きたい）・通報を表示。
 // 「Moodログを投稿」ボタンは mood-log 画面へ遷移（スポット情報をparamsで渡す）。
 import React, { useCallback, useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Repeat2, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
@@ -91,11 +91,12 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
       </View>
 
       {post.photos.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.photoRow}>
-          {post.photos.map((u, i) => (
-            <Image key={i} source={{ uri: u }} style={s.photo} />
-          ))}
-        </ScrollView>
+        <View style={s.photoWrap}>
+          <Image source={{ uri: post.photos[0] }} style={s.photo} />
+          {post.photos.length > 1 && (
+            <View style={s.photoBadge}><Text style={s.photoBadgeText}>+{post.photos.length - 1}</Text></View>
+          )}
+        </View>
       )}
 
       {(post.moodTags.length > 0 || post.companion || post.timeOfDay || post.wantRevisit) && (
@@ -158,7 +159,7 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
 const s = StyleSheet.create({
   section: { marginTop: 18 },
   cols: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },   // 横2カラム
-  col: { flex: 1 },
+  col: { flex: 1, minWidth: 0 },   // minWidth:0 が無いと内容で片方の列が潰れる
   header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   title: { fontSize: 15, fontWeight: '800', color: '#3A1D6E' },
   count: { fontSize: 12, color: '#9B89BE', fontWeight: '700' },
@@ -168,10 +169,12 @@ const s = StyleSheet.create({
   emptyText: { fontSize: 13, color: '#7E6CA0', textAlign: 'center', lineHeight: 20 },
   card: { backgroundColor: '#FBF9FF', borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#EFE8FB' },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  author: { fontSize: 13, fontWeight: '800', color: '#4A2D7E' },
-  time: { fontSize: 11, color: '#B0A2C8', marginRight: 'auto' },
-  photoRow: { marginBottom: 8 },
-  photo: { width: 108, height: 82, borderRadius: 10, marginRight: 8, backgroundColor: '#EEE' },
+  author: { flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: '800', color: '#4A2D7E' },
+  time: { fontSize: 10.5, color: '#B0A2C8' },
+  photoWrap: { position: 'relative', marginBottom: 8 },
+  photo: { width: '100%', height: 124, borderRadius: 10, backgroundColor: '#EEE' },
+  photoBadge: { position: 'absolute', right: 6, bottom: 6, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
+  photoBadgeText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 6 },
   chip: { backgroundColor: '#EEE7FA', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
   chipText: { fontSize: 11, color: '#7C3AED', fontWeight: '700' },
