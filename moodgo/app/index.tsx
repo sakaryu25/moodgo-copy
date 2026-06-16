@@ -30,7 +30,7 @@ import type { CafeSubCategory, CafeDetail, CafeDistancePref } from '@/types/cafe
 import type { WaiWaiSubCategory } from '@/types/waiwai';
 import {
   FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
-  BLOCKED_PLACES_KEY, PROFILE_KEY,
+  BLOCKED_PLACES_KEY, PROFILE_KEY, ONBOARDED_KEY,
   loadJSON, saveJSON,
 } from '@/lib/storage';
 import { apiFetch, API_BASE } from '@/lib/api';
@@ -70,6 +70,7 @@ import FavoritesView    from '@/components/FavoritesView';
 import FeatureScreen    from '@/components/FeatureScreen';
 import GroupsView       from '@/components/GroupsView';
 import ProfileSetup     from '@/components/ProfileSetup';
+import Onboarding       from '@/components/Onboarding';
 import QuizFlow         from '@/components/QuizFlow';
 import ResultsView      from '@/components/ResultsView';
 import SettingsView     from '@/components/SettingsView';
@@ -134,6 +135,8 @@ export default function Home() {
   // ── Profile ──────────────────────────────────────────────────────────────
   const [profileSetupDone, setProfileSetupDone] = useState(false);
   const [profileLoaded,    setProfileLoaded]    = useState(false);
+  const [onboarded,        setOnboarded]        = useState(false);   // 初回オンボーディングを通過済みか
+  const [firstRunStep,     setFirstRunStep]     = useState<'onboarding' | 'profile'>('onboarding');
   const [profileAge,       setProfileAge]       = useState('');
   const [profileGender,    setProfileGender]    = useState('');
   const [profilePrefecture, setProfilePrefecture] = useState('');
@@ -222,6 +225,9 @@ export default function Home() {
       if (profile.gender)     setProfileGender(profile.gender);
       if (profile.prefecture) setProfilePrefecture(profile.prefecture);
       setProfileSetupDone(!!(profile.age || profile.gender));
+      // 初回オンボーディング: 明示フラグ、または既存ユーザー（プロフィール/履歴/お気に入りあり）は通過済み扱い
+      const ob = await loadJSON<boolean>(ONBOARDED_KEY, false);
+      setOnboarded(ob || !!(profile.age || profile.gender) || hist.length > 0 || faves.length > 0);
       setProfileLoaded(true);
     })();
   }, []);
@@ -891,9 +897,19 @@ export default function Home() {
     Animated.timing(tabFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [homeView]);
 
-  // ─── Profile setup (first launch) ────────────────────────────────────────
+  // ─── First launch: オンボーディング → プロフィール設定（任意・スキップ可）──────
+  //   onboarded フラグで一度きり。プロフィールはスキップしても onboarded を立てて
+  //   再表示しない（＝プロフィール任意化）。既存ユーザーは load 時に通過済み扱い。
 
-  if (profileLoaded && !profileSetupDone) {
+  if (profileLoaded && !onboarded) {
+    if (firstRunStep === 'onboarding') {
+      return (
+        <View style={styles.root}>
+          <AppBackground />
+          <Onboarding onDone={() => setFirstRunStep('profile')} />
+        </View>
+      );
+    }
     return (
       <View style={styles.root}>
         <AppBackground />
@@ -902,8 +918,10 @@ export default function Home() {
             setProfileAge(age);
             setProfileGender(gender);
             setProfilePrefecture(prefecture);
-            setProfileSetupDone(true);
+            setProfileSetupDone(!!(age || gender));   // 入力があればプロフィール完了
+            setOnboarded(true);                        // スキップでも初回フローは完了＝再表示しない
             saveJSON(PROFILE_KEY, { age, gender, prefecture });
+            saveJSON(ONBOARDED_KEY, true);
           }}
         />
       </View>
