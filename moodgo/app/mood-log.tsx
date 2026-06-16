@@ -11,12 +11,17 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import AppBackground, { APP_BG } from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
 import { showToast } from '@/lib/toast';
+
+// ホーム画面と同じMoodGoブランドグラデーション（ピンク→紫→青）
+const GRAD: [string, string, string] = ['#F56CB3', '#9B6BFF', '#4FA3FF'];
 
 const MOODS = ['#まったりしたい', '#自然感じたい', '#わいわい楽しみたい', '#お腹すいた', '#ドライブしたい', '#集中したい', '#体動かしたい', '#遠くに行きたい', '#ショッピング', '#スリル味わいたい'];
 const COMPANIONS = ['ひとり', '友達', '恋人', '家族', 'グループ'];
@@ -93,11 +98,12 @@ export default function MoodLogScreen() {
   };
 
   return (
-    <View style={[s.root, { paddingTop: insets.top }]}>
-      <View style={s.head}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><ArrowLeft size={22} color="#3A1D6E" /></TouchableOpacity>
+    <View style={s.root}>
+      <AppBackground />
+      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[s.head, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><ArrowLeft size={22} color="#fff" /></TouchableOpacity>
         <Text style={s.headTitle} numberOfLines={1}>Moodログを投稿</Text>
-      </View>
+      </LinearGradient>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
           <Text style={s.place}>{placeName}</Text>
@@ -170,9 +176,11 @@ export default function MoodLogScreen() {
           </TouchableOpacity>
           <Text style={s.note}>※ Google画像・Googleマップ・SNS等から保存した画像の投稿は禁止です。</Text>
 
-          <TouchableOpacity style={[s.submit, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting} activeOpacity={0.85}>
-            <Send size={17} color="#fff" strokeWidth={2.4} />
-            <Text style={s.submitText}>{submitting ? '投稿中…' : 'Moodログを投稿'}</Text>
+          <TouchableOpacity style={[s.submitWrap, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting} activeOpacity={0.85}>
+            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submit}>
+              <Send size={17} color="#fff" strokeWidth={2.4} />
+              <Text style={s.submitText}>{submitting ? '投稿中…' : 'Moodログを投稿'}</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -181,29 +189,29 @@ export default function MoodLogScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0EAFA' },
-  headTitle: { fontSize: 17, fontWeight: '800', color: '#3A1D6E' },
+  root: { flex: 1, backgroundColor: APP_BG },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14 },
+  headTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
   place: { fontSize: 15, fontWeight: '800', color: '#7C3AED', marginBottom: 14 },
   label: { fontSize: 13, fontWeight: '800', color: '#4A2D7E', marginTop: 16, marginBottom: 8 },
   photoGrid: { flexDirection: 'row', gap: 10 },
   thumbWrap: { position: 'relative' },
   thumb: { width: 88, height: 88, borderRadius: 12, backgroundColor: '#EEE' },
   thumbX: { position: 'absolute', top: -6, right: -6, backgroundColor: '#1E0753', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
-  addPhoto: { width: 88, height: 88, borderRadius: 12, borderWidth: 1.5, borderColor: '#E3D8F5', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 2 },
+  addPhoto: { width: 88, height: 88, borderRadius: 12, borderWidth: 1.5, borderColor: '#E3D8F5', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: '#fff' },
   addPhotoText: { fontSize: 11, color: '#A78BCA', fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 16, paddingVertical: 7, paddingHorizontal: 12 },
+  chip: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 16, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: '#fff' },
   chipOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   chipText: { fontSize: 12.5, color: '#7E6CA0', fontWeight: '700' },
   chipTextOn: { color: '#fff' },
-  input: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, padding: 12, fontSize: 14, color: '#2A2235', minHeight: 80, textAlignVertical: 'top' },
+  input: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, padding: 12, fontSize: 14, color: '#2A2235', minHeight: 80, textAlignVertical: 'top', backgroundColor: '#fff' },
   toggleRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  toggle: { flex: 1, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  toggle: { flex: 1, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingVertical: 11, alignItems: 'center', backgroundColor: '#fff' },
   toggleOn: { backgroundColor: '#FCE7F3', borderColor: '#DB2777' },
   toggleText: { fontSize: 13, color: '#7E6CA0', fontWeight: '800' },
   toggleTextOn: { color: '#DB2777' },
-  visRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#EFE8FB', borderRadius: 12, padding: 12, marginBottom: 8 },
+  visRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#EFE8FB', borderRadius: 12, padding: 12, marginBottom: 8, backgroundColor: '#fff' },
   visRowOn: { borderColor: '#7C3AED', backgroundColor: '#F8F4FF' },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#C9B6FF', alignItems: 'center', justifyContent: 'center' },
   radioOn: { borderColor: '#7C3AED' },
@@ -215,6 +223,7 @@ const s = StyleSheet.create({
   boxOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   checkText: { flex: 1, fontSize: 12.5, color: '#4A4256', lineHeight: 18 },
   note: { fontSize: 11, color: '#B0A2C8', marginTop: 10, lineHeight: 16 },
-  submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7C3AED', borderRadius: 16, paddingVertical: 15, marginTop: 22 },
+  submitWrap: { borderRadius: 16, overflow: 'hidden', marginTop: 22, shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 8 },
+  submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 15 },
   submitText: { color: '#fff', fontSize: 15.5, fontWeight: '800' },
 });
