@@ -5729,6 +5729,32 @@ function diversifyByCategory(recs: DivRec[]): void {
   recs.splice(0, recs.length, ...out);      // in-place で並べ替え（const配列でも可・参照維持）
 }
 
+// 期間限定イベントの会場上書き: 同一座標(≈11m)に公開期間中の期間限定スポットがあれば、
+//   会場カード(例:マクセル アクアパーク品川)を イベント名・説明・#期間限定 に差し替える。
+//   approvedSuggestions は取得時に公開期間でフィルタ済み＝期間終了で自動的に会場表示へ戻る。
+type LimitedEventRec = { title?: string; lat?: number; lng?: number; aiReason?: string; reason?: string; features?: string[] };
+function applyLimitedTimeOverride(
+  recs: LimitedEventRec[],
+  events: Array<{ spot_name?: string; description?: string | null; lat?: number | null; lng?: number | null }>,
+): void {
+  if (!recs?.length || !events?.length) return;
+  const byCoord = new Map<string, { spot_name?: string; description?: string | null }>();
+  for (const e of events) {
+    if (typeof e.lat === "number" && typeof e.lng === "number" && e.spot_name) {
+      byCoord.set(`${e.lat.toFixed(4)},${e.lng.toFixed(4)}`, e);
+    }
+  }
+  if (byCoord.size === 0) return;
+  for (const rec of recs) {
+    if (typeof rec.lat !== "number" || typeof rec.lng !== "number") continue;
+    const ev = byCoord.get(`${rec.lat.toFixed(4)},${rec.lng.toFixed(4)}`);
+    if (!ev || !ev.spot_name) continue;
+    rec.title = ev.spot_name;                                   // 会場名 → イベント名
+    if (ev.description) { rec.aiReason = ev.description; rec.reason = ev.description; }
+    rec.features = ["#期間限定", ...((rec.features ?? []).filter(f => f !== "#期間限定"))];
+  }
+}
+
 // ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
 // 経路ごとにバラバラだった「フィルタ / ソート / 重複排除 / 15件化」のロジックを
 // 1か所(createFinalizeHelpers)に集約する。挙動は従来(経路2: Supabase-first)と完全同一。
@@ -6223,6 +6249,10 @@ async function handleRecommend(request: Request) {
       ...approvedSuggestions.filter((s) => s.source !== "admin" && !s.is_chain),
     ];
     const chainSpots = approvedSuggestions.filter((s) => s.source === "admin" && s.is_chain && s.chain_search_query);
+    // 公開期間中の期間限定スポット（available_from/until 設定あり・座標あり）。会場カードの上書きに使う。
+    const limitedEvents = approvedSuggestions.filter(
+      (s) => (s.available_from || s.available_until) && typeof s.lat === "number" && typeof s.lng === "number",
+    );
 
     // スポット名 + Googleマップ名の両方でマッチできるようにする
     // ※ source === "admin" のスポットは「ユーザー投稿」バッジを付けない
@@ -7585,6 +7615,7 @@ async function handleRecommend(request: Request) {
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
           : "";
 
+        applyLimitedTimeOverride(recommendations as unknown as LimitedEventRec[], limitedEvents);
         await applyUserPhotos(recommendations as unknown as UserPhotoRec[]);
         diversifyByCategory(recommendations as unknown as DivRec[]);
         return json({
