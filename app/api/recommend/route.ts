@@ -5581,7 +5581,7 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
         },
         { role: "user", content: spotList },
       ],
-      max_tokens: 800,
+      max_tokens: 1500,   // 候補~30件分の理由でも切れないように（#5・全カードに理由を出す）
     });
     const text = res.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(text);
@@ -5699,6 +5699,34 @@ async function applyUserPhotos(recs: UserPhotoRec[]): Promise<void> {
       rec.userPhotoCount = up.length;
     }
   } catch { /* spot_photos未作成等は従来表示で安全 */ }
+}
+
+// #6 多様性: 最終結果をカテゴリでラウンドロビン並べ替え（同種が上位に固まるのを防ぐ）。
+//   先頭(最良)は維持しつつ、2番目以降を別カテゴリと交互に。要素の増減はなし(並べ替えのみ・in-place)。
+//   1カテゴリのみ(例:ラーメン検索)は並べ替え不要でそのまま。
+type DivRec = { category?: string; tags?: string[] };
+function diversifyByCategory(recs: DivRec[]): void {
+  if (!recs || recs.length <= 4) return;
+  const catOf = (r: DivRec) =>
+    (r.category && r.category.trim()) || (r.tags ?? []).find(t => typeof t === "string" && t.startsWith("#")) || "?";
+  const buckets = new Map<string, DivRec[]>();
+  const order: string[] = [];
+  for (const r of recs) {
+    const c = catOf(r);
+    if (!buckets.has(c)) { buckets.set(c, []); order.push(c); }
+    buckets.get(c)!.push(r);
+  }
+  if (order.length <= 1) return;            // 単一カテゴリ＝並べ替え不要
+  const out: DivRec[] = [];
+  let added = true;
+  while (out.length < recs.length && added) {
+    added = false;
+    for (const c of order) {
+      const b = buckets.get(c)!;
+      if (b.length) { out.push(b.shift()!); added = true; }
+    }
+  }
+  recs.splice(0, recs.length, ...out);      // in-place で並べ替え（const配列でも可・参照維持）
 }
 
 // ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
@@ -6274,6 +6302,7 @@ async function handleRecommend(request: Request) {
         const fwMinCount = answers.aiChat ? 1 : (fwPartySize ? 3 : 5);  // 人数指定は構造化が解釈できないためAI結果を優先採用
         if (fwRecs.length >= fwMinCount) {
           await applyUserPhotos(fwRecs as unknown as UserPhotoRec[]);
+          diversifyByCategory(fwRecs as unknown as DivRec[]);
           return json({
             recommendations: fwRecs,
             source: answers.aiChat ? "ai_chat" : "ai_freeword",
@@ -6538,8 +6567,9 @@ async function handleRecommend(request: Request) {
                 sbNames, 10, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
-          // OpenAI 推薦理由生成（自由ワード・絞り込み時のみ使用）
-          (answers.freeWord || refinementText)
+          // OpenAI 推薦理由生成（#5: 全カードに「なぜ合うか」を出すため常時実行）。
+          //   このPromise.all内で並列＝sbAiOrder(gpt-4o)と重なり直列レイテンシ増はほぼ無し。心霊(独自)は不要。
+          (!isProprietaryOnly && openai)
             ? generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags)
             : Promise.resolve(new Map<string, string>()),
           // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで最大10枚並列補完
@@ -6737,6 +6767,8 @@ async function handleRecommend(request: Request) {
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
             reason: reasons.get(r.name) ?? r.description ?? "",
+            // #5: 全カードに「なぜあなたに合うか」を表示（気分依存の推薦理由・空ならカード側は非表示）
+            aiReason: reasons.get(r.name) || undefined,
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,
@@ -7554,6 +7586,7 @@ async function handleRecommend(request: Request) {
           : "";
 
         await applyUserPhotos(recommendations as unknown as UserPhotoRec[]);
+        diversifyByCategory(recommendations as unknown as DivRec[]);
         return json({
           recommendations,
           source: "supabase",
@@ -7867,6 +7900,7 @@ async function handleRecommend(request: Request) {
             };
           });
           await applyUserPhotos(hiFinal as unknown as UserPhotoRec[]);
+          diversifyByCategory(hiFinal as unknown as DivRec[]);
           return json({ recommendations: hiFinal, usedAI: true, warning: "" });
         }
       }
@@ -8162,6 +8196,7 @@ async function handleRecommend(request: Request) {
       });
 
       await applyUserPhotos(relaxFinalResults as unknown as UserPhotoRec[]);
+      diversifyByCategory(relaxFinalResults as unknown as DivRec[]);
       return json({
         recommendations: relaxFinalResults,
         usedAI: !!relaxAiResult,
@@ -9088,6 +9123,7 @@ async function handleRecommend(request: Request) {
     // ユーザー向けの内部仕様カゲ（OPENAI_API_KEY/天気連動 等）の警告バナーは非表示にする。
     //   （実装上の注意書きはエンドユーザーには不要なため）
     await applyUserPhotos(finalResults as unknown as UserPhotoRec[]);
+    diversifyByCategory(finalResults as unknown as DivRec[]);
     return json({
       recommendations: finalResults,
       usedAI: !!aiPlans,
