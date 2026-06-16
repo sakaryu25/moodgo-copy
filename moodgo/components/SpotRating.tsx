@@ -9,7 +9,7 @@ import { Star, Send } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
-export default function SpotRating({ placeId, placeName, onFirstRate }: { placeId?: string; placeName: string; onFirstRate?: () => void }) {
+export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void }) {
   const KEY = placeId || placeName;
   const cacheKey = `moodgo-rating-${KEY}`;
   const [selected, setSelected] = useState(0);   // タップ中（送信前）
@@ -61,6 +61,21 @@ export default function SpotRating({ placeId, placeName, onFirstRate }: { placeI
         setAvg(d.avg ?? null); setCount(d.count ?? 0); setSubmitted(selected);
         await AsyncStorage.setItem(cacheKey, JSON.stringify({ myStars: selected, avg: d.avg, count: d.count })).catch(() => {});
         if (wasFirst) onFirstRate?.();
+        // 旧「気分に合う/合わない」の学習を★評価へ移管: ★4-5=good / ★1-2=bad を気分別評価に送る。
+        //   検索文脈の気分がある時のみ（履歴/いいね閲覧など気分なしの時は表示用の★だけ）。
+        if (mood) {
+          const verdict = selected >= 4 ? 'good' : selected <= 2 ? 'bad' : null;
+          if (verdict) {
+            apiFetch('/api/mood-rating', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ place_name: placeName, mood, sub_category: subCategory || undefined, verdict }),
+            }).catch(() => {});
+            apiFetch('/api/feedback', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mood, companion: companion || undefined, rating: selected, visitedPlace: placeName, likedPlaces: verdict === 'good' ? [placeName] : [] }),
+            }).catch(() => {});
+          }
+        }
       }
     } catch { /* 失敗時は据え置き */ } finally { setBusy(false); }
   };

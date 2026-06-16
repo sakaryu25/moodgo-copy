@@ -31,7 +31,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getSelectedPlace } from '@/lib/selectedPlace';
+import { getSelectedPlace, getSelectedContext } from '@/lib/selectedPlace';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
@@ -312,6 +312,7 @@ function InfoSkeleton() {
 export default function PlaceDetailPage() {
   const insets = useSafeAreaInsets();
   const place = getSelectedPlace();
+  const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
   const [rec, setRec] = useState<Recommendation | null>(place);
   const [ratingDelta, setRatingDelta] = useState(0);  // 自分が今セッションで新規評価した分(件数を即時+1)
   const [extra, setExtra] = useState<ExtraDetail>({
@@ -811,7 +812,7 @@ export default function PlaceDetailPage() {
           )}
 
           {/* MoodGo独自の星評価セレクタ（全スポット・総合星の下にちょこんと） */}
-          {!isSpooky && <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} onFirstRate={() => setRatingDelta(d => d + 1)} />}
+          {!isSpooky && <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />}
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (

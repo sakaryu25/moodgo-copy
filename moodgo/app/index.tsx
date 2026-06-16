@@ -861,7 +861,12 @@ export default function Home() {
 
   const handlePressDetail = (rec: Recommendation) => {
     sendEngagement(rec.title, 'detail_view');  // ② 学習ループ
-    setSelectedPlace(rec);
+    // 詳細ページの★評価を「気分に合う/合わない」学習に使うため、現在の検索文脈を一緒に渡す。
+    setSelectedPlace(rec, {
+      mood: selectedMood || undefined,
+      companion: selectedCompanion || undefined,
+      subCategory: deepDiveL2 || deepDiveL1 || undefined,
+    });
     router.push('/place');
   };
 

@@ -652,35 +652,7 @@ export default function PlaceCard({
 
         <View style={[s.divider, darkTheme && s.dividerDark]} />
 
-        {/* ── 気分ボタン ── */}
-        {(onMoodMatch || onMoodNotMatch) && (
-          <>
-            {moodLabel && !moodRating && (
-              <Text style={[s.moodQuestion, darkTheme && s.textDimDark]}>{t.moodQuestion(moodLabel)}</Text>
-            )}
-            {moodRating ? (
-              <View style={s.moodDoneRow}>
-                {moodRating === 'good'
-                  ? <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
-                  : <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />}
-                <Text style={[s.moodDoneText, { color: moodRating === 'good' ? '#10B981' : '#EF4444' }]}>
-                  {moodRating === 'good' ? t.moodMatchDone : t.moodNotMatchDone}
-                </Text>
-              </View>
-            ) : (
-              <View style={s.moodRow}>
-                <PuniPressable onPress={() => onMoodMatch?.()} style={[s.moodMatchBtn, darkTheme && s.moodMatchBtnDark]} containerStyle={{ flex: 1 }}>
-                  <ThumbsUp size={14} color="#10B981" strokeWidth={2} />
-                  <Text style={s.moodMatchText}>{t.moodMatch}</Text>
-                </PuniPressable>
-                <PuniPressable onPress={() => onMoodNotMatch?.()} style={[s.moodNotMatchBtn, darkTheme && s.moodNotMatchBtnDark]} containerStyle={{ flex: 1 }}>
-                  <ThumbsDown size={14} color="#EF4444" strokeWidth={2} />
-                  <Text style={s.moodNotMatchText}>{t.moodNotMatch}</Text>
-                </PuniPressable>
-              </View>
-            )}
-          </>
-        )}
+        {/* 気分が合う/合わないボタンは廃止。学習は詳細ページの★評価に一本化（SpotRating）。 */}
 
         {/* ソース表示 */}
         {item.source && (
