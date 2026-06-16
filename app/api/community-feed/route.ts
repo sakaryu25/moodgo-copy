@@ -59,10 +59,13 @@ export async function GET(request: Request) {
 
   try {
     // select("*"): device_id / poster_name 列が未作成のDBでもエラーにならない
+    // 穴場投稿は審査なしで即「全国みんなの穴場」フィードに表示（pending含む）。
+    //   検索結果への露出だけは admin 承認(status=approved)が必要（recommendは approved のみ注入）。
+    //   rejected は除外。NGワードは投稿時(/api/suggestions)で弾き、通報・ブロックはフィード側で対応。
     const { data, error } = await supabase
       .from("suggestions")
       .select("*")
-      .eq("status", "approved")
+      .in("status", ["approved", "pending"])
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
