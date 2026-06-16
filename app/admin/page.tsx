@@ -638,7 +638,6 @@ export default function AdminPage() {
   const [searchLoading, setSearchLoading] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Record<string, PlaceCandidate[]>>({});
   const [selectedCandidate, setSelectedCandidate] = useState<Record<string, PlaceCandidate | null>>({});
-  const [tagsLoading, setTagsLoading] = useState<string | null>(null);
   const [editableTags, setEditableTags] = useState<Record<string, string[]>>({});
   const [tagInput, setTagInput] = useState<Record<string, string>>({});
 
@@ -1048,6 +1047,7 @@ export default function AdminPage() {
   const [placesRegTags, setPlacesRegTags] = useState<Record<string, string[]>>({});
   const [placesRegTagInput, setPlacesRegTagInput] = useState<Record<string, string>>({});
   const [placesRegLoading, setPlacesRegLoading] = useState<Record<string, boolean>>({});
+  const [placesRegGeoLoading, setPlacesRegGeoLoading] = useState<Record<string, boolean>>({});
   const [placesRegDone, setPlacesRegDone] = useState<Record<string, boolean>>({});
   const [placesRegError, setPlacesRegError] = useState<Record<string, string>>({});
   // 重複警告 (suggestion登録)
@@ -2624,28 +2624,26 @@ export default function AdminPage() {
     setSearchLoading(null);
   };
 
-  // 候補を選択してタグを自動生成
-  const handleSelectCandidate = async (suggestionId: string, s: Suggestion, candidate: PlaceCandidate) => {
+  // 候補を選択（Googleマップ紐付けのみ。タグの自動生成はしない＝管理者が手動でタグ付け）
+  const handleSelectCandidate = (suggestionId: string, _s: Suggestion, candidate: PlaceCandidate) => {
     setSelectedCandidate((prev) => ({ ...prev, [suggestionId]: candidate }));
-    setTagsLoading(suggestionId);
+  };
+
+  // 住所（無ければスポット名）から座標を自動取得して緯度・経度欄へ反映
+  //   /api/geocode は国土地理院(無料)→Googleの順でジオコーディング。
+  const fillCoordsFromAddress = async (s: Suggestion) => {
+    const query = (s.address ?? "").trim() || (s.spot_name ?? "").trim();
+    if (!query) return;
+    setPlacesRegGeoLoading((prev) => ({ ...prev, [s.id]: true }));
     try {
-      const res = await fetch("/api/suggestions/generate-tags", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          spotName: s.spot_name,
-          description: s.description,
-          placeTypes: candidate.types,
-          placeName: candidate.name,
-          secret: ADMIN_PASSWORD,
-        }),
-      });
+      const res = await fetch(`/api/geocode?area=${encodeURIComponent(query)}`);
       const data = await res.json();
-      if (data.ok && data.tags?.length) {
-        setEditableTags((prev) => ({ ...prev, [suggestionId]: data.tags }));
+      if (data.ok && typeof data.lat === "number" && typeof data.lng === "number") {
+        setPlacesRegLat((prev) => ({ ...prev, [s.id]: String(data.lat) }));
+        setPlacesRegLng((prev) => ({ ...prev, [s.id]: String(data.lng) }));
       }
-    } catch {}
-    setTagsLoading(null);
+    } catch { /* 取得失敗時は手入力にフォールバック */ }
+    setPlacesRegGeoLoading((prev) => ({ ...prev, [s.id]: false }));
   };
 
   // タグ追加
@@ -3142,8 +3140,7 @@ export default function AdminPage() {
                           {(selCand || s.google_place_name) && (
                             <div>
                               <div style={{ fontWeight: 800, fontSize: "13px", color: "#4a3034", marginBottom: "8px" }}>
-                                🏷 特徴タグ（AIが自動生成・編集可能）:
-                                {tagsLoading === s.id && <span style={{ fontSize: "11px", color: "#7a8090", marginLeft: "8px" }}>生成中...</span>}
+                                🏷 特徴タグ（手動で追加・編集）:
                               </div>
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
                                 {tags.map((tag, ti) => (
@@ -3208,8 +3205,13 @@ export default function AdminPage() {
                                 setPlacesPanelOpen(prev => ({ ...prev, [s.id]: !isOpen }));
                                 if (!isOpen && !placesRegTags[s.id]) {
                                   setPlacesRegTags(prev => ({ ...prev, [s.id]: editableTags[s.id] ?? s.auto_tags ?? [] }));
-                                  setPlacesRegLat(prev => ({ ...prev, [s.id]: s.lat ? String(s.lat) : "" }));
-                                  setPlacesRegLng(prev => ({ ...prev, [s.id]: s.lng ? String(s.lng) : "" }));
+                                  if (s.lat && s.lng) {
+                                    setPlacesRegLat(prev => ({ ...prev, [s.id]: String(s.lat) }));
+                                    setPlacesRegLng(prev => ({ ...prev, [s.id]: String(s.lng) }));
+                                  } else {
+                                    // 座標が無ければ住所から自動取得して緯度・経度を補完
+                                    fillCoordsFromAddress(s);
+                                  }
                                 }
                               }}
                               style={{ ...btnBase, padding: "8px 16px", background: placesPanelOpen[s.id] ? "#f0dfe3" : "linear-gradient(135deg, #18794e, #10b977)", color: placesPanelOpen[s.id] ? "#4a3034" : "#fff", fontSize: "13px", marginBottom: placesPanelOpen[s.id] ? "12px" : "0" }}
@@ -3320,6 +3322,15 @@ export default function AdminPage() {
                                     />
                                   </div>
                                 </div>
+
+                                {/* 住所から座標を自動取得（パネルを開いた時点で座標が無ければ自動実行済み。再取得用ボタン） */}
+                                <button
+                                  onClick={() => fillCoordsFromAddress(s)}
+                                  disabled={placesRegGeoLoading[s.id]}
+                                  style={{ ...btnBase, padding: "6px 12px", height: "32px", background: "#e8f5e9", color: "#18794e", border: "1px solid #a0d4b8", fontSize: "12px", fontWeight: 700, marginBottom: "12px", cursor: placesRegGeoLoading[s.id] ? "default" : "pointer" }}
+                                >
+                                  {placesRegGeoLoading[s.id] ? "📍 取得中..." : "📍 住所から座標を取得"}
+                                </button>
 
                                 {placesRegError[s.id] && (
                                   <div style={{ marginBottom: "10px", padding: "8px 12px", borderRadius: "10px", background: "#fce4e4", color: "#c0385a", fontSize: "12px", fontWeight: 700 }}>
