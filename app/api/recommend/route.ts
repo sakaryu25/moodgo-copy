@@ -5738,23 +5738,26 @@ function applyLimitedTimeOverride(
   events: Array<{ spot_name?: string; description?: string | null; lat?: number | null; lng?: number | null }>,
 ): void {
   if (!recs?.length || !events?.length) return;
-  const byCoord = new Map<string, { spot_name?: string; description?: string | null }>();
+  type Ev = { spot_name?: string; description?: string | null; lat?: number | null; lng?: number | null };
+  const byCoord = new Map<string, Ev>();
+  const byName = new Map<string, Ev>();
   for (const e of events) {
-    if (typeof e.lat === "number" && typeof e.lng === "number" && e.spot_name) {
-      byCoord.set(`${e.lat.toFixed(4)},${e.lng.toFixed(4)}`, e);
-    }
+    if (!e.spot_name) continue;
+    byName.set(e.spot_name, e);
+    if (typeof e.lat === "number" && typeof e.lng === "number") byCoord.set(`${e.lat.toFixed(4)},${e.lng.toFixed(4)}`, e);
   }
-  if (byCoord.size === 0) return;
-  const used = new Set<string>();
+  if (byCoord.size === 0 && byName.size === 0) return;
+  const usedName = new Set<string>();
   const remove: number[] = [];
   for (let i = 0; i < recs.length; i++) {
     const rec = recs[i];
-    if (typeof rec.lat !== "number" || typeof rec.lng !== "number") continue;
-    const key = `${rec.lat.toFixed(4)},${rec.lng.toFixed(4)}`;
-    const ev = byCoord.get(key);
+    // 同一座標(会場) or 同名(注入されたイベント本体・座標なしの場合も) でイベントを特定
+    let ev: Ev | undefined;
+    if (typeof rec.lat === "number" && typeof rec.lng === "number") ev = byCoord.get(`${rec.lat.toFixed(4)},${rec.lng.toFixed(4)}`);
+    if (!ev && rec.title) ev = byName.get(rec.title);
     if (!ev || !ev.spot_name) continue;
-    if (used.has(key)) { remove.push(i); continue; }            // 同一イベント座標の重複カードは除去
-    used.add(key);
+    if (usedName.has(ev.spot_name)) { remove.push(i); continue; }   // 同一イベントの重複カードは除去
+    usedName.add(ev.spot_name);
     rec.title = ev.spot_name;                                   // 会場名 → イベント名
     if (ev.description) { rec.aiReason = ev.description; rec.reason = ev.description; }
     rec.features = ["#期間限定", ...((rec.features ?? []).filter(f => f !== "#期間限定"))];
