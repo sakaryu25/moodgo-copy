@@ -5584,6 +5584,51 @@ JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
   try { after(async () => { await run(); }); } catch { void run(); }
 }
 
+// ── 全経路共通: 承認済み&再利用OKの利用者投稿写真をカードのメイン画像にする ──────────
+//   place_id(UUID) と place_name の両方で照合（Moodログ投稿で place_id がNULLでも名前で拾う）。
+//   利用者写真が3枚以上なら Google等は一切使わず利用者写真のみ（ユーザー要望）。3枚未満は先頭に+既存で補完。
+//   ⚠ supabaseRecs だけでなく Google/Yahoo 補完で混ざったカードにも効かせるため、最終結果に対して呼ぶ。
+type UserPhotoRec = { title?: string; supabaseId?: string; photoUrls?: string[]; photoUrl?: string; hasUserPhotos?: boolean; userPhotoCount?: number };
+async function applyUserPhotos(recs: UserPhotoRec[]): Promise<void> {
+  if (!supabase || !recs?.length) return;
+  try {
+    const sb = supabase;
+    const ids = [...new Set(recs.map(r => r.supabaseId).filter((x): x is string => !!x))];
+    const names = [...new Set(recs.map(r => r.title).filter((x): x is string => !!x))];
+    const SEL = "place_id, place_name, image_url, is_primary, score, created_at";
+    const rows: Array<Record<string, unknown>> = [];
+    if (ids.length > 0) {
+      const { data } = await sb.from("spot_photos").select(SEL)
+        .eq("moderation_status", "approved").eq("can_use_as_spot_photo", true).in("place_id", ids)
+        .order("is_primary", { ascending: false }).order("score", { ascending: false }).order("created_at", { ascending: false });
+      if (data) rows.push(...(data as Array<Record<string, unknown>>));
+    }
+    if (names.length > 0) {
+      const { data } = await sb.from("spot_photos").select(SEL)
+        .eq("moderation_status", "approved").eq("can_use_as_spot_photo", true).in("place_name", names)
+        .order("is_primary", { ascending: false }).order("score", { ascending: false }).order("created_at", { ascending: false });
+      if (data) rows.push(...(data as Array<Record<string, unknown>>));
+    }
+    if (rows.length === 0) return;
+    const byId = new Map<string, string[]>();
+    const byName = new Map<string, string[]>();
+    const push = (m: Map<string, string[]>, k: string, u: string) => { const a = m.get(k) ?? []; if (!a.includes(u)) a.push(u); m.set(k, a); };
+    for (const row of rows) {
+      const u = String(row.image_url ?? ""); if (!u) continue;
+      if (row.place_id) push(byId, String(row.place_id), u);
+      if (row.place_name) push(byName, String(row.place_name), u);
+    }
+    for (const rec of recs) {
+      const up = (rec.supabaseId ? byId.get(rec.supabaseId) : undefined) ?? (rec.title ? byName.get(rec.title) : undefined) ?? [];
+      if (up.length === 0) continue;
+      rec.photoUrls = up.length >= 3 ? [...up] : [...up, ...(rec.photoUrls ?? []).filter(u => !up.includes(u))];
+      rec.photoUrl = rec.photoUrls[0];
+      rec.hasUserPhotos = true;
+      rec.userPhotoCount = up.length;
+    }
+  } catch { /* spot_photos未作成等は従来表示で安全 */ }
+}
+
 // ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
 // 経路ごとにバラバラだった「フィルタ / ソート / 重複排除 / 15件化」のロジックを
 // 1か所(createFinalizeHelpers)に集約する。挙動は従来(経路2: Supabase-first)と完全同一。
@@ -6153,6 +6198,7 @@ async function handleRecommend(request: Request) {
         const fwPartySize = ((answers.freeWord ?? "").match(/([0-9０-９]{1,2})\s*(?:人|名)/) ?? [])[1];
         const fwMinCount = answers.aiChat ? 1 : (fwPartySize ? 3 : 5);  // 人数指定は構造化が解釈できないためAI結果を優先採用
         if (fwRecs.length >= fwMinCount) {
+          await applyUserPhotos(fwRecs as unknown as UserPhotoRec[]);
           return json({
             recommendations: fwRecs,
             source: answers.aiChat ? "ai_chat" : "ai_freeword",
@@ -7390,6 +7436,7 @@ async function handleRecommend(request: Request) {
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"
           : "";
 
+        await applyUserPhotos(recommendations as unknown as UserPhotoRec[]);
         return json({
           recommendations,
           source: "supabase",
@@ -7702,6 +7749,7 @@ async function handleRecommend(request: Request) {
               source: "google" as const,
             };
           });
+          await applyUserPhotos(hiFinal as unknown as UserPhotoRec[]);
           return json({ recommendations: hiFinal, usedAI: true, warning: "" });
         }
       }
@@ -7996,6 +8044,7 @@ async function handleRecommend(request: Request) {
         };
       });
 
+      await applyUserPhotos(relaxFinalResults as unknown as UserPhotoRec[]);
       return json({
         recommendations: relaxFinalResults,
         usedAI: !!relaxAiResult,
@@ -8921,6 +8970,7 @@ async function handleRecommend(request: Request) {
 
     // ユーザー向けの内部仕様カゲ（OPENAI_API_KEY/天気連動 等）の警告バナーは非表示にする。
     //   （実装上の注意書きはエンドユーザーには不要なため）
+    await applyUserPhotos(finalResults as unknown as UserPhotoRec[]);
     return json({
       recommendations: finalResults,
       usedAI: !!aiPlans,
