@@ -65,9 +65,16 @@ while True:
         print("embed失敗・中断", e, flush=True); break
     ids = [r["id"] for r in rows]
     embs = ["[" + ",".join(f"{x:.6f}" for x in v) + "]" for v in vecs]
-    st2, raw2 = http("POST", "rpc/set_place_embeddings", {"ids": ids, "embs": embs})
-    if st2 not in (200, 204):
-        print("RPC失敗・中断", st2, raw2[:160], flush=True); break
+    # HNSW索引があると per-row UPDATE が重く、大きいバッチは statement timeout(57014)。
+    #   40行ずつ書き込んで各RPCを短時間に収める（索引をdropすれば速いが、無くても確実に完走する）。
+    WRITE = 40
+    failed = False
+    for j in range(0, len(ids), WRITE):
+        st2, raw2 = http("POST", "rpc/set_place_embeddings", {"ids": ids[j:j + WRITE], "embs": embs[j:j + WRITE]})
+        if st2 not in (200, 204):
+            print("RPC失敗・中断", st2, raw2[:160], flush=True); failed = True; break
+        time.sleep(0.1)
+    if failed: break
     total += len(rows)
     if total % 2000 == 0 or len(rows) < BATCH:
         print(f"  embedded {total}", flush=True)
