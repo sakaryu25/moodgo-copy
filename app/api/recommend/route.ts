@@ -5745,14 +5745,21 @@ function applyLimitedTimeOverride(
     }
   }
   if (byCoord.size === 0) return;
-  for (const rec of recs) {
+  const used = new Set<string>();
+  const remove: number[] = [];
+  for (let i = 0; i < recs.length; i++) {
+    const rec = recs[i];
     if (typeof rec.lat !== "number" || typeof rec.lng !== "number") continue;
-    const ev = byCoord.get(`${rec.lat.toFixed(4)},${rec.lng.toFixed(4)}`);
+    const key = `${rec.lat.toFixed(4)},${rec.lng.toFixed(4)}`;
+    const ev = byCoord.get(key);
     if (!ev || !ev.spot_name) continue;
+    if (used.has(key)) { remove.push(i); continue; }            // 同一イベント座標の重複カードは除去
+    used.add(key);
     rec.title = ev.spot_name;                                   // 会場名 → イベント名
     if (ev.description) { rec.aiReason = ev.description; rec.reason = ev.description; }
     rec.features = ["#期間限定", ...((rec.features ?? []).filter(f => f !== "#期間限定"))];
   }
+  for (let j = remove.length - 1; j >= 0; j--) recs.splice(remove[j], 1);  // 後ろから削除
 }
 
 // ─── Step 1: 検索結果 後処理パイプライン（全経路で共通利用するため関数化）──────────
