@@ -2008,6 +2008,22 @@ function allowedBucketsForMood(mood?: string) {
   }
 }
 
+// 自由ワード/絞り込みから Supabaseテキスト検索用のキーワードを粗く抽出する。
+//   助詞・記号で分割→2文字以上の内容語を最大5語（形態素解析は使わずヒューリスティック）。
+//   例「夜景が綺麗な公園」→["夜景","綺麗","公園"]／「静かに作業できるカフェ」→["静か","作業","カフェ"]
+function extractKeywords(text: string): string[] {
+  if (!text) return [];
+  const cleaned = text
+    .replace(/[、。,.!！?？\s（）()「」『』\[\]【】〜~・/：:；;]+/g, " ")
+    .replace(/(したい|できる|な場所|ところ|スポット|気分|系|など)/g, " ");
+  const tokens = cleaned
+    .split(/(?:が|を|に|へ|と|で|や|の|は|も|から|まで|でも|して|った|れる|られる)\s*/)
+    .flatMap(s => s.split(" "))
+    .map(s => s.trim())
+    .filter(s => s.length >= 2 && !/^[0-9０-９]+$/.test(s));
+  return [...new Set(tokens)].slice(0, 5);
+}
+
 function buildSearchPlans(answers: Answers): SearchPlan[] {
   const area = answers.area?.trim() || "現在地周辺";
   const mood = answers.mood?.trim() || "";
@@ -6189,7 +6205,10 @@ async function handleRecommend(request: Request) {
           fwRuleSkipLlm = !!hit.skip_llm;
         }
       }
-      if (answers.freeWord && openai && !fwRuleSkipLlm) {
+      // 通常の自由ワード/絞り込みは Supabase から提案する（下のSB-firstでテキスト一致を合流）。
+      //   OpenAIに架空生成を頼るのは「AI相談」と「人数指定（個室/宴会＝構造化検索が苦手）」のみ。
+      const fwHasParty = /([0-9０-９]{1,2})\s*(?:人|名)/.test(answers.freeWord ?? "");
+      if (answers.freeWord && openai && !fwRuleSkipLlm && (answers.aiChat || fwHasParty)) {
         const fwRecs = await buildFreeWordRecommendations(
           answers, apiKey, openai, seenPlaces, showUnseenOnly, pastFeedback
         );
@@ -6257,7 +6276,7 @@ async function handleRecommend(request: Request) {
       //    その距離以上を優先（遠出したい意図を尊重）。お腹すいた・近距離設定は min0=近い順。
       //   ※ 以前は minRadiusKm:0 をハードコードしていたため、距離設定に関わらず
       //     Supabase結果が常に近場優先になり「距離ロジックが効かない」不具合だった。
-      const sbResults = await spatialSearch({
+      let sbResults = await spatialSearch({
         mustTags: sbMustTags,
         fallbackTags: sbFallbackTags,  // 気分タグにフォールバック（深掘りタグが0件の場合）
         lat: answers.originLat ?? 0,
@@ -6271,6 +6290,29 @@ async function handleRecommend(request: Request) {
         limit: showUnseenOnly ? Math.min(20 + seenPlaces.length, 60) : 20,
         googleApiKey: apiKey,
       });
+
+      // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
+      //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
+      //   後段の OpenAI 並べ替え(sbAiOrder)が「希望」を見て上位化する。OpenAIに架空生成させない。
+      // （心霊などの独自データ専用モードは後段 scoredPool で #タグ一致に絞られるため、ここで混ぜても安全）
+      if ((answers.freeWord || refinementText) && hasLocation) {
+        const kw = extractKeywords([answers.freeWord, refinementText].filter(Boolean).join(" "));
+        if (kw.length > 0) {
+          try {
+            const { searchPlacesByText } = await import("@/lib/spatial-search");
+            const textHits = await searchPlacesByText({
+              keywords: kw, lat: answers.originLat!, lng: answers.originLng!,
+              radiusKm: sbRadiusKm, transport: answers.transport, limit: 30,
+            });
+            const have = new Set(sbResults.map(r => r.name));
+            for (const t of textHits) {
+              if (have.has(t.name)) continue;
+              if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+              sbResults.push(t); have.add(t.name);
+            }
+          } catch { /* テキスト検索失敗は気分タグ候補のみで続行 */ }
+        }
+      }
 
       // Supabase が 0 件でも GPS がある場合は Google 補足で賄う（レガシーフローへの落下を防ぐ）
       if (sbResults.length >= 1 || hasLocation) {
@@ -6529,28 +6571,41 @@ async function handleRecommend(request: Request) {
                 .replace(/[0-9０-９].*$/, "")
                 .slice(0, 20);
               const d = String(r.description ?? "").trim();
-              const realDesc = (d && d !== `${r.name}のスポット情報`) ? d.slice(0, 48) : "";
-              const tg = (r.tags ?? []).filter(t => sbNiceTags.includes(t)).slice(0, 3).join("/");
+              const realDesc = (d && d !== `${r.name}のスポット情報`) ? d.slice(0, 64) : "";
+              // 場所の「種類」が分かるよう自前タグを最大5個（#始まり）渡す＝判別精度の主材料。
+              const tg = (r.tags ?? []).filter(t => typeof t === "string" && t.startsWith("#")).slice(0, 5).join("/");
               const dist = r.distanceInfo ? String(r.distanceInfo) : "";
-              return `${i}: ${r.name ?? ""}｜${addr}｜${dist}｜${realDesc || tg}`;
+              return `${i}: ${r.name ?? ""}｜${addr}｜${dist}${tg ? "｜" + tg : ""}${realDesc ? "｜" + realDesc : ""}`;
             }).join("\n");
+            // ユーザー文脈（気分/深掘りL1+L2/同行者/予算/属性/自由ワード/絞り込み）を最大限渡す。
+            const attr = [answers.age, answers.gender].filter(Boolean).join(" ");
+            const ctxLine = [
+              `気分:${answers.mood ?? ""}`,
+              `深掘り:${effectiveDeepDive || "なし"}${deepDiveL2 ? "・" + deepDiveL2 : ""}`,
+              `同行:${answers.companion ?? "指定なし"}`,
+              `予算:${answers.budget ? "〜¥" + answers.budget.toLocaleString() : "指定なし"}`,
+              attr ? `属性:${attr}` : "",
+              `希望:${answers.freeWord || refinementText || "なし"}`,
+            ].filter(Boolean).join("／");
             return openai.chat.completions.create({
-              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 240,
+              // 精度重視: 並べ替えは推薦体験の核なので gpt-4o（候補は短文・出力は番号列のみで低コスト）。
+              model: "gpt-4o", temperature: 0.2, max_tokens: 400,
               response_format: { type: "json_object" },
               messages: [
-                { role: "system", content: `あなたは観光・お出かけ先のキュレーターです。ユーザーの「気分・深掘りテーマ・同行者」に対し、各候補が"その体験"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
+                { role: "system", content: `あなたは日本中のお出かけ先に精通したプロのキュレーターです。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」を深く読み取り、各候補が"その体験・要望"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
 
-重視する順:
-1. 深掘りテーマへの本質的な合致を最優先。例「圧倒的な絶景」なら、名前・住所・説明から実際に雄大な自然景観や眺望が広がる場所を上位へ。市役所・オフィスビル・商業施設の最上階など、タグが一致していてもテーマと噛み合わない場所は下位へ。
-2. 説明文がある候補は、その内容（景観・雰囲気・名物）を根拠に具体的に判断する。
-3. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然向き、繁華街・ビル街＝都会的 等）。
-4. 同行者に合うか（友達＝映え・盛り上がる、恋人＝雰囲気、一人＝静けさ・落ち着き）。
-5. 上位が似た場所ばかりに偏らないよう、適度な多様性も保つ。
+判断のしかた（重要）:
+1. 自由記述の希望/絞り込みがあれば最優先で汲み取る。表面的な単語一致でなく意図（例「静かに過ごしたい」=落ち着いた静かな場所、「映える」=写真映え）で評価する。
+2. 深掘りテーマへの本質的合致。例「圧倒的な絶景」なら名前・タグ・住所・説明から実際に雄大な景観・眺望がある場所を上位へ。市役所/オフィスビル/商業施設最上階などタグが一致してもテーマと噛み合わない場所は下位へ。
+3. タグ（#始まり）は場所の種類を表す主材料。説明文があればその内容（景観・雰囲気・名物）も根拠にする。
+4. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然、繁華街・ビル街＝都会的、住宅街＝静か 等）。
+5. 同行者・属性・予算に合うか（友達＝映え/盛り上がる、恋人＝雰囲気、一人＝静けさ、家族＝安心）。
+6. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし1〜2の合致が低い場所を多様性のために上げない。
 
 出力は {"order":[数値,...]} のみをJSONで。全番号を必ず1回ずつ含めること。` },
-                { role: "user", content: `気分:${answers.mood ?? ""}／深掘りテーマ:${effectiveDeepDive || "なし"}／同行:${answers.companion ?? ""}／希望:${answers.freeWord || refinementText || "なし"}\n各候補【番号: 名前｜住所｜距離｜説明orタグ】:\n${cand}` },
+                { role: "user", content: `${ctxLine}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明】:\n${cand}` },
               ],
-            }, { signal: AbortSignal.timeout(7000) })
+            }, { signal: AbortSignal.timeout(12000) })
               .then(rr => {
                 const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
                 return Array.isArray(parsed.order) ? parsed.order.map(Number).filter((n: number) => Number.isInteger(n)) : [];

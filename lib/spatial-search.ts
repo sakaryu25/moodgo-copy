@@ -7,7 +7,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { calcRadiusKm } from "@/lib/calc-radius";
-import { formatDistText } from "@/lib/distance";
+import { formatDistText, haversineMeters } from "@/lib/distance";
 import type { PlaceResponse } from "@/types/onsen";
 import { searchPlacesByTags } from "@/lib/supabase-places";
 import { scheduleBackgroundVitalityCheck } from "@/lib/place-vitality-check";
@@ -131,6 +131,82 @@ export function nearbyRowToPlaceResponse(
     source:       (row.source_type as "hotpepper" | "google" | "admin" | "user" | "manual") ?? "admin",
     hotpepperUrl: row.hotpepper_url ?? undefined,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 自由ワード/絞り込み用: places を「名前・説明のテキスト一致」で近傍検索する。
+//   気分タグ検索(find_nearby_places)と別軸で、freeWord/refinement の語に合う実在スポットを
+//   Supabaseから拾う（OpenAIに架空生成させず、DBから提案するため）。返却は spatialSearch と同型。
+//   bounding-box で粗く絞り→haversineで半径内＆近い順。distance_m はこちらで算出。
+// ─────────────────────────────────────────────────────────────────────────────
+export async function searchPlacesByText(opts: {
+  keywords: string[];
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  transport?: string | string[];
+  limit?: number;
+}): Promise<PlaceResponse[]> {
+  if (!supabase) return [];
+  const { lat, lng, radiusKm, transport = "車", limit = 30 } = opts;
+  const kws = [...new Set((opts.keywords ?? []).filter(k => typeof k === "string" && k.trim().length >= 2))].slice(0, 4);
+  if (kws.length === 0) return [];
+
+  const dLat = radiusKm / 111;
+  const dLng = radiusKm / (111 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+  // PostgREST or 句: name/description どちらかに含む（ILIKE）。記号はサニタイズ。
+  const esc = (s: string) => s.replace(/[%,()*]/g, " ").trim();
+  const orClause = kws.flatMap(k => [`name.ilike.*${esc(k)}*`, `description.ilike.*${esc(k)}*`]).join(",");
+
+  try {
+    const { data, error } = await supabase
+      .from("places")
+      .select("id,name,address,nearest_station,lat,lng,google_place_id,tags,area,description,photo_url,image_urls,open_hours,close_day,budget,hotpepper_url,source_type,report_count,last_checked_at,rating,rating_count")
+      .eq("is_active", true)
+      .gte("lat", lat - dLat).lte("lat", lat + dLat)
+      .gte("lng", lng - dLng).lte("lng", lng + dLng)
+      .or(orClause)
+      .limit(200);
+    if (error || !data) return [];
+
+    const withDist = (data as Array<Record<string, unknown>>)
+      .map(r => {
+        const rlat = r.lat as number | null, rlng = r.lng as number | null;
+        const dm = (typeof rlat === "number" && typeof rlng === "number")
+          ? haversineMeters(lat, lng, rlat, rlng) : Number.MAX_SAFE_INTEGER;
+        return { r, dm };
+      })
+      .filter(x => x.dm <= radiusKm * 1000)
+      .sort((a, b) => a.dm - b.dm)
+      .slice(0, limit);
+
+    return withDist.map(({ r, dm }) => nearbyRowToPlaceResponse({
+      id: String(r.id),
+      name: String(r.name ?? ""),
+      address: String(r.address ?? ""),
+      nearest_station: (r.nearest_station as string) ?? null,
+      lat: (r.lat as number) ?? null,
+      lng: (r.lng as number) ?? null,
+      google_place_id: (r.google_place_id as string) ?? null,
+      tags: (r.tags as string[]) ?? [],
+      area: (r.area as string) ?? null,
+      description: (r.description as string) ?? null,
+      photo_url: (r.photo_url as string) ?? null,
+      image_urls: (r.image_urls as string[]) ?? null,
+      open_hours: (r.open_hours as string) ?? null,
+      close_day: (r.close_day as string) ?? null,
+      budget: (r.budget as string) ?? null,
+      hotpepper_url: (r.hotpepper_url as string) ?? null,
+      source_type: (r.source_type as string) ?? null,
+      report_count: (r.report_count as number) ?? 0,
+      last_checked_at: (r.last_checked_at as string) ?? null,
+      rating: (r.rating as number) ?? null,
+      rating_count: (r.rating_count as number) ?? null,
+      distance_m: dm,
+    }, transport));
+  } catch {
+    return [];
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
