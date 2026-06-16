@@ -358,20 +358,30 @@ export default function PlaceDetailPage() {
   const basePhotos = (rec && !isSpooky)
     ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
     : [];
-  const photos = [...new Set([...storePhotos, ...fetchedPhotos, ...basePhotos])];
+  // 利用者投稿写真（このセッションの投稿＋取得済みの承認・再利用OK写真）
+  const userPhotos = [...new Set([...storePhotos, ...fetchedPhotos])];
+  // 利用者写真が3枚以上集まったら Google等(basePhotos)は使わず利用者写真のみ（ユーザー要望）。
+  //   3枚未満は 利用者写真を先頭に＋既存(Google)で補完。
+  const photos = userPhotos.length >= 3
+    ? userPhotos
+    : [...new Set([...userPhotos, ...basePhotos])];
   // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
   const showContribute = isSpooky && photos.length > 0;
   const heroPageCount = photos.length + (showContribute ? 1 : 0);
 
-  // 投稿写真の取得＋心霊判定。tag既知の心霊、またはGoogle placeIdが無い独自スポット
-  // （古いお気に入りで tag 未保存でも判定できる）の時に問い合わせる。
+  // 投稿写真の取得＋心霊判定。
+  //   ・心霊/独自スポット(placeIdなし): 全投稿写真を取得（従来どおり・isShinrei判定も兼ねる）。
+  //   ・通常のGoogleスポット: 承認済み&再利用OK(reusable=1)の利用者投稿写真だけをヒーロー候補に取得。
+  //     → 利用者投稿があればカード同様に詳細のメイン画像も利用者写真になる（3枚以上ならGoogleを使わない）。
   useEffect(() => {
     if (!rec) return;
-    if (!tagShinrei && rec.placeId) return;  // 明らかなGoogleスポットは問い合わせ不要
     let active = true;
     const params = new URLSearchParams();
     if (rec.supabaseId) params.set('placeId', rec.supabaseId);
     else if (rec.title) params.set('placeName', rec.title);
+    if (![...params.keys()].length) return;
+    // placeIdあり=通常Googleスポット → 承認済み&再利用OKのみ（pending/private/非再利用を出さない）
+    if (!tagShinrei && rec.placeId) params.set('reusable', '1');
     apiFetch(`/api/spot-photo?${params.toString()}`)
       .then(r => r.json())
       .then(d => {

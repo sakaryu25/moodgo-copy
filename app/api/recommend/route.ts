@@ -6675,7 +6675,9 @@ async function handleRecommend(request: Request) {
               for (const rec of supabaseRecs) {
                 const up = (rec.supabaseId ? byId.get(rec.supabaseId) : undefined) ?? byName.get(rec.title) ?? [];
                 if (up.length === 0) continue;
-                const merged = [...up, ...(rec.photoUrls ?? []).filter(u => !up.includes(u))];
+                // 利用者投稿が3枚以上集まったら Google等は一切使わず利用者写真のみ（ユーザー要望）。
+                //   3枚未満は 利用者写真を先頭に＋既存(Google/SB)で補完。
+                const merged = up.length >= 3 ? [...up] : [...up, ...(rec.photoUrls ?? []).filter(u => !up.includes(u))];
                 rec.photoUrls = merged;
                 rec.photoUrl = merged[0];
                 rec.hasUserPhotos = true;
