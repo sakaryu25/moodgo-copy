@@ -6638,6 +6638,9 @@ async function handleRecommend(request: Request) {
           .map(r => r.name);
         // 書き戻し先を一意キーで絞るための name→行 ルックアップ（同名チェーン混線防止）
         const sbRowByName = new Map(scored.map(r => [r.name, r]));
+        // 写真補完と同じGoogle searchText呼び出しで取得する評価(★)。Supabase(osm等)は rating=null が
+        //   多くGoogle対比で★が出ず見劣りするため、ここで拾って rec＋DB(writeback)に反映（追加課金ゼロ）。
+        const sbRatingMap = new Map<string, { rating: number; count: number | null }>();
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiOrder] = await Promise.all([
@@ -6686,7 +6689,7 @@ async function handleRecommend(request: Request) {
                   headers: {
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": apiKey,
-                    "X-Goog-FieldMask": "places.photos",
+                    "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount",
                   },
                   body: JSON.stringify({
                     textQuery: name,
@@ -6703,15 +6706,27 @@ async function handleRecommend(request: Request) {
                 });
                 if (!res.ok) return;
                 const data = await res.json().catch(() => null);
-                const photoObjs = (data?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+                const gp = data?.places?.[0];
+                // 評価(★)も同時取得（同一呼び出し＝追加課金ゼロ）。recへ即時反映＋DBへ恒久保存。
+                const gRating = typeof gp?.rating === "number" ? gp.rating : null;
+                const gCount  = typeof gp?.userRatingCount === "number" ? gp.userRatingCount : null;
+                if (gRating != null) sbRatingMap.set(name, { rating: gRating, count: gCount });
+                const photoObjs = (gp?.photos ?? []) as Array<{ name: string }>;
                 const photoNamesArr = photoObjs.slice(0, 10).map(ph => ph.name).filter(Boolean);
-                if (photoNamesArr.length === 0) return;
+                if (photoNamesArr.length === 0) {
+                  // 写真は無くても評価だけ取れたら恒久保存（次回以降 r.rating で★表示）
+                  if (gRating != null) {
+                    const row0 = sbRowByName.get(name);
+                    schedulePlaceWriteBack(toPlaceMatch(name, row0?.id, row0?.address), { rating: gRating, ratingCount: gCount });
+                  }
+                  return;
+                }
                 // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
                   photoMap.set(name, urls);
                   const row = sbRowByName.get(name);
-                  schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
+                  schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { photoUrl: urls[0], imageUrls: urls, rating: gRating, ratingCount: gCount });  // 写真＋評価を恒久保存
                   await ltCachePut(`enr:${name.slice(0, 80)}`, { photoUrls: urls });  // 長期キャッシュ
                 }
               } catch { /* 写真取得失敗は無視 */ }
@@ -6852,8 +6867,8 @@ async function handleRecommend(request: Request) {
                   ? (r.photoUrls ?? [])
                   : []
                 ).map(wrapWithPhotoProxy)),
-            rating: r.rating,
-            userRatingCount: r.reviewCount,
+            rating: r.rating ?? sbRatingMap.get(r.name)?.rating ?? null,             // SB行がnull(osm等)なら写真補完で取れたGoogle評価で補完
+            userRatingCount: r.reviewCount ?? sbRatingMap.get(r.name)?.count ?? null,
             openNow: r.openNow ?? undefined,
             // #7: Supabaseスポットは periods が無いため openNow から簡易バッジを付与
             openStatusBadge: r.openNow === true ? "営業中" : (r.openNow === false ? "営業時間外" : undefined),
