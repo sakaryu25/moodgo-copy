@@ -14,13 +14,6 @@
       "runtimeArgs": ["-c", "cd /Users/sakaken/fit-collection && CI=1 npx expo start --web --clear --port ${PORT:-8090}"],
       "port": 8090,
       "autoPort": true
-    },
-    {
-      "name": "yoru-web",
-      "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "cd /Users/ryuki/Downloads/yoru && CI=1 npx expo start --web --port ${PORT:-8091}"],
-      "port": 8091,
-      "autoPort": true
     }
   ]
 }

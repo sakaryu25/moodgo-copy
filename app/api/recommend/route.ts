@@ -6472,7 +6472,9 @@ async function handleRecommend(request: Request) {
             const have = new Set(sbResults.map(r => r.name));
             for (const t of nameHits) {
               if (have.has(t.name)) continue;
-              if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+              // 距離は後段の sbDistCapKm(上限) と sortOrShuffle(近/遠の好み) が扱う。
+              //   ここで遠出バイアスのハード除外をすると、観て楽しむ/つくる体験などジャンル系で
+              //   近くの博物館・陶芸を全部落としてしまう（searchPlacesByText は既に半径内に限定済み）。
               sbResults.push(t); have.add(t.name); _added++;
             }
             _cDbg = { ...(_cDbg as object), hits: nameHits.length, added: _added, sbLen: sbResults.length };  // TEMP debug
