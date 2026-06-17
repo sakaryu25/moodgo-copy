@@ -559,7 +559,7 @@ function brandOf(name: string): string {
 // 名前ベースで防ぐ。全ソース(Supabase/Google/Yahoo/backfill/widen)の最終マージで適用する。
 import {
   GENRE_POSITIVE_RE, GENRE_NEGATIVE_RE, GENRE_POSITIVE_REQUIRED,
-  canonDeepDive, nameMatchesGenre,
+  canonDeepDive, nameMatchesGenre, DEEPDIVE_SEARCH_KEYWORDS,
   SPECIFIC_FOOD_PRIMARY_TYPES, ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE,
   AMUSEMENT_NO_FOOD_DEEPDIVES, FOOD_FAMILY_PRIMARY_TYPES, primaryTypeAllowedForGenre,
   moodGroup, isFoodAllowedContext, isRestaurantName, tagsAreFood,
@@ -6443,6 +6443,37 @@ async function handleRecommend(request: Request) {
             sbResults.push(t); have.add(t.name);
           }
         } catch { /* 解釈/テキスト検索失敗は気分タグ候補のみで続行 */ }
+      }
+
+      // ── C: 名前ベース取得でタグ語彙ミスマッチを救済 ─────────────────────────────
+      //   深掘りに名前定義(DEEPDIVE_SEARCH_KEYWORDS)がある場合、タグに依存せず
+      //   name/description 一致で実在SBスポットを拾い候補へ合流（重複排除）。
+      //   例: 観て楽しむ→#鑑賞タグが薄くても「○○博物館/美術館/水族館/動物園」を名前で拾う。
+      //   最終純度は後段の nameMatchesGenre(sbQualified/scoredPool) が担保＝異ジャンルは混入しない。
+      //   AIに渡す候補数は後段で正規化されるためトークン増はほぼ無し（追加はDB照会1回）。
+      if (hasLocation) {
+        const ddL1n = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
+        const ddL2n = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+        const ddKeyN = (ddL2n && ddL2n !== "こだわらない") ? ddL2n : (ddL1n !== "こだわらない" ? ddL1n : "");
+        const nameKws = ddKeyN
+          ? (DEEPDIVE_SEARCH_KEYWORDS[ddKeyN] ?? DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(ddKeyN)] ?? [])
+          : [];
+        if (nameKws.length > 0) {
+          try {
+            const { searchPlacesByText } = await import("@/lib/spatial-search");
+            const nameHits = await searchPlacesByText({
+              keywords: nameKws,
+              lat: answers.originLat!, lng: answers.originLng!,
+              radiusKm: sbRadiusKm, transport: answers.transport, limit: 30,
+            });
+            const have = new Set(sbResults.map(r => r.name));
+            for (const t of nameHits) {
+              if (have.has(t.name)) continue;
+              if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+              sbResults.push(t); have.add(t.name);
+            }
+          } catch { /* 名前検索失敗はタグ候補のみで続行 */ }
+        }
       }
 
       // Supabase が 0 件でも GPS がある場合は Google 補足で賄う（レガシーフローへの落下を防ぐ）
