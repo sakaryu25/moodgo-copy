@@ -7,7 +7,7 @@ import { NextResponse, after } from "next/server";
 import { AsyncLocalStorage } from "async_hooks";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
-import { MOOD_TAG_MAP } from "@/lib/predefined-tags";
+import { MOOD_TAG_MAP, MOOD_SHORT_KEY_TO_TAG } from "@/lib/predefined-tags";
 import { distanceKmFor, formatDistText } from "@/lib/distance";
 import { logServerError, scheduleServerError } from "@/lib/server-log";
 
@@ -6367,10 +6367,24 @@ async function handleRecommend(request: Request) {
       const sbMustTags   = deepDiveTags.length > 0
         ? deepDiveTags                                          // 深掘りタグのみで絞り込み
         : allMustTags;                                          // 気分タグのみ（深掘りなし）
-      // 深掘り指定時は気分タグへのフォールバックを行わない。
-      //   （例:「波の音と海風」で#海辺の在庫が薄いと#自然感じたいの一般公園・神社が
-      //    混入していた。不足分は同ジャンルのGoogle/Yahoo補填で埋める＝ジャンル純度優先）
-      const sbFallbackTags: string[] = [];
+      // 【修正・監査2026-06-17】API-only判定用の「真の深掘りタグ集合」。
+      //   extractUserTagsFromAnswers は単一深掘り時に気分タグを niceToHave へ降格するため
+      //   mustTags=[深掘りタグ1個] になり、上の slice(1)（先頭=気分タグ前提）が唯一の深掘りタグを
+      //   捨てて deepDiveTags=[] にしてしまう → isApiOnlyDeepDive 誤判定で温泉/海辺/テーマパーク/
+      //   動物カフェ等のSB在庫(3485/1632/900/2702件)が skip で全破棄されていた。
+      //   そこで「気分タグを明示的に除いた残り」を別途求め、API-only判定にはこちらを使う。
+      //   ※ sbMustTags(実SBクエリ)は不変＝8-2-5配分・距離キャップ・純度フィルタは無改変。
+      const realMoodTag = MOOD_SHORT_KEY_TO_TAG[answers.mood ?? ""]
+        ?? Object.entries(MOOD_TAG_MAP).find(([, v]) => v === answers.mood)?.[0];
+      const realDrillTags = realMoodTag ? allMustTags.filter(t => t !== realMoodTag) : allMustTags;
+      // 在庫の薄いL2/L1タグ(#book場=23 / #コスメ美容=39 等)で枯れた時だけ、同ジャンルの広在庫タグで補う。
+      //   spatialSearch は mustTags が limit 未満のときのみ fallback を使う＝既存動作を壊さない。純度は後段 nameMatchesGenre が担保。
+      const ddForFb = ((answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer
+        || (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer || "");
+      const sbFallbackTags: string[] =
+        ddForFb === "静かな専用スペースで集中したい" ? ["#図書館", "#勉強場", "#集中したい"]
+        : ddForFb === "コスメ・美容"                 ? ["#ショッピング"]
+        : [];
       void moodBaseTag;
 
       const hasLocation = !!(answers.originLat && answers.originLng);
@@ -6519,7 +6533,9 @@ async function handleRecommend(request: Request) {
         //   ジャンル適合の在庫を持つため API専用扱いにしない（SBもG/Yと対等に競わせる）。
         const hasNameKw = !!(effectiveDeepDive &&
           (DEEPDIVE_SEARCH_KEYWORDS[effectiveDeepDive] || DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(effectiveDeepDive)]));
-        const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0 && !hasNameKw);
+        // realDrillTags（気分タグを除いた真の深掘りタグ）で判定。deepDiveTags(slice1)だと単一深掘りで
+        //   誤って空になりSB在庫を捨てていた。気分タグだけ(カフェ等=意図的API-only)は realDrillTags=[] を維持。
+        const isApiOnlyDeepDive = !!(effectiveDeepDive && realDrillTags.length === 0 && !hasNameKw);
 
         // 距離キャップ厳守（修正2）: spatialSearch の 1.5倍backfill 等で選択半径を超えた
         // 遠方の places スポット（source="admin"ラベルを含む）を除外する。
