@@ -6451,7 +6451,6 @@ async function handleRecommend(request: Request) {
       //   例: 観て楽しむ→#鑑賞タグが薄くても「○○博物館/美術館/水族館/動物園」を名前で拾う。
       //   最終純度は後段の nameMatchesGenre(sbQualified/scoredPool) が担保＝異ジャンルは混入しない。
       //   AIに渡す候補数は後段で正規化されるためトークン増はほぼ無し（追加はDB照会1回）。
-      let _cDbg: Record<string, unknown> = { ran: false };  // TEMP debug
       if (hasLocation) {
         const ddL1n = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
         const ddL2n = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
@@ -6459,7 +6458,6 @@ async function handleRecommend(request: Request) {
         const nameKws = ddKeyN
           ? (DEEPDIVE_SEARCH_KEYWORDS[ddKeyN] ?? DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(ddKeyN)] ?? [])
           : [];
-        _cDbg = { ran: true, ddKeyN, kws: nameKws.length };  // TEMP debug
         if (nameKws.length > 0) {
           try {
             const { searchPlacesByText } = await import("@/lib/spatial-search");
@@ -6468,17 +6466,15 @@ async function handleRecommend(request: Request) {
               lat: answers.originLat!, lng: answers.originLng!,
               radiusKm: sbRadiusKm, transport: answers.transport, limit: 30,
             });
-            let _added = 0;  // TEMP debug
             const have = new Set(sbResults.map(r => r.name));
             for (const t of nameHits) {
               if (have.has(t.name)) continue;
-              // 距離は後段の sbDistCapKm(上限) と sortOrShuffle(近/遠の好み) が扱う。
-              //   ここで遠出バイアスのハード除外をすると、観て楽しむ/つくる体験などジャンル系で
-              //   近くの博物館・陶芸を全部落としてしまう（searchPlacesByText は既に半径内に限定済み）。
-              sbResults.push(t); have.add(t.name); _added++;
+              // 距離は後段の sbDistCapKm(上限) と sortOrShuffle(近/遠の好み) が扱う
+              //   （searchPlacesByText は既に半径内に限定済み。ここで遠出バイアスの
+              //    ハード除外をすると近くの博物館/陶芸等を全部落としてしまうため行わない）。
+              sbResults.push(t); have.add(t.name);
             }
-            _cDbg = { ...(_cDbg as object), hits: nameHits.length, added: _added, sbLen: sbResults.length };  // TEMP debug
-          } catch (e) { _cDbg = { ...(_cDbg as object), err: String(e) }; }  // TEMP debug
+          } catch { /* 名前検索失敗はタグ候補のみで続行 */ }
         }
       }
 
@@ -7669,7 +7665,6 @@ async function handleRecommend(request: Request) {
           recommendations,
           source: "supabase",
           searchId,
-          _cdebug: _cDbg,  // TEMP debug（確認後に除去）
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
           warning: hasLocation
