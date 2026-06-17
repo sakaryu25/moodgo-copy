@@ -811,8 +811,8 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
-          {/* MoodGo独自の星評価セレクタ（全スポット・総合星の下にちょこんと） */}
-          {!isSpooky && <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />}
+          {/* MoodGo独自の星評価セレクタ（心霊含む全スポット。心霊もユーザーは★評価できる） */}
+          <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (
@@ -944,10 +944,8 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊以外）─── */}
-          {!isSpooky && (
-            <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
-          )}
+          {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊含む全スポット）─── */}
+          <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
 
           {/* Google口コミ欄は廃止。MoodGo独自の「みんなのMoodログ」(上)に一本化。 */}
 
