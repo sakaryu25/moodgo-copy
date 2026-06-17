@@ -6514,7 +6514,12 @@ async function handleRecommend(request: Request) {
         // deepDiveTags が空 かつ deepDive が指定されている場合、Supabase は気分タグで
         // カテゴリ無関係なスポットを返してしまう。Google/Yahoo 専用検索に委ねるため
         // Supabase 結果は最終マージでフォールバック扱いにする。
-        const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0);
+        //   ただし DEEPDIVE_SEARCH_KEYWORDS で名前ベース取得できる深掘り（高所/絶叫/体験型 等＝
+        //   DRILLタグは無いが「展望台/遊園地/VR」等の名前定義がある）は、名前合流でSBが
+        //   ジャンル適合の在庫を持つため API専用扱いにしない（SBもG/Yと対等に競わせる）。
+        const hasNameKw = !!(effectiveDeepDive &&
+          (DEEPDIVE_SEARCH_KEYWORDS[effectiveDeepDive] || DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(effectiveDeepDive)]));
+        const isApiOnlyDeepDive = !!(effectiveDeepDive && deepDiveTags.length === 0 && !hasNameKw);
 
         // 距離キャップ厳守（修正2）: spatialSearch の 1.5倍backfill 等で選択半径を超えた
         // 遠方の places スポット（source="admin"ラベルを含む）を除外する。
