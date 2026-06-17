@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "moodgo-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/ryuki/Downloads/moodgo-main/moodgo && CI=1 npx expo start --web --port 8081"],
+      "port": 8081
+    },
+    {
       "name": "MoodGo Dev Server",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],

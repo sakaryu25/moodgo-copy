@@ -10,6 +10,7 @@
 // 全スポット対応（飲食店・温泉・テーマパーク・お出かけスポットすべて）
 
 import { supabase } from "@/lib/supabase";
+import { after } from "next/server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 設定
@@ -237,6 +238,11 @@ export async function fetchVitalityTargets(
     .from("places")
     .select("id, name, google_place_id, hotpepper_id, address, source_type, last_checked_at")
     .eq("is_active", true)
+    // google_place_id が無い行(osm-foodshop 約14万件)は除外。ID無しは checkSinglePlace が
+    //   名前+住所で searchText 解決(1件=2 API call・別店舗を拾うと誤BAN)するためコスト/精度が悪く、
+    //   nullsFirst で永久にキューを占有し IDあり(=1 callで確実)のチェックを後回しにしていた。
+    //   ID無し(主にOSM飲食)の閉店検知は report-closed とMoodログに委譲する。
+    .not("google_place_id", "is", null)
     .or(`last_checked_at.is.null,last_checked_at.lt.${cutoff}`)
     .or(`source_type.is.null,source_type.not.in.(${NON_CLOSEABLE_SOURCES.join(",")})`)
     .order("last_checked_at", { ascending: true, nullsFirst: true })
@@ -256,13 +262,15 @@ export function scheduleBackgroundVitalityCheck(
   checkIntervalMs: number = 0
 ): void {
   if (!apiKey || placeIds.length === 0) return;
+  void checkIntervalMs;  // 旧setTimeout遅延は after() 化に伴い不要
 
-  // Next.js の waitUntil がない環境でも動作する setTimeout 方式
-  setTimeout(async () => {
+  // ⚠ 旧 setTimeout 方式は Vercel(サーバーレス)が応答後に凍結して実行しないため、
+  //   検索結果の生存確認が一切走っていなかった（last_checked_at が大半NULLのまま）。
+  //   → after() で「レスポンス送出後・同インスタンス内」に確実に実行する。
+  //   after() はリクエスト文脈内でのみ有効なので、文脈外(cron/テスト)は即時実行にフォールバック。
+  const run = async () => {
     if (!supabase) return;
-
     const cutoff = new Date(Date.now() - CHECK_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
     // 対象を絞る（last_checked_at が古いもの or null のみ）
     const { data: targets } = await supabase
       .from("places")
@@ -270,9 +278,8 @@ export function scheduleBackgroundVitalityCheck(
       .in("id", placeIds)
       .eq("is_active", true)
       .or(`last_checked_at.is.null,last_checked_at.lt.${cutoff}`);
-
     if (!targets || targets.length === 0) return;
-
     await batchVitalityCheck(targets as VitalityTarget[], apiKey);
-  }, checkIntervalMs);
+  };
+  try { after(run); } catch { void run(); }
 }

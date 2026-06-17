@@ -16,6 +16,7 @@ export interface PlaceResponse {
   address: string;
   distanceInfo: string; // 現在地からの距離・所要時間（例: "車で約15分 / 12.3km"）
   distanceM?: number | null; // 現在地からの精密距離[m]（PostGIS distance_m。距離の単一ソース）
+  semanticSim?: number | null; // セマンティック検索の類似度(0-1・1-cosine距離)。意味検索由来の候補のみ付与
   // ── UIリッチ表示用の拡張フィールド ──────────────────────────────────────
   photoUrls: string[];           // 写真URL一覧（最大5枚、カルーセル用）
   openNow: boolean | null;       // 現在営業中かどうか

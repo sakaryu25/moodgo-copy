@@ -2071,12 +2071,14 @@ async function semanticSearchPlaces(
     });
     if (error || !Array.isArray(data)) return [];
     const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
-    return (data as Array<{ place: Record<string, unknown>; distance_m: number }>).map(row =>
-      nearbyRowToPlaceResponse(
+    return (data as Array<{ place: Record<string, unknown>; distance_m: number; similarity?: number }>).map(row => {
+      const pr = nearbyRowToPlaceResponse(
         { ...(row.place as object), distance_m: row.distance_m } as unknown as import("@/lib/spatial-search").NearbyPlaceRow,
         transport,
-      ),
-    );
+      );
+      pr.semanticSim = typeof row.similarity === "number" ? row.similarity : null;  // ③ 類似度を保持→ゲート/ランキングに使う
+      return pr;
+    });
   } catch { return []; }
 }
 
@@ -4651,6 +4653,15 @@ async function fetchYahooSupplement(
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
 
+  // ── キャッシュ（Google補足 fetchGooglePlacesSupplement と同型・インメモリ5分→Supabase永続60分）──
+  //   existingNames(seen)はキーに含めない＝シャッフル/近接再検索も同一ヒット。
+  //   Yahoo API呼び出し＋Yahoo結果のGoogle写真補完(1件=1 searchText・最大10)の再課金を防ぐ。
+  const yCacheKey = `y:${(lat * 100 | 0) / 100},${(lng * 100 | 0) / 100}:r${Math.round(radiusKm)}:${mood}:${deepDiveL1}`;
+  const yCached = getSupplementCache(yCacheKey);
+  if (yCached) return yCached;
+  const yDbCached = await getSupplementDbCache(yCacheKey);
+  if (yDbCached) { setSupplementCache(yCacheKey, yDbCached); return yDbCached; }
+
   // 気分ごとの基本キーワード
   const MOOD_KW: Record<string, string> = {
     "お腹すいた":         "レストラン グルメ",
@@ -5175,6 +5186,8 @@ async function fetchYahooSupplement(
     }
 
     console.log(`[recommend] Yahoo supplement "${keywordList.join("/")}" → ${results.length}件 (farBias=${wantFarBias}, minR=${minRadiusKm}km, centers=${centers.length}, pool=${features.length})`);
+    setSupplementCache(yCacheKey, results);
+    setSupplementDbCache(yCacheKey, results);  // after()で応答後に確実に保存（次回はYahoo/Google写真補完ともに0回）
     return results;
   } catch (e) {
     console.warn("[recommend] Yahoo supplement search failed:", e);
@@ -6453,10 +6466,32 @@ async function handleRecommend(request: Request) {
           const have = new Set(sbResults.map(r => r.name));
           for (const t of [...semHits, ...textHits, ...tagHits]) {
             if (have.has(t.name)) continue;
+            if ((t.semanticSim ?? 1) < 0.25) continue;                  // ③ 意味検索由来の弱マッチは除外(text/tag由来はsim無し=1で通過)
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
           }
         } catch { /* 解釈/テキスト検索失敗は気分タグ候補のみで続行 */ }
+      }
+
+      // ── ③ セマンティック検索を「気分のみ検索」でも併走（看板機能を最頻ケースで発火）──
+      //   自由文がある時は上の②ブロックで意味検索済み→ここは自由文なしの時だけ実行(二重embed回避)。
+      //   気分・深掘り・同行者・niceタグの自然文をembed→match_places_semanticで半径内の意味的近傍を取得し、
+      //   similarity>=0.25 のみ合流（弱マッチのノイズとAI判別/理由コストを抑制）。純度は後段 nameMatchesGenre が担保。
+      if (!answers.freeWord && !refinementText && hasLocation && openai) {
+        try {
+          const _ddL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+          const _ddL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
+          const _dd = (_ddL2 && _ddL2 !== "こだわらない") ? _ddL2 : (_ddL1 !== "こだわらない" ? _ddL1 : "");
+          const semQuery = [answers.mood, _dd, answers.companion, ...sbNiceTags.map(t => t.replace(/^#/, ""))].filter(Boolean).join(" ");
+          const semHits = await semanticSearchPlaces(semQuery, answers.originLat!, answers.originLng!, sbRadiusKm, answers.transport, 30);
+          const have = new Set(sbResults.map(r => r.name));
+          for (const t of semHits) {
+            if (have.has(t.name)) continue;
+            if ((t.semanticSim ?? 0) < 0.25) continue;                  // 弱い意味マッチは除外
+            if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+            sbResults.push(t); have.add(t.name);
+          }
+        } catch { /* 意味検索失敗はタグ/名前候補のみで続行 */ }
       }
 
       // ── C: 名前ベース取得でタグ語彙ミスマッチを救済 ─────────────────────────────
@@ -6619,6 +6654,7 @@ async function handleRecommend(request: Request) {
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
               + wilsonLower(r.rating, r.reviewCount) * 2  // Wilson: 最大約2点加算
               + (isCuratedSource(r.source) ? 5 : 0)        // 手動追加スポットを大きく優先
+              + ((r as { semanticSim?: number | null }).semanticSim ?? 0) * 3  // ③ 意味一致が強い候補を上位化(AI失敗時の表示8件/写真補完先に確実に乗せる)
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
           .sort((a, b) => b._niceScore - a._niceScore)
