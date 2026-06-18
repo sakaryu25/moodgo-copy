@@ -2066,9 +2066,15 @@ async function semanticSearchPlaces(
     const emb = await ai.embeddings.create({ model: "text-embedding-3-small", input: queryText.slice(0, 500) });
     const vec = emb.data?.[0]?.embedding;
     if (!vec || vec.length === 0) return [];
-    const { data, error } = await sb.rpc("match_places_semantic", {
+    // 【性能】places が20万件規模だとベクトル近傍RPCが数十秒かかる場合がある。
+    //   7秒で打ち切り、タグ/名前候補のみで応答する（アプリの30sタイムアウト回避）。
+    const rpc = sb.rpc("match_places_semantic", {
       query_embedding: vec, user_lat: lat, user_lng: lng, radius_m: radiusKm * 1000, match_limit: limit,
     });
+    const timeout = new Promise<{ data: null; error: { message: string } }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: { message: "semantic_timeout" } }), 7000),
+    );
+    const { data, error } = await Promise.race([rpc, timeout]) as { data: unknown; error: unknown };
     if (error || !Array.isArray(data)) return [];
     const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
     return (data as Array<{ place: Record<string, unknown>; distance_m: number; similarity?: number }>).map(row => {
@@ -6658,7 +6664,11 @@ async function handleRecommend(request: Request) {
       //   自由文がある時は上の②ブロックで意味検索済み→ここは自由文なしの時だけ実行(二重embed回避)。
       //   気分・深掘り・同行者・niceタグの自然文をembed→match_places_semanticで半径内の意味的近傍を取得し、
       //   similarity>=0.25 のみ合流（弱マッチのノイズとAI判別/理由コストを抑制）。純度は後段 nameMatchesGenre が担保。
-      if (!answers.freeWord && !refinementText && hasLocation && openai) {
+      // 【性能】タグ検索で十分な在庫(15件以上)があれば意味検索はスキップ。
+      //   match_places_semantic はベクトル近傍探索で、places が20万件規模に育つと
+      //   1回数十秒かかりアプリの30sタイムアウトを誘発する。タグで足りているなら不要。
+      //   在庫が薄い時(深掘りニッチ/地方)だけ意味検索で補完する。
+      if (!answers.freeWord && !refinementText && hasLocation && openai && sbResults.length < 15) {
         try {
           const _ddL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
           const _ddL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
