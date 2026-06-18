@@ -18,7 +18,8 @@ OUT = "/tmp/osm_foodshop_records.json"
 
 files = sorted(set(
     glob.glob("/tmp/osm_grp_*.json") +
-    glob.glob("/tmp/osm_re_*.json")
+    glob.glob("/tmp/osm_re_*.json") +
+    glob.glob("/tmp/osm_sweep_*.json")
 ))
 
 recs = []
