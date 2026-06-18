@@ -6710,7 +6710,10 @@ async function handleRecommend(request: Request) {
         const nameKws = ddKeyN
           ? (DEEPDIVE_SEARCH_KEYWORDS[ddKeyN] ?? DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(ddKeyN)] ?? [])
           : [];
-        if (nameKws.length > 0) {
+        // 領域7: subcatMap を使った深掘りでは旧 nameKws 合流をスキップ。
+        //   nameKws(例 王道で遊ぶ=テーマパーク/遊園地/カラオケ)は1プールOR→距離順で在庫最厚の
+        //   カラオケを30件再投入し、ラウンドロビンで作った多様性を打ち消すため(本番でカラオケ再増殖を確認)。
+        if (!subcatMap && nameKws.length > 0) {
           try {
             const { searchPlacesByText } = await import("@/lib/spatial-search");
             const nameHits = await searchPlacesByText({
