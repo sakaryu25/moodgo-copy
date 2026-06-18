@@ -559,7 +559,7 @@ function brandOf(name: string): string {
 // 名前ベースで防ぐ。全ソース(Supabase/Google/Yahoo/backfill/widen)の最終マージで適用する。
 import {
   GENRE_POSITIVE_RE, GENRE_NEGATIVE_RE, GENRE_POSITIVE_REQUIRED,
-  canonDeepDive, nameMatchesGenre, DEEPDIVE_SEARCH_KEYWORDS,
+  canonDeepDive, nameMatchesGenre, DEEPDIVE_SEARCH_KEYWORDS, DEEPDIVE_SUBCATEGORY_KEYWORDS,
   SPECIFIC_FOOD_PRIMARY_TYPES, ALLOWED_PRIMARY_TYPES_BY_DEEPDIVE,
   AMUSEMENT_NO_FOOD_DEEPDIVES, FOOD_FAMILY_PRIMARY_TYPES, primaryTypeAllowedForGenre,
   moodGroup, isFoodAllowedContext, isRestaurantName, tagsAreFood,
@@ -6678,6 +6678,35 @@ async function handleRecommend(request: Request) {
         const ddL1n = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
         const ddL2n = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
         const ddKeyN = (ddL2n && ddL2n !== "こだわらない") ? ddL2n : (ddL1n !== "こだわらない" ? ddL1n : "");
+        // ── 領域7: 多様化供給。在庫の厚い1サブカテ(カラオケ/図書館/博物館)が距離順上位を占有し
+        //   結果が単調化する。サブカテゴリ別に各数件取得→ラウンドロビン合流して、薄いサブカテ
+        //   (ボウリング/水族館/自習室等)も候補プールに必ず乗せる。全てSB名前検索=無料。
+        //   純度は後段 nameMatchesGenre / finalizeAssembled が担保。subcat未定義の深掘りは従来の nameKws のみ。
+        const subcatMap = ddKeyN
+          ? (DEEPDIVE_SUBCATEGORY_KEYWORDS[ddKeyN] ?? DEEPDIVE_SUBCATEGORY_KEYWORDS[canonDeepDive(ddKeyN)])
+          : undefined;
+        if (subcatMap && answers.originLat != null && answers.originLng != null) {
+          try {
+            const { searchPlacesByText } = await import("@/lib/spatial-search");
+            const PER_SUBCAT = 6;
+            const perSubHits = await Promise.all(
+              Object.values(subcatMap).map(kws => searchPlacesByText({
+                keywords: kws, lat: answers.originLat!, lng: answers.originLng!,
+                radiusKm: sbRadiusKm, transport: answers.transport, limit: PER_SUBCAT,
+              }).catch(() => []))
+            );
+            const have = new Set(sbResults.map(r => r.name));
+            let added = true;
+            for (let idx = 0; added; idx++) {
+              added = false;
+              for (const hits of perSubHits) {
+                const t = hits[idx];
+                if (!t || have.has(t.name)) continue;
+                sbResults.push(t); have.add(t.name); added = true;
+              }
+            }
+          } catch { /* サブカテ取得失敗は従来の nameKws 合流で続行 */ }
+        }
         const nameKws = ddKeyN
           ? (DEEPDIVE_SEARCH_KEYWORDS[ddKeyN] ?? DEEPDIVE_SEARCH_KEYWORDS[canonDeepDive(ddKeyN)] ?? [])
           : [];
@@ -7940,6 +7969,24 @@ async function handleRecommend(request: Request) {
 
         applyLimitedTimeOverride(recommendations as unknown as LimitedEventRec[], limitedEvents);
         await applyUserPhotos(recommendations as unknown as UserPhotoRec[]);
+        // 領域8: Google/Yahoo補足カードの理由空欄を埋める(ペルソナ「補足だけ素っ気ない」対応)。
+        //   SBと同じ gpt-4o-mini 1バッチを再利用。理由が空のカードが在る時だけ・心霊は対象外＝低コスト。
+        //   generateSupabaseReasons は name/category/tags/description を見るので title→name に正規化して渡す。
+        if (!isProprietaryOnly && openai) {
+          const needReason = recommendations.filter(r => !((r.reason ?? "").trim()) && !((r.aiReason ?? "").trim()));
+          if (needReason.length > 0) {
+            const suppInput = needReason.map(r => ({
+              name: r.title ?? "", category: "", tags: (r.features ?? []), description: "",
+            })) as unknown as import("@/types/onsen").PlaceResponse[];
+            try {
+              const suppReasons = await generateSupabaseReasons(suppInput, answers, sbMustTags, sbNiceTags);
+              for (const r of recommendations) {
+                const txt = suppReasons.get(r.title ?? "");
+                if (txt && !((r.reason ?? "").trim())) { r.reason = txt; r.aiReason = txt; }
+              }
+            } catch { /* 補足理由生成失敗は空のまま続行 */ }
+          }
+        }
         // 領域3b: 車距離スポットの「駅から徒歩◯分」を「最寄り:◯◯駅」へ整え距離表記の矛盾を解消（in-place）。
         stationConsistency(recommendations);
         diversifyByCategory(recommendations as unknown as DivRec[]);
