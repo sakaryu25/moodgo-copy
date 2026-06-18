@@ -3,6 +3,7 @@ node_modules/
 .DS_Store
 *.local
 .env
+.env.*
 .expo/
 
 # Expo subfolder
