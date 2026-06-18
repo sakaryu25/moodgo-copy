@@ -293,8 +293,8 @@ CUISINE_MAP = {
 #    上から順に評価し、当たったタグを和集合で積む（複数ヒット可）。
 #    誤爆対策: 「中華そば/焼きそば/沖縄そば」は そば(うどん) ルールから除外し、別ルールで拾う。
 NAME_RULES = [
-    # ラーメン（中華そば も含む）
-    (re.compile(r"ラーメン|らーめん|ラー麺|麺屋|中華そば|支那そば|らあめん|拉麺"), ["#ラーメン"]),
+    # ラーメン（中華そば も含む。「洋麺屋」=パスタ は麺屋に部分一致するので除外）
+    (re.compile(r"ラーメン|らーめん|ラー麺|(?<!洋)麺屋|中華そば|支那そば|らあめん|拉麺"), ["#ラーメン"]),
     (re.compile(r"家系|豚骨|とんこつ|こってり|二郎系?|背脂"), ["#ラーメン", "#こってりラーメン"]),
     (re.compile(r"あっさり|塩ラーメン|淡麗|淡麗"), ["#ラーメン", "#あっさりラーメン"]),
     (re.compile(r"味噌ラーメン|みそラーメン|味噌らーめん"), ["#ラーメン", "#味噌ラーメン"]),
@@ -310,7 +310,7 @@ NAME_RULES = [
     (re.compile(r"天ぷら|天麩羅|天丼|天よし"), ["#和食", "#天ぷら"]),
     # うどん・そば（焼きそば/中華そば/沖縄そば は除外）
     (re.compile(r"うどん|饂飩|讃岐"), ["#和食", "#うどんそば"]),
-    (re.compile(r"(?<!焼き)(?<!やき)(?<!中華)(?<!沖縄)(?<!支那)(?:そば|蕎麦)"), ["#和食", "#うどんそば"]),
+    (re.compile(r"(?<!焼き)(?<!やき)(?<!中華)(?<!沖縄)(?<!支那)(?<!油)(?<!えび)(?:そば|蕎麦)"), ["#和食", "#うどんそば"]),
     # 懐石・割烹・和食一般
     (re.compile(r"懐石|割烹|料亭|会席|京料理"), ["#和食", "#懐石料理"]),
     (re.compile(r"和食|日本料理|定食|食堂|めし|御飯|ごはん処|釜飯|とんかつ|かつ丼|牛丼|親子丼|うな|そば処"), ["#和食"]),
@@ -389,6 +389,33 @@ def _match_name(name):
     return out
 
 
+# 民族系レストラン（「インドレストラン」等）は「レストラン」部分一致で #洋食 が付くが、
+# 業態は各国料理。該当タグがあれば #洋食 を外す。
+_ETHNIC_RESTAURANT = re.compile(r"(インド|ネパール|中華|中国|韓国|タイ|ベトナム|アジアン?|トルコ|メキシコ|ブラジル)\S{0,4}(レストラン|料理)")
+_ETHNIC_GENRE_TAGS = {"#アジア系統", "#中華", "#韓国", "#各国料理", "#インドネパール料理",
+                      "#タイ料理", "#ベトナム料理", "#メキシコ料理", "#ブラジル料理"}
+
+
+def correct_baked_tags(name, tags):
+    """既にタグ付け済みのレコードに対し、店名から判定できる明白な誤タグを除去する。
+    QA(全国監査)で検出した名前ベースの誤爆を補正。fetch時(derive内)・merge時の両方で適用。
+    tags は list/set どちらでも可。list を返す。"""
+    name = name or ""
+    s = set(tags)
+    # ① 洋麺屋(パスタ) が #ラーメン → 除去（麺屋に部分一致していた古いデータ救済）
+    if "洋麺屋" in name or "洋麺" in name:
+        s.discard("#ラーメン"); s.discard("#こってりラーメン")
+    # ② えびそば/油そば/中華そば/まぜそば(=ラーメン) が #うどんそば → 除去
+    if "#うどんそば" in s and re.search(r"中華そば|支那そば|油そば|えびそば|まぜそば|焼きそば", name) \
+            and not re.search(r"うどん|讃岐", name):
+        s.discard("#うどんそば")
+    # ③ 民族系レストランが #洋食 → 除去（各国料理タグが付いている場合のみ安全に外す）
+    if "#洋食" in s and _ETHNIC_RESTAURANT.search(name) and (s & _ETHNIC_GENRE_TAGS):
+        s.discard("#洋食")
+    s.add(BASE)  # 念のためベースは保持
+    return sorted(s)
+
+
 def derive_food_tags(osm_tags, name):
     """OSM の tags(dict) と店名 → {tags, tag_confidence, tag_source}。"""
     name = name or ""
@@ -420,7 +447,8 @@ def derive_food_tags(osm_tags, name):
         amen_tags, amen_conf = AMENITY_MAP[amenity]
         consider(amen_tags, "amenity", amen_conf)
 
-    out_tags = sorted(tags)
+    # QA補正（名前ベースの明白な誤タグを除去）
+    out_tags = correct_baked_tags(name, tags)
     # 念のため正本チェック（万一の表記揺れを実行時に弾く）
     for t in out_tags:
         if t not in PREDEFINED_TAGS:
@@ -474,4 +502,9 @@ if __name__ == "__main__":
     allok &= has({"amenity": "fast_food"}, "マクドナルド", ["#洋食", "#ハンバーグ"])
     allok &= has({"amenity": "restaurant"}, "レストラン ひまわり", ["#洋食"])   # レストラン→洋食
     allok &= has({"amenity": "restaurant"}, "謎の名店", ["#お腹すいた"])         # 完全不明→fallback
+    # ── QA補正の回帰テスト（全国監査で検出した誤爆）────────────────────────────
+    allok &= has({"amenity": "restaurant", "cuisine": "pasta"}, "洋麺屋五右衛門", ["#イタリアン"], mustnot=["#ラーメン"])  # 洋麺屋=パスタ
+    allok &= has({"amenity": "restaurant", "cuisine": "ramen"}, "えびそば一幻", ["#ラーメン"], mustnot=["#うどんそば"])   # えびそば=ラーメン(cuisine由来)
+    allok &= has({"amenity": "restaurant"}, "油そば きりん寺", ["#ラーメン", "#つけ麺まぜそば"], mustnot=["#うどんそば"])
+    allok &= has({"amenity": "restaurant", "cuisine": "indian"}, "インドレストラン ガネーシャ", ["#アジア系統", "#インドネパール料理"], mustnot=["#洋食"])
     print("\n" + ("✓ 全テスト合格" if allok else "✗ 失敗あり（上の✗FAILを確認）"))
