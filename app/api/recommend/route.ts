@@ -7488,6 +7488,11 @@ async function handleRecommend(request: Request) {
           // admin注入は pickUnique を通らず先頭注入されるため、ここで個別にブランド重複を抑える。
           const adminChainCounts = new Map<string, number>();
           const matchingAdmin = matchingAdminSorted
+            // 領域4b: 深掘りジャンルに明確に合わない転載は先頭注入しない。
+            //   admin注入は finalizeSource(genreFidelityFilter)を通らず素通りするため、
+            //   「海沿い」検索に中華街/川崎大師、「自然の中」に神社が先頭固定される主因だった。
+            .filter(({ s }) => (effectiveDeepDive && effectiveDeepDive !== "心霊")
+              ? nameMatchesGenre(s.google_place_name ?? s.spot_name, effectiveDeepDive) : true)
             .filter(({ s }) => {
               const brand = brandOf(s.google_place_name ?? s.spot_name);
               if (brand.length < 3) return true;            // ブランド名が短すぎる場合は抑制しない
