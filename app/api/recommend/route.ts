@@ -5616,7 +5616,7 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
         { role: "user", content: spotList },
       ],
       max_tokens: 1500,   // 候補~30件分の理由でも切れないように（#5・全カードに理由を出す）
-    });
+    }, { signal: AbortSignal.timeout(8000) });  // 【性能】8秒で打ち切り（応答ブロック防止）。理由なしでもカードは表示可
     const text = res.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(text);
     for (const [name, reason] of Object.entries(parsed.reasons ?? {})) {
@@ -6668,7 +6668,8 @@ async function handleRecommend(request: Request) {
       //   match_places_semantic はベクトル近傍探索で、places が20万件規模に育つと
       //   1回数十秒かかりアプリの30sタイムアウトを誘発する。タグで足りているなら不要。
       //   在庫が薄い時(深掘りニッチ/地方)だけ意味検索で補完する。
-      if (!answers.freeWord && !refinementText && hasLocation && openai && sbResults.length < 15) {
+      if (!answers.freeWord && !refinementText && hasLocation && openai
+          && sbResults.length < 15 && deepDiveTags.length === 0) {
         try {
           const _ddL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
           const _ddL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
