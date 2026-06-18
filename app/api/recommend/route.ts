@@ -6818,10 +6818,29 @@ async function handleRecommend(request: Request) {
           if (isFoodForSkip && (FINALIZE_NON_FOOD_NAME_RE.test(nm))) return false; // 食事で温泉等を除外
           return true;
         });
-        // 充足判定: 15件以上 → Google/Yahoo両方スキップ / 10件以上 → Yahooのみスキップ
-        //   スリルは常に両方スキップ（独自データのみ）
-        const skipAllSupplements = isProprietaryOnly || sbQualified.length >= 15;
-        const skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
+        // ── 充足判定 ───────────────────────────────────────────────────────────
+        //   飲食(お腹すいた): OSM自前DBを優先。ジャンル別の在庫フロア以上ならGoogle/Yahoo不使用でDB完結。
+        //     Yahooは飲食では常時オフ。Googleはフロア未満のときだけ「保険」として呼ぶ。
+        //     在庫が多いジャンル(ラーメン/居酒屋/カフェ/和食/焼肉)=10、ニッチ(各国/タイ/インド等)=5、その他=8。
+        //   他気分: 従来どおり 15件以上で両スキップ / 10件以上でYahooのみスキップ。
+        //   スリル(心霊): 常に両方スキップ（独自データのみ）。
+        let skipAllSupplements: boolean;
+        let skipYahooOnly: boolean;
+        if (isProprietaryOnly) {
+          skipAllSupplements = true;
+          skipYahooOnly = true;
+        } else if (isFoodForSkip) {
+          const ddText = `${deepDiveL1} ${deepDiveL2}`;
+          const foodDbFloor =
+            /ラーメン|居酒屋|カフェ|喫茶|和食|焼肉/.test(ddText) ? 10 :
+            /各国|メキシコ|ブラジル|ロシア|ベトナム|タイ|インド|ネパール|エスニック|アジアン/.test(ddText) ? 5 :
+            8;
+          skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Googleも呼ばない（DB完結）
+          skipYahooOnly = true;                                    // 飲食はYahoo常時オフ（フロア未満でもGoogleのみ保険）
+        } else {
+          skipAllSupplements = sbQualified.length >= 15;
+          skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
+        }
         // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
         //   ユーザー要件「Supabaseから出てきた情報(全件)を必ずOpenAIに渡す」を満たすため
         //   16/15の狭いキャップを撤廃し、取得した候補をほぼ全件(上限30)OpenAIに渡す。

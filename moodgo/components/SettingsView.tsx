@@ -563,6 +563,12 @@ export default function SettingsView({
             {/* ── バージョン ── */}
             <View style={s.versionRow}>
               <Text style={s.versionText}>MoodGo  v1.0.0</Text>
+              {/* OSMデータのライセンス帰属（ODbL）。スポット情報の一部は OpenStreetMap 由来 */}
+              <Text style={s.attributionText}>
+                {lang === 'ja'
+                  ? 'スポット情報の一部に © OpenStreetMap contributors のデータを利用しています'
+                  : 'Some place data © OpenStreetMap contributors'}
+              </Text>
             </View>
           </ScrollView>
         )}
@@ -719,6 +725,7 @@ const s = StyleSheet.create({
 
   versionRow: { alignItems: 'center', marginTop: 32 },
   versionText: { fontSize: 12, color: '#C4B5FD', fontWeight: '500' },
+  attributionText: { fontSize: 10, color: '#C4B5FD', fontWeight: '400', marginTop: 8, textAlign: 'center', paddingHorizontal: 24, lineHeight: 15 },
 
   // 都道府県ピッカー
   pickerHeader: {

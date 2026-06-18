@@ -4,7 +4,11 @@
 #   ショッピングは小さいので全国BBOX一括。
 #   レジューム可: 取得済み(pref,cat)は /tmp/osm_food_done.json でスキップ。結果は /tmp/osm_foodshop_records.json。
 #   座標で大域dedup（チェーン店は各店舗が別座標＝別物として残す）。
-import urllib.request, urllib.parse, json, os, time
+import urllib.request, urllib.parse, json, os, sys, time
+
+# 同ディレクトリの osm_food_tagging を import 可能にする
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from osm_food_tagging import derive_food_tags
 
 EP = "https://overpass-api.de/api/interpreter"
 BBOX = "24,122,46,154"
@@ -17,12 +21,16 @@ PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県"
          "鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県",
          "佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"]
 
-# (key, value, tags)。tags は predefined-tags.ts 実在のもの（FOOD_TAGS/#ショッピング系）。
+# 飲食(food)は osm_food_tagging.derive_food_tags で cuisine/店名/チェーンから動的にタグ付け。
+#   pub/bar を追加して居酒屋を取り込む。tags 列は parse() 内で生成するためここは (key, value) のみ。
 FOOD = [
-    ("amenity", "restaurant", ["#お腹すいた"]),
-    ("amenity", "cafe",       ["#お腹すいた", "#カフェ"]),
-    ("amenity", "fast_food",  ["#お腹すいた", "#サクッと食べる"]),
+    ("amenity", "restaurant"),
+    ("amenity", "cafe"),
+    ("amenity", "fast_food"),
+    ("amenity", "pub"),
+    ("amenity", "bar"),
 ]
+# ショッピングは静的タグ（フェーズ1では飲食のみ動的化。shop系は従来通り）。
 SHOP = [
     ("shop", "mall",             ["#ショッピング"]),
     ("shop", "department_store", ["#ショッピング"]),
@@ -42,7 +50,9 @@ def post(q):
             if a < 4: time.sleep(wait); continue
             raise
 
-def parse(d, tags, recs, seen):
+def parse(d, recs, seen, static_tags=None):
+    """static_tags=None なら飲食 → derive_food_tags で動的タグ付け。
+    static_tags 指定（ショッピング）ならそのタグを使用。"""
     n = 0
     for el in d.get("elements", []):
         t = el.get("tags", {})
@@ -59,8 +69,19 @@ def parse(d, tags, recs, seen):
         key = name + "|" + f"{round(lat,4)},{round(lng,4)}"
         if key in seen: continue
         seen.add(key)
-        recs.append({"name": name[:120], "address": addr, "area": pref or None,
-                     "lat": float(lat), "lng": float(lng), "tags": tags, "source": "osm-foodshop"})
+        rec = {"name": name[:120], "address": addr, "area": pref or None,
+               "lat": float(lat), "lng": float(lng), "source": "osm-foodshop",
+               "osm_id": el.get("id"), "osm_type": el.get("type")}
+        if static_tags is None:
+            d2 = derive_food_tags(t, name)
+            rec["tags"] = d2["tags"]
+            rec["tag_confidence"] = d2["tag_confidence"]
+            rec["tag_source"] = d2["tag_source"]
+        else:
+            rec["tags"] = static_tags
+            rec["tag_confidence"] = "high"
+            rec["tag_source"] = "amenity"
+        recs.append(rec)
         n += 1
     return n
 
@@ -74,28 +95,33 @@ def save():
     json.dump(recs, open(OUT, "w"), ensure_ascii=False)
     json.dump(sorted(done), open(DONE, "w"), ensure_ascii=False)
 
-# ショッピング（全国一括）
-for k, v, tags in SHOP:
-    tid = f"shop|{k}={v}"
-    if tid in done: continue
-    q = f'[out:json][timeout:300];(node["{k}"="{v}"]({BBOX});way["{k}"="{v}"]({BBOX}););out center tags;'
-    try:
-        d = post(q); n = parse(d, tags, recs, seen)
-        done.add(tid); save()
-        print(f"[shop] {k}={v}: +{n} (累計{len(recs)})", flush=True)
-    except Exception as e:
-        print(f"[shop] {k}={v} 失敗 {e}", flush=True)
-    time.sleep(6)
+# 単県のみ実行する場合: 環境変数 ONLY_PREF（例: ONLY_PREF=香川県）でテスト用に絞れる。
+ONLY_PREF = os.environ.get("ONLY_PREF")
+prefs = [ONLY_PREF] if ONLY_PREF else PREFS
 
-# 飲食（都道府県area単位）
-for ci, (k, v, tags) in enumerate(FOOD):
-    for pi, pref in enumerate(PREFS):
+# ショッピング（全国一括）。ONLY_PREF 指定時は飲食テストに集中するためスキップ。
+if not ONLY_PREF:
+    for k, v, tags in SHOP:
+        tid = f"shop|{k}={v}"
+        if tid in done: continue
+        q = f'[out:json][timeout:300];(node["{k}"="{v}"]({BBOX});way["{k}"="{v}"]({BBOX}););out center tags;'
+        try:
+            d = post(q); n = parse(d, recs, seen, static_tags=tags)
+            done.add(tid); save()
+            print(f"[shop] {k}={v}: +{n} (累計{len(recs)})", flush=True)
+        except Exception as e:
+            print(f"[shop] {k}={v} 失敗 {e}", flush=True)
+        time.sleep(6)
+
+# 飲食（都道府県area単位）。tags は parse() 内で derive_food_tags が動的生成。
+for ci, (k, v) in enumerate(FOOD):
+    for pi, pref in enumerate(prefs):
         tid = f"food|{k}={v}|{pref}"
         if tid in done: continue
         q = (f'[out:json][timeout:300];area["name"="{pref}"]["admin_level"="4"]->.a;'
              f'(node["{k}"="{v}"](area.a);way["{k}"="{v}"](area.a););out center tags;')
         try:
-            d = post(q); n = parse(d, tags, recs, seen)
+            d = post(q); n = parse(d, recs, seen)
             done.add(tid); save()
             print(f"[food] {v} {pref}: +{n} (累計{len(recs)})", flush=True)
         except Exception as e:

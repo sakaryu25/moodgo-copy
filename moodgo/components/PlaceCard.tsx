@@ -13,6 +13,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { sendEngagement } from '@/lib/engagement';
 import { copyPlaceName } from '@/lib/clipboard';
+import { genrePlaceholder } from '@/lib/genrePlaceholder';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -445,6 +446,24 @@ export default function PlaceCard({
                 : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
             </TouchableOpacity>
           </LinearGradient>
+        ) : genrePlaceholder(item.tags) ? (
+          // ジャンル別プレースホルダー（OSM飲食は写真なしが多い／Google写真を常用しない）
+          //   写真優先順位: 店舗 > 運営 > 承認済みユーザー投稿 > ★ここ > 最後にGoogle。
+          (() => {
+            const gp = genrePlaceholder(item.tags)!;
+            return (
+              <LinearGradient colors={gp.colors} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.photo, s.photoPlaceholder]}>
+                <Text style={s.genrePhEmoji}>{gp.emoji}</Text>
+                <Text style={s.genrePhLabel}>{gp.label}</Text>
+                <Text style={s.genrePhSub}>写真を募集中 🙏</Text>
+                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.genrePhBtn}>
+                  {uploading
+                    ? <ActivityIndicator color={BRAND} size="small" />
+                    : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
+                </TouchableOpacity>
+              </LinearGradient>
+            );
+          })()
         ) : (
           <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
             <Navigation size={36} color={BRAND} strokeWidth={1.5} />
@@ -740,6 +759,11 @@ const s = StyleSheet.create({
   photoWrap:        { position: 'relative' },
   photo:            { width: '100%', height: 220 },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  genrePhEmoji: { fontSize: 44, marginBottom: 4 },
+  genrePhLabel: { color: '#7A5A4A', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+  genrePhSub: { color: 'rgba(120,90,74,0.7)', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  genrePhBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, backgroundColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  genrePhBtnText: { color: BRAND, fontSize: 12, fontWeight: '700' },
   spookyAskTitle: { color: 'rgba(220,210,255,0.92)', fontSize: 14, fontWeight: '800', marginTop: 12 },
   spookyAskSub: { color: 'rgba(190,175,235,0.7)', fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
   spookyAddBtn: {
