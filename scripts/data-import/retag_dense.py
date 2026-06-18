@@ -180,18 +180,34 @@ def upsert_chunk(rows, on_conflict_id):
     return ok
 
 
-# ── 既存更新（id維持 upsert）────────────────────────────────────────────────────
-upd = 0
-for i in range(0, len(updates), 200):
-    upd += upsert_chunk(updates[i:i + 200], on_conflict_id=True)
-    if upd and upd % 2000 < 200:
-        print(f"   更新 {upd}/{len(updates)}", flush=True)
-print(f"更新完了 {upd}件", flush=True)
+# ── 並列実行（idキーのバッチは独立＝安全に並列化。WORKERS で同時実行数指定）──────────
+from concurrent.futures import ThreadPoolExecutor
+import threading
+WORKERS = int(os.environ.get("RETAG_WORKERS", "8"))
+_lock = threading.Lock()
 
-# ── 新規INSERT ──────────────────────────────────────────────────────────────────
-ins = 0
-for i in range(0, len(inserts), 200):
-    ins += upsert_chunk(inserts[i:i + 200], on_conflict_id=False)
-    if ins and ins % 2000 < 200:
-        print(f"   新規 {ins}/{len(inserts)}", flush=True)
+
+def run_parallel(items, on_conflict_id, label):
+    total = len(items)
+    batches = [items[i:i + 200] for i in range(0, total, 200)]
+    done = [0]
+
+    def work(batch):
+        n = upsert_chunk(batch, on_conflict_id=on_conflict_id)
+        with _lock:
+            done[0] += n
+            if done[0] % 4000 < 200:
+                print(f"   {label} {done[0]}/{total}", flush=True)
+        return n
+
+    got = 0
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        for n in ex.map(work, batches):
+            got += n
+    return got
+
+
+upd = run_parallel(updates, True, "更新")
+print(f"更新完了 {upd}件", flush=True)
+ins = run_parallel(inserts, False, "新規")
 print(f"=== 完了: 更新 {upd} / 新規 {ins} ===", flush=True)
