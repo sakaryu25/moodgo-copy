@@ -6470,6 +6470,11 @@ async function handleRecommend(request: Request) {
       "今日は出かけたい": 20, "ちょっと遠くてもOK": 40, "県またぎもあり": 70,
       "小旅行気分": 120, "どこでも行きたい": 200,
     };
+    // 領域R2: 近め系の距離ハードキャップ(intent基準・km)。これを超える店は最終並びで必ず末尾へ。
+    //   クライアントが radiusKm=15 等を送っても intent で締めるため distanceFeeling 優先。
+    const DIST_HARDCAP_KM: Record<string, number> = {
+      "すぐそこ": 2, "近場でいい": 3, "少し歩ける": 4, "近めにお出かけ": 6, "今日は出かけたい": 10,
+    };
     const DISTANCE_MIN_KM: Record<string, number> = {
       // 領域1: 近め系（すぐそこ〜今日は出かけたい）は遠出バイアスを掛けず「近い順」で出す。
       //   以前は 少し歩ける=4 / 近めにお出かけ=8 / 今日は出かけたい=8 と min>0 にしていたため、
@@ -7640,9 +7645,14 @@ async function handleRecommend(request: Request) {
             const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
             if (ga !== gb) return ga - gb;
             const ka = kmOfRec(a), kb = kmOfRec(b);
-            if (Math.abs(ka - kb) < 0.4) {            // 同距離帯は営業中を優先
+            if (Math.abs(ka - kb) < 0.4) {            // 同距離帯は営業中→★評価を優先
               if (a.openNow === true && b.openNow !== true) return -1;
               if (b.openNow === true && a.openNow !== true) return 1;
+              // 領域R3: 同距離帯では★(Wilson下限)の高い店を上に＝1位を★無の店にしない
+              //   (例: ★無の至近店より、ほぼ同距離の★4.5多レビュー店を1位へ)。
+              const ra = wilsonLower(a.rating ?? null, a.userRatingCount ?? null);
+              const rb = wilsonLower(b.rating ?? null, b.userRatingCount ?? null);
+              if (Math.abs(ra - rb) > 0.05) return rb - ra;
             }
             // 学習スコアを距離ボーナス換算（👍/エンゲージメントが高い店は最大3km分有利）
             const la = ratingJudge.learnScore(a.title ?? "") * 3;
@@ -7667,15 +7677,30 @@ async function handleRecommend(request: Request) {
           //   rank0で約+3.2km分有利・rank8以降は0。距離を覆すほど強くはしない（バランス維持）。
           const aiBonusKm = (r: { _aiRank?: number }): number =>
             typeof r._aiRank === "number" ? Math.max(0, 8 - r._aiRank) * 0.4 : 0;
+          // 領域R2: 距離ハードキャップ。「近め/少し歩ける」を選んだのに7〜9kmの外れ値が
+          //   学習/AI加点で上位に紛れる事象(全ペルソナ最頻不満)を断つ。cap超過はジャンル一致でも末尾band送り。
+          //   ※ 距離感(intent)ベースで決める。radiusKm はクライアントが15等を送ると緩くなるため、
+          //     distanceFeeling があればそれを優先(無ければ radiusKm*0.6・最小4kmにフォールバック)。
+          //   far-bias(minRadiusKm>0=ちょっと遠くてもOK以上)はこの分岐に来ないので遠出体験は不変。
+          const hardCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling]
+            : Math.max(radiusKm * 0.6, 4);
+          const overCapHard = (r: { distanceKm?: number; distanceText?: string }) =>
+            kmOfRec(r) > hardCapKm ? 1 : 0;
           recommendations = [...recommendations]
             .sort((a, b) => {
-              // ジャンル一致を最優先（混在補填の異ジャンルがジャンル一致より上に来ないように）
+              // ① 距離ハードキャップ超過は最後へ（近め指定の外れ値排除を最優先）
+              const oa = overCapHard(a), ob = overCapHard(b);
+              if (oa !== ob) return oa - ob;
+              // ② ジャンル一致を優先（混在補填の異ジャンルがジャンル一致より上に来ないように）
               const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
               const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
               if (ga !== gb) return ga - gb;
-              // 学習スコア + AI判別順 を距離ボーナス換算（小さいほど上位）
-              const la = ratingJudge.learnScore(a.title ?? "") * 3 + aiBonusKm(a);
-              const lb = ratingJudge.learnScore(b.title ?? "") * 3 + aiBonusKm(b);
+              // ③ 学習スコア + AI判別順 + ★評価 を距離ボーナス換算（小さいほど上位）
+              //   領域R3: ★(Wilson)を最大+1.2km分だけ加点＝同程度の近さなら★付き定番が上に来て
+              //   1位が★無になりにくい。★無(公園/図書館等の正規キュレーション)は0で沈めない。
+              const la = ratingJudge.learnScore(a.title ?? "") * 3 + aiBonusKm(a) + wilsonLower(a.rating ?? null, a.userRatingCount ?? null) * 1.2;
+              const lb = ratingJudge.learnScore(b.title ?? "") * 3 + aiBonusKm(b) + wilsonLower(b.rating ?? null, b.userRatingCount ?? null) * 1.2;
               return ((kmOfRec(a) - la) - (kmOfRec(b) - lb)) + (Math.random() - 0.5) * jitterKm * 2;
             })
             .slice(0, 15);
@@ -7923,6 +7948,19 @@ async function handleRecommend(request: Request) {
         //     diversifyByCategory のラウンドロビンで cap 超過要素が中位へ繰り上がり cap が無効化されるため
         //     （カラオケ同チェーンが再び上位に並ぶ）。最後に置くことで cap 並びが最終出力に確実に残る。
         recommendations = finalizeAssembled(recommendations);
+        // 領域R2(最終確定): LLMリランカー(7819)・多様化の後でも「近め指定の距離外れ値」を末尾へ。
+        //   rerankerが遠方を上位に戻すため、ここで cap 超過を安定パーティションで末尾固定する(順序保持)。
+        //   far-bias(minRadiusKm>0)・高層ビル目的地・心霊は対象外＝遠方意図/独自データを壊さない。
+        if (minRadiusKm === 0 && !(isFoodMood && isDestinationFood) && !isProprietaryOnly) {
+          const capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : Math.max(radiusKm * 0.6, 4);
+          const kmF = (r: { distanceKm?: number; distanceText?: string }): number =>
+            typeof r.distanceKm === "number" ? r.distanceKm
+              : (parseFloat((r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/)?.[1] ?? "") || 9999);
+          const within = recommendations.filter(r => kmF(r) <= capKm);
+          const over = recommendations.filter(r => kmF(r) > capKm);
+          if (within.length > 0) recommendations = [...within, ...over];
+        }
         return json({
           recommendations,
           source: "supabase",
