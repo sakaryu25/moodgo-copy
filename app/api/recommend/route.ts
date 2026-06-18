@@ -6895,6 +6895,8 @@ async function handleRecommend(request: Request) {
         //   B で scored が最大15件になっても写真補完で searchText が増えすぎないようにする。
         const noPhotoNames = scored
           .filter(r => !r.imageUrl || isLegacyPhotoUrl(r.imageUrl))
+          // OSM由来の店はGoogle写真補完しない（ジャンル別プレースホルダー＋利用者投稿写真で賄う＝searchText削減）
+          .filter(r => !(r.source ?? "").startsWith("osm"))
           .slice(0, 8)
           .map(r => r.name);
         // 書き戻し先を一意キーで絞るための name→行 ルックアップ（同名チェーン混線防止）
@@ -7785,6 +7787,8 @@ async function handleRecommend(request: Request) {
             return upd;
           });
           await Promise.all(recommendations.map(async (rec, idx) => {
+            // OSM由来の店はGoogleエンリッチしない（写真=ジャンル別PH＋利用者投稿／営業時間=OSM情報。searchText削減）
+            if ((rec.source ?? "").startsWith("osm")) return;
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
             const needPhotos = photoUrls.length < 10;
             const needHours = rec.openNow === undefined || !rec.openingHoursText;
