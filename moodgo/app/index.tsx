@@ -481,12 +481,25 @@ export default function Home() {
         refinementText:     refineText ?? '',
         userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
       };
-      const res = await apiFetch('/api/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(baseBody),
-        timeoutMs: 30000,  // 未キャッシュ検索は10s前後かかるため余裕を持たせる（既定12sだと誤タイムアウト）
-      });
+      // 検索POST: コールドスタート等でのタイムアウト中断(AbortError)は1回だけ自動リトライ。
+      //   2回目はVercel関数が暖機済みで即応答するため、初回の誤タイムアウトを吸収する。
+      const postRecommend = async (body: unknown): Promise<Response> => {
+        const opts = {
+          method: 'POST' as const,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          timeoutMs: 30000,  // 未キャッシュ検索は10s前後かかるため余裕を持たせる（既定12sだと誤タイムアウト）
+        };
+        try {
+          return await apiFetch('/api/recommend', opts);
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            return await apiFetch('/api/recommend', opts);  // 暖機後リトライ
+          }
+          throw err;
+        }
+      };
+      const res = await postRecommend(baseBody);
 
       let d = await res.json();
       let recs: Recommendation[] = d.recommendations ?? d.data ?? [];
@@ -495,12 +508,7 @@ export default function Home() {
       // シャッフル/未見のみで在庫が尽きて0件になったら、除外を解いて再表示
       // （箱根など候補が少ないエリアで「空っぽ画面」になるのを防ぐ）
       if (recs.length === 0 && (excludeShown || showUnseenOnly)) {
-        const res2 = await apiFetch('/api/recommend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...baseBody, seenPlaces: [], showUnseenOnly: false }),
-          timeoutMs: 30000,
-        });
+        const res2 = await postRecommend({ ...baseBody, seenPlaces: [], showUnseenOnly: false });
         const d2 = await res2.json();
         const recs2: Recommendation[] = d2.recommendations ?? d2.data ?? [];
         if (recs2.length > 0) {
@@ -535,11 +543,19 @@ export default function Home() {
         setHistory(prev => [newItem, ...prev].slice(0, 30));
       }
     } catch (e) {
-      console.error('[openResults]', e);
-      reportError(e, 'error', { where: 'openResults' });
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      if (aborted) {
+        // タイムアウト/中断は想定内（コールドスタート・電波弱）。赤いLogBoxを避けwarnに留める
+        console.warn('[openResults] timeout/abort', e);
+      } else {
+        console.error('[openResults]', e);
+        reportError(e, 'error', { where: 'openResults' });
+      }
       // 静かに空画面で放置せず、原因と再試行を案内（通信失敗/タイムアウト）
       setSearchFailed(true);
-      setApiWarning('検索に失敗しました。通信環境を確認して、もう一度お試しください。');
+      setApiWarning(aborted
+        ? '通信が混み合っているようです。もう一度「再検索」を押してください。'
+        : '検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
     // ローディング終了
@@ -756,8 +772,8 @@ export default function Home() {
     }, 1800);
 
     try {
-      const res = await apiFetch('/api/recommend', {
-        method: 'POST',
+      const opts = {
+        method: 'POST' as const,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answers:            sa,
@@ -768,7 +784,15 @@ export default function Home() {
           userPreferenceHints: buildPreferenceHints(),  // ⑤ 端末プロファイル（好みタグ）
         }),
         timeoutMs: 30000,
-      });
+      };
+      // コールドスタートのタイムアウト中断は1回だけ自動リトライ（2回目は暖機済みで即応答）
+      let res: Response;
+      try {
+        res = await apiFetch('/api/recommend', opts);
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') res = await apiFetch('/api/recommend', opts);
+        else throw err;
+      }
       const d = await res.json();
       const recs: Recommendation[] = d.recommendations ?? d.data ?? [];
       searchIdRef.current = (d as { searchId?: string })?.searchId ?? '';  // ファネル計測用
@@ -776,10 +800,17 @@ export default function Home() {
       // 0件でも黙らず案内（従来は無反応だった）
       setApiWarning(recs.length > 0 ? (d.warning ?? '') : (d.warning || '条件に合う場所が見つかりませんでした。条件を変えてお試しください。'));
     } catch (e) {
-      console.error('[handleResearch]', e);
-      reportError(e, 'error', { where: 'handleResearch' });
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      if (aborted) {
+        console.warn('[handleResearch] timeout/abort', e);
+      } else {
+        console.error('[handleResearch]', e);
+        reportError(e, 'error', { where: 'handleResearch' });
+      }
       setSearchFailed(true);
-      setApiWarning('再検索に失敗しました。通信環境を確認して、もう一度お試しください。');
+      setApiWarning(aborted
+        ? '通信が混み合っているようです。もう一度お試しください。'
+        : '再検索に失敗しました。通信環境を確認して、もう一度お試しください。');
     }
 
     if (loadingTimer.current) clearInterval(loadingTimer.current);
