@@ -10,10 +10,15 @@ import urllib.request, urllib.parse, json, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from osm_food_tagging import derive_food_tags
 
-EP = "https://overpass-api.de/api/interpreter"
+# 並列実行のため環境変数で上書き可能:
+#   OSM_ENDPOINT : Overpassミラーを指定（複数ミラーへ分散して429回避＋高速化）
+#   OUT_FILE / DONE_FILE : 出力/レジュームファイル（グループごとに分ける）
+#   SLEEP_SEC : クエリ間スリープ（並列時はミラー分散するので短くできる）
+EP = os.environ.get("OSM_ENDPOINT", "https://overpass-api.de/api/interpreter")
 BBOX = "24,122,46,154"
-OUT = "/tmp/osm_foodshop_records.json"
-DONE = "/tmp/osm_food_done.json"
+OUT = os.environ.get("OUT_FILE", "/tmp/osm_foodshop_records.json")
+DONE = os.environ.get("DONE_FILE", "/tmp/osm_food_done.json")
+SLEEP_SEC = float(os.environ.get("SLEEP_SEC", "6"))
 
 PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県",
          "埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県",
@@ -37,10 +42,12 @@ SHOP = [
     ("amenity", "marketplace",   ["#ショッピング", "#お土産ギフト"]),
 ]
 
+BACKOFF = [int(x) for x in os.environ.get("BACKOFF", "30,60,120,180").split(",")]
+
 def post(q):
     data = urllib.parse.urlencode({"data": q}).encode()
     req = urllib.request.Request(EP, data=data, headers={"User-Agent": "MoodGo/1.0 (kento.ryuto25@gmail.com)"})
-    backoff = [30, 60, 120, 180]
+    backoff = BACKOFF
     for a in range(5):
         try:
             return json.loads(urllib.request.urlopen(req, timeout=600).read())
@@ -95,12 +102,23 @@ def save():
     json.dump(recs, open(OUT, "w"), ensure_ascii=False)
     json.dump(sorted(done), open(DONE, "w"), ensure_ascii=False)
 
-# 単県のみ実行する場合: 環境変数 ONLY_PREF（例: ONLY_PREF=香川県）でテスト用に絞れる。
+# 県の絞り込み:
+#   ONLY_PREFS=東京都,大阪府,... （カンマ区切り・並列実行で県グループを分担）
+#   ONLY_PREF=香川県            （単県テスト用・後方互換）
+ONLY_PREFS = os.environ.get("ONLY_PREFS")
 ONLY_PREF = os.environ.get("ONLY_PREF")
-prefs = [ONLY_PREF] if ONLY_PREF else PREFS
+if ONLY_PREFS:
+    prefs = [p.strip() for p in ONLY_PREFS.split(",") if p.strip()]
+    SCOPED = True
+elif ONLY_PREF:
+    prefs = [ONLY_PREF]
+    SCOPED = True
+else:
+    prefs = PREFS
+    SCOPED = False
 
-# ショッピング（全国一括）。ONLY_PREF 指定時は飲食テストに集中するためスキップ。
-if not ONLY_PREF:
+# ショッピング（全国一括）。県スコープ指定時は飲食に集中するためスキップ。
+if not SCOPED:
     for k, v, tags in SHOP:
         tid = f"shop|{k}={v}"
         if tid in done: continue
@@ -111,7 +129,7 @@ if not ONLY_PREF:
             print(f"[shop] {k}={v}: +{n} (累計{len(recs)})", flush=True)
         except Exception as e:
             print(f"[shop] {k}={v} 失敗 {e}", flush=True)
-        time.sleep(6)
+        time.sleep(SLEEP_SEC)
 
 # 飲食（都道府県area単位）。tags は parse() 内で derive_food_tags が動的生成。
 for ci, (k, v) in enumerate(FOOD):
@@ -126,7 +144,7 @@ for ci, (k, v) in enumerate(FOOD):
             print(f"[food] {v} {pref}: +{n} (累計{len(recs)})", flush=True)
         except Exception as e:
             print(f"[food] {v} {pref} 失敗 {e}", flush=True)
-        time.sleep(6)
+        time.sleep(SLEEP_SEC)
 
 save()
 print(f"=== 完了 合計 {len(recs)}件 → {OUT} ===", flush=True)
