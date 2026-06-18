@@ -5576,9 +5576,21 @@ async function generateSupabaseReasons(
     const freeWordDesc  = answers.freeWord ? `希望「${answers.freeWord}」` : "";
     const extraContext  = (answers.dynamicQs ?? []).map((q: { question: string; answer: string }) => `${q.question}→${q.answer}`).join("、");
     const contextParts  = [timeDesc, budgetDesc, freeWordDesc, extraContext].filter(Boolean).join("、");
-    const spotList = spots.map((s, i) =>
-      `${i + 1}. ${s.name}（タグ: ${(s.tags ?? []).filter(t => [...mustTags, ...niceTags].includes(t)).join(" ")}）`
-    ).join("\n");
+    // 領域6: 店ごとに理由を差別化するため、LLMへ店固有情報を渡す（料理ジャンル/分類/全タグ/中立説明）。
+    //   これが無いと寿司もそばも同じ抽象文（「恋人と特別なひととき」等）になる。
+    const spotList = spots.map((s, i) => {
+      const genre = coarseFoodGenreOf(s.name ?? "");           // 寿司海鮮/ラーメン等。非該当は「その他」
+      const allTags = (s.tags ?? []).filter(t => typeof t === "string" && t.trim()).slice(0, 8);
+      const desc = String(s.description ?? "").trim();
+      const isStubDesc = !desc || desc === `${s.name}のスポット情報`;  // spatial-searchの定型フォールバックは無視
+      const facts = [
+        genre !== "その他" ? `ジャンル:${genre}` : null,
+        (s.category && s.category.trim()) ? `分類:${s.category.trim()}` : null,
+        allTags.length ? `タグ:${allTags.join(" ")}` : null,
+        !isStubDesc ? `特徴:${desc.slice(0, 50)}` : null,
+      ].filter(Boolean).join(" / ");
+      return `${i + 1}. ${s.name}（${facts || "情報なし"}）`;
+    }).join("\n");
 
     const res = await ai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -5589,7 +5601,10 @@ async function generateSupabaseReasons(
           role: "system",
           content: `あなたは旅行プランナーです。ユーザーの気分・状況に合わせて各スポットの推薦理由を1文（30〜50字）で書いてください。
 ユーザー: 気分「${moodDesc}」、同伴「${companionDesc}」、交通「${transportDesc}」${contextParts ? "、" + contextParts : ""}
-※同伴者が恋人ならロマンチックな観点、友達ならワイワイできる観点、一人なら集中・リフレッシュ観点で書くこと。
+【最重要】各店の括弧内の固有情報（ジャンル・分類・タグ・特徴）を必ず理由文に反映し、店ごとに内容を変えること。
+・料理ジャンルがあれば必ず触れる（例: 寿司なら「新鮮なネタ」、そばなら「手打ちそば」、ラーメンなら「こだわりの一杯」のように具体的に）。
+・「特別なひととき」「特別な時間」のような全店共通の抽象表現は禁止。同じ言い回しを2店以上で使い回さないこと。
+・同伴者の観点（恋人=雰囲気、友達=賑わい、一人=リフレッシュ）は味付け程度に留め、主役は店の固有情報にすること。
 JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
         },
         { role: "user", content: spotList },
@@ -5806,6 +5821,12 @@ type FinalizeRec = {
 type FinalizeContext = {
   isFoodMood: boolean;
   minRadiusKm: number;
+  // 領域1: 近距離キャップ(km)。通常(非food/min0)分岐で「このkm以内を上位厳守」かつ
+  //   cap超過 curated の+8加点を無効化する。未指定(undefined)なら従来挙動(relax/legacy)。
+  nearCapKm?: number;
+  // 領域4: 家族×飲食の酒場系抑制トリガ（companion=家族 かつ 居酒屋系を明示選択していない時）。
+  familyCompanion?: boolean;
+  alcoholDeepDive?: boolean;
   isBadWeather: boolean;
   goodVisitedPlaces: Set<string>;
   seenPlaces: string[];
@@ -5829,9 +5850,26 @@ const FINALIZE_OLD_STORE_NAME_RE = /(老舗|創業[0-9０-９]+年|明治|大正
 // B2B・施設系の除外（株式会社/工場 等）。
 const FINALIZE_NG_BIZ_RE = /(株式会社|有限会社|（株）|\(株\)|（有）|\(有\)|合同会社|工場|製作所|倉庫|営業所|事業所|本社)/;
 
+// 領域3a: 投稿生テキスト（穴場/スポンサー等の description）を表示用reasonに整形する。
+//   suggest.tsx が `本文\n【目安価格】〜¥500\n【おすすめ度】★3` の形で保存するため、
+//   ① 【…】見出しで始まる定型行を丸ごと除去 ② 改行を句点に畳んで1文化
+//   ③ 連続句点/空白・末尾記号を整理 ④ 80字に圧縮。本文が空になれば "" を返す（カード側で非表示）。
+function sanitizeReasonText(raw?: string | null): string {
+  if (!raw) return "";
+  return String(raw)
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0 && !/^【[^】]*】/.test(l))
+    .join("。")
+    .replace(/。{2,}/g, "。")
+    .replace(/[ \t　]{2,}/g, " ")
+    .replace(/^[。、・\s]+|[。、・\s]+$/g, "")
+    .slice(0, 80);
+}
+
 function createFinalizeHelpers(ctx: FinalizeContext) {
   const {
-    isFoodMood, minRadiusKm, isBadWeather,
+    isFoodMood, minRadiusKm, nearCapKm, familyCompanion, alcoholDeepDive, isBadWeather,
     goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive, mood,
   } = ctx;
 
@@ -5910,6 +5948,75 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     return { taken, skipped };
   };
 
+  // ── 領域5: 組み立て後の最終整形（非食事・非心霊のみ）──────────────────────────
+  //   pickUnique のブランドcapは「呼び出しごと」にリセットされ、SB/G/Y/backfill の4回越しでは
+  //   効かない（同一チェーンが最大8件並ぶ＝カラオケ8/15の原因）。diversifyByCategory は
+  //   並べ替えるだけで件数をcapしない。ここで組み立て済み配列に1回だけ:
+  //     (a) 同ブランド上限2件  (b) 同サブカテゴリ上限4件  (c) 有名定番を最低1枠上位確保。
+  //   food/心霊は対象外（早期return）。超過分は除去せず末尾へ回し15件は維持。
+  const NONFOOD_SUBCATS: { key: string; re: RegExp }[] = [
+    { key: "カラオケ", re: /カラオケ|まねきねこ|ビッグエコー|カラオケ館|ジャンカラ|banban|ビッグ\s?エコー|joysound|ジョイサウンド|ワンカラ|歌広場|シダックス|カラ館|カラオケの鉄人/i },
+    { key: "図書館",   re: /図書館|library|自習|ライブラリー/i },
+    { key: "水族館",   re: /水族館|aquarium|アクアリウム/i },
+    { key: "展望",     re: /展望|スカイ\s?ツリー|スカイツリー|タワー|展望台|sky\s?tree/i },
+    { key: "温泉",     re: /温泉|スーパー銭湯|岩盤浴|サウナ/i },
+    { key: "美術博物", re: /美術館|博物館|資料館|ミュージアム|museum/i },
+    { key: "動物園",   re: /動物園|zoo|サファリ/i },
+    { key: "映画",     re: /映画|シネマ|cinema|109シネ|TOHOシネ/i },
+  ];
+  const nonFoodSubcatOf = (name: string): string => {
+    for (const c of NONFOOD_SUBCATS) if (c.re.test(name)) return c.key;
+    return "";  // 分類外はcap対象にしない
+  };
+  // 領域5(c): 有名定番スコア（レビュー数主体・0..1）。約1万件で≈1.0。
+  const fameScore = (r: FinalizeRec): number => {
+    const n = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
+    return n <= 0 ? 0 : Math.min(1, Math.log10(n + 1) / 4);
+  };
+  const finalizeAssembled = <T extends FinalizeRec>(arr: T[]): T[] => {
+    if (isFoodMood || effectiveDeepDive === "心霊") return arr;  // food/心霊は既存ロジック厳守
+    if (!arr || arr.length <= 4) return arr;
+    const BRAND_CAP = 2, SUBCAT_CAP = 3;
+    // ユーザーが明示的に選んだ深掘りに一致するサブカテゴリはcapしない
+    //   （温泉/図書館/水族館 等を直接選んだ検索でそのジャンルが4件に削られるのを防ぐ）。
+    let requestedSub = "";
+    for (const c of NONFOOD_SUBCATS) if (c.re.test(effectiveDeepDive || "")) { requestedSub = c.key; break; }
+    const brandCnt = new Map<string, number>();
+    const subCnt = new Map<string, number>();
+    const kept: T[] = [];
+    const overflow: T[] = [];
+    for (const r of arr) {
+      const brand = brandOf(r.title ?? "");
+      const sub = nonFoodSubcatOf(r.title ?? "");
+      const bc = brand.length >= 3 ? (brandCnt.get(brand) ?? 0) : 0;
+      const sc = sub ? (subCnt.get(sub) ?? 0) : 0;
+      // ブランドcapは常時（同チェーン3件目以降は後方）。サブカテゴリcapは「選んだジャンル以外」のみ。
+      //   ※source=admin等（source_type NULLの旧SB行含む）も対象＝カラオケ等の偏りを実際に間引く。
+      const overBrand = brand.length >= 3 && bc >= BRAND_CAP;
+      const overSub   = sub !== "" && sub !== requestedSub && sc >= SUBCAT_CAP;
+      if (overBrand || overSub) { overflow.push(r); continue; }
+      if (brand.length >= 3) brandCnt.set(brand, bc + 1);
+      if (sub) subCnt.set(sub, sc + 1);
+      kept.push(r);
+    }
+    const merged = [...kept, ...overflow];  // 超過は除去せず末尾へ＝15件維持
+    // (c): 著名スポット(レビュー多)が上位5枠に1件も無ければ、最良の1件を3位付近へ昇格。
+    const FAME_MIN = 0.6;  // ~250件以上で著名とみなす
+    const topHasFame = merged.slice(0, 5).some(r => fameScore(r) >= FAME_MIN);
+    if (!topHasFame) {
+      let bestIdx = -1, best = FAME_MIN;
+      for (let i = 0; i < merged.length; i++) {
+        const f = fameScore(merged[i]);
+        if (f > best) { best = f; bestIdx = i; }
+      }
+      if (bestIdx > 2) {
+        const [famous] = merged.splice(bestIdx, 1);
+        merged.splice(2, 0, famous);  // 先頭2枠(curated注入)は温存
+      }
+    }
+    return merged;
+  };
+
   // ── 距離の単一化（全経路共通）──────────────────────────────────────────────
   //   各recの distanceKm と distanceText を「同じ1つのkm」から作り直す。
   //   優先: distanceM(PostGIS) → 座標haversine → 既存distanceKm。
@@ -5933,6 +6040,25 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       ? r.distanceKm
       : (parseKmFromDistText(r.distanceText) ?? 9999)
   );
+
+  // 領域3b: 距離と最寄駅の一貫表記。現在地→スポットが「車距離(>2.5km or 交通手段=車/未指定)」の
+  //   ときに stationText の『〇〇駅から徒歩約N分』を『最寄り: 〇〇駅』へ落とし、徒歩分と車距離の
+  //   矛盾表示(「車24分/16km」＋「逗子駅から徒歩22分」)を防ぐ。徒歩/自転車・近場(<=2.5km)は現状維持。
+  //   距離数値(distanceKm/distanceM)とソートには触れず、表示テキストのみ整える。
+  const stationConsistency = <T extends FinalizeRec>(arr: T[]): T[] => {
+    const tStr = Array.isArray(ctx.transport) ? ctx.transport.join(",") : (ctx.transport ?? "");
+    const carContext = /車|バイク|なんでも/.test(tStr) || tStr === "";
+    for (const r of arr) {
+      const st = (r as unknown as { stationText?: string }).stationText;
+      if (!st) continue;
+      const km = typeof r.distanceKm === "number" ? r.distanceKm : kmOf(r);
+      if (km > 2.5 && carContext && /徒歩約[0-9０-９]+分/.test(st)) {
+        const m = st.match(/^(.+?駅?)から徒歩約[0-9０-９]+分$/);
+        (r as unknown as { stationText?: string }).stationText = m ? `最寄り: ${m[1].replace(/駅$/, "")}駅` : st;
+      }
+    }
+    return arr;
+  };
 
   // D-1: フィードバック学習 — 過去に良かった場所を優先
   const goodPlaceNames = new Set([...goodVisitedPlaces].map(n => n.toLowerCase()));
@@ -5992,19 +6118,41 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     //   「OpenAIが選んだ大局的な順」が支配しつつ、近い順位どうしはrandomで適度に入れ替わる
     //   （＝毎回同一にならず多様性も維持）。_aiRank未付与(Google/Yahoo)は0で従来挙動。
     const aiRankBoost = (r: FinalizeRec) => (typeof r._aiRank === "number" ? Math.max(0, 16 - r._aiRank) : 0);
+    // 領域1: 近距離キャップ。nearCapKm 指定時、cap超過は band1(後方)＋curated+8を無効化する。
+    //   nearCapKm 未指定(relax/legacy)は overCap 常に false ＝従来挙動と完全一致(回帰なし)。
+    const overCap = (r: FinalizeRec): boolean =>
+      typeof nearCapKm === "number" && nearCapKm > 0 && kmOf(r) > nearCapKm;
+    // 領域2b: ★評価(Wilson下限0..1)を加点(最大+5)。★あり高評価を上位・★無は0で後方へ(除外しない)。
+    // 領域3c: ★4.5以上×口コミ1〜2 の極端に薄い高評価(閉店疑い含む)は -2 で軽く後方化(除外しない)。
+    //   ※ 評価加点は wilson*5 に一本化（*5と*2の二重加点はcurated+8を凌駕しadmin趣旨が壊れるため）。
+    const sortRatingBoost = (r: FinalizeRec) => {
+      const cnt = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
+      let s = wilsonLower(r.rating ?? null, cnt) * 5;
+      if (typeof r.rating === "number" && r.rating >= 4.5 && cnt > 0 && cnt <= 2) s -= 2;
+      return s;
+    };
     return [...arr]
       .map(r => ({
         r,
+        over: overCap(r),
+        km: kmOf(r),
         score: (Math.random() * 10)
           + aiRankBoost(r)                       // OpenAI判別順を主signalに（埋もれ防止）
           + weatherBoost(r)
           + photoQualityScore(r)
+          + sortRatingBoost(r)                   // 領域2b/3c: ★あり上位・★無後方・薄い★5減点
           + (r.openNow === true ? 2 : 0)         // #7: 営業中の店を優先
           + (r.openNow === false ? -1.5 : 0)     //     営業時間外は控えめに後ろへ
-          + (isCurated(r.source) ? 8 : 0)        // 手動追加スポットを上位に（埋もれ防止）
+          + ((isCurated(r.source) && !overCap(r)) ? 8 : 0)  // 領域1: 手動追加は近距離キャップ以内のみ満額昇格
           + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
       }))
-      .sort((a, b) => b.score - a.score)
+      // 領域1: cap以内(band0)を必ず上位、cap外(band1)は後方。同バンドはscore降順、cap外は近い順タイブレーク。
+      .sort((a, b) => {
+        if (a.over !== b.over) return a.over ? 1 : -1;
+        const ds = b.score - a.score;
+        if (Math.abs(ds) > 0.0001) return ds;
+        return a.km - b.km;
+      })
       .map(x => x.r);
   };
 
@@ -6028,13 +6176,19 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     showUnseenOnly ? arr.filter(r => !seenLower.has((r.title ?? "").toLowerCase())) : arr;
 
   // 品質フィルタ（B2B除外 + 写真なし&評価少を除外）
-  const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; userRatingCount?: number | null; source?: string }>(arr: T[]): T[] =>
+  const qualitySanitize = <T extends { title?: string; photoUrl?: string; photoUrls?: string[]; rating?: number | null; userRatingCount?: number | null; source?: string }>(arr: T[]): T[] =>
     arr.filter(r => {
       const name = r.title ?? "";
       if (FINALIZE_NG_BIZ_RE.test(name)) return false;
       // 心霊は著作権で写真なし・独自スポットでレビュー0件が正常。スプーキー
       // プレースホルダーをUIで表示するため、写真/評価ゲートはスキップ（NG_BIZ除去は維持）。
       if (effectiveDeepDive === "心霊") return true;
+      // 領域2a: ★が明確に低く(<3.0)かつ口コミ十分(≥20件)の確実なハズレ店は最終結果から除外。
+      //   rating null/0 や口コミ<20件は判定不能として残す（無料方針＝★無/データ薄は下げるだけ）。
+      //   心霊/proprietary は上の早期returnで対象外。food分岐の評価ソートには影響しない。
+      const ratingVal = typeof r.rating === "number" ? r.rating : null;
+      const ratingCnt = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
+      if (ratingVal !== null && ratingVal > 0 && ratingVal < 3.0 && ratingCnt >= 20) return false;
       const hasPhoto = !!r.photoUrl || (Array.isArray(r.photoUrls) && r.photoUrls.length > 0);
       const reviews = typeof r.userRatingCount === "number" ? r.userRatingCount : 0;
       // 写真なし&低評価ゲートは Google/Yahoo の低品質補足のみに適用する。
@@ -6044,6 +6198,15 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (!hasPhoto && reviews < 5 && isSupplement) return false;
       return true;
     });
+
+  // 領域4: 家族×飲食 で酒主体の業態（ビアバー/タコス酒場/居酒屋/小料理/スナック等）を抑制。
+  //   client が時間帯を送らない(answers.time常に空)ため『昼のみ』判定は不可 → companion=家族 の
+  //   食事検索で常時ソフト抑制する。ジャンル深掘りで居酒屋系を明示選択した時(alcoholDeepDive)は
+  //   意図尊重で抑制を解除する。
+  const isFamilyFood = isFoodMoodReq && (familyCompanion ?? false) && !alcoholDeepDive;
+  const FAMILY_ALCOHOL_RE = /ビアバー|ビア・?バー|ビヤホール|ビアホール|タコス(?!ライス)|タケリア|居酒屋|小料理|大衆酒場|酒場|立ち飲み|もつ焼き|ホッピー|ガールズバー|スナック|ダイニングバー|バル$|BAR$|焼き?鳥居酒屋/i;
+  const familyFoodSanitize = <T extends { title?: string }>(arr: T[]): T[] =>
+    isFamilyFood ? arr.filter(r => !FAMILY_ALCOHOL_RE.test(r.title ?? "")) : arr;
 
   // #1/#3/#13: ジャンル不一致フィルタ（明確な異ジャンル語を含む店のみ除外＝否定語ベース）。
   // 否定語定義があるジャンルのみ作動。肯定語は要求しないため、名前にジャンル名を含まない
@@ -6061,9 +6224,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 
   return {
-    shuffleArr, applyMallFilter, normalizeName, namesOverlap, pickUnique,
-    kmOf, normalizeDistance, weatherBoost, photoQualityScore, sortOrShuffle,
-    foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
+    shuffleArr, applyMallFilter, normalizeName, namesOverlap, pickUnique, finalizeAssembled,
+    kmOf, normalizeDistance, stationConsistency, weatherBoost, photoQualityScore, sortOrShuffle,
+    foodSanitize, familyFoodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
     seenLower, isFoodMoodReq,
     NON_FOOD_NAME_RE: FINALIZE_NON_FOOD_NAME_RE,
   };
@@ -6308,8 +6471,14 @@ async function handleRecommend(request: Request) {
       "小旅行気分": 120, "どこでも行きたい": 200,
     };
     const DISTANCE_MIN_KM: Record<string, number> = {
-      "すぐそこ": 0, "近場でいい": 0, "少し歩ける": 4, "近めにお出かけ": 8,
-      "今日は出かけたい": 8,   // 16→8: 中華街/みなとみらい等9〜12km圏の定番が後回しになるため緩和
+      // 領域1: 近め系（すぐそこ〜今日は出かけたい）は遠出バイアスを掛けず「近い順」で出す。
+      //   以前は 少し歩ける=4 / 近めにお出かけ=8 / 今日は出かけたい=8 と min>0 にしていたため、
+      //   sortOrShuffle の far-bias 分岐(遠い順)＋近場再ソート(minRadiusKm===0)の無効化が発火し、
+      //   「近めを選んだのに半径外縁の遠い店が上位」になっていた（利用者最頻不満）。
+      //   min=0 にすると近場再ソートに乗り近い順が厳守される（候補半径 radiusKm 自体は不変）。
+      "すぐそこ": 0, "近場でいい": 0, "少し歩ける": 0, "近めにお出かけ": 0,
+      "今日は出かけたい": 0,
+      // ちょっと遠くてもOK 以上は意図的な遠出バイアス（far-bias）を維持する。
       "ちょっと遠くてもOK": 32, "県またぎもあり": 56, "小旅行気分": 96, "どこでも行きたい": 160,
     };
     // radiusKm: クイズで選んだ値を最優先。未設定時は交通手段/時間から推定
@@ -6911,9 +7080,10 @@ async function handleRecommend(request: Request) {
             openingHoursText: r.openingHours ?? undefined,  // 全曜日分をそのまま渡す
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
-            reason: reasons.get(r.name) ?? r.description ?? "",
+            reason: reasons.get(r.name) ?? sanitizeReasonText(r.description),
             // #5: 全カードに「なぜあなたに合うか」を表示（気分依存の推薦理由・空ならカード側は非表示）
-            aiReason: reasons.get(r.name) || undefined,
+            //   領域3a: reasons(AI生成)が無く description フォールバック時は投稿生テキストを整形して出す。
+            aiReason: reasons.get(r.name) || sanitizeReasonText(r.description) || undefined,
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,
@@ -7103,10 +7273,18 @@ async function handleRecommend(request: Request) {
         //   （将来 経路5(レガシー)等もこのヘルパーを呼ぶことで改善が全経路に波及する）
         const {
           applyMallFilter, normalizeName, pickUnique, sortOrShuffle, normalizeDistance,
-          foodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
+          foodSanitize, familyFoodSanitize, seenFilter, qualitySanitize, genreFidelityFilter, nonFoodSanitize,
+          finalizeAssembled, stationConsistency,
           seenLower, isFoodMoodReq, NON_FOOD_NAME_RE,
         } = createFinalizeHelpers({
-          isFoodMood, minRadiusKm, isBadWeather,
+          isFoodMood, minRadiusKm,
+          // 領域1: 近距離キャップ。「少し歩ける(5km)→1.5km」「近め(10km)→3km」「今日は(20km)→6km」を
+          //   上位厳守（選択半径の30%・最小1.5km）。min>0(遠出)時は undefined で far-bias温存。
+          nearCapKm: minRadiusKm > 0 ? undefined : Math.max(1.5, sbRadiusKm * 0.3),
+          // 領域4: 家族×飲食の酒場系抑制トリガ。
+          familyCompanion: (answers.companion ?? "").includes("家族"),
+          alcoholDeepDive: /居酒屋|酒場|大衆酒場|個室居酒屋|バー/.test(effectiveDeepDive),
+          isBadWeather,
           goodVisitedPlaces, seenPlaces, showUnseenOnly, effectiveDeepDive,
           mood: answers.mood,
           originLat: answers.originLat, originLng: answers.originLng, transport: answers.transport,
@@ -7129,7 +7307,7 @@ async function handleRecommend(request: Request) {
         };
         const finalizeSource = (arr: Rec[]): Rec[] => {
           // 距離を最初に単一化（distanceKm=distanceText が同じkm・交通手段反映）→ 以降のソート/表示が一致
-          const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(normalizeDistance(arr)))))))));
+          const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(familyFoodSanitize(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(normalizeDistance(arr))))))))));
           return diversifyFood ? diversifyByCoarseGenre(sorted, 2) : sorted;
         };
         const sbSorted = finalizeSource(mergedSb);
@@ -7358,7 +7536,7 @@ async function handleRecommend(request: Request) {
                 openingHoursText: undefined,
                 mapUrl: s.google_maps_uri ?? "",
                 googleMapsUrl: s.google_maps_uri ?? "",
-                reason: s.description ?? "",
+                reason: sanitizeReasonText(s.description),   // 領域3a: 投稿生テキスト(【目安価格】等)を整形
                 features: (s.auto_tags ?? []).filter(t => allUserTags.has(t)).slice(0, 5),
                 distanceText: adkm != null ? formatDistTextFromKm(adkm) : "",
                 distanceKm: adkm,
@@ -7669,7 +7847,7 @@ async function handleRecommend(request: Request) {
                   rating: null, userRatingCount: null, openNow: undefined,
                   openStatusBadge: undefined, openingHoursText: undefined,
                   mapUrl: "", googleMapsUrl: "",
-                  reason: s.description ?? "", features: (s.tags ?? []).slice(0, 5),
+                  reason: sanitizeReasonText(s.description), features: (s.tags ?? []).slice(0, 5),
                   distanceText: km != null ? formatDistText(km, answers.transport) : "",
                   distanceKm: km, distanceM: null, lat: s.lat ?? undefined, lng: s.lng ?? undefined,
                   durationText: "", stationText: s.nearest_station ?? "",
@@ -7732,7 +7910,14 @@ async function handleRecommend(request: Request) {
 
         applyLimitedTimeOverride(recommendations as unknown as LimitedEventRec[], limitedEvents);
         await applyUserPhotos(recommendations as unknown as UserPhotoRec[]);
+        // 領域3b: 車距離スポットの「駅から徒歩◯分」を「最寄り:◯◯駅」へ整え距離表記の矛盾を解消（in-place）。
+        stationConsistency(recommendations);
         diversifyByCategory(recommendations as unknown as DivRec[]);
+        // 領域5: 同ブランド2件・同サブカテゴリ4件にcapし著名定番を上位確保（非食事・非心霊のみ）。
+        //   ※ diversifyByCategory の「後」に最後の整形として適用する。先に適用すると
+        //     diversifyByCategory のラウンドロビンで cap 超過要素が中位へ繰り上がり cap が無効化されるため
+        //     （カラオケ同チェーンが再び上位に並ぶ）。最後に置くことで cap 並びが最終出力に確実に残る。
+        recommendations = finalizeAssembled(recommendations);
         return json({
           recommendations,
           source: "supabase",
@@ -7767,7 +7952,7 @@ async function handleRecommend(request: Request) {
     const suggestionDescriptions = new Map<string, string>();
     for (const s of approvedSuggestions) {
       const parts: string[] = [];
-      if (s.description) parts.push(s.description.slice(0, 80));
+      { const cleaned = sanitizeReasonText(s.description); if (cleaned) parts.push(cleaned); }  // 領域3a
       if (s.auto_tags && s.auto_tags.length > 0) parts.push(`タグ: ${s.auto_tags.join(" ")}`);
       if (parts.length > 0) {
         if (s.google_place_name) suggestionDescriptions.set(s.google_place_name, parts.join(" "));
