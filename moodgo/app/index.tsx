@@ -33,7 +33,7 @@ import {
   BLOCKED_PLACES_KEY, PROFILE_KEY, ONBOARDED_KEY,
   loadJSON, saveJSON,
 } from '@/lib/storage';
-import { apiFetch, API_BASE } from '@/lib/api';
+import { apiFetch, API_BASE, prewarmRecommend } from '@/lib/api';
 import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
@@ -323,6 +323,7 @@ export default function Home() {
 
   // ── AI相談を開く（押した瞬間に位置情報を自動取得）──────────────────────────
   const handleOpenAiChat = async () => {
+    prewarmRecommend();  // AI相談も検索APIを使うので開始時に暖機
     setAiChatOpen(true);
     setAiHasLocation(false);
     setIsLocating(true);
@@ -1215,9 +1216,10 @@ export default function Home() {
             profileAge={profileAge}
             profileGender={profileGender}
             lang={lang}
-            onStart={() => setStarted(true)}
+            onStart={() => { prewarmRecommend(); setStarted(true); }}
             onStartWithMood={(moodKey: string) => {
               // 気分を選択済み状態にしてstep=2（同行者選択）から開始
+              prewarmRecommend();  // クイズ開始＝検索数十秒前にVercel関数を暖機（コールドスタート対策）
               setSelectedMood(moodKey);
               setStep(2);
               setStarted(true);

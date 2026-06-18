@@ -34,6 +34,19 @@ export async function apiFetch(
 }
 
 /**
+ * 検索API(/api/recommend)を事前に暖機する。クイズ開始時に呼ぶと、ユーザーが質問に
+ * 答えている数十秒の間にVercel関数がコールドスタートを済ませ、検索時には暖まっている。
+ * fire-and-forget（結果・エラーは無視）。GETは軽量ハンドラが即 {ok:true} を返す。
+ */
+let _prewarmedAt = 0;
+export function prewarmRecommend(): void {
+  const now = Date.now();
+  if (now - _prewarmedAt < 60000) return;  // 60秒以内に暖機済みなら再送しない（連打防止）
+  _prewarmedAt = now;
+  apiFetch('/api/recommend', { method: 'GET', timeoutMs: 8000 }).catch(() => {});
+}
+
+/**
  * JSON を取得しつつ HTTP ステータスを検査するヘルパ。
  * 非2xx や JSON パース失敗時は例外を投げる → 呼び出し側でリトライ/失敗UIを出せる。
  * （素の空配列フォールバックでエラーを握りつぶさないための導線）

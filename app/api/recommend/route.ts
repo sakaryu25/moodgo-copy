@@ -6272,6 +6272,13 @@ function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): stri
   ].join("|");
 }
 
+// 暖機(prewarm)用の軽量GET。クイズ開始時にアプリから叩いてコールドスタートを先に済ませる。
+//   重い処理はせず即返す。これでサーバーレス関数＋重いトップレベルimportが事前ロードされ、
+//   ユーザーが検索する頃には関数が暖まっている＝初回検索のタイムアウトを防ぐ。
+export async function GET(): Promise<Response> {
+  return NextResponse.json({ ok: true, warm: true });
+}
+
 // 計測ラッパー: API呼び出しカウンタを用意してハンドラを実行し、最後に1行ログ出力する。
 export async function POST(request: Request): Promise<Response> {
   const counts = newApiCounts();
