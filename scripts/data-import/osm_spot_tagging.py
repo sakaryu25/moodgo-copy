@@ -224,7 +224,7 @@ SPORTS_CATS = [("leisure", v.split("=")[1]) for v in
 #   ※ tourism=attraction(広すぎ・他気分と重複) と amenity=nightclub(風俗混入) は除外（精度優先）
 FUN_MAP = {
     "tourism=theme_park": ["#わいわい楽しみたい", "#テーマパーク", "#アミューズメントパーク", "#スリル味わいたい", "#絶叫"],
-    "leisure=water_park": ["#わいわい楽しみたい", "#テーマパーク", "#アミューズメントパーク", "#スリル味わいたい", "#絶叫"],
+    "leisure=water_park": ["#わいわい楽しみたい", "#アミューズメントパーク"],  # QA修正: 市民プールもwater_park扱いのため#テーマパーク/#絶叫は外す
     "tourism=zoo": ["#わいわい楽しみたい", "#動物園", "#鑑賞"],
     "tourism=aquarium": ["#わいわい楽しみたい", "#水族館", "#鑑賞"],
     "tourism=museum": ["#わいわい楽しみたい", "#博物館", "#鑑賞"],
@@ -255,7 +255,11 @@ FUN_NAME = [
     (r"陶芸|ガラス工房|手作り体験|ものづくり|クラフト体験|キャンドル", ["#ものつくり", "#体験型"]),
     (r"映画館|シネマ|シネコン|TOHOシネマ|イオンシネマ|劇場|シアター", ["#鑑賞"]),
 ]
-derive_fun_tags = _make_deriver(FUN_MAP, FUN_NAME, "#わいわい楽しみたい")
+def _fun_sub(t, name, tags):
+    # QA修正: OSMがtheme_park/water_park扱いでも、市民プール/児童公園/釣り堀等はテーマパークでない
+    if "#テーマパーク" in tags and re.search(r"市民プール|町民プール|区民プール|市営プール|水泳場|児童公園|釣り堀|温水プール|プール$", name):
+        tags.discard("#テーマパーク"); tags.discard("#絶叫"); tags.discard("#スリル味わいたい")
+derive_fun_tags = _make_deriver(FUN_MAP, FUN_NAME, "#わいわい楽しみたい", _fun_sub)
 FUN_CATS = [("tourism", "theme_park"), ("leisure", "water_park"), ("tourism", "zoo"), ("tourism", "aquarium"),
             ("tourism", "museum"), ("tourism", "gallery"), ("leisure", "amusement_arcade"),
             ("leisure", "adult_gaming_centre"), ("leisure", "bowling_alley"), ("amenity", "karaoke_box"),
@@ -316,15 +320,22 @@ SHOPPING_CATS = [("shop", "mall"), ("shop", "department_store"), ("shop", "cloth
 
 # ── 気分#7: 遠くに行きたい/ドライブ（travel）─────────────────────────────────
 #   ※ tourism=attraction(広すぎ) は除外。神社寺/城/絶景/展望/テーマパーク。
+# QA修正: 記念碑/像/史跡(monument/memorial/ruins)は#パワースポットにしない（除外）。
+#   城は#パワースポットではなく景観として#絶景。place_of_worshipは _travel_sub で宗教を絞る。
 TRAVEL_MAP = {
     "amenity=place_of_worship": ["#遠くに行きたい", "#パワースポット"],
-    "historic=castle": ["#遠くに行きたい", "#パワースポット", "#絶景スポット"],
-    "historic=monument": ["#遠くに行きたい", "#パワースポット"],
-    "historic=memorial": ["#遠くに行きたい", "#パワースポット"],
-    "historic=ruins": ["#遠くに行きたい", "#パワースポット"],
+    "historic=castle": ["#遠くに行きたい", "#絶景スポット"],
     "tourism=theme_park": ["#遠くに行きたい", "#テーマパーク"],
     "tourism=viewpoint": ["#遠くに行きたい", "#絶景スポット", "#展望台"],
 }
+def _travel_sub(t, name, tags):
+    # place_of_worship のうち、神道/仏教(または神社寺の名前)以外（教会/モスク等）は #パワースポット を外す
+    if "#パワースポット" in tags:
+        rel = (t.get("religion") or "").lower()
+        is_jp = rel in ("shinto", "buddhist") or re.search(
+            r"神社|神宮|大社|稲荷|八幡|天満|東照|宮$|寺|大師|不動尊|観音|薬師|不動院|院$", name)
+        if not is_jp:
+            tags.discard("#パワースポット")
 TRAVEL_NAME = [
     (r"神社|神宮|大社|稲荷|八幡宮|天満宮|東照宮", ["#パワースポット"]),
     (r"寺$|寺院|大師|不動尊|観音|薬師|本願寺|大仏", ["#パワースポット"]),
@@ -334,12 +345,11 @@ TRAVEL_NAME = [
     (r"商店街|横丁|横町|食べ歩き|レトロ街", ["#お散歩", "#ご当地グルメ"]),
     (r"旧街道|宿場|古い町並み|町並み保存|散策路|遊歩道", ["#お散歩"]),
 ]
-derive_travel_tags = _make_deriver(TRAVEL_MAP, TRAVEL_NAME, "#遠くに行きたい")
+derive_travel_tags = _make_deriver(TRAVEL_MAP, TRAVEL_NAME, "#遠くに行きたい", _travel_sub)
 # 神社寺は数が膨大(1県数千〜数万)＋小さな祠まで含むと精度低下。wikidataタグ付き=著名なものだけに絞る。
-#   3要素目はOverpassの追加フィルタ（省略時はフィルタ無し）。
+#   記念碑/像/史跡(monument/memorial/ruins)はパワースポット誤爆源なので取得カテゴリから除外。
 TRAVEL_CATS = [("amenity", "place_of_worship", '["wikidata"]'),
-               ("historic", "castle"), ("historic", "monument"),
-               ("historic", "memorial"), ("historic", "ruins"), ("tourism", "theme_park")]
+               ("historic", "castle"), ("tourism", "theme_park")]
 
 
 if __name__ == "__main__":
