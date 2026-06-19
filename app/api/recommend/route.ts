@@ -6856,8 +6856,10 @@ async function handleRecommend(request: Request) {
           skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Googleも呼ばない（DB完結）
           skipYahooOnly = true;                                    // 飲食はYahoo常時オフ（フロア未満でもGoogleのみ保険）
         } else {
-          skipAllSupplements = sbQualified.length >= 15;
-          skipYahooOnly = !skipAllSupplements && sbQualified.length >= 10;
+          // 他気分もOSM自前DB（公園/温泉/ジム/水族館/神社/服屋…）が全国分揃ったのでDB優先。
+          //   在庫8件以上ならGoogle/Yahoo不使用でDB完結。Yahoo常時オフ、Googleはフロア未満のみ保険。
+          skipAllSupplements = sbQualified.length >= 8;
+          skipYahooOnly = true;
         }
         // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
         //   ユーザー要件「Supabaseから出てきた情報(全件)を必ずOpenAIに渡す」を満たすため
