@@ -55,14 +55,20 @@ def gkey(name, lat, lng):
     return norm(name) + f"|{round(lat,3)},{round(lng,3)}"
 
 
-# ── 既存 osm-foodshop 行を読み込み（id付き）。osm_id と 名前+座標 の2索引を作る ──────
-print("既存 osm-foodshop 行を読み込み中...", flush=True)
+# ── 既存行を読み込み（id付き）。osm_id と 名前+座標 の2索引を作る ──────
+#   MATCH_SOURCES 環境変数でマッチ対象の source_type を指定（例: nature は "osm,osm-nature"）。
+#   未指定なら従来どおり osm-foodshop（食事の再タグ）。
+MATCH_SOURCES = os.environ.get("MATCH_SOURCES", "osm-foodshop")
+_src_list = [s.strip() for s in MATCH_SOURCES.split(",") if s.strip()]
+_src_filter = (f"source_type=eq.{_src_list[0]}" if len(_src_list) == 1
+               else "source_type=in.(" + ",".join(_src_list) + ")")
+print(f"既存 [{MATCH_SOURCES}] 行を読み込み中...", flush=True)
 by_osm = {}     # osm_id -> {id, tags}
 by_key = {}     # name+coords -> {id, tags}
 off = 0
 while True:
     st, raw = http("GET",
-                   "places?source_type=eq.osm-foodshop&select=id,name,lat,lng,osm_id,tags"
+                   f"places?{_src_filter}&select=id,name,lat,lng,osm_id,tags"
                    f"&limit=1000&offset={off}")
     try:
         rows = json.loads(raw)
@@ -81,7 +87,7 @@ while True:
     print(f"   読込 {off}...", flush=True)
     if len(rows) < 1000:
         break
-print(f"既存 osm-foodshop: osm_id索引 {len(by_osm)} / 座標索引 {len(by_key)}", flush=True)
+print(f"既存 [{MATCH_SOURCES}]: osm_id索引 {len(by_osm)} / 座標索引 {len(by_key)}", flush=True)
 
 
 # ── record を「更新（既存id一致）」と「新規INSERT」に振り分け ──────────────────────
