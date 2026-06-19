@@ -31,7 +31,12 @@ PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県"
 
 # 気分 → (カテゴリ一覧, deriver, source_type)
 REGISTRY = {
-    "nature": (ST.NATURE_CATS, ST.derive_nature_tags, "osm-nature"),
+    "nature":   (ST.NATURE_CATS,   ST.derive_nature_tags,   "osm-nature"),
+    "sports":   (ST.SPORTS_CATS,   ST.derive_sports_tags,   "osm-sports"),
+    "fun":      (ST.FUN_CATS,      ST.derive_fun_tags,      "osm-fun"),
+    "focus":    (ST.FOCUS_CATS,    ST.derive_focus_tags,    "osm-focus"),
+    "shopping": (ST.SHOPPING_CATS, ST.derive_shopping_tags, "osm-shopping"),
+    "travel":   (ST.TRAVEL_CATS,   ST.derive_travel_tags,   "osm-travel"),
 }
 if MOOD not in REGISTRY:
     print(f"未対応のMOOD: {MOOD}（対応: {list(REGISTRY)}）", flush=True); sys.exit(1)
