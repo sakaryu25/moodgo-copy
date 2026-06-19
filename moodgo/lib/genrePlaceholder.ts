@@ -34,20 +34,71 @@ const RULES: { tag: string; ph: GenrePlaceholder }[] = [
   { tag: "#喫茶店",         ph: { emoji: "☕", colors: ["#F6F0EA", "#E8D9CB"], label: "喫茶店" } },
   { tag: "#流行りカフェ",   ph: { emoji: "🧋", colors: ["#FBF1FF", "#EFD9FF"], label: "カフェ" } },
   { tag: "#カフェスイーツ", ph: { emoji: "🍰", colors: ["#FFF2F7", "#FFDCEA"], label: "カフェ・スイーツ" } },
+  // ── まったり/自然 ──
+  { tag: "#温泉",           ph: { emoji: "♨️", colors: ["#FFF1EC", "#FFD9C9"], label: "温泉" } },
+  { tag: "#サウナ",         ph: { emoji: "🧖", colors: ["#FBEDE8", "#F0D6C8"], label: "サウナ" } },
+  { tag: "#岩盤浴",         ph: { emoji: "🧖", colors: ["#FBEDE8", "#F0D6C8"], label: "岩盤浴" } },
+  { tag: "#海辺",           ph: { emoji: "🏖️", colors: ["#E9F6FF", "#CFEBFF"], label: "海辺" } },
+  { tag: "#展望台",         ph: { emoji: "🗼", colors: ["#EEF2FF", "#D8E0FF"], label: "展望台" } },
+  { tag: "#絶景スポット",   ph: { emoji: "🏞️", colors: ["#EAF7F0", "#D2EEDD"], label: "絶景" } },
+  { tag: "#自然公園",       ph: { emoji: "🌲", colors: ["#EEF6E9", "#D8EDC9"], label: "自然公園" } },
+  { tag: "#大型公園",       ph: { emoji: "🌳", colors: ["#EFF6E8", "#DAEFC8"], label: "公園" } },
+  // ── 楽しみたい ──
+  { tag: "#テーマパーク",   ph: { emoji: "🎡", colors: ["#FFF0F6", "#FFD7E8"], label: "テーマパーク" } },
+  { tag: "#水族館",         ph: { emoji: "🐬", colors: ["#E8F5FF", "#CDE9FF"], label: "水族館" } },
+  { tag: "#動物園",         ph: { emoji: "🦁", colors: ["#FBF4E6", "#F2E1B8"], label: "動物園" } },
+  { tag: "#博物館",         ph: { emoji: "🏛️", colors: ["#F3F0EA", "#E2D9C8"], label: "博物館・美術館" } },
+  { tag: "#カラオケ",       ph: { emoji: "🎤", colors: ["#F7EEFF", "#E6D2FF"], label: "カラオケ" } },
+  { tag: "#ボウリング",     ph: { emoji: "🎳", colors: ["#EFF1FF", "#D8DDFF"], label: "ボウリング" } },
+  { tag: "#体験型ゲーム",   ph: { emoji: "🎮", colors: ["#F0EEFF", "#D8D2FF"], label: "アミューズメント" } },
+  { tag: "#鑑賞",           ph: { emoji: "🎭", colors: ["#F4EEF7", "#E2D2EC"], label: "鑑賞" } },
+  // ── 運動 ──
+  { tag: "#ジム",           ph: { emoji: "💪", colors: ["#FFEFEC", "#FFD4CB"], label: "ジム" } },
+  { tag: "#プール",         ph: { emoji: "🏊", colors: ["#E8F6FF", "#CDEAFF"], label: "プール" } },
+  { tag: "#ゴルフ",         ph: { emoji: "⛳", colors: ["#EEF7E9", "#D6EEC9"], label: "ゴルフ" } },
+  { tag: "#ボウリング",     ph: { emoji: "🎳", colors: ["#EFF1FF", "#D8DDFF"], label: "ボウリング" } },
+  { tag: "#スポーツ",       ph: { emoji: "🏃", colors: ["#EEF6F0", "#D4EBDB"], label: "スポーツ" } },
+  // ── 集中 ──
+  { tag: "#カフェ作業",     ph: { emoji: "💻", colors: ["#F0F2F7", "#DCE2EE"], label: "作業カフェ" } },
+  { tag: "#勉強場",         ph: { emoji: "📚", colors: ["#F2EFE8", "#E1D8C6"], label: "勉強場" } },
+  { tag: "#book場",         ph: { emoji: "📖", colors: ["#F2EFE8", "#E1D8C6"], label: "図書" } },
+  // ── ショッピング ──
+  { tag: "#古着",           ph: { emoji: "🧥", colors: ["#F3EFEA", "#E0D5C7"], label: "古着" } },
+  { tag: "#服アクセサリー", ph: { emoji: "👕", colors: ["#FBF0F6", "#F2D8E7"], label: "ファッション" } },
+  { tag: "#コスメ美容",     ph: { emoji: "💄", colors: ["#FFF0F4", "#FFD8E5"], label: "コスメ・美容" } },
+  { tag: "#雑貨インテリア", ph: { emoji: "🪴", colors: ["#F0F5EE", "#D9EAD2"], label: "雑貨・インテリア" } },
+  { tag: "#お土産ギフト",   ph: { emoji: "🎁", colors: ["#FFF1F0", "#FFD7D3"], label: "お土産・ギフト" } },
+  { tag: "#ショッピング",   ph: { emoji: "🛍️", colors: ["#FBF0FA", "#F0D8EF"], label: "ショッピング" } },
+  // ── 遠く/ドライブ ──
+  { tag: "#パワースポット", ph: { emoji: "⛩️", colors: ["#FBEEEC", "#F4D5CF"], label: "パワースポット" } },
+  { tag: "#道の駅",         ph: { emoji: "🛣️", colors: ["#F1F4EE", "#DCE7D2"], label: "道の駅" } },
+  { tag: "#お散歩",         ph: { emoji: "🚶", colors: ["#F1F3F6", "#DDE2EB"], label: "お散歩" } },
 ];
 
-// 飲食の汎用フォールバック（#お腹すいた のみ等、ジャンル不明）
-const FOOD_DEFAULT: GenrePlaceholder = { emoji: "🍽️", colors: ["#FFF3EE", "#FFE3D6"], label: "ごはん" };
+// 気分大タグごとの汎用フォールバック（深掘り不明でも雰囲気に合うものを出す）
+const MOOD_DEFAULTS: { tag: string; ph: GenrePlaceholder }[] = [
+  { tag: "#お腹すいた",       ph: { emoji: "🍽️", colors: ["#FFF3EE", "#FFE3D6"], label: "ごはん" } },
+  { tag: "#まったりしたい",   ph: { emoji: "🌿", colors: ["#EEF6EC", "#D6EBD0"], label: "まったり" } },
+  { tag: "#自然感じたい",     ph: { emoji: "🌳", colors: ["#EFF6E8", "#DAEFC8"], label: "自然" } },
+  { tag: "#わいわい楽しみたい", ph: { emoji: "🎉", colors: ["#FFF0F6", "#FFD7E8"], label: "あそび" } },
+  { tag: "#体動かしたい",     ph: { emoji: "🏃", colors: ["#EEF6F0", "#D4EBDB"], label: "運動" } },
+  { tag: "#集中したい",       ph: { emoji: "📖", colors: ["#F2EFE8", "#E1D8C6"], label: "集中" } },
+  { tag: "#ショッピング",     ph: { emoji: "🛍️", colors: ["#FBF0FA", "#F0D8EF"], label: "ショッピング" } },
+  { tag: "#遠くに行きたい",   ph: { emoji: "⛩️", colors: ["#FBEEEC", "#F4D5CF"], label: "おでかけ" } },
+  { tag: "#ドライブしたい",   ph: { emoji: "🚗", colors: ["#EEF2F7", "#D8E0EC"], label: "ドライブ" } },
+];
 
 /**
  * タグからジャンル別プレースホルダーを返す。
- * 飲食タグが1つも無ければ null（呼び出し側で従来の汎用プレースホルダーを使う）。
+ * 深掘りタグ → 気分大タグの順で照合。該当が無ければ null（呼び出し側で汎用プレースホルダー）。
  */
 export function genrePlaceholder(tags?: string[]): GenrePlaceholder | null {
   const t = tags ?? [];
   for (const { tag, ph } of RULES) {
     if (t.includes(tag)) return ph;
   }
-  if (t.includes("#お腹すいた")) return FOOD_DEFAULT;
+  for (const { tag, ph } of MOOD_DEFAULTS) {
+    if (t.includes(tag)) return ph;
+  }
   return null;
 }
