@@ -95,19 +95,44 @@ def save():
 ONLY_PREFS = os.environ.get("ONLY_PREFS")
 prefs = [p.strip() for p in ONLY_PREFS.split(",") if p.strip()] if ONLY_PREFS else PREFS
 
-for (k, v) in CATS:
+# COMBINE=1（既定）: 県ごとに全カテゴリを1クエリに統合してOverpass往復を激減（429も減）。
+#   キー別に値をまとめ node/way の union を作る。done は県単位。
+COMBINE = os.environ.get("COMBINE", "1") == "1"
+
+if COMBINE:
+    by_key = {}
+    for (k, v) in CATS:
+        by_key.setdefault(k, []).append(v)
     for pref in prefs:
-        tid = f"{MOOD}|{k}={v}|{pref}"
+        tid = f"{MOOD}|ALL|{pref}"
         if tid in done: continue
+        parts = []
+        for k, vs in by_key.items():
+            rx = "^(" + "|".join(vs) + ")$"
+            parts.append(f'node["{k}"~"{rx}"](area.a);way["{k}"~"{rx}"](area.a);')
         q = (f'[out:json][timeout:300];area["name"="{pref}"]["admin_level"="4"]->.a;'
-             f'(node["{k}"="{v}"](area.a);way["{k}"="{v}"](area.a););out center tags;')
+             f'({"".join(parts)});out center tags;')
         try:
             d = post(q); n = parse(d, recs, seen)
             done.add(tid); save()
-            print(f"[{MOOD}] {v} {pref}: +{n} (累計{len(recs)})", flush=True)
+            print(f"[{MOOD}] {pref}(全{len(CATS)}カテゴリ): +{n} (累計{len(recs)})", flush=True)
         except Exception as e:
-            print(f"[{MOOD}] {v} {pref} 失敗 {e}", flush=True)
+            print(f"[{MOOD}] {pref} 失敗 {e}", flush=True)
         time.sleep(SLEEP_SEC)
+else:
+    for (k, v) in CATS:
+        for pref in prefs:
+            tid = f"{MOOD}|{k}={v}|{pref}"
+            if tid in done: continue
+            q = (f'[out:json][timeout:300];area["name"="{pref}"]["admin_level"="4"]->.a;'
+                 f'(node["{k}"="{v}"](area.a);way["{k}"="{v}"](area.a););out center tags;')
+            try:
+                d = post(q); n = parse(d, recs, seen)
+                done.add(tid); save()
+                print(f"[{MOOD}] {v} {pref}: +{n} (累計{len(recs)})", flush=True)
+            except Exception as e:
+                print(f"[{MOOD}] {v} {pref} 失敗 {e}", flush=True)
+            time.sleep(SLEEP_SEC)
 
 save()
 print(f"=== [{MOOD}] 完了 合計 {len(recs)}件 → {OUT} ===", flush=True)
