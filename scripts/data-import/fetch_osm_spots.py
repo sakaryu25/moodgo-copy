@@ -99,10 +99,19 @@ prefs = [p.strip() for p in ONLY_PREFS.split(",") if p.strip()] if ONLY_PREFS el
 #   キー別に値をまとめ node/way の union を作る。done は県単位。
 COMBINE = os.environ.get("COMBINE", "1") == "1"
 
+# CATS は (key, value) または (key, value, filter)。filterはOverpassの追加条件（例 '["wikidata"]'）。
+def _cat_filter(c):
+    return c[2] if len(c) > 2 else ""
+
 if COMBINE:
+    # フィルタ無しはキー別にregex統合。フィルタ付きは各自individualに追加。
     by_key = {}
-    for (k, v) in CATS:
-        by_key.setdefault(k, []).append(v)
+    filtered = []
+    for c in CATS:
+        if _cat_filter(c):
+            filtered.append(c)
+        else:
+            by_key.setdefault(c[0], []).append(c[1])
     for pref in prefs:
         tid = f"{MOOD}|ALL|{pref}"
         if tid in done: continue
@@ -110,6 +119,9 @@ if COMBINE:
         for k, vs in by_key.items():
             rx = "^(" + "|".join(vs) + ")$"
             parts.append(f'node["{k}"~"{rx}"](area.a);way["{k}"~"{rx}"](area.a);')
+        for c in filtered:
+            f = _cat_filter(c)
+            parts.append(f'node["{c[0]}"="{c[1]}"]{f}(area.a);way["{c[0]}"="{c[1]}"]{f}(area.a);')
         q = (f'[out:json][timeout:300];area["name"="{pref}"]["admin_level"="4"]->.a;'
              f'({"".join(parts)});out center tags;')
         try:
@@ -120,12 +132,13 @@ if COMBINE:
             print(f"[{MOOD}] {pref} 失敗 {e}", flush=True)
         time.sleep(SLEEP_SEC)
 else:
-    for (k, v) in CATS:
+    for c in CATS:
+        k, v, f = c[0], c[1], _cat_filter(c)
         for pref in prefs:
             tid = f"{MOOD}|{k}={v}|{pref}"
             if tid in done: continue
             q = (f'[out:json][timeout:300];area["name"="{pref}"]["admin_level"="4"]->.a;'
-                 f'(node["{k}"="{v}"](area.a);way["{k}"="{v}"](area.a););out center tags;')
+                 f'(node["{k}"="{v}"]{f}(area.a);way["{k}"="{v}"]{f}(area.a););out center tags;')
             try:
                 d = post(q); n = parse(d, recs, seen)
                 done.add(tid); save()

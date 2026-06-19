@@ -335,7 +335,10 @@ TRAVEL_NAME = [
     (r"旧街道|宿場|古い町並み|町並み保存|散策路|遊歩道", ["#お散歩"]),
 ]
 derive_travel_tags = _make_deriver(TRAVEL_MAP, TRAVEL_NAME, "#遠くに行きたい")
-TRAVEL_CATS = [("amenity", "place_of_worship"), ("historic", "castle"), ("historic", "monument"),
+# 神社寺は数が膨大(1県数千〜数万)＋小さな祠まで含むと精度低下。wikidataタグ付き=著名なものだけに絞る。
+#   3要素目はOverpassの追加フィルタ（省略時はフィルタ無し）。
+TRAVEL_CATS = [("amenity", "place_of_worship", '["wikidata"]'),
+               ("historic", "castle"), ("historic", "monument"),
                ("historic", "memorial"), ("historic", "ruins"), ("tourism", "theme_park")]
 
 
