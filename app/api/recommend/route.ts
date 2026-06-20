@@ -7137,7 +7137,7 @@ async function handleRecommend(request: Request) {
             ].filter(Boolean).join("／");
             return openai.chat.completions.create({
               // 精度重視: 並べ替えは推薦体験の核なので gpt-4o（候補は短文・出力は番号列のみで低コスト）。
-              model: "gpt-4o", temperature: 0.2, max_tokens: 400,
+              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 400,  // 【性能】gpt-4o→miniで並べ替えを高速化
               response_format: { type: "json_object" },
               messages: [
                 { role: "system", content: `あなたは日本中のお出かけ先に精通したプロのキュレーターです。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」を深く読み取り、各候補が"その体験・要望"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
@@ -7153,7 +7153,7 @@ async function handleRecommend(request: Request) {
 出力は {"order":[数値,...]} のみをJSONで。全番号を必ず1回ずつ含めること。` },
                 { role: "user", content: `${ctxLine}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明】:\n${cand}` },
               ],
-            }, { signal: AbortSignal.timeout(12000) })
+            }, { signal: AbortSignal.timeout(5000) })  // 【性能】5秒で打ち切り（遅ければタグ/評価順を維持）
               .then(rr => {
                 const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
                 return Array.isArray(parsed.order) ? parsed.order.map(Number).filter((n: number) => Number.isInteger(n)) : [];
