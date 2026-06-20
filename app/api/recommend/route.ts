@@ -5628,6 +5628,71 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
   return result;
 }
 
+// 【性能】タグから即席で推薦理由文を作る（OpenAI不使用＝0ms）。
+//   AI理由生成(gpt-4o-mini)は1回約8秒かかり未キャッシュ検索を遅くするため、
+//   構造化検索ではこの即席理由を使い、検索を約3秒に高速化する（全カードに理由が出る）。
+const QUICK_REASON: { tag: string; text: string }[] = [
+  // 飲食
+  { tag: "#こってりラーメン", text: "こってり濃厚な一杯が楽しめる。" },
+  { tag: "#あっさりラーメン", text: "あっさり系の優しい一杯。" },
+  { tag: "#味噌ラーメン", text: "コクのある味噌ラーメンが味わえる。" },
+  { tag: "#ラーメン", text: "こだわりのラーメンが味わえる一杯。" },
+  { tag: "#うどんそば", text: "出汁の効いた麺料理が楽しめる。" },
+  { tag: "#海鮮", text: "新鮮な海鮮・お寿司が味わえる。" },
+  { tag: "#焼肉", text: "ジューシーな焼肉を堪能できる。" },
+  { tag: "#居酒屋", text: "お酒と料理でワイワイ過ごせる。" },
+  { tag: "#イタリアン", text: "パスタやピザが楽しめるイタリアン。" },
+  { tag: "#中華", text: "本格中華が味わえる。" },
+  { tag: "#韓国", text: "ピリ辛の韓国料理が楽しめる。" },
+  { tag: "#洋食", text: "ハンバーグやステーキなど洋食が楽しめる。" },
+  { tag: "#和食", text: "落ち着いて和食が味わえる。" },
+  { tag: "#カフェスイーツ", text: "ひと息つけるカフェ・スイーツ。" },
+  { tag: "#喫茶店", text: "レトロな雰囲気の喫茶店。" },
+  // まったり/自然
+  { tag: "#温泉", text: "ゆっくり浸かって癒される温泉。" },
+  { tag: "#サウナ", text: "ととのうサウナで整える。" },
+  { tag: "#海辺", text: "波の音に癒される海辺スポット。" },
+  { tag: "#展望台", text: "見晴らし抜群の展望スポット。" },
+  { tag: "#絶景スポット", text: "息を呑む絶景が楽しめる。" },
+  { tag: "#自然公園", text: "自然に囲まれてリフレッシュできる。" },
+  { tag: "#大型公園", text: "のんびり過ごせる広い公園。" },
+  // 楽しみたい
+  { tag: "#テーマパーク", text: "一日中遊べるテーマパーク。" },
+  { tag: "#水族館", text: "海の生き物に癒される水族館。" },
+  { tag: "#動物園", text: "動物とふれあえる動物園。" },
+  { tag: "#博物館", text: "じっくり見て回れる博物館・美術館。" },
+  { tag: "#カラオケ", text: "歌って盛り上がれるカラオケ。" },
+  { tag: "#ボウリング", text: "みんなで楽しめるボウリング。" },
+  { tag: "#体験型ゲーム", text: "夢中になれるアミューズメント。" },
+  { tag: "#鑑賞", text: "見て楽しめる鑑賞スポット。" },
+  // 運動
+  { tag: "#ジム", text: "しっかり体を動かせるジム。" },
+  { tag: "#プール", text: "泳いでリフレッシュできるプール。" },
+  { tag: "#ゴルフ", text: "スイングを楽しめるゴルフ施設。" },
+  { tag: "#スポーツ", text: "体を動かせるスポーツ施設。" },
+  // 集中
+  { tag: "#勉強場", text: "静かに集中できる勉強・作業スペース。" },
+  { tag: "#カフェ作業", text: "作業がはかどるカフェ。" },
+  // ショッピング
+  { tag: "#古着", text: "掘り出し物に出会える古着屋。" },
+  { tag: "#服アクセサリー", text: "ファッションを楽しめるお店。" },
+  { tag: "#コスメ美容", text: "コスメ・美容アイテムが揃う。" },
+  { tag: "#雑貨インテリア", text: "暮らしを彩る雑貨・インテリア。" },
+  { tag: "#お土産ギフト", text: "お土産・ギフト探しにぴったり。" },
+  { tag: "#ショッピング", text: "ゆっくり買い物が楽しめる。" },
+  // 旅行
+  { tag: "#パワースポット", text: "心が整うパワースポット。" },
+  { tag: "#道の駅", text: "ご当地グルメも楽しめる道の駅。" },
+  { tag: "#お散歩", text: "ぶらりお散歩が楽しめる。" },
+];
+function buildQuickReason(tags?: string[]): string {
+  const t = tags ?? [];
+  for (const { tag, text } of QUICK_REASON) {
+    if (t.includes(tag)) return text;
+  }
+  return "";
+}
+
 // ─── OpenAIで説明文を蓄積（item3+OpenAI賢く: 説明文生成）──────────────────────────
 // description が空のスポットに「場所そのものを表す中立的な一言」を生成して
 // places.description へ永続化する。生成は応答後(after)に1回のバッチ呼び出しで行うので
@@ -6947,11 +7012,10 @@ async function handleRecommend(request: Request) {
                 sbNames, 10, minRadiusKm, apiKey
               )
             : Promise.resolve([]),
-          // OpenAI 推薦理由生成（#5: 全カードに「なぜ合うか」を出すため常時実行）。
-          //   このPromise.all内で並列＝sbAiOrder(gpt-4o)と重なり直列レイテンシ増はほぼ無し。心霊(独自)は不要。
-          (!isProprietaryOnly && openai)
-            ? generateSupabaseReasons(scored.slice(0, 16), answers, sbMustTags, sbNiceTags)  // 【性能】表示分のみに絞り生成を高速化
-            : Promise.resolve(new Map<string, string>()),
+          // 【性能】理由文は buildQuickReason（タグから即席・0ms）に切替。
+          //   OpenAI理由生成は1回約8秒かかり未キャッシュ検索を遅くするため、構造化検索ではブロックしない。
+          //   （自由文/AI相談フローでは別途AI理由を出す）。
+          Promise.resolve(new Map<string, string>()),
           // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで最大10枚並列補完
           (async (): Promise<Map<string, string[]>> => {
             const photoMap = new Map<string, string[]>();
@@ -7158,10 +7222,9 @@ async function handleRecommend(request: Request) {
             openingHoursText: r.openingHours ?? undefined,  // 全曜日分をそのまま渡す
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
-            reason: reasons.get(r.name) ?? sanitizeReasonText(r.description),
-            // #5: 全カードに「なぜあなたに合うか」を表示（気分依存の推薦理由・空ならカード側は非表示）
-            //   領域3a: reasons(AI生成)が無く description フォールバック時は投稿生テキストを整形して出す。
-            aiReason: reasons.get(r.name) || sanitizeReasonText(r.description) || undefined,
+            // #5: 全カードに理由を表示。AI生成があればそれ、無ければタグ即席理由→投稿テキストの順。
+            reason: reasons.get(r.name) || buildQuickReason(r.tags) || sanitizeReasonText(r.description),
+            aiReason: reasons.get(r.name) || buildQuickReason(r.tags) || sanitizeReasonText(r.description) || undefined,
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,
