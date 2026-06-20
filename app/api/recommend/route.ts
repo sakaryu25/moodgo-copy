@@ -5615,8 +5615,8 @@ JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
         },
         { role: "user", content: spotList },
       ],
-      max_tokens: 1500,   // 候補~30件分の理由でも切れないように（#5・全カードに理由を出す）
-    }, { signal: AbortSignal.timeout(8000) });  // 【性能】8秒で打ち切り（応答ブロック防止）。理由なしでもカードは表示可
+      max_tokens: 700,   // 【性能】表示15件分の短い理由に絞り生成時間を約半減（旧1500=候補30件分で遅かった）
+    }, { signal: AbortSignal.timeout(6000) });  // 6秒で打ち切り（応答ブロック防止）。理由なしでもカードは表示可
     const text = res.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(text);
     for (const [name, reason] of Object.entries(parsed.reasons ?? {})) {
@@ -6950,7 +6950,7 @@ async function handleRecommend(request: Request) {
           // OpenAI 推薦理由生成（#5: 全カードに「なぜ合うか」を出すため常時実行）。
           //   このPromise.all内で並列＝sbAiOrder(gpt-4o)と重なり直列レイテンシ増はほぼ無し。心霊(独自)は不要。
           (!isProprietaryOnly && openai)
-            ? generateSupabaseReasons(scored, answers, sbMustTags, sbNiceTags)
+            ? generateSupabaseReasons(scored.slice(0, 16), answers, sbMustTags, sbNiceTags)  // 【性能】表示分のみに絞り生成を高速化
             : Promise.resolve(new Map<string, string>()),
           // Supabase 写真補完: photo_urlが空の場所をGoogle Places Text Searchで最大10枚並列補完
           (async (): Promise<Map<string, string[]>> => {
