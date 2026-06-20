@@ -6588,6 +6588,11 @@ async function handleRecommend(request: Request) {
         : [];
       void moodBaseTag;
 
+      // 公園系深掘り（#大型公園を要求）は、最寄り順fetchだと近所の小公園で枠が埋まり、少し離れた
+      //   有名公園(代々木公園/砧公園等)が候補から漏れる。wikidata著名公園に付与した #名所公園 を
+      //   別枠で取得して合流し、有名公園の取りこぼし→Google補完誘発を防ぐ。
+      const needsProminenceFetch = realDrillTags.includes("#大型公園");
+
       const hasLocation = !!(answers.originLat && answers.originLng);
       const isFoodMood = answers.mood === "お腹すいた";
 
@@ -6630,6 +6635,27 @@ async function handleRecommend(request: Request) {
         limit: showUnseenOnly ? Math.min(20 + seenPlaces.length, 60) : 20,
         googleApiKey: apiKey,
       });
+
+      // ── 公園系: 著名(#名所公園)公園を別枠で必ず候補に入れる ──────────────────────────
+      //   #大型公園 は小公園含む過剰タグ。最寄り順fetchだと近所の小公園で枠が埋まり、少し離れた
+      //   有名公園(代々木公園/砧公園等)が候補から漏れて sbQualified<8→Google補完を誘発していた。
+      //   wikidata著名公園に付与した #名所公園 で別枠取得し合流＝有名公園を確実に拾う。
+      if (hasLocation && needsProminenceFetch) {
+        try {
+          const promHits = await spatialSearch({
+            mustTags: ["#名所公園"], fallbackTags: [],
+            lat: answers.originLat ?? 0, lng: answers.originLng ?? 0,
+            radiusKm: sbRadiusKm, minRadiusKm: sbMinRadiusKm,
+            transport: answers.transport, limit: 20, googleApiKey: apiKey,
+          });
+          const have = new Set(sbResults.map(r => r.name));
+          for (const t of promHits) {
+            if (have.has(t.name)) continue;
+            if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+            sbResults.push(t); have.add(t.name);
+          }
+        } catch { /* 著名公園取得失敗は通常候補で続行 */ }
+      }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
@@ -6831,9 +6857,40 @@ async function handleRecommend(request: Request) {
         //   ユーザー指示: 心霊だけ places保存庫(#心霊スポット)＋穴場投稿＋admin転載で検索。
         //   絶叫/高所/体験型は従来どおりGoogle/Yahooも使う。ヒットが少なくても1件でも表示。
         const isProprietaryOnly = effectiveDeepDive === "心霊";
+        // ── OSM高信頼タグの尊重（公園/温泉/水族館等が「肯定語不足」で弾かれる問題の修正）──
+        //   GENRE_POSITIVE_REQUIRED は Google結果(無タグ)の純度確保用に「総合公園|芝生…」等の
+        //   肯定語を“名前”に要求する。だが自前DBの「代々木公園」「砧公園」は OSM が leisure=park＋面積で
+        //   #大型公園 と高信頼タグ付け済み＝肯定語が名前に無くても正しいジャンル。これらを名前だけで
+        //   弾くと sbQualified が8件未満になり不要なGoogle補完(searchText)を誘発していた（実測: 自然/
+        //   広い芝生でゴロゴロ で searchText=26）。
+        //   対策: DB結果が深掘りジャンルタグ(#大型公園/#自然公園/#温泉…)を持てば肯定語必須を免除する。
+        //   否定語(児童/防災/駐車場…)は引き続き適用＝小公園の誤混入は防ぐ。Google結果は自前タグを
+        //   持たないため従来どおり名前フィルタのみ＝精度は不変。
+        //   trustタグは realDrillTags（深掘り由来の実タグ。気分タグは除外＝広すぎる一致を防ぐ）。
+        //   【公園の特例】#大型公園 は OSM の leisure=park 全件（小さな児童公園含む）に付く“過剰付与”タグ。
+        //   単独では信用せず、wikidata著名公園に付与した #名所公園 マーカー併設時のみ信用する
+        //   （fix_park_prominence.py）。これで「代々木公園/砧公園」等の有名大型公園は拾いつつ、
+        //   「○○児童公園」級の小公園の洪水を防ぐ。#温泉/#水族館/#ジム/#自然公園(森林由来)等は粒度が
+        //   正確なので直接信用＝それらの気分はDB完結（Google不要）。
+        const BROAD_PARK_TAGS = new Set(["#大型公園"]);
+        const genreTrustTags = realDrillTags.filter(t => !!t && t !== realMoodTag);
+        const reliableTrust = genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t));  // 直接信用OKなタグ
+        const needsProminence = genreTrustTags.some(t => BROAD_PARK_TAGS.has(t));    // 公園系=著名度を要求
+        const cddForGate = effectiveDeepDive ? canonDeepDive(effectiveDeepDive) : "";
+        const genreNegForGate = cddForGate ? GENRE_NEGATIVE_RE[cddForGate] : undefined;
+        const dbGenreOk = (r: { name?: string | null; tags?: string[] | null }): boolean => {
+          const nm = r.name ?? "";
+          const tags = r.tags ?? [];
+          if (genreNegForGate && genreNegForGate.test(nm)) return false;     // 否定語は常に除外（児童/防災/駐車場等）
+          if (nameMatchesGenre(nm, effectiveDeepDive)) return true;          // 名前一致（緑地/総合公園/森/広場…）
+          if (reliableTrust.length > 0 && tags.some(t => reliableTrust.includes(t))) return true;  // 正確タグは直接信用
+          // #大型公園 は #名所公園(wikidata著名)併設時のみ信用
+          if (needsProminence && tags.includes("#名所公園") && tags.some(t => BROAD_PARK_TAGS.has(t))) return true;
+          return false;
+        };
         const sbQualified = sbPoolCapped.filter(r => {
           const nm = r.name ?? "";
-          if (!nameMatchesGenre(nm, effectiveDeepDive)) return false;          // ジャンル不一致を除外
+          if (!dbGenreOk(r)) return false;                                     // ジャンル不一致を除外（OSMタグは尊重）
           if (isFoodForSkip && (FINALIZE_NON_FOOD_NAME_RE.test(nm))) return false; // 食事で温泉等を除外
           return true;
         });
@@ -6885,15 +6942,14 @@ async function handleRecommend(request: Request) {
         //   逆に異ジャンルが候補枠と判別予算を消費していた。心霊以外の深掘りにも前段適用。
         const cddForPool = effectiveDeepDive ? canonDeepDive(effectiveDeepDive) : "";
         const hasGenreRule = !!cddForPool && (!!GENRE_NEGATIVE_RE[cddForPool] || !!GENRE_POSITIVE_REQUIRED[cddForPool]);
+        //   純度フィルタも dbGenreOk（否定語＋名前一致＋OSM深掘りタグ信用）に統一。
+        //   これにより skipAllSupplements で Google を呼ばずに済んだ #大型公園 等のDB公園が
+        //   最終純度フィルタで再び弾かれて0件化する事故を防ぐ。ddTag(絶叫/心霊等)も従来どおり許可。
+        const poolGenreOk = (r: { name?: string | null; tags?: string[] | null }): boolean =>
+          dbGenreOk(r) || (!!ddTag && (r.tags ?? []).includes(ddTag));
         const scoredPool = isProprietaryOnly
-          ? sbPoolCapped.filter(r =>
-              nameMatchesGenre(r.name ?? "", effectiveDeepDive) ||
-              (!!ddTag && (r.tags ?? []).includes(ddTag)))
-          : (hasGenreRule
-              ? sbPoolCapped.filter(r =>
-                  nameMatchesGenre(r.name ?? "", effectiveDeepDive) ||
-                  (!!ddTag && (r.tags ?? []).includes(ddTag)))
-              : sbPoolCapped);
+          ? sbPoolCapped.filter(poolGenreOk)
+          : (hasGenreRule ? sbPoolCapped.filter(poolGenreOk) : sbPoolCapped);
         const scored = scoredPool
           .map(r => ({
             ...r,
