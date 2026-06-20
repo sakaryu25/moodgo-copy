@@ -6563,30 +6563,39 @@ async function handleRecommend(request: Request) {
       //         どの気分でも同じように返ってきてしまう（毎回同じ結果の原因）
       // 【解決】深掘りタグがある場合 → 深掘りタグのみで検索（より具体的に絞り込み）
       //         深掘りタグがない場合  → 気分タグで検索（従来通り）
-      const moodBaseTag  = allMustTags[0];                      // "#まったりしたい" など
-      const deepDiveTags = allMustTags.slice(1);                // 深掘りで追加されたタグ
+      // 気分タグ（#まったりしたい 等）。extractUserTagsFromAnswers は深掘りタグがある時これを
+      //   niceToHave へ降格するため、通常 allMustTags には含まれない。万一含まれても確実に除く。
+      const realMoodTag = MOOD_SHORT_KEY_TO_TAG[answers.mood ?? ""]
+        ?? Object.entries(MOOD_TAG_MAP).find(([, v]) => v === answers.mood)?.[0];
+      // 深掘りで追加された実タグ（気分タグを除いた残り）。
+      // 【修正2026-06-20】以前は deepDiveTags = allMustTags.slice(1)（先頭=気分タグ前提）だったが、
+      //   extractUserTagsFromAnswers は気分タグを既に降格するため allMustTags の先頭は「最初の深掘りタグ」。
+      //   slice(1) はそれを誤って捨て、複数タグ深掘りの“主タグ”を落としていた（監査で発覚）:
+      //     サウナ・岩盤浴 [#サウナ,#岩盤浴]→[#岩盤浴] で #サウナ(1309件)喪失／外でひろびろ [#外で運動,
+      //     #スポーツ,#ゴルフ]→#外で運動喪失／観て楽しむ [#鑑賞,#博物館,#水族館,#動物園]→#鑑賞喪失。
+      //   気分タグを filter で除いた集合をそのまま使う（単一・複数いずれも正しい）。
+      const realDrillTags = realMoodTag ? allMustTags.filter(t => t !== realMoodTag) : allMustTags;
+      const deepDiveTags = realDrillTags;
       const sbMustTags   = deepDiveTags.length > 0
         ? deepDiveTags                                          // 深掘りタグのみで絞り込み
         : allMustTags;                                          // 気分タグのみ（深掘りなし）
-      // 【修正・監査2026-06-17】API-only判定用の「真の深掘りタグ集合」。
-      //   extractUserTagsFromAnswers は単一深掘り時に気分タグを niceToHave へ降格するため
-      //   mustTags=[深掘りタグ1個] になり、上の slice(1)（先頭=気分タグ前提）が唯一の深掘りタグを
-      //   捨てて deepDiveTags=[] にしてしまう → isApiOnlyDeepDive 誤判定で温泉/海辺/テーマパーク/
-      //   動物カフェ等のSB在庫(3485/1632/900/2702件)が skip で全破棄されていた。
-      //   そこで「気分タグを明示的に除いた残り」を別途求め、API-only判定にはこちらを使う。
-      //   ※ sbMustTags(実SBクエリ)は不変＝8-2-5配分・距離キャップ・純度フィルタは無改変。
-      const realMoodTag = MOOD_SHORT_KEY_TO_TAG[answers.mood ?? ""]
-        ?? Object.entries(MOOD_TAG_MAP).find(([, v]) => v === answers.mood)?.[0];
-      const realDrillTags = realMoodTag ? allMustTags.filter(t => t !== realMoodTag) : allMustTags;
-      // 在庫の薄いL2/L1タグ(#book場=23 / #コスメ美容=39 等)で枯れた時だけ、同ジャンルの広在庫タグで補う。
-      //   spatialSearch は mustTags が limit 未満のときのみ fallback を使う＝既存動作を壊さない。純度は後段 nameMatchesGenre が担保。
-      const ddForFb = ((answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer
-        || (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer || "");
+      // 在庫の薄いL2/L1タグ（#オムライス18 / #あっさりラーメン14 / #フルーツ51 等）で枯れた時だけ、
+      //   同ジャンルの“親タグ”で補う＝Google補完ではなく自前DB（同ジャンル）で15件を埋める。
+      //   spatialSearch は mustTags が limit 未満のときのみ fallback を使う＝在庫豊富な親では発火せず既存動作不変。
+      //   純度は後段 dbGenreOk(nameMatchesGenre) が担保＝異ジャンルは混入しない。
+      const ddL1ForFb = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer || "";
+      const ddForFb = ((answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer || ddL1ForFb);
+      // L1カテゴリ → 親ジャンルタグ（希少サブジャンルのDB完結用フォールバック）
+      const PARENT_GENRE_FALLBACK: Record<string, string[]> = {
+        "ラーメン": ["#ラーメン"], "洋食": ["#洋食"], "居酒屋": ["#居酒屋"], "焼肉": ["#焼肉"],
+        "和食": ["#和食"], "アジア系統": ["#アジア系統"], "各国料理": ["#各国料理"],
+        "カフェスイーツ": ["#カフェスイーツ"], "カフェ": ["#カフェスイーツ"],
+        "動物カフェ": ["#動物カフェ"], "温泉スパ": ["#温泉", "#サウナ"],
+      };
       const sbFallbackTags: string[] =
         ddForFb === "静かな専用スペースで集中したい" ? ["#図書館", "#勉強場", "#集中したい"]
         : ddForFb === "コスメ・美容"                 ? ["#ショッピング"]
-        : [];
-      void moodBaseTag;
+        : (PARENT_GENRE_FALLBACK[ddL1ForFb] ?? []);
 
       // 公園系深掘り（#大型公園を要求）は、最寄り順fetchだと近所の小公園で枠が埋まり、少し離れた
       //   有名公園(代々木公園/砧公園等)が候補から漏れる。wikidata著名公園に付与した #名所公園 を
