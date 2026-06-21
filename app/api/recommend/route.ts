@@ -6296,8 +6296,19 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const b = await request.clone().json();
     const a = b?.answers ?? {};
-    const dd = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "").includes("深掘り"));
-    meta = { mood: a.mood ?? "", area: a.selectedArea ?? a.areaLabel ?? "", deepDive: dd?.answer ?? "" };
+    // 【修正2026-06-21】キャッシュキーは“最も具体的な深掘り”を使う。
+    //   以前は includes("深掘り") の最初の一致＝L1(深掘りカテゴリ)を拾っていたため、同じL1配下の
+    //   別L2(和食→海鮮/天ぷら、服→新品/古着、自然の中→森/芝生 等)が同一キーで衝突し、10分以内の
+    //   2回目検索が1回目のキャッシュを返していた（深掘りが効かない）。検索本体の effectiveDeepDive
+    //   (cleanL2 || cleanL1) と同じ優先順にして衝突を解消する。
+    const _ddL2 = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "") === "深掘り詳細")?.answer;
+    const _ddL1 = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "") === "深掘りカテゴリ")?.answer;
+    const _ddAny = (a.dynamicQs ?? []).find((q: { question?: string }) => (q.question ?? "").includes("深掘り"))?.answer;
+    const ddSpecific =
+      (_ddL2 && _ddL2 !== "こだわらない") ? _ddL2
+      : (_ddL1 && _ddL1 !== "こだわらない") ? _ddL1
+      : (_ddAny ?? "");
+    meta = { mood: a.mood ?? "", area: a.selectedArea ?? a.areaLabel ?? "", deepDive: ddSpecific };
     snapKey = buildSnapshotKey(b, meta.deepDive);
   } catch { /* noop */ }
 
