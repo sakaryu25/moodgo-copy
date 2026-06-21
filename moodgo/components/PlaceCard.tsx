@@ -33,6 +33,20 @@ import {
   View,
 } from 'react-native';
 import type { Recommendation } from '@/types/app';
+
+// 写真URLがWikimedia Commons由来なら、その画像のCommonsファイルページURLを返す（CC帰属表示用）。
+//   写真はphoto-proxy経由(.../api/photo-proxy?url=<commons>)で来るため、url=パラメータも見て判定する。
+function commonsFileUrl(uri?: string): string | null {
+  if (!uri || uri.indexOf('commons.wikimedia.org') === -1) return null;
+  try {
+    let target = uri;
+    const m = uri.match(/[?&]url=([^&]+)/);
+    if (m) target = decodeURIComponent(m[1]);
+    const fm = target.match(/Special:FilePath\/([^?&#]+)/);
+    if (!fm) return null;
+    return 'https://commons.wikimedia.org/wiki/File:' + fm[1];
+  } catch { return null; }
+}
 import { COLORS } from '@/constants/colors';
 
 // MoodGo brand
@@ -476,6 +490,20 @@ export default function PlaceCard({
           pointerEvents="none"
         />
 
+        {/* Wikimedia Commons 写真クレジット（CC帰属表示・ファイルページへリンク）— 写真表示中のみ */}
+        {photos.length > 0 && (() => {
+          const fileUrl = commonsFileUrl(photos[photoIdx] ?? photos[0]);
+          return fileUrl ? (
+            <TouchableOpacity
+              style={s.commonsCredit}
+              activeOpacity={0.7}
+              onPress={() => Linking.openURL(fileUrl)}
+            >
+              <Text style={s.commonsCreditText}>📷 Wikimedia Commons</Text>
+            </TouchableOpacity>
+          ) : null;
+        })()}
+
         {/* ページングドット + 矢印ボタン（提供スライド含む） */}
         {pageCount > 1 && (
           <>
@@ -779,6 +807,12 @@ const s = StyleSheet.create({
   },
   spookyAddMiniText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   photoOverlay:     { position: 'absolute', bottom: 0, left: 0, right: 0, height: 80 },
+  commonsCredit: {
+    position: 'absolute', left: 8, bottom: 8,
+    backgroundColor: 'rgba(15,10,30,0.55)', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 3,
+  },
+  commonsCreditText: { color: 'rgba(255,255,255,0.92)', fontSize: 10, fontWeight: '600' },
   arrowBtn: {
     position: 'absolute', top: '50%', marginTop: -20,
     width: 40, height: 40, borderRadius: 20,
