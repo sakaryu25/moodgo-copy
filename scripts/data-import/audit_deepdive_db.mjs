@@ -123,6 +123,11 @@ async function auditCombo(mood, L1, L2, lat, lng, radiusKm) {
     dbComplete: qualified.length >= floor,
     sampleQualified: qualified.slice(0, 6).map(r => `${r.name}〔${(r.source_type || '').replace('osm-', '')}〕`),
     sampleRejected: rejected.slice(0, 5).map(r => r.name),
+    // 精度監査用: 採用スポットの詳細（名前＋タグ＋出所）を多めに
+    qualifiedFull: qualified.slice(0, 15).map(r => ({
+      name: r.name, src: (r.source_type || '').replace('osm-', ''),
+      tags: (r.tags || []).filter(t => t && t !== '#お腹すいた'),
+    })),
   };
 }
 
@@ -133,15 +138,19 @@ const LOCATIONS = JSON.parse(fs.readFileSync(process.env.LOC_FILE || '/tmp/audit
 const results = [];
 for (const combo of MATRIX) {
   const per = [];
-  for (const loc of LOCATIONS) {
+  const precSamples = {};
+  for (let li = 0; li < LOCATIONS.length; li++) {
+    const loc = LOCATIONS[li];
     try {
       const r = await auditCombo(combo.mood, combo.L1, combo.L2, loc.lat, loc.lng, loc.radiusKm || 15);
       per.push({ loc: loc.label, sbQualified: r.sbQualified, floor: r.floor, dbComplete: r.dbComplete });
-      if (loc.label === LOCATIONS[0].label) Object.assign(combo, { detail: r }); // 先頭locの詳細を保持
+      if (li === 0) Object.assign(combo, { detail: r }); // 先頭locの詳細を保持
+      if (li === 0 || li === 6) precSamples[loc.label] = r.qualifiedFull; // 渋谷＋地方(金沢)の採用一覧
     } catch (e) {
       per.push({ loc: loc.label, error: String(e).slice(0, 80) });
     }
   }
+  combo.precSamples = precSamples;
   const completeCount = per.filter(p => p.dbComplete).length;
   results.push({
     mood: combo.mood, L1: combo.L1, L2: combo.L2,
@@ -152,6 +161,7 @@ for (const combo of MATRIX) {
     perLoc: per.map(p => `${p.loc}:${p.dbComplete ? '✓' : '✗'}${p.sbQualified ?? '?'}/${p.floor ?? ''}`),
     sampleQualified: combo.detail?.sampleQualified,
     sampleRejected: combo.detail?.sampleRejected,
+    precSamples: combo.precSamples,
   });
   console.error(`${combo.mood}/${combo.L1}/${combo.L2}: complete ${completeCount}/${per.length}`);
 }
