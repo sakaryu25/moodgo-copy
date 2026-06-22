@@ -501,12 +501,12 @@ function schedulePlaceWriteBack(
       if (typeof fields.ratingCount === "number") ratingPatch.rating_count = fields.ratingCount;
       await selectPlace(sb.from("places").update(ratingPatch), match).then(() => {}, (e) => logServerError("writeback.rating", e, { name: match.name }));
     }
-    if (fields.photoUrl) {
-      await selectPlace(sb.from("places").update({ photo_url: fields.photoUrl }).is("photo_url", null), match).then(() => {}, (e) => logServerError("writeback.photo", e, { name: match.name }));
-    }
-    if (fields.imageUrls && fields.imageUrls.length > 0) {
-      await selectPlace(sb.from("places").update({ image_urls: fields.imageUrls }).is("image_urls", null), match).then(() => {}, (e) => logServerError("writeback.image_urls", e, { name: match.name }));
-    }
+    // 【ライセンス対応2026-06-22】Google/Yahooの写真URLは places.photo_url / image_urls に
+    //   恒久保存しない（Google Maps Platform規約: コンテンツの恒久キャッシュ禁止＝最大30日・要削除）。
+    //   写真は検索時にライブ取得して表示するのみ。自前DBの写真は OSM/著名スポットのWikimedia Commons
+    //   (CC・帰属表示つき)＋利用者投稿＋ジャンル別プレースホルダーで賄う。
+    //   ※ photoUrl/imageUrls の writeback は意図的に無効化。fields は型互換のため残置。
+    void fields.photoUrl; void fields.imageUrls;
     if (fields.station) {
       await selectPlace(sb.from("places").update({ nearest_station: fields.station }).is("nearest_station", null), match).then(() => {}, (e) => logServerError("writeback.station", e, { name: match.name }));
     }
