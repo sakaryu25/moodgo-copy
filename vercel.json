@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/vitality-check",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-stale-cache",
+      "schedule": "0 19 * * *"
     }
   ]
 }
