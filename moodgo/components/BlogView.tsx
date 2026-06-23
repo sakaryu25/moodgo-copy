@@ -9,12 +9,13 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
 const SCREEN_W = Dimensions.get('window').width;
-const GAP = 3;
+const GAP = 1.5;
 const COL = 3;
 const CELL = Math.floor((SCREEN_W - GAP * (COL - 1)) / COL);
 
@@ -28,6 +29,13 @@ const MOODS: { label: string; tag: string }[] = [
 const COMPANIONS = ['#1人', '#友達', '#恋人', '#家族', '#大人数'];
 const BUDGETS = ['#無料', '#〜3000', '#〜5000', '#〜10000', '#10000〜'];
 
+function formatNum(n: number): string {
+  if (!n || n < 0) return '0';
+  if (n >= 10000) { const m = n / 10000; return (m >= 10 ? Math.round(m).toString() : m.toFixed(1).replace(/\.0$/, '')) + '万'; }
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + '千';
+  return String(n);
+}
+
 type GridItem = { id: string; title: string; placeName: string | null; moodTags: string[]; photo: string; helpfulCount: number };
 type Detail = {
   id: string; title: string; caption: string | null; body: string | null; place_name: string | null;
@@ -37,6 +45,7 @@ type Detail = {
 };
 
 export default function BlogView({ resetKey }: { resetKey?: number }) {
+  const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'list' | 'detail' | 'create'>('list');
   const [items, setItems] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -76,12 +85,12 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   // ── 一覧（Insta風グリッド）──
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
         <Text style={s.headerTitle}>みんなのMoodログ</Text>
         <TextInput value={q} onChangeText={setQ} onSubmitEditing={loadList} returnKeyType="search"
           placeholder="場所・お店を検索" placeholderTextColor={COLORS.textMuted} style={s.search} />
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipRow} contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, alignItems: 'center' }}>
         <Chip label="すべて" active={!moodFilter} onPress={() => setMoodFilter('')} />
         {MOODS.map(m => <Chip key={m.tag} label={m.label} active={moodFilter === m.tag} onPress={() => setMoodFilter(moodFilter === m.tag ? '' : m.tag)} />)}
       </ScrollView>
@@ -91,10 +100,9 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
             {items.map((it) => (
               <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={{ width: CELL, height: CELL }}>
                 <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)']} style={s.tileOverlay}>
-                  {it.moodTags?.[0] ? <Text style={s.tileTag} numberOfLines={1}>{it.moodTags.slice(0, 2).map(t => t.replace('#', '')).join(' / ')}</Text> : null}
-                  <Text style={s.tileName} numberOfLines={1}>{it.placeName || it.title}</Text>
-                </LinearGradient>
+                <View style={s.tileCount}>
+                  <Text style={s.tileCountText}>♡ {formatNum(it.helpfulCount)}</Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -120,6 +128,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 
 // ── 詳細 ──
 function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () => void; onSearchMood: (tag: string) => void }) {
+  const insets = useSafeAreaInsets();
   const [reported, setReported] = useState(false);
   const [helped, setHelped] = useState(false);
   const react = async (rtype: 'helpful' | 'save') => {
@@ -137,7 +146,7 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
   const tags = [...(post.mood_tags ?? []), ...(post.scene_tags ?? [])];
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ paddingBottom: 140 }}>
-      <TouchableOpacity onPress={onBack} style={s.backBtn}><Text style={s.backText}>← 一覧へ</Text></TouchableOpacity>
+      <TouchableOpacity onPress={onBack} style={[s.backBtn, { paddingTop: insets.top + 8 }]}><Text style={s.backText}>← 一覧へ</Text></TouchableOpacity>
       <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
         {(post.photos ?? []).map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: SCREEN_W, height: SCREEN_W }} contentFit="cover" />)}
       </ScrollView>
@@ -171,6 +180,7 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
 
 // ── 投稿フォーム ──
 function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const insets = useSafeAreaInsets();
   const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
   const [title, setTitle] = useState('');
   const [placeName, setPlaceName] = useState('');
@@ -219,7 +229,7 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ padding: 16, paddingTop: insets.top + 8, paddingBottom: 140 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
         <TouchableOpacity onPress={onCancel}><Text style={s.backText}>キャンセル</Text></TouchableOpacity>
         <Text style={[s.headerTitle, { flex: 1, textAlign: 'center' }]}>おすすめを投稿</Text>
@@ -282,17 +292,16 @@ function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: (
 }
 
 const s = StyleSheet.create({
-  header: { paddingTop: 12, paddingHorizontal: 16, paddingBottom: 8 },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
-  search: { marginTop: 10, backgroundColor: COLORS.muted, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, color: COLORS.text },
-  chipRow: { maxHeight: 44, marginBottom: 6 },
-  chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 18, backgroundColor: COLORS.muted },
+  header: { paddingHorizontal: 16, paddingBottom: 6 },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
+  search: { marginTop: 8, backgroundColor: COLORS.muted, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, color: COLORS.text },
+  chipRow: { height: 54, marginTop: 6, marginBottom: 8 },
+  chip: { height: 38, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 19, backgroundColor: COLORS.muted },
   chipActive: { backgroundColor: COLORS.primary },
-  chipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700' },
+  chipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700', includeFontPadding: false, textAlignVertical: 'center' },
   chipTextActive: { color: '#fff' },
-  tileOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 6, paddingVertical: 5, justifyContent: 'flex-end' },
-  tileTag: { color: '#fff', fontSize: 10, fontWeight: '700', opacity: 0.95 },
-  tileName: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  tileCount: { position: 'absolute', left: 7, bottom: 6, flexDirection: 'row', alignItems: 'center' },
+  tileCountText: { color: '#fff', fontSize: 13, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
   empty: { textAlign: 'center', color: COLORS.textMuted, marginTop: 60, paddingHorizontal: 30, lineHeight: 22 },
   fab: { position: 'absolute', right: 18, bottom: 100 },
   fabInner: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 30, shadowColor: COLORS.shadowRose, shadowOpacity: 1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
