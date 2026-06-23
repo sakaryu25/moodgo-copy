@@ -92,8 +92,10 @@ async function auditCombo(mood, L1, L2, lat, lng, radiusKm) {
   const pool = [...poolMap.values()].filter(r => r._d <= cap);
 
   // ── dbGenreOk 再現 ──
+  const BROAD_PARENT_GENRE_TAGS = new Set(["#アジア系統", "#各国料理", "#和食", "#洋食", "#カフェスイーツ", "#景色良いカフェ", "#動物カフェ", "#ラーメン"]);
   const genreTrustTags = realDrillTags.filter(t => !!t && t !== realMoodTag);
-  const reliableTrust = genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t));
+  const specificTrust = genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t) && !BROAD_PARENT_GENRE_TAGS.has(t));
+  const reliableTrust = specificTrust.length > 0 ? specificTrust : genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t));
   const cdd = effectiveDeepDive ? canonDeepDive(effectiveDeepDive) : '';
   const neg = cdd ? GENRE_NEGATIVE_RE[cdd] : undefined;
   const dbGenreOk = (r) => {
@@ -145,7 +147,7 @@ for (const combo of MATRIX) {
       const r = await auditCombo(combo.mood, combo.L1, combo.L2, loc.lat, loc.lng, loc.radiusKm || 15);
       per.push({ loc: loc.label, sbQualified: r.sbQualified, floor: r.floor, dbComplete: r.dbComplete });
       if (li === 0) Object.assign(combo, { detail: r }); // 先頭locの詳細を保持
-      if (li === 0 || li === 6) precSamples[loc.label] = r.qualifiedFull; // 渋谷＋地方(金沢)の採用一覧
+      precSamples[loc.label] = r.qualifiedFull; // 深層精度監査: 全都市の採用一覧を採取
     } catch (e) {
       per.push({ loc: loc.label, error: String(e).slice(0, 80) });
     }

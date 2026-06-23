@@ -6893,8 +6893,15 @@ async function handleRecommend(request: Request) {
         //   「○○児童公園」級の小公園の洪水を防ぐ。#温泉/#水族館/#ジム/#自然公園(森林由来)等は粒度が
         //   正確なので直接信用＝それらの気分はDB完結（Google不要）。
         const BROAD_PARK_TAGS = new Set(["#大型公園"]);
+        // 親ジャンルタグ: サブ料理(タイ/海鮮/海辺カフェ等)を選んだ時、共有する親タグ(#アジア系統/#和食等)で
+        //   兄弟ジャンルが混入する（例: タイ料理にインド料理が出る/ベトナム結果の半分がインド）。
+        //   → サブの具体タグがある時は親を信用せず具体タグを要求。親単独選択時のみ親を信用しリコールを保つ。
+        const BROAD_PARENT_GENRE_TAGS = new Set(["#アジア系統", "#各国料理", "#和食", "#洋食", "#カフェスイーツ", "#景色良いカフェ", "#動物カフェ", "#ラーメン"]);
         const genreTrustTags = realDrillTags.filter(t => !!t && t !== realMoodTag);
-        const reliableTrust = genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t));  // 直接信用OKなタグ
+        const specificTrust = genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t) && !BROAD_PARENT_GENRE_TAGS.has(t));
+        const reliableTrust = specificTrust.length > 0
+          ? specificTrust                                                    // サブ料理選択時: 具体タグのみ信用（兄弟混入を防ぐ）
+          : genreTrustTags.filter(t => !BROAD_PARK_TAGS.has(t));            // 親単独選択時: 親を信用（リコール維持）
         const needsProminence = genreTrustTags.some(t => BROAD_PARK_TAGS.has(t));    // 公園系=著名度を要求
         const cddForGate = effectiveDeepDive ? canonDeepDive(effectiveDeepDive) : "";
         const genreNegForGate = cddForGate ? GENRE_NEGATIVE_RE[cddForGate] : undefined;
