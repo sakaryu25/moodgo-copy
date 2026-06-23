@@ -8,7 +8,7 @@ import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native
 import { EdgeInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-type Tab = 'home' | 'history' | 'favorites' | 'featured' | 'groups';
+type Tab = 'home' | 'history' | 'favorites' | 'blog' | 'featured' | 'groups';
 
 type Props = {
   homeView: Tab;
@@ -23,7 +23,7 @@ const INACTIVE = '#6E6E73'; // 濃いめグレー（素通しでも見える濃�
 
 const PAD_H  = 12; // inner の左右 padding
 const BLOB_H = 46; // ガラスブロブの高さ
-const N_TABS = 5;
+const N_TABS = 6;
 
 function IconHome({ active }: { active: boolean }) {
   const fill = active ? ACTIVE : INACTIVE;
@@ -73,10 +73,21 @@ function IconChat({ active }: { active: boolean }) {
   );
 }
 
+// ブログ（みんなのMoodログ）— Insta風グリッド（2x2タイル）
+function IconBlog({ active }: { active: boolean }) {
+  const fill = active ? ACTIVE : INACTIVE;
+  return (
+    <Svg width={26} height={26} viewBox="0 0 24 24" fill={fill}>
+      <Path d="M4 4h7v7H4V4zm0 9h7v7H4v-7zm9-9h7v7h-7V4zm0 9h7v7h-7v-7z" />
+    </Svg>
+  );
+}
+
 const TABS: { key: Tab; Icon: React.ComponentType<{ active: boolean }> }[] = [
   { key: 'home',      Icon: IconHome },
   { key: 'history',   Icon: IconHistory },
   { key: 'favorites', Icon: IconFavorites },
+  { key: 'blog',      Icon: IconBlog },
   { key: 'groups',    Icon: IconChat },
   { key: 'featured',  Icon: IconFeatured },
 ];

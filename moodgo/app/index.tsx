@@ -69,6 +69,7 @@ import HistoryView      from '@/components/HistoryView';
 import FavoritesView    from '@/components/FavoritesView';
 import FeatureScreen    from '@/components/FeatureScreen';
 import GroupsView       from '@/components/GroupsView';
+import BlogView         from '@/components/BlogView';
 import ProfileSetup     from '@/components/ProfileSetup';
 import Onboarding       from '@/components/Onboarding';
 import QuizFlow         from '@/components/QuizFlow';
@@ -98,8 +99,8 @@ export default function Home() {
   // ── Navigation ───────────────────────────────────────────────────────────
   const [started,    setStarted]    = useState(false);
   const [step,       setStep]       = useState(1);
-  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'featured' | 'groups'>('home');
-  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, featured: 0, groups: 0 });
+  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'blog' | 'featured' | 'groups'>('home');
+  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, blog: 0, featured: 0, groups: 0 });
   // グループチャット表示中はタブバーを隠す（没入モード）
   const [groupChatOpen, setGroupChatOpen] = useState(false);
 
@@ -1200,6 +1201,8 @@ export default function Home() {
             resetKey={tabResetKeys.favorites}
           />
         );
+      case 'blog':
+        return <BlogView resetKey={tabResetKeys.blog} />;
       case 'featured':
         return <FeatureScreen />;
       case 'groups':

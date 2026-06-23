@@ -7729,6 +7729,72 @@ async function handleRecommend(request: Request) {
           }
         }
 
+        // ── 承認済みユーザーブログ投稿の注入（source=blog_post / 「ユーザー投稿」バッジ）──────
+        //   approval_status=approved かつ is_searchable かつ 気分タグ一致かつ40km以内のブログを
+        //   検索候補として混ぜる（最大2件）。勝手にplacesへ入れず、結果カードに表示するのみ。
+        //   テーブル未作成でも try-catch で安全（従来動作）。
+        try {
+          const blogMoodTag = userTags.mustTags[0];
+          if (supabase && blogMoodTag && !isHighrisePath) {
+            const { data: blogs } = await supabase.from("blog_posts")
+              .select("id, title, caption, body, place_name, address, lat, lng, google_maps_url, mood_tags, scene_tags, report_count")
+              .eq("approval_status", "approved").eq("is_searchable", true)
+              .contains("mood_tags", [blogMoodTag]).lt("report_count", 5).limit(20);
+            const BLOG_MAX_KM = Math.min(40, radiusKm * 1.2);
+            const blogSub = sbMustTags.filter(t => t !== blogMoodTag);
+            const matched = (blogs ?? []).filter((b) => {
+              if (blogSub.length > 0) {
+                const tset = new Set([...(b.mood_tags ?? []), ...(b.scene_tags ?? [])]);
+                if (!blogSub.some(t => tset.has(t))) return false;     // 深掘り一致
+              }
+              if (hasLocation) {
+                if (typeof b.lat !== "number" || typeof b.lng !== "number") return false;
+                const dkm = haversineMeters(answers.originLat!, answers.originLng!, b.lat, b.lng) / 1000;
+                if (dkm > BLOG_MAX_KM) return false;
+                if (minRadiusKm > 0 && dkm < minRadiusKm) return false;
+              }
+              return true;
+            }).slice(0, 2);
+            if (matched.length > 0) {
+              const photoMap = new Map<string, string[]>();
+              const { data: bp } = await supabase.from("blog_post_photos")
+                .select("blog_post_id, photo_url, photo_order").in("blog_post_id", matched.map(b => b.id))
+                .eq("moderation_status", "approved").order("photo_order", { ascending: true });
+              for (const r of bp ?? []) {
+                const k = (r as { blog_post_id: string }).blog_post_id;
+                if (!photoMap.has(k)) photoMap.set(k, []);
+                photoMap.get(k)!.push((r as { photo_url: string }).photo_url);
+              }
+              const blogRecs: Rec[] = matched.map((b) => {
+                const imgs = (photoMap.get(b.id) ?? []).map(wrapWithPhotoProxy);
+                const bdkm = (hasLocation && typeof b.lat === "number" && typeof b.lng === "number")
+                  ? haversineMeters(answers.originLat!, answers.originLng!, b.lat, b.lng) / 1000 : undefined;
+                return {
+                  title: b.place_name || b.title,
+                  address: b.address ?? "",
+                  photoUrl: imgs[0] ?? "", photoUrls: imgs,
+                  rating: null, userRatingCount: null, openNow: undefined, openingHoursText: undefined,
+                  mapUrl: b.google_maps_url ?? "", googleMapsUrl: b.google_maps_url ?? "",
+                  reason: (b.caption || b.body || "").slice(0, 80),
+                  features: (b.mood_tags ?? []).filter((t: string) => allUserTags.has(t)).slice(0, 5),
+                  distanceText: bdkm != null ? formatDistTextFromKm(bdkm) : "", distanceKm: bdkm,
+                  lat: typeof b.lat === "number" ? b.lat : undefined, lng: typeof b.lng === "number" ? b.lng : undefined,
+                  durationText: "", stationText: "", vibe: "", budget: "", time: "",
+                  priceLevel: undefined, placeId: undefined, supabaseId: undefined,
+                  source: "blog_post", isUserSpot: true,
+                  hasUserPhotos: imgs.length > 0, userPhotoCount: imgs.length, routesByMode: undefined,
+                } as unknown as Rec;
+              }).filter(r => r.photoUrl);
+              if (blogRecs.length > 0) {
+                const keys = new Set(blogRecs.map(b => normalizeName(b.title ?? "")));
+                const rest = recommendations.filter(r => !keys.has(normalizeName(r.title ?? "")));
+                recommendations = [...blogRecs, ...rest].slice(0, Math.max(15, blogRecs.length));
+                console.log(`[recommend] 承認済みブログ注入: ${blogRecs.length}件`);
+              }
+            }
+          }
+        } catch { /* ブログ注入失敗は無視（テーブル未作成/一時エラー） */ }
+
         // ── コスト削減F: Google補足結果を Supabase(places) に自動保存（fire-and-forget）──
         //   Supabaseカバレッジが育つほど将来の検索でB(充足スキップ)が効き、Google呼び出しが
         //   逓減する複利効果。座標とplaceIdが揃うGoogle由来スポットのみ保存する。
