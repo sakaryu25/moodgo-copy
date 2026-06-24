@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import { Camera, Check, Clock, Flame, Heart, HelpCircle, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -460,28 +460,16 @@ export default function PlaceCard({
                 : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
             </TouchableOpacity>
           </LinearGradient>
-        ) : genrePlaceholder(item.tags) ? (
-          // ジャンル別プレースホルダー（OSM飲食は写真なしが多い／Google写真を常用しない）
-          //   写真優先順位: 店舗 > 運営 > 承認済みユーザー投稿 > ★ここ > 最後にGoogle。
-          (() => {
-            const gp = genrePlaceholder(item.tags)!;
-            return (
-              <LinearGradient colors={gp.colors} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.photo, s.photoPlaceholder]}>
-                <Text style={s.genrePhEmoji}>{gp.emoji}</Text>
-                <Text style={s.genrePhLabel}>{gp.label}</Text>
-                <Text style={s.genrePhSub}>写真を募集中 🙏</Text>
-                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.genrePhBtn}>
-                  {uploading
-                    ? <ActivityIndicator color={BRAND} size="small" />
-                    : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
-                </TouchableOpacity>
-              </LinearGradient>
-            );
-          })()
         ) : (
-          <LinearGradient colors={['#F5F0FF', '#EDE9FE']} style={[s.photo, s.photoPlaceholder]}>
-            <Navigation size={36} color={BRAND} strokeWidth={1.5} />
-          </LinearGradient>
+          // 写真なし: クリーンな「?」アイコンのプレースホルダー（写真追加で投稿を促す）
+          <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
+            <HelpCircle size={50} color="#C7BEEA" strokeWidth={1.6} />
+            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.genrePhBtn}>
+              {uploading
+                ? <ActivityIndicator color={BRAND} size="small" />
+                : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
+            </TouchableOpacity>
+          </View>
         )}
 
         <LinearGradient
@@ -641,16 +629,7 @@ export default function PlaceCard({
 
         {/* コンパクト(2カラム)では説明文の下の操作系を省略し、タップで詳細へ誘導 */}
         {!compact && (<>
-        {/* ── AI相談時のみ: なぜおすすめか ── */}
-        {item.aiReason ? (
-          <View style={s.aiReasonBox}>
-            <View style={s.aiReasonHead}>
-              <Sparkles size={13} color="#9B6BFF" fill="#9B6BFF" strokeWidth={0} />
-              <Text style={s.aiReasonLabel}>AIのおすすめ理由</Text>
-            </View>
-            <Text style={s.aiReasonText}>{item.aiReason}</Text>
-          </View>
-        ) : null}
+        {/* AIのおすすめ理由は非表示（汎用的な文言が多いため）。再表示する場合はここを戻す。 */}
 
         {/* ── アクションボタン: Googleマップ + 行った！ ── */}
         <View style={s.actions}>
@@ -701,18 +680,19 @@ export default function PlaceCard({
 
         {/* 気分が合う/合わないボタンは廃止。学習は詳細ページの★評価に一本化（SpotRating）。 */}
 
-        {/* ソース表示 */}
-        {item.source && (
-          <View style={s.sourceRow}>
-            <Text style={s.sourceText}>
-              {item.source === 'admin'     ? '🗄 DB登録済み' :
-               item.source === 'user'      ? '👤 ユーザー投稿' :
-               item.source === 'google'    ? '🔍 Google検索' :
-               item.source === 'hotpepper' ? '🍽 ホットペッパー' :
-               `📍 ${item.source}`}
-            </Text>
-          </View>
-        )}
+        {/* ソース表示（osm-* 等の内部ラベルは出さず、意味のあるソースのみ表示）*/}
+        {(() => {
+          const label =
+            item.source === 'admin'     ? '🗄 DB登録済み' :
+            item.source === 'user'      ? '👤 ユーザー投稿' :
+            item.source === 'google'    ? '🔍 Google検索' :
+            item.source === 'hotpepper' ? '🍽 ホットペッパー' : '';
+          return label ? (
+            <View style={s.sourceRow}>
+              <Text style={s.sourceText}>{label}</Text>
+            </View>
+          ) : null;
+        })()}
 
         {/* フッター */}
         <View style={s.footRow}>
@@ -787,6 +767,8 @@ const s = StyleSheet.create({
   photoWrap:        { position: 'relative' },
   photo:            { width: '100%', height: 220 },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  // 写真なし時のクリーンな「?」プレースホルダー背景（淡いviolet-gray）
+  phClean: { backgroundColor: '#F3F0F9', gap: 4 },
   genrePhEmoji: { fontSize: 44, marginBottom: 4 },
   genrePhLabel: { color: '#7A5A4A', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
   genrePhSub: { color: 'rgba(120,90,74,0.7)', fontSize: 11, fontWeight: '600', marginTop: 2 },

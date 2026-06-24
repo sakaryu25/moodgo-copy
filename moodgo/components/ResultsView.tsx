@@ -288,7 +288,7 @@ export default function ResultsView(props: Props) {
   const [visitingSpot, setVisitingSpot] = React.useState<Recommendation | null>(null);
   const [visitingRating, setVisitingRating] = React.useState(0);
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
-  const [showConditions, setShowConditions] = React.useState(true);
+  const [showConditions, setShowConditions] = React.useState(false);  // デフォルト折りたたみ（結果を広く見せる）
 
   React.useEffect(() => { setVisibleCount(PAGE_SIZE); }, [resultSort, openNowOnly, unseenOnly]);
 
