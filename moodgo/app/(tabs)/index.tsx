@@ -927,7 +927,12 @@ export default function Home() {
   // ─── Tab fade ─────────────────────────────────────────────────────────────
 
   const tabFade = useRef(new Animated.Value(1)).current;
+  const tabFadeFirst = useRef(true);
   useEffect(() => {
+    // 初回マウントはスキップ（opacity=1のまま）。オンボーディング中にメインViewが
+    //   未マウントのまま useNativeDriver アニメを走らせると、マウント後 opacity=0 で固まり
+    //   ホームが真っ白になるため。タブ切替(home↔history)時のみフェードする。
+    if (tabFadeFirst.current) { tabFadeFirst.current = false; return; }
     tabFade.setValue(0);
     Animated.timing(tabFade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [homeView]);
