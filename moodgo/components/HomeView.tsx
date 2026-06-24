@@ -11,7 +11,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { MapPin, Settings } from 'lucide-react-native';
+import { Clock, MapPin, Settings } from 'lucide-react-native';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
 import React, { useEffect, useRef } from 'react';
@@ -137,12 +137,13 @@ type Props = {
   onStartWithMood?: (moodKey: string) => void;  // （旧）気分ショートカット用・現在未使用
   onShowSettings: () => void;
   onShowFeatured: () => void;
+  onShowHistory?: () => void;  // 履歴サブ画面を開く（NativeTabs移行で履歴をタブから外したため）
   onOpenAiChat: () => void;  // AI相談を開く（位置情報自動取得）
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured, onOpenAiChat }: Props) {
+export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured, onShowHistory, onOpenAiChat }: Props) {
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
@@ -196,16 +197,30 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
             </View>
           </PuniPressable>
         </Animated.View>
-        <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowSettings}>
-          {LIQUID_GLASS && (
-            <GlassView
-              glassEffectStyle="regular"
-              isInteractive
-              style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
-            />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {onShowHistory && (
+            <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowHistory}>
+              {LIQUID_GLASS && (
+                <GlassView
+                  glassEffectStyle="regular"
+                  isInteractive
+                  style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+                />
+              )}
+              <Clock size={20} color="#888" strokeWidth={2} />
+            </PuniPressable>
           )}
-          <Settings size={20} color="#888" strokeWidth={2} />
-        </PuniPressable>
+          <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowSettings}>
+            {LIQUID_GLASS && (
+              <GlassView
+                glassEffectStyle="regular"
+                isInteractive
+                style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+              />
+            )}
+            <Settings size={20} color="#888" strokeWidth={2} />
+          </PuniPressable>
+        </View>
       </View>
 
       {/* ── Scrollable body ── */}

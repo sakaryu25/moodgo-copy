@@ -3,7 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Pressable,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
 
@@ -64,12 +66,7 @@ import { router, useFocusEffect } from 'expo-router';
 import AppBackground    from '@/components/AppBackground';
 import AiChatInput      from '@/components/AiChatInput';
 import HomeView         from '@/components/HomeView';
-import TabBar           from '@/components/TabBar';
 import HistoryView      from '@/components/HistoryView';
-import FavoritesView    from '@/components/FavoritesView';
-import FeatureScreen    from '@/components/FeatureScreen';
-import GroupsView       from '@/components/GroupsView';
-import BlogView         from '@/components/BlogView';
 import ProfileSetup     from '@/components/ProfileSetup';
 import Onboarding       from '@/components/Onboarding';
 import QuizFlow         from '@/components/QuizFlow';
@@ -99,10 +96,10 @@ export default function Home() {
   // ── Navigation ───────────────────────────────────────────────────────────
   const [started,    setStarted]    = useState(false);
   const [step,       setStep]       = useState(1);
-  const [homeView,   setHomeView]   = useState<'home' | 'history' | 'favorites' | 'blog' | 'featured' | 'groups'>('home');
-  const [tabResetKeys, setTabResetKeys] = useState({ home: 0, history: 0, favorites: 0, blog: 0, featured: 0, groups: 0 });
-  // グループチャット表示中はタブバーを隠す（没入モード）
-  const [groupChatOpen, setGroupChatOpen] = useState(false);
+  // NativeTabs移行: 保存/みんな/つぶやき/特集 は独立タブルートに分離。
+  //   このホームルートは home と history(ボタンで開くサブ画面) のみを切替える。
+  const [homeView,   setHomeView]   = useState<'home' | 'history'>('home');
+  const [historyResetKey] = useState(0);
 
   // ── Quiz state ───────────────────────────────────────────────────────────
   const [selectedMood,       setSelectedMood]       = useState('');
@@ -201,7 +198,7 @@ export default function Home() {
   // ── 地図画像・ホーム写真をアプリ起動時に先読み（特集/ホームのラグ防止）──
   useEffect(() => {
     preloadMaps();
-    Asset.loadAsync([require('../assets/images/home-featured.png')]).catch(() => {});
+    Asset.loadAsync([require('../../assets/images/home-featured.png')]).catch(() => {});
     // G-2: A/Bテスト variant をロード
     getABVariant().then(setAbVariant).catch(() => {});
   }, []);
@@ -1171,68 +1168,55 @@ export default function Home() {
   // ─── Home screens ─────────────────────────────────────────────────────────
 
   const renderContent = () => {
-    switch (homeView) {
-      case 'history':
-        return (
-          <HistoryView
-            lang={lang}
-            history={history}
-            selectedHistoryItem={selectedHistoryItem}
-            onSelectHistoryItem={setSelectedHistoryItem}
-            onClearHistory={() => setHistory([])}
-            favorites={favorites}
-            onToggleFavorite={toggleFavorite}
-            onResearch={handleResearch}
-            onPressDetail={handlePressDetail}
-            resetKey={tabResetKeys.history}
-          />
-        );
-      case 'favorites':
-        return (
-          <FavoritesView
-            lang={lang}
-            favorites={favorites}
-            favoriteSort={favoriteSort}
-            onSetFavoriteSort={setFavoriteSort}
-            onRemoveFavorite={(title) =>
-              setFavorites(prev => prev.filter(f => f.title !== title))
-            }
-            onPressCard={handlePressFavoriteDetail}
-            resetKey={tabResetKeys.favorites}
-          />
-        );
-      case 'blog':
-        return <BlogView resetKey={tabResetKeys.blog} />;
-      case 'featured':
-        return <FeatureScreen />;
-      case 'groups':
-        return (
-          <GroupsView
-            resetKey={tabResetKeys.groups}
-            onChatOpenChange={setGroupChatOpen}
-            favorites={favorites}
-          />
-        );
-      default:
-        return (
-          <HomeView
-            profileAge={profileAge}
-            profileGender={profileGender}
-            lang={lang}
-            onStart={() => { prewarmRecommend(); setStarted(true); }}
-            onStartWithMood={(moodKey: string) => {
-              // 気分を選択済み状態にしてstep=2（同行者選択）から開始
-              prewarmRecommend();  // クイズ開始＝検索数十秒前にVercel関数を暖機（コールドスタート対策）
-              setSelectedMood(moodKey);
-              setStep(2);
-              setStarted(true);
-            }}
-            onShowSettings={() => setShowSettings(true)}
-            onShowFeatured={() => setHomeView('featured')}
-            onOpenAiChat={handleOpenAiChat}
-          />
-        );
+    if (homeView === 'history') {
+      // 履歴はタブから外したのでホーム内のサブ画面として表示（再検索ロジックを保持）
+      return (
+        <View style={{ flex: 1 }}>
+          <View style={{ paddingTop: insets.top + 8, paddingBottom: 2, paddingHorizontal: 10 }}>
+            <Pressable
+              onPress={() => setHomeView('home')}
+              hitSlop={12}
+              style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10 }}
+            >
+              <Text style={{ fontSize: 16, color: '#A855F7', fontWeight: '700' }}>‹ ホーム</Text>
+            </Pressable>
+          </View>
+          <View style={{ flex: 1 }}>
+            <HistoryView
+              lang={lang}
+              history={history}
+              selectedHistoryItem={selectedHistoryItem}
+              onSelectHistoryItem={setSelectedHistoryItem}
+              onClearHistory={() => setHistory([])}
+              favorites={favorites}
+              onToggleFavorite={toggleFavorite}
+              onResearch={handleResearch}
+              onPressDetail={handlePressDetail}
+              resetKey={historyResetKey}
+            />
+          </View>
+        </View>
+      );
     }
+    return (
+      <HomeView
+        profileAge={profileAge}
+        profileGender={profileGender}
+        lang={lang}
+        onStart={() => { prewarmRecommend(); setStarted(true); }}
+        onStartWithMood={(moodKey: string) => {
+          // 気分を選択済み状態にしてstep=2（同行者選択）から開始
+          prewarmRecommend();  // クイズ開始＝検索数十秒前にVercel関数を暖機（コールドスタート対策）
+          setSelectedMood(moodKey);
+          setStep(2);
+          setStarted(true);
+        }}
+        onShowSettings={() => setShowSettings(true)}
+        onShowFeatured={() => router.navigate('/featured')}
+        onShowHistory={() => setHomeView('history')}
+        onOpenAiChat={handleOpenAiChat}
+      />
+    );
   };
 
   return (
@@ -1241,18 +1225,6 @@ export default function Home() {
       <Animated.View style={{ flex: 1, opacity: tabFade }}>
         {renderContent()}
       </Animated.View>
-      {!groupChatOpen && (
-        <TabBar
-          lang={lang}
-          homeView={homeView}
-          onChangeView={(v) => setHomeView(v)}
-          onReset={(v) => {
-            setTabResetKeys(prev => ({ ...prev, [v]: prev[v] + 1 }));
-            if (v === 'home') resetQuiz();
-          }}
-          insets={insets}
-        />
-      )}
       <SettingsView
         visible={showSettings}
         onClose={() => setShowSettings(false)}
