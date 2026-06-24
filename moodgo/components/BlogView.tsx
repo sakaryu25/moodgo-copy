@@ -118,6 +118,13 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
                       <Heart size={size > CELL ? 13 : 11} color="#fff" fill="#fff" strokeWidth={0} />
                       <Text style={[s.tileCountText, size > CELL && { fontSize: 13 }]}>{formatNum(it.helpfulCount)}</Text>
                     </View>
+                    {/* 大タイルは右下に場所名（全国みんなの穴場風）*/}
+                    {size > CELL && it.placeName ? (
+                      <View style={s.tileLoc}>
+                        <MapPin size={11} color="#fff" strokeWidth={2.4} />
+                        <Text style={s.tileLocText} numberOfLines={1}>{it.placeName}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </TouchableOpacity>
               );
@@ -422,6 +429,8 @@ const s = StyleSheet.create({
   cardInner: { flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: COLORS.muted },
   tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
   tileCount: { position: 'absolute', left: 7, bottom: 6, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  tileLoc: { position: 'absolute', right: 8, bottom: 7, maxWidth: '68%', flexDirection: 'row', alignItems: 'center', gap: 2 },
+  tileLocText: { color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   tileCountText: { color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   empty: { textAlign: 'center', color: COLORS.textMuted, marginTop: 60, paddingHorizontal: 30, lineHeight: 22 },
   fab: { position: 'absolute', right: 18, bottom: 100 },
