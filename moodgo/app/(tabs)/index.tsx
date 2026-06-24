@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -941,16 +942,13 @@ export default function Home() {
   //   onboarded フラグで一度きり。プロフィールはスキップしても onboarded を立てて
   //   再表示しない（＝プロフィール任意化）。既存ユーザーは load 時に通過済み扱い。
 
-  if (profileLoaded && !onboarded) {
-    if (firstRunStep === 'onboarding') {
-      return (
-        <View style={styles.root}>
-          <AppBackground />
-          <Onboarding onDone={() => setFirstRunStep('profile')} />
-        </View>
-      );
-    }
-    return (
+  const onboardingNode = (profileLoaded && !onboarded) ? (
+    firstRunStep === 'onboarding' ? (
+      <View style={styles.root}>
+        <AppBackground />
+        <Onboarding onDone={() => setFirstRunStep('profile')} />
+      </View>
+    ) : (
       <View style={styles.root}>
         <AppBackground />
         <ProfileSetup
@@ -965,13 +963,12 @@ export default function Home() {
           }}
         />
       </View>
-    );
-  }
+    )
+  ) : null;
 
   // ─── Quiz flow ────────────────────────────────────────────────────────────
 
-  if (started && step <= 8) {
-    return (
+  const quizNode = (started && step <= 8) ? (
       <View style={styles.root}>
         <AppBackground />
         <SlideUp>
@@ -1035,13 +1032,11 @@ export default function Home() {
           />
         </SlideUp>
       </View>
-    );
-  }
+  ) : null;
 
   // ─── Results screen ───────────────────────────────────────────────────────
 
-  if (started && step === 11) {
-    return (
+  const resultsNode = (started && step === 11) ? (
       <View style={styles.root}>
         <AppBackground />
         <SlideUp>
@@ -1167,8 +1162,7 @@ export default function Home() {
           />
         </SlideUp>
       </View>
-    );
-  }
+  ) : null;
 
   // ─── Home screens ─────────────────────────────────────────────────────────
 
@@ -1262,6 +1256,22 @@ export default function Home() {
           />
         </View>
       )}
+
+      {/* オンボーディング/プロフィール: フルスクリーンModalでネイティブタブバーごと覆う */}
+      <Modal visible={profileLoaded && !onboarded} animationType="fade" presentationStyle="fullScreen">
+        {onboardingNode}
+      </Modal>
+
+      {/* クイズ/結果: フルスクリーンModalで没入表示（ネイティブタブバーを隠す）*/}
+      <Modal
+        visible={started}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={resetQuiz}
+      >
+        {quizNode}
+        {resultsNode}
+      </Modal>
     </View>
   );
 }
