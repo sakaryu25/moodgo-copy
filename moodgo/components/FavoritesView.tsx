@@ -299,7 +299,7 @@ export default function FavoritesView({
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F9FAFB' },
+  root: { flex: 1, backgroundColor: 'transparent' },  // AppBackground(M透かし)を見せて他画面と統一
 
   // ── ヒーローヘッダー ──
   heroHeader: {
