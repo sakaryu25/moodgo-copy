@@ -17,9 +17,10 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
 const SCREEN_W = Dimensions.get('window').width;
-const GAP = 1.5;
+const GAP = 8;       // カード間の余白（丸みカード感）
+const PAD_H = 12;    // 画面端からの余白
 const COL = 3;
-const CELL = Math.floor((SCREEN_W - GAP * (COL - 1)) / COL);
+const CELL = Math.floor((SCREEN_W - PAD_H * 2 - GAP * (COL - 1)) / COL);
 
 const MOODS: { label: string; tag: string }[] = [
   { label: '自然', tag: '#自然感じたい' }, { label: 'まったり', tag: '#まったりしたい' },
@@ -104,17 +105,19 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </ScrollView>
       {loading ? <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-          <View style={{ gap: GAP }}>
+          <View style={{ gap: GAP, paddingHorizontal: PAD_H }}>
             {(() => {
-              // インスタExplore風: 通常3列グリッドに、時々2x2の大タイルを挟んでリズムを出す
+              // インスタExplore風: 通常3列グリッドに、時々2x2の大タイルを挟む（丸みのあるカード）
               const BIG = CELL * 2 + GAP;
               const renderTile = (it: GridItem, size: number) => (
-                <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={{ width: size, height: size }}>
-                  <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
-                  <View style={s.tileCount}>
-                    <Heart size={size > CELL ? 13 : 11} color="#fff" fill="#fff" strokeWidth={0} />
-                    <Text style={[s.tileCountText, size > CELL && { fontSize: 13 }]}>{formatNum(it.helpfulCount)}</Text>
+                <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={[s.card, { width: size, height: size }]}>
+                  <View style={s.cardInner}>
+                    <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
+                    <View style={s.tileCount}>
+                      <Heart size={size > CELL ? 13 : 11} color="#fff" fill="#fff" strokeWidth={0} />
+                      <Text style={[s.tileCountText, size > CELL && { fontSize: 13 }]}>{formatNum(it.helpfulCount)}</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -414,6 +417,9 @@ const s = StyleSheet.create({
   chipActive: { backgroundColor: COLORS.primary },
   chipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700', includeFontPadding: false, textAlignVertical: 'center' },
   chipTextActive: { color: '#fff' },
+  // 丸みのあるカード（外: 影 / 内: 角丸クリップ）
+  card: { borderRadius: 16, backgroundColor: '#fff', shadowColor: '#1A0A2E', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 5 },
+  cardInner: { flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: COLORS.muted },
   tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
   tileCount: { position: 'absolute', left: 7, bottom: 6, flexDirection: 'row', alignItems: 'center', gap: 3 },
   tileCountText: { color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
