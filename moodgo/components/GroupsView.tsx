@@ -943,7 +943,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       );
     };
     return (
-      <View style={{ flex: 1 }}>
+      <Modal visible animationType="none" presentationStyle="fullScreen" onRequestClose={closeChat}>
+        {/* フルスクリーンModalで包み、チャット中はネイティブタブバーを隠す（没入） */}
+        <View style={{ flex: 1 }}>
         {/* 背面: グループ一覧（スワイプバック時にLINEのように透けて見える。パララックス＋薄暗→明転） */}
         <Animated.View
           pointerEvents="none"
@@ -1572,6 +1574,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         </Animated.View>
         </KeyboardAvoidingView>
       </View>
+      </Modal>
     );
   }
 
