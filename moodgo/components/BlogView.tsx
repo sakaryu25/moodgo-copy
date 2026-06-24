@@ -10,6 +10,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Heart } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -97,15 +98,52 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </ScrollView>
       {loading ? <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
-            {items.map((it) => (
-              <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={{ width: CELL, height: CELL }}>
-                <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                <View style={s.tileCount}>
-                  <Text style={s.tileCountText}>♡ {formatNum(it.helpfulCount)}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+          <View style={{ gap: GAP }}>
+            {(() => {
+              // インスタExplore風: 通常3列グリッドに、時々2x2の大タイルを挟んでリズムを出す
+              const BIG = CELL * 2 + GAP;
+              const renderTile = (it: GridItem, size: number) => (
+                <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={{ width: size, height: size }}>
+                  <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                  <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
+                  <View style={s.tileCount}>
+                    <Heart size={size > CELL ? 13 : 11} color="#fff" fill="#fff" strokeWidth={0} />
+                    <Text style={[s.tileCountText, size > CELL && { fontSize: 13 }]}>{formatNum(it.helpfulCount)}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+              const rows: React.ReactNode[] = [];
+              let i = 0, unit = 0;
+              while (i < items.length) {
+                if (unit % 2 === 0 && i + 3 <= items.length) {
+                  // フィーチャー帯: 2x2大タイル＋小タイル2枚（左右交互）
+                  const bigLeft = unit % 4 === 0;
+                  const big = renderTile(items[i], BIG);
+                  const col = (
+                    <View key={`col${i}`} style={{ gap: GAP }}>
+                      {renderTile(items[i + 1], CELL)}
+                      {renderTile(items[i + 2], CELL)}
+                    </View>
+                  );
+                  rows.push(
+                    <View key={`f${i}`} style={{ flexDirection: 'row', gap: GAP }}>
+                      {bigLeft ? [big, col] : [col, big]}
+                    </View>
+                  );
+                  i += 3;
+                } else {
+                  // 通常行: 3列
+                  rows.push(
+                    <View key={`n${i}`} style={{ flexDirection: 'row', gap: GAP }}>
+                      {items.slice(i, i + 3).map((it) => renderTile(it, CELL))}
+                    </View>
+                  );
+                  i += 3;
+                }
+                unit++;
+              }
+              return rows;
+            })()}
           </View>
           {items.length === 0 && <Text style={s.empty}>まだ投稿がありません。最初のおすすめを投稿してみよう！</Text>}
         </ScrollView>
@@ -314,8 +352,9 @@ const s = StyleSheet.create({
   chipActive: { backgroundColor: COLORS.primary },
   chipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700', includeFontPadding: false, textAlignVertical: 'center' },
   chipTextActive: { color: '#fff' },
-  tileCount: { position: 'absolute', left: 7, bottom: 6, flexDirection: 'row', alignItems: 'center' },
-  tileCountText: { color: '#fff', fontSize: 13, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
+  tileCount: { position: 'absolute', left: 7, bottom: 6, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  tileCountText: { color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   empty: { textAlign: 'center', color: COLORS.textMuted, marginTop: 60, paddingHorizontal: 30, lineHeight: 22 },
   fab: { position: 'absolute', right: 18, bottom: 100 },
   fabInner: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 30, shadowColor: COLORS.shadowRose, shadowOpacity: 1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
