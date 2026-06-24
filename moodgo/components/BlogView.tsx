@@ -87,8 +87,14 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   // ── 一覧（Insta風グリッド）──
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
-        <Text style={s.headerTitle}>みんなのMoodログ</Text>
+      {/* 保存/特集と統一感のあるグラデ帯ヘッダー */}
+      <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 14 }]}>
+        <View style={s.heroDeco1} pointerEvents="none" />
+        <View style={s.heroDeco2} pointerEvents="none" />
+        <Text style={s.heroTitle}>みんなのMoodログ</Text>
+        <Text style={s.heroSub}>気分でめぐる、みんなのおすすめ</Text>
+      </LinearGradient>
+      <View style={s.searchWrap}>
         <TextInput value={q} onChangeText={setQ} onSubmitEditing={loadList} returnKeyType="search"
           placeholder="場所・お店を検索" placeholderTextColor={COLORS.textMuted} style={s.search} />
       </View>
@@ -396,6 +402,12 @@ function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: (
 const s = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 6 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
+  hero: { paddingHorizontal: 20, paddingBottom: 18, overflow: 'hidden' },
+  heroTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  heroDeco1: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.10)', top: -60, right: -40 },
+  heroDeco2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.07)', bottom: -30, left: -10 },
+  searchWrap: { paddingHorizontal: 16, paddingTop: 12 },
   search: { marginTop: 8, backgroundColor: COLORS.muted, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, color: COLORS.text },
   chipRow: { height: 54, marginTop: 6, marginBottom: 8 },
   chip: { height: 38, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 19, backgroundColor: COLORS.muted },
