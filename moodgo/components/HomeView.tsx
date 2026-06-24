@@ -12,6 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { MapPin, Settings } from 'lucide-react-native';
+import { GlassView } from 'expo-glass-effect';
+import { LIQUID_GLASS } from './GlassSurface';
 import React, { useEffect, useRef } from 'react';
 import {
   Animated,
@@ -178,16 +180,30 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
       <View style={s.header}>
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <PuniPressable
-            style={s.suggestPill}
+            style={[s.suggestPill, LIQUID_GLASS && s.glassChip]}
             onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
           >
+            {LIQUID_GLASS && (
+              <GlassView
+                glassEffectStyle="regular"
+                tintColor="rgba(245,108,179,0.10)"
+                style={[StyleSheet.absoluteFill, { borderRadius: 999 }]}
+              />
+            )}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <MapPin size={13} color={PINK} strokeWidth={2.5} />
               <Text style={s.suggestText}>{lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
             </View>
           </PuniPressable>
         </Animated.View>
-        <PuniPressable style={s.settingsBtn} onPress={onShowSettings}>
+        <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowSettings}>
+          {LIQUID_GLASS && (
+            <GlassView
+              glassEffectStyle="regular"
+              isInteractive
+              style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
+            />
+          )}
           <Settings size={20} color="#888" strokeWidth={2} />
         </PuniPressable>
       </View>
@@ -311,6 +327,12 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.07, shadowRadius: 4, elevation: 2,
+  },
+  // iOS26 Liquid Glass時: 背景の白塗りを外しガラスに任せる（縁は控えめな白ハイライト）
+  glassChip: {
+    backgroundColor: 'transparent',
+    borderColor: 'rgba(255,255,255,0.45)',
+    overflow: 'hidden',
   },
 
   // Scroll

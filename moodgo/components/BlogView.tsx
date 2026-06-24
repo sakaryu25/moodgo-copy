@@ -3,6 +3,7 @@
 // 承認済み(approved)のみ一覧/詳細に出る。投稿は pending で保存され管理者承認後に公開。
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Dimensions, Linking, ScrollView, StyleSheet,
@@ -195,14 +196,27 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
 
   const pick = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') return;
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 0.6, base64: true, exif: false });
-      if (!r.canceled && r.assets) {
-        const add = r.assets.slice(0, 10 - images.length).map(a => ({ uri: a.uri, base64: a.base64 ?? undefined }));
-        setImages(prev => [...prev, ...add].slice(0, 10));
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        alert('写真へのアクセスが許可されていません。\n設定アプリ →（MoodGo/Expo Go）→ 写真 で「すべての写真」または「選択した写真」を許可してください。');
+        return;
       }
-    } catch { /* noop */ }
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 1, exif: false });
+      if (!r.canceled && r.assets && r.assets.length > 0) {
+        const slots = Math.max(0, 10 - images.length);
+        // 送信前に1080pxへリサイズ＋圧縮してbase64化（4MB制限・本文サイズ超過を防ぐ）
+        const resized = await Promise.all(r.assets.slice(0, slots).map(async (a) => {
+          try {
+            const small = await ImageManipulator.manipulateAsync(a.uri, [{ resize: { width: 1080 } }],
+              { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+            return { uri: small.uri, base64: small.base64 ?? undefined };
+          } catch { return { uri: a.uri, base64: a.base64 ?? undefined }; }
+        }));
+        setImages(prev => [...prev, ...resized].slice(0, 10));
+      }
+    } catch (e) {
+      alert('写真の読み込みでエラーが発生しました: ' + String(e).slice(0, 150));
+    }
   };
   const toggle = (arr: string[], setArr: (v: string[]) => void, t: string) => setArr(arr.includes(t) ? arr.filter(x => x !== t) : [...arr, t]);
 

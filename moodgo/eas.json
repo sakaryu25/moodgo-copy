@@ -7,6 +7,13 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "dev-simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
     "preview": {
       "distribution": "internal",
       "ios": {
@@ -22,9 +29,7 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "ryuki.m.0325@icloud.com",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "ryuki.m.0325@icloud.com"
       }
     }
   }

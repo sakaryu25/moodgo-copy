@@ -2,11 +2,13 @@
 // Liquid Glass バー: ほぼ素通しのブラー＋指に吸い付くドゥるんブロブ
 // タップでも、押しながらスライド→離して選択でも操作できる
 import { BlurView } from 'expo-blur';
+import { GlassView } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
+import { Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import { EdgeInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { LIQUID_GLASS } from './GlassSurface';
 
 type Tab = 'home' | 'history' | 'favorites' | 'blog' | 'featured' | 'groups';
 
@@ -83,16 +85,19 @@ function IconBlog({ active }: { active: boolean }) {
   );
 }
 
-const TABS: { key: Tab; Icon: React.ComponentType<{ active: boolean }> }[] = [
-  { key: 'home',      Icon: IconHome },
-  { key: 'history',   Icon: IconHistory },
-  { key: 'favorites', Icon: IconFavorites },
-  { key: 'blog',      Icon: IconBlog },
-  { key: 'groups',    Icon: IconChat },
-  { key: 'featured',  Icon: IconFeatured },
+const TABS: { key: Tab; Icon: React.ComponentType<{ active: boolean }>; label: string }[] = [
+  { key: 'home',      Icon: IconHome,      label: 'ホーム' },
+  { key: 'history',   Icon: IconHistory,   label: '履歴' },
+  { key: 'favorites', Icon: IconFavorites, label: '保存' },
+  { key: 'blog',      Icon: IconBlog,      label: 'みんな' },
+  { key: 'groups',    Icon: IconChat,      label: 'つぶやき' },
+  { key: 'featured',  Icon: IconFeatured,  label: '特集' },
 ];
 
 const clampIdx = (i: number) => Math.min(N_TABS - 1, Math.max(0, i));
+
+const ACTIVE_PILL = 'rgba(168,85,247,0.14)'; // 選択ピル（家計簿アプリ風の柔らかい色付き）
+const PILL_H = 50;                            // アイコン＋ラベルを包む高さ
 
 export default function TabBar({ homeView, onChangeView, onReset, insets }: Props) {
   const bottomOffset = Math.max(insets.bottom, 8) + 16;
@@ -234,15 +239,22 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
   const litIdx = hover ?? idx;
 
   return (
-    <View style={[s.container, { bottom: bottomOffset }]}>
-      <BlurView
-        intensity={55}
-        tint="light"
-        experimentalBlurMethod="dimezisBlurView"
-        style={StyleSheet.absoluteFill}
-      />
-      {/* ごく薄い白（ガラスの曇り） */}
-      <View style={s.overlay} />
+    <View style={[s.container, { bottom: bottomOffset }, LIQUID_GLASS && s.containerGlass]}>
+      {LIQUID_GLASS ? (
+        // iOS26: 本物の Liquid Glass バー（指に反応してにじむ）
+        <GlassView glassEffectStyle="regular" isInteractive style={StyleSheet.absoluteFill} />
+      ) : (
+        <>
+          <BlurView
+            intensity={55}
+            tint="light"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+          {/* ごく薄い白（ガラスの曇り） */}
+          <View style={s.overlay} />
+        </>
+      )}
       <View
         ref={innerRef}
         style={s.inner}
@@ -254,24 +266,31 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
       >
         {/* 液体ガラスブロブ — タップでも指追従でもドゥるんと動く */}
         {tabW > 0 && (
+          // 選択ハイライト＝家計簿アプリ風の柔らかいvioletピル（指追従でドゥるん）
           <Animated.View
             pointerEvents="none"
             style={[
-              s.blob,
+              s.pill,
               {
                 width: blobW,
                 left: PAD_H + (tabW - blobW) / 2,
-                top: (size.h - BLOB_H) / 2,
+                top: (size.h - PILL_H) / 2,
                 transform: [{ translateX: tx }, { scaleX: sx }, { scaleY: sy }],
               },
             ]}
           />
         )}
-        {TABS.map(({ key, Icon }, i) => (
-          <View key={key} style={s.tab} pointerEvents="none">
-            <Icon active={i === litIdx} />
-          </View>
-        ))}
+        {TABS.map(({ key, Icon, label }, i) => {
+          const lit = i === litIdx;
+          return (
+            <View key={key} style={s.tab} pointerEvents="none">
+              <Icon active={lit} />
+              <Text style={[s.label, { color: lit ? ACTIVE : INACTIVE }]} numberOfLines={1}>
+                {label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -294,6 +313,11 @@ const s = StyleSheet.create({
     // ガラスのエッジ（白いハイライト）
     borderColor: 'rgba(255,255,255,0.55)',
   },
+  // 本物のLiquid Glass時はガラス自体が縁取りを持つので、白枠は控えめに
+  containerGlass: {
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'transparent',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     // すりガラスは白透明（選択中ブロブのグレーとのコントラストで視認性を出す）
@@ -301,20 +325,32 @@ const s = StyleSheet.create({
   },
   inner: {
     flexDirection: 'row',
-    paddingVertical: 15,
+    paddingVertical: 9,
     paddingHorizontal: PAD_H,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
   },
-  blob: {
+  // 選択ピル（家計簿アプリ風: 柔らかいviolet＋ふんわりグロー、角丸長方形）
+  pill: {
     position: 'absolute',
-    height: BLOB_H,
-    borderRadius: BLOB_H / 2,
-    // 選択中はグレー（iOSセグメントコントロール風）
-    backgroundColor: 'rgba(120,120,128,0.20)',
+    height: PILL_H,
+    borderRadius: 16,
+    backgroundColor: ACTIVE_PILL,
     borderWidth: 1,
-    borderColor: 'rgba(120,120,128,0.10)',
+    borderColor: 'rgba(168,85,247,0.20)',
+    shadowColor: '#A855F7',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 7,
+  },
+  // アイコン下のラベル
+  label: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 });
