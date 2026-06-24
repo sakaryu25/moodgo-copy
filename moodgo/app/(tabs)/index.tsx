@@ -1177,7 +1177,7 @@ export default function Home() {
               hitSlop={12}
               style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10 }}
             >
-              <Text style={{ fontSize: 16, color: '#A855F7', fontWeight: '700' }}>‹ ホーム</Text>
+              <Text style={{ fontSize: 16, color: '#7C3AED', fontWeight: '700' }}>‹ ホーム</Text>
             </Pressable>
           </View>
           <View style={{ flex: 1 }}>
