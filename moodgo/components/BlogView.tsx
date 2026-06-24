@@ -10,7 +10,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Heart } from 'lucide-react-native';
+import { Bookmark, ChevronLeft, Heart, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -182,38 +182,88 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
       setReported(true);
     } catch { /* noop */ }
   };
+  const [saved, setSaved] = useState(false);
+  const [page, setPage] = useState(0);
   const tags = [...(post.mood_tags ?? []), ...(post.scene_tags ?? [])];
+  const photos = post.photos ?? [];
+  const name = post.poster_name || 'MoodGoユーザー';
+  const initial = (name.trim().charAt(0) || 'M').toUpperCase();
+  const likeCount = (post.helpful_count ?? 0) + (helped ? 1 : 0);
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ paddingBottom: 140 }}>
-      <TouchableOpacity onPress={onBack} style={[s.backBtn, { paddingTop: insets.top + 8 }]}><Text style={s.backText}>← 一覧へ</Text></TouchableOpacity>
-      <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
-        {(post.photos ?? []).map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: SCREEN_W, height: SCREEN_W }} contentFit="cover" />)}
-      </ScrollView>
-      <View style={{ padding: 16 }}>
-        <Text style={s.dTitle}>{post.title}</Text>
-        {post.place_name ? <Text style={s.dPlace}>📍 {post.place_name}</Text> : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 8 }}>
-          {tags.map(t => <View key={t} style={s.dTag}><Text style={s.dTagText}>{t}</Text></View>)}
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      {/* ── インスタ風ヘッダー: 戻る＋アバター＋投稿者＋場所 ── */}
+      <View style={[s.igTop, { paddingTop: insets.top + 6 }]}>
+        <TouchableOpacity onPress={onBack} hitSlop={10}><ChevronLeft size={26} color={COLORS.text} strokeWidth={2.2} /></TouchableOpacity>
+        <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.igAvatar}><Text style={s.igAvatarText}>{initial}</Text></LinearGradient>
+        <View style={{ flex: 1 }}>
+          <Text style={s.igName} numberOfLines={1}>{name}</Text>
+          {post.place_name ? <Text style={s.igPlace} numberOfLines={1}>{post.place_name}</Text> : null}
         </View>
-        {(post.companion_tags ?? []).length > 0 ? <Text style={s.dMeta}>👥 {(post.companion_tags ?? []).join(' ')}</Text> : null}
-        {post.budget_level ? <Text style={s.dMeta}>💰 {post.budget_level}</Text> : null}
-        {post.caption ? <Text style={s.dCaption}>{post.caption}</Text> : null}
-        {post.body ? <Text style={s.dBody}>{post.body}</Text> : null}
-        <Text style={s.dAuthor}>by {post.poster_name || 'MoodGoユーザー'}</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+        {/* ── 大きい写真カルーセル ── */}
+        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}>
+          {photos.map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: SCREEN_W, height: SCREEN_W }} contentFit="cover" />)}
+        </ScrollView>
+        {photos.length > 1 ? (
+          <View style={s.igDots}>
+            {photos.map((_, i) => <View key={i} style={[s.igDot, i === page && s.igDotOn]} />)}
+          </View>
+        ) : null}
 
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-          <TouchableOpacity onPress={() => react('helpful')} style={[s.actBtn, helped && s.actBtnOn]}><Text style={[s.actText, helped && s.actTextOn]}>🙏 参考になった</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => react('save')} style={s.actBtn}><Text style={s.actText}>🔖 保存</Text></TouchableOpacity>
-          {post.google_maps_url ? <TouchableOpacity onPress={() => Linking.openURL(post.google_maps_url!)} style={s.actBtn}><Text style={s.actText}>🗺 マップで見る</Text></TouchableOpacity> : null}
+        {/* ── アクション行: ♡ / マップ ··· 保存 ── */}
+        <View style={s.igActions}>
+          <TouchableOpacity onPress={() => react('helpful')} hitSlop={8} activeOpacity={0.7}>
+            <Heart size={28} color={helped ? '#FF3B6B' : COLORS.text} fill={helped ? '#FF3B6B' : 'transparent'} strokeWidth={2} />
+          </TouchableOpacity>
+          {post.google_maps_url ? (
+            <TouchableOpacity onPress={() => Linking.openURL(post.google_maps_url!)} hitSlop={8} activeOpacity={0.7} style={{ marginLeft: 16 }}>
+              <MapPin size={26} color={COLORS.text} strokeWidth={2} />
+            </TouchableOpacity>
+          ) : null}
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity onPress={() => { react('save'); setSaved(s => !s); }} hitSlop={8} activeOpacity={0.7}>
+            <Bookmark size={26} color={COLORS.text} fill={saved ? COLORS.text : 'transparent'} strokeWidth={2} />
+          </TouchableOpacity>
         </View>
-        {tags[0] ? <TouchableOpacity onPress={() => onSearchMood(post.mood_tags?.[0] ?? tags[0])} style={s.searchMoodBtn}>
-          <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.searchMoodInner}><Text style={s.searchMoodText}>この気分で探す</Text></LinearGradient>
-        </TouchableOpacity> : null}
-        <TouchableOpacity onPress={report} disabled={reported} style={{ marginTop: 18, alignSelf: 'flex-start' }}>
+
+        {/* ── いいね数 ── */}
+        {likeCount > 0 ? <Text style={s.igLikes}>{formatNum(likeCount)} 件の「参考になった」</Text> : null}
+
+        {/* ── キャプション: 太字の投稿者名＋タイトル＋本文 ── */}
+        <View style={s.igCaptionWrap}>
+          <Text style={s.igCaption}>
+            <Text style={s.igCaptionName}>{name}　</Text>
+            <Text style={s.igCaptionTitle}>{post.title}</Text>
+            {post.caption ? `\n${post.caption}` : ''}
+            {post.body ? `\n${post.body}` : ''}
+          </Text>
+        </View>
+
+        {/* ── タグ（タップで気分検索）── */}
+        {tags.length > 0 ? (
+          <View style={s.igTags}>
+            {tags.map(t => (
+              <TouchableOpacity key={t} onPress={() => onSearchMood(post.mood_tags?.[0] ?? t)} activeOpacity={0.6}>
+                <Text style={s.igTag}>{t.startsWith('#') ? t : `#${t}`}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+
+        {/* ── この気分で探す ── */}
+        {tags[0] ? (
+          <TouchableOpacity onPress={() => onSearchMood(post.mood_tags?.[0] ?? tags[0])} style={s.searchMoodBtn}>
+            <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.searchMoodInner}><Text style={s.searchMoodText}>この気分で探す</Text></LinearGradient>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity onPress={report} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
           <Text style={s.reportText}>{reported ? '通報しました' : '⚠ この投稿を通報'}</Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -362,6 +412,23 @@ const s = StyleSheet.create({
   backBtn: { padding: 14 }, backText: { color: COLORS.primary, fontWeight: '700', fontSize: 15 },
   dTitle: { fontSize: 21, fontWeight: '800', color: COLORS.text },
   dPlace: { fontSize: 15, color: COLORS.textSub, marginTop: 6 },
+  // ── インスタ投稿風 詳細 ──
+  igTop: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+  igAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  igAvatarText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  igName: { fontSize: 14, fontWeight: '800', color: COLORS.text },
+  igPlace: { fontSize: 12, color: COLORS.textSub, marginTop: 1 },
+  igDots: { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 8 },
+  igDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.border },
+  igDotOn: { backgroundColor: COLORS.primary },
+  igActions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 2 },
+  igLikes: { fontSize: 14, fontWeight: '800', color: COLORS.text, paddingHorizontal: 14, marginTop: 4 },
+  igCaptionWrap: { paddingHorizontal: 14, marginTop: 6 },
+  igCaption: { fontSize: 15, color: COLORS.text, lineHeight: 22 },
+  igCaptionName: { fontWeight: '800' },
+  igCaptionTitle: { fontWeight: '700' },
+  igTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, marginTop: 10 },
+  igTag: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
   dTag: { backgroundColor: COLORS.muted, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
   dTagText: { fontSize: 12, color: COLORS.primary, fontWeight: '700' },
   dMeta: { fontSize: 14, color: COLORS.textSub, marginTop: 2 },
