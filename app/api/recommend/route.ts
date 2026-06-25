@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import { MOOD_TAG_MAP, MOOD_SHORT_KEY_TO_TAG } from "@/lib/predefined-tags";
 import { distanceKmFor, formatDistText } from "@/lib/distance";
 import { logServerError, scheduleServerError } from "@/lib/server-log";
+import { applyAiRanking } from "@/lib/ai-ranking";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -7010,7 +7011,7 @@ async function handleRecommend(request: Request) {
         const sbRatingMap = new Map<string, { rating: number; count: number | null }>();
 
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
-        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiOrder] = await Promise.all([
+        const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiResult] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
           //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
           (hasLocation && !skipAllSupplements)
@@ -7124,8 +7125,8 @@ async function handleRecommend(request: Request) {
           })(),
           // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
-          ((): Promise<number[]> => {
-            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 8) return Promise.resolve([] as number[]);
+          ((): Promise<{ order: number[]; reject: number[] }> => {
+            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 8) return Promise.resolve({ order: [], reject: [] });
             // 候補に「住所・距離・説明文（実説明のみ）」を載せて判別材料を増やす。
             //   Supabaseは rating/reviewCount が常にnull（★-）なので評価は使わず、
             //   テーマ合致を見抜ける具体情報（説明・立地）を渡すのが精度の鍵。
@@ -7156,7 +7157,7 @@ async function handleRecommend(request: Request) {
             ].filter(Boolean).join("／");
             return openai.chat.completions.create({
               // 精度重視: 並べ替えは推薦体験の核なので gpt-4o（候補は短文・出力は番号列のみで低コスト）。
-              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 400,  // 【性能】gpt-4o→miniで並べ替えを高速化
+              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 500,  // 並べ替え＋reject(場違い排除)の番号列。出力は番号のみで低コスト
               response_format: { type: "json_object" },
               messages: [
                 { role: "system", content: `あなたは日本中のお出かけ先に精通したプロのキュレーターです。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」を深く読み取り、各候補が"その体験・要望"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
@@ -7168,16 +7169,18 @@ async function handleRecommend(request: Request) {
 4. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然、繁華街・ビル街＝都会的、住宅街＝静か 等）。
 5. 同行者・属性・予算に合うか（友達＝映え/盛り上がる、恋人＝雰囲気、一人＝静けさ、家族＝安心）。
 6. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし1〜2の合致が低い場所を多様性のために上げない。
+7. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
 
-出力は {"order":[数値,...]} のみをJSONで。全番号を必ず1回ずつ含めること。` },
+出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空]} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。` },
                 { role: "user", content: `${ctxLine}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明】:\n${cand}` },
               ],
             }, { signal: AbortSignal.timeout(5000) })  // 【性能】5秒で打ち切り（遅ければタグ/評価順を維持）
               .then(rr => {
                 const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
-                return Array.isArray(parsed.order) ? parsed.order.map(Number).filter((n: number) => Number.isInteger(n)) : [];
+                const toIdx = (a: unknown): number[] => Array.isArray(a) ? a.map(Number).filter((n: number) => Number.isInteger(n)) : [];
+                return { order: toIdx(parsed.order), reject: toIdx(parsed.reject) };
               })
-              .catch(() => [] as number[]);
+              .catch(() => ({ order: [] as number[], reject: [] as number[] }));
           })(),
         ]);
 
@@ -7187,18 +7190,11 @@ async function handleRecommend(request: Request) {
         }
 
         // OpenAIが判別した順に Supabase候補を並べ替え（残りは元の順序で後ろに）
-        let scoredRanked = scored;
-        let aiRanked = false;  // OpenAI判別順が実際に適用されたか（後段でその順位を昇格boostに使う）
-        if (Array.isArray(sbAiOrder) && sbAiOrder.length > 0) {
-          const seenIdx = new Set<number>();
-          const out: typeof scored = [];
-          for (const x of sbAiOrder) {
-            const i = Number(x);
-            if (Number.isInteger(i) && i >= 0 && i < scored.length && !seenIdx.has(i)) { seenIdx.add(i); out.push(scored[i]); }
-          }
-          for (let i = 0; i < scored.length; i++) if (!seenIdx.has(i)) out.push(scored[i]);
-          if (out.length === scored.length) { scoredRanked = out; aiRanked = true; }
-        }
+        // OpenAI判別順(order)＋reject(場違い排除)を候補に適用。詳細・安全装置は lib/ai-ranking.ts。
+        //   aiRanked=false のときは元順そのまま（_aiRank を付けず後段の昇格boostに使わない）。
+        const { ranked: scoredRanked, aiRanked } = applyAiRanking(
+          scored, sbAiResult?.order ?? [], sbAiResult?.reject ?? [],
+        );
 
         // OpenAIで説明文を蓄積: 説明が空の場所に中立的な一言を生成→places.descriptionへ永続化。
         //   応答後(after)にバッチ生成するので検索レスポンスは遅延ゼロ。次回以降は再利用される。
