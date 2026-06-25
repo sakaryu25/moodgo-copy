@@ -196,6 +196,20 @@ type ScoredItem = {
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
+// ── DB充足フロア（環境変数で調整可・デフォルト=現状値）──────────────────────────
+//   sbQualified(DBのジャンル適合候補) がフロア以上なら Google/Yahoo 補完を呼ばずDB完結。
+//   フロアを下げるほど Google補完(coverage=候補不足の穴埋め)の発火が減り課金が下がる。
+//   品質低下は AI最終審査(並べ替え＋reject) がガードする。段階ロールアウト・即巻き戻し用に
+//   Vercelの環境変数で各値を上書き可能（未設定なら従来どおりの挙動）。
+const envFloor = (key: string, fallback: number): number => {
+  const v = Number(process.env[key]);
+  return Number.isFinite(v) && v >= 0 ? Math.floor(v) : fallback;
+};
+const FOOD_DB_FLOOR_RICH = envFloor("FOOD_DB_FLOOR_RICH", 10);   // 在庫多: ラーメン/居酒屋/カフェ/和食/焼肉
+const FOOD_DB_FLOOR_NICHE = envFloor("FOOD_DB_FLOOR_NICHE", 5);  // ニッチ: 各国料理/エスニック等
+const FOOD_DB_FLOOR_OTHER = envFloor("FOOD_DB_FLOOR_OTHER", 8);  // その他飲食
+const NONFOOD_DB_FLOOR = envFloor("NONFOOD_DB_FLOOR", 8);        // 非飲食: 公園/温泉/ジム/水族館/神社等
+
 function json(data: unknown, init?: ResponseInit) {
   return NextResponse.json(data, init);
 }
@@ -6936,15 +6950,15 @@ async function handleRecommend(request: Request) {
         } else if (isFoodForSkip) {
           const ddText = `${deepDiveL1} ${deepDiveL2}`;
           const foodDbFloor =
-            /ラーメン|居酒屋|カフェ|喫茶|和食|焼肉/.test(ddText) ? 10 :
-            /各国|メキシコ|ブラジル|ロシア|ベトナム|タイ|インド|ネパール|エスニック|アジアン/.test(ddText) ? 5 :
-            8;
+            /ラーメン|居酒屋|カフェ|喫茶|和食|焼肉/.test(ddText) ? FOOD_DB_FLOOR_RICH :
+            /各国|メキシコ|ブラジル|ロシア|ベトナム|タイ|インド|ネパール|エスニック|アジアン/.test(ddText) ? FOOD_DB_FLOOR_NICHE :
+            FOOD_DB_FLOOR_OTHER;
           skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Googleも呼ばない（DB完結）
           skipYahooOnly = true;                                    // 飲食はYahoo常時オフ（フロア未満でもGoogleのみ保険）
         } else {
           // 他気分もOSM自前DB（公園/温泉/ジム/水族館/神社/服屋…）が全国分揃ったのでDB優先。
-          //   在庫8件以上ならGoogle/Yahoo不使用でDB完結。Yahoo常時オフ、Googleはフロア未満のみ保険。
-          skipAllSupplements = sbQualified.length >= 8;
+          //   在庫フロア以上ならGoogle/Yahoo不使用でDB完結。Yahoo常時オフ、Googleはフロア未満のみ保険。
+          skipAllSupplements = sbQualified.length >= NONFOOD_DB_FLOOR;
           skipYahooOnly = true;
         }
         // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
