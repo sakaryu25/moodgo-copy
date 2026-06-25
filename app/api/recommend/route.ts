@@ -7109,10 +7109,11 @@ async function handleRecommend(request: Request) {
                 // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
-                  photoMap.set(name, urls);
+                  photoMap.set(name, urls);  // 表示用(ライブ・非キャッシュ)。DBにも長期キャッシュにも保存しない
                   const row = sbRowByName.get(name);
-                  schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { photoUrl: urls[0], imageUrls: urls, rating: gRating, ratingCount: gCount });  // 写真＋評価を恒久保存
-                  await ltCachePut(`enr:${name.slice(0, 80)}`, { photoUrls: urls });  // 長期キャッシュ
+                  // 【ライセンス】Google写真は永続キャッシュ不可 → DB保存(photoUrl/imageUrls)も
+                  //   enr:長期キャッシュ(30日)もしない。合法な評価/件数だけ保存する。
+                  schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { rating: gRating, ratingCount: gCount });
                 }
               } catch { /* 写真取得失敗は無視 */ }
             }));

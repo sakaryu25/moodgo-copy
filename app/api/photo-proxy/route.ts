@@ -21,6 +21,8 @@ const ALLOWED_HOSTS = new Set<string>([
   "maps.googleapis.com",
   "maps.gstatic.com",
   "streetviewpixels-pa.googleapis.com",
+  "commons.wikimedia.org",  // Wikimedia Commons（CC・合法）— Special:FilePath
+  "upload.wikimedia.org",   // Wikimedia 実体CDN（Special:FilePathのリダイレクト先）
 ]);
 function isAllowedHost(hostname: string): boolean {
   return (

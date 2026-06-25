@@ -90,14 +90,13 @@ export async function POST(request: Request) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   if ((lat == null || lng == null) && apiKey) {
     try {
-      const proxyBase = process.env.NEXT_PUBLIC_BASE_URL ?? "https://moodgo-qvmk.vercel.app";
       const q = resolvedAddress ? `${name} ${resolvedAddress}` : name;
       const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": "places.id,places.formattedAddress,places.location,places.photos",
+          "X-Goog-FieldMask": "places.id,places.formattedAddress,places.location",
         },
         body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
         cache: "no-store", signal: AbortSignal.timeout(8000),
@@ -110,11 +109,8 @@ export async function POST(request: Request) {
           lng = p.location?.longitude ?? lng;
           googlePlaceId = googlePlaceId ?? p.id ?? null;
           resolvedAddress = resolvedAddress ?? p.formattedAddress ?? null;
-          const photoNames = (p.photos ?? []).slice(0, 10).map((ph: { name?: string }) => ph.name).filter(Boolean);
-          if (!photoUrls && photoNames.length > 0) {
-            photoUrls = photoNames.map((n: string) =>
-              `${proxyBase}/api/photo-proxy?url=${encodeURIComponent(`https://places.googleapis.com/v1/${n}/media`)}`);
-          }
+          // 【ライセンス】Google写真は curated_spots に保存しない（永続キャッシュ不可）。
+          //   座標/住所/place_idの解決だけに使う。photoUrls は管理者が明示指定したものだけ。
         }
       }
     } catch { /* 解決失敗でも保存は続行 */ }
