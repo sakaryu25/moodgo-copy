@@ -312,8 +312,10 @@ export function extractUserTagsFromAnswers(answers: {
   // ── 気分タグ（必須）: マップはモジュールレベル(MOOD_SHORT_KEY_TO_TAG)を参照
 
   if (answers.mood) {
-    if (answers.mood === "時間潰したい") {
-      // 時間潰したい → 同行者に応じてベースタグを決める
+    if (answers.mood === "時間潰し" || answers.mood === "時間潰したい") {
+      // 時間潰し(MOODSキー)/時間潰したい(旧キー) → 同行者に応じてベースタグを決める。
+      // ★アプリは "時間潰し" を送るが旧コードが "時間潰したい" のみ判定していたため mustTag が空になり、
+      //   DB検索が常時0-1件に枯渇していた(実API実測: 友達0/一人1/恋人1)。両キーを許容して修復。
       const c = answers.companion ?? "";
       if (c.includes("恋人"))         addUniq(mustTags, "#まったりしたい");
       else if (c.includes("友達"))    addUniq(mustTags, "#わいわい楽しみたい");
