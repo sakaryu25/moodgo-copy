@@ -2,13 +2,15 @@
 // これまで "moodgoadmin123" が43ファイルにベタ書き＋一部はenv差し替え不可だった。
 // ここに集約し、全管理ルートはこの helper を経由する（付け忘れを構造的に防ぐ）。
 //
-// ⚠ 運用: Vercel に環境変数 ADMIN_SECRET を設定してください。設定後はこのファイルの
-//   フォールバック文字列を削除して「未設定なら拒否」に切り替えるのが最終形です。
-//   （現状はフォールバックを残し、本番が止まらないようにしてあります）
+// ⚠ 運用必須: Vercel に環境変数 ADMIN_SECRET（強いランダム値）を設定してください。
+//   本番(NODE_ENV=production)では env 未設定なら空文字となり、全管理リクエストを拒否します
+//   （ハードコード値による無制限なGoogle呼び出し＝課金攻撃を構造的に遮断）。
+//   ※ env 未設定だと本番の管理APIはロックされます＝これが安全側のデフォルトです。開発時のみフォールバックを使用。
 import type { NextRequest } from "next/server";
 import { timingSafeEqual } from "crypto";
 
-export const ADMIN_SECRET = process.env.ADMIN_SECRET ?? "moodgoadmin123";
+// 本番は env 必須。未設定なら "" → isValidAdminSecret が提供値の length>0 必須で全入力を拒否（""同士の誤一致も起きない）。
+export const ADMIN_SECRET = process.env.ADMIN_SECRET ?? (process.env.NODE_ENV === "production" ? "" : "moodgoadmin123");
 
 // タイミング攻撃を避けるため定数時間で比較（長さ不一致は即false）
 function safeEqual(a: string, b: string): boolean {

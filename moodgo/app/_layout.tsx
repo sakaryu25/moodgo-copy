@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import GroupShareSheet from '@/components/GroupShareSheet';
 import SplashScreen from '@/components/SplashScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -12,7 +12,7 @@ import ConsentGate from '@/components/ConsentGate';
 import CopyToast from '@/components/CopyToast';
 import { setupGlobalErrorHandlers } from '@/lib/crashReporting';
 import { initSentry } from '@/lib/sentry';
-import { registerForPushNotificationsAsync } from '@/lib/push';
+// プッシュ通知の権限要求は起動時に行わない（審査対策）。配信実装後に明示opt-inから @/lib/push を呼ぶ。
 
 // 起動時に一度だけ：グローバルなJSエラー捕捉＋（DSNがあれば）Sentry初期化
 setupGlobalErrorHandlers();
@@ -21,10 +21,9 @@ initSentry();
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
 
-  // プッシュ通知の基盤: 起動後にトークン登録を試みる（best-effort・未対応/未設定はno-op）
-  useEffect(() => {
-    if (ready) { registerForPushNotificationsAsync().catch(() => {}); }
-  }, [ready]);
+  // プッシュ通知トークンの登録は「起動直後の無文脈な権限ダイアログ」を避けるため起動時には行わない
+  //   （App Store審査 4.5.4 / 5.1.1 対策＋UX）。配信実装後に、設定トグルや初お気に入り/グループ参加などの
+  //   明示的なopt-in導線から registerForPushNotificationsAsync()（@/lib/push）を呼ぶこと。
 
   if (!ready) {
     return (
