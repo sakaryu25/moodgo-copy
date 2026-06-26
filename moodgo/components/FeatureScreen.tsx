@@ -919,7 +919,9 @@ function AreaSelectView({ onSelectRegion }: AreaSelectViewProps) {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F6FF' }}>
       <View style={s.areaIntro}>
-        <Text style={s.areaSubtitle}>エリアをタップして特集を見る</Text>
+        <View style={s.areaBadge}><Text style={s.areaBadgeText}>日本全国の特集</Text></View>
+        <Text style={s.areaTitle}>どこへ行く？</Text>
+        <Text style={s.areaSubtitle}>地図のエリアをタップして、その地方の特集をめくる</Text>
       </View>
 
       {/* 地図画像 + 重ね置きボタン（残りスペースをすべて使う） */}
