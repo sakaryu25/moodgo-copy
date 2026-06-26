@@ -265,56 +265,6 @@ function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) 
 }
 
 // ─── Dummy data (API が空の場合のフォールバック) ──────────────────────────────
-const DUMMY: FeedItem[] = [
-  {
-    id: 'd1', spot_name: '抱瓶', prefecture: '東京',
-    description: '隠れた名店！地酒が豊富で料理も絶品。予約必須だけど絶対行く価値あり。',
-    address: '東京都渋谷区',
-    image_urls: ['https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&h=300&fit=crop'],
-    auto_tags: ['#お腹すいた', '#穴場スポット'],
-    created_at: new Date(Date.now() - 2 * 3600000).toISOString(),
-  },
-  {
-    id: 'd2', spot_name: '美ら海水族館', prefecture: '沖縄',
-    description: null,
-    address: '沖縄県国頭郡本部町',
-    image_urls: ['https://images.unsplash.com/photo-1546026423-cc4642628d2b?w=400&h=340&fit=crop'],
-    auto_tags: ['#自然感じたい', '#穴場スポット'],
-    created_at: new Date(Date.now() - 3 * 3600000).toISOString(),
-  },
-  {
-    id: 'd3', spot_name: 'ENDELEA COFFEE', prefecture: '熊本',
-    description: '入口が２つあって（右から入る！）分かりにくいけど内装すっごいオシャレ！コーヒーも絶品。',
-    address: '熊本市中央区',
-    image_urls: null,
-    auto_tags: ['#まったりしたい', '#穴場スポット'],
-    created_at: new Date(Date.now() - 24 * 3600000).toISOString(),
-  },
-  {
-    id: 'd4', spot_name: '幸せのパンケーキ 淡路島テラス', prefecture: '兵庫',
-    description: '映えって感じで美味しかった。ジンジャーエールはオーガニック系のしっかりしょうがのやつ。',
-    address: '兵庫県淡路市',
-    image_urls: ['https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=400&h=260&fit=crop'],
-    auto_tags: ['#お腹すいた', '#穴場スポット'],
-    created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
-  },
-  {
-    id: 'd5', spot_name: '北野異人館', prefecture: '神戸',
-    description: null,
-    address: '兵庫県神戸市中央区',
-    image_urls: ['https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=400&h=240&fit=crop'],
-    auto_tags: ['#まったりしたい', '#穴場スポット'],
-    created_at: new Date(Date.now() - 2 * 24 * 3600000).toISOString(),
-  },
-  {
-    id: 'd6', spot_name: '伏見稲荷大社', prefecture: '京都',
-    description: '早朝に行くと人が少なくて最高！千本鳥居の奥の方まで歩くと絶景がある。早起き必須！',
-    address: '京都府京都市伏見区',
-    image_urls: null,
-    auto_tags: ['#自然感じたい', '#穴場スポット'],
-    created_at: new Date(Date.now() - 24 * 3600000).toISOString(),
-  },
-];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CommunityFeed() {
@@ -333,10 +283,10 @@ export default function CommunityFeed() {
         const data = await res.json();
         if (isMounted.current) {
           const fetched: FeedItem[] = data?.items ?? [];
-          setItems(fetched.length > 0 ? fetched : DUMMY);
+          setItems(fetched);
         }
       } catch {
-        if (isMounted.current) setItems(DUMMY);
+        if (isMounted.current) setItems([]);
       } finally {
         if (isMounted.current) setLoading(false);
       }
@@ -410,6 +360,13 @@ export default function CommunityFeed() {
         <View style={s.columns}>
           <View style={s.column}>{leftItems.map(renderItem)}</View>
           <View style={s.column}>{rightItems.map(renderItem)}</View>
+        </View>
+      )}
+
+      {/* 空状態（API空/失敗時。捏造投稿は出さない＝App Store審査対策） */}
+      {!loading && visibleItems.length === 0 && (
+        <View style={s.loadingWrap}>
+          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>まだ投稿がありません</Text>
         </View>
       )}
 

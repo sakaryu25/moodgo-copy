@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse, after } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +115,10 @@ const PRICE_MAP: Record<string, string> = {
 };
 
 export async function GET(req: NextRequest) {
+  // Google Place Details(課金)の連打抑止。詳細はタップ毎なので60秒30回まで。
+  if (!rateLimit(`place-detail:${clientIp(req)}`, 30, 60_000)) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429, headers: { "retry-after": "20" } });
+  }
   const placeId = req.nextUrl.searchParams.get("placeId");
   if (!placeId) {
     return NextResponse.json({ ok: false, error: "placeId is required" }, { status: 400 });

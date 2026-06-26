@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -41,6 +42,10 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
+  // 濫用でのPlace Photo再解決(課金)を抑止。画像は1画面で複数読むため緩め(60秒120回)。302キャッシュと併用。
+  if (!rateLimit(`photo-proxy:${clientIp(req)}`, 120, 60_000)) {
+    return new NextResponse("rate limited", { status: 429, headers: { ...CORS_HEADERS, "retry-after": "20" } });
+  }
   const raw = req.nextUrl.searchParams.get("url");
   if (!raw) return new NextResponse("url is required", { status: 400 });
 

@@ -11,6 +11,7 @@ import { MOOD_TAG_MAP, MOOD_SHORT_KEY_TO_TAG } from "@/lib/predefined-tags";
 import { distanceKmFor, formatDistText } from "@/lib/distance";
 import { logServerError, scheduleServerError } from "@/lib/server-log";
 import { applyAiRanking } from "@/lib/ai-ranking";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -6185,6 +6186,14 @@ export async function GET(): Promise<Response> {
 
 // 計測ラッパー: API呼び出しカウンタを用意してハンドラを実行し、最後に1行ログ出力する。
 export async function POST(request: Request): Promise<Response> {
+  // 濫用/連打によるGoogle課金の爆発を抑止（暫定・ベストエフォート。ハード上限はGoogle Cloudクォータ＋Vercel WAF併用が前提）。
+  // 1検索でGoogle課金が十数回発火しうるため、同一IPは60秒20回まで。超過は429で即返し課金を一切走らせない。
+  if (!rateLimit(`recommend:${clientIp(request)}`, 20, 60_000)) {
+    return new Response(
+      JSON.stringify({ error: "rate_limited", message: "リクエストが多すぎます。少し時間をおいてからお試しください。", recommendations: [] }),
+      { status: 429, headers: { "content-type": "application/json", "retry-after": "30" } },
+    );
+  }
   const counts = newApiCounts();
   const t0 = Date.now();
   // メトリクス用に気分/エリアを先読み＋スナップショットキー算出（cloneなので本処理に影響なし）
