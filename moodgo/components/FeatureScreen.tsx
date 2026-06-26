@@ -873,7 +873,7 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
                 key={r.id}
                 activeOpacity={0.75}
                 onPress={() => onSelectRegion(r.tab)}
-                style={[s.mapRegionBtn, { top: btnTop, left: btnLeft }]}
+                style={[s.mapRegionBtn, { top: btnTop, left: btnLeft, shadowColor: r.color, shadowOpacity: 0.45, shadowRadius: 11 }]}
               >
                 {/* カラードット */}
                 <View style={[s.mapRegionDot, { backgroundColor: r.color }]} />
@@ -1859,9 +1859,9 @@ const s = StyleSheet.create({
     }),
   },
   mapRegionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   mapRegionEmoji: { fontSize: 13 },
   mapRegionLabel: {
@@ -1914,8 +1914,12 @@ const s = StyleSheet.create({
     borderRadius: 10,
   },
   segTabActive: {
-    backgroundColor: C.white,
-    ...shadow,
+    backgroundColor: C.accent,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
   segTabText: {
     fontSize: 14,
@@ -1923,8 +1927,8 @@ const s = StyleSheet.create({
     color: C.subText,
   },
   segTabTextActive: {
-    color: C.accent,
-    fontWeight: "700",
+    color: C.white,
+    fontWeight: "800",
   },
 
   // ── FeatureContentView ──
@@ -1961,8 +1965,8 @@ const s = StyleSheet.create({
   mzInfoRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginTop: 14 },
   mzInfoItem: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: 200 },
   mzInfoText: { fontSize: 12.5, color: C.subText, fontWeight: "600" },
-  mzReadRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 16 },
-  mzReadText: { fontSize: 14, fontWeight: "800", color: C.accent },
+  mzReadRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 14, alignSelf: "flex-start", backgroundColor: "rgba(244,114,182,0.12)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
+  mzReadText: { fontSize: 13, fontWeight: "800", color: C.accent },
 
   mzQuoteWrap: { paddingHorizontal: 28, paddingVertical: 24 },
   mzQuote: { fontSize: 16, lineHeight: 26, color: C.text, fontWeight: "600", borderLeftWidth: 3, borderLeftColor: C.accent, paddingLeft: 14 },
