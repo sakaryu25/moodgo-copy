@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.moodgo.app",
+      "bundleIdentifier": "com.krkr.moodgo",
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "現在地周辺のおすすめスポットを探すために位置情報を使用します。",
