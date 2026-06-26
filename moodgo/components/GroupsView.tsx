@@ -717,8 +717,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       try {
         const perm = await Location.requestForegroundPermissionsAsync();
         if (perm.granted) {
-          const pos = (await Location.getLastKnownPositionAsync()) ??
-            (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+          // GPSが遅い/取れない時に固まらないよう6sでタイムアウト（index.tsxと同じレース）。
+          const pos = (await Location.getLastKnownPositionAsync().catch(() => null)) ??
+            (await Promise.race([
+              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+            ]));
           lat = pos?.coords.latitude; lng = pos?.coords.longitude;
         }
       } catch { /* 位置なしで続行 */ }
