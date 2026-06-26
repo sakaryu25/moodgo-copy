@@ -1224,7 +1224,7 @@ function SpotArticle({ index, spot, onOpen }: { index: number; spot: SpotV2; onO
         </View>
       )}
       <TouchableOpacity style={s.mzReadRow} activeOpacity={0.7} onPress={onOpen}>
-        <Text style={s.mzReadText}>この店を読む</Text>
+        <Text style={s.mzReadText}>詳しく見る</Text>
         <ChevronRight size={15} color={C.accent} />
       </TouchableOpacity>
     </View>
@@ -1942,21 +1942,22 @@ const s = StyleSheet.create({
   },
   mzCoverKickerText: { fontSize: 11, fontWeight: "800", color: C.accent, letterSpacing: 0.8 },
   mzCoverIssue: {
-    position: "absolute", bottom: 14, right: 16,
-    color: "#fff", fontSize: 13, fontFamily: SERIF, letterSpacing: 1,
+    position: "absolute", bottom: 12, right: 14,
+    color: "rgba(255,255,255,0.95)", fontSize: 11, fontWeight: "700", letterSpacing: 0.3,
+    backgroundColor: "rgba(0,0,0,0.30)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, overflow: "hidden",
   },
   mzHead: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
-  mzTitle: { fontFamily: SERIF, fontSize: 25, lineHeight: 36, color: C.text, letterSpacing: 0.3 },
-  mzLead: { fontFamily: SERIF, fontSize: 15, lineHeight: 28, color: C.subText, marginTop: 14 },
-  mzDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 20, marginVertical: 18 },
+  mzTitle: { fontSize: 24, lineHeight: 32, color: C.text, fontWeight: "800", letterSpacing: -0.4 },
+  mzLead: { fontSize: 14, lineHeight: 23, color: C.subText, marginTop: 10, fontWeight: "500" },
+  mzDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 20, marginTop: 16, marginBottom: 4 },
 
-  mzArticle: { paddingHorizontal: 20, paddingBottom: 6 },
-  mzArtHead: { flexDirection: "row", alignItems: "baseline", gap: 10, marginBottom: 12 },
-  mzNum: { fontFamily: SERIF, fontSize: 30, color: C.accent, lineHeight: 32 },
-  mzArtTitle: { fontSize: 18, fontWeight: "800", color: C.text, lineHeight: 26 },
+  mzArticle: { marginHorizontal: 16, marginTop: 14, backgroundColor: C.white, borderRadius: 18, padding: 14, ...shadow },
+  mzArtHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+  mzNum: { fontSize: 13, fontWeight: "800", color: C.white, backgroundColor: C.accent, width: 26, height: 26, borderRadius: 13, textAlign: "center", lineHeight: 26, overflow: "hidden" },
+  mzArtTitle: { fontSize: 17, fontWeight: "800", color: C.text, lineHeight: 24, letterSpacing: -0.3 },
   mzShopName: { fontSize: 12.5, color: C.subText, fontWeight: "600", marginTop: 2 },
-  mzArtImg: { width: "100%", height: 200, borderRadius: 14, backgroundColor: C.segBg },
-  mzArtBody: { fontSize: 15, lineHeight: 26, color: C.text, marginTop: 14 },
+  mzArtImg: { width: "100%", height: 190, borderRadius: 13, backgroundColor: C.segBg },
+  mzArtBody: { fontSize: 14, lineHeight: 23, color: C.text, marginTop: 12 },
   mzInfoRow: { flexDirection: "row", flexWrap: "wrap", gap: 14, marginTop: 14 },
   mzInfoItem: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: 200 },
   mzInfoText: { fontSize: 12.5, color: C.subText, fontWeight: "600" },
@@ -1964,7 +1965,7 @@ const s = StyleSheet.create({
   mzReadText: { fontSize: 14, fontWeight: "800", color: C.accent },
 
   mzQuoteWrap: { paddingHorizontal: 28, paddingVertical: 24 },
-  mzQuote: { fontFamily: SERIF, fontSize: 20, lineHeight: 34, color: C.text, borderLeftWidth: 2, borderLeftColor: C.accent, paddingLeft: 16 },
+  mzQuote: { fontSize: 16, lineHeight: 26, color: C.text, fontWeight: "600", borderLeftWidth: 3, borderLeftColor: C.accent, paddingLeft: 14 },
   mzEmptyNote: { fontSize: 14, color: C.subText, textAlign: "center", paddingVertical: 40 },
   contentHeader: {
     paddingHorizontal: 20,
