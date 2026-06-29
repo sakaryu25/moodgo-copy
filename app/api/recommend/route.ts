@@ -8108,9 +8108,28 @@ async function handleRecommend(request: Request) {
           const kmF = (r: { distanceKm?: number; distanceText?: string }): number =>
             typeof r.distanceKm === "number" ? r.distanceKm
               : (parseFloat((r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/)?.[1] ?? "") || 9999);
-          const within = recommendations.filter(r => kmF(r) <= capKm);
-          const over = recommendations.filter(r => kmF(r) > capKm);
-          if (within.length > 0) recommendations = [...within, ...over];
+          // 距離不明(=9999)はフィルタ対象外として常に残す（距離が取れないだけで除外しない）
+          const kmKnown = (r: { distanceKm?: number; distanceText?: string }) => kmF(r) < 9000;
+          // ── ハード距離フィルタ＋安全弁 ───────────────────────────────────────
+          //   要望「選んだ距離内でしっかり出して」を満たすため、cap 超過スポットは
+          //   末尾送り(従来)ではなく除外する。ただし 0件/極端に少ない事故を防ぐため、
+          //   範囲内が MIN_KEEP 未満なら cap を段階的に緩める→それでも不足なら従来の
+          //   band送り(除外せず末尾)へフォールバック。距離不明スポットは常に温存。
+          const MIN_KEEP = 5;
+          const tiers = [capKm, capKm * 1.5, capKm * 2.5];
+          let picked: typeof recommendations | null = null;
+          for (const t of tiers) {
+            const within = recommendations.filter(r => !kmKnown(r) || kmF(r) <= t);
+            if (within.length >= MIN_KEEP) { picked = within; break; }
+          }
+          if (picked && picked.length > 0) {
+            recommendations = picked;
+          } else {
+            // 全段でも MIN_KEEP に満たない超過疎エリア → 除外せず近い順(従来band送り)で温存
+            const within = recommendations.filter(r => !kmKnown(r) || kmF(r) <= capKm);
+            const over = recommendations.filter(r => kmKnown(r) && kmF(r) > capKm);
+            if (within.length > 0) recommendations = [...within, ...over];
+          }
         }
         return json({
           recommendations,
@@ -9471,7 +9490,51 @@ async function handleRecommend(request: Request) {
     const keepSet = new Set<ScoredItem>([...protectedItems, ...cleanedItems]);
     const preFiltered = sorted.filter(i => keepSet.has(i));
 
-    const finalItems = chooseFinalResults(preFiltered, answers.mood);
+    let finalItems = chooseFinalResults(preFiltered, answers.mood);
+
+    // ── ①距離感ハード半径フィルタ（レガシー route-5 経路）──────────────────────────
+    //   getDistancePreference の maxTravelMinOverride(分) を交通手段の速度で km 換算し、
+    //   選んだ距離を超えるスポットを最終結果から除外する（従来は scorePlace の減点のみ＝
+    //   遠い店が末尾に残って結果に出ていた）。label/override が null（遠くてOK・指定なし）
+    //   の場合はフィルタしない。距離は distanceText の km か location からの haversine で算出。
+    //   安全弁: 範囲内が極端に少ない時は段階的に半径を緩め、最終的にフィルタ無効化。
+    {
+      const maxMin = distancePref.maxTravelMinOverride;
+      const lo2 = answers.originLat, ln2 = answers.originLng;
+      const hasOrigin2 = typeof lo2 === "number" && typeof ln2 === "number";
+      if (maxMin !== null && hasOrigin2) {
+        // 交通手段→速度(km/h)。lib/distance.ts formatDistText と整合（車40/電車・バス30/自転車12/徒歩4）
+        const tj = getTransports(answers.transport).join(",");
+        const speed = tj.includes("徒歩") ? 4
+          : tj.includes("自転車") ? 12
+          : (tj.includes("電車") || tj.includes("バス")) ? 30
+          : 40; // 車/バイク/なんでも/未指定
+        const baseCapKm = (maxMin / 60) * speed;
+        // 表示テキスト("... / 12.3km")か location からスポット距離[km]を取得。不明は -1。
+        const kmOfItem = (it: ScoredItem): number => {
+          const km1 = it.distanceText.match(/([\d.]+)\s*km/);
+          const m1 = it.distanceText.match(/([\d.]+)\s*m(?![a-z])/i);
+          if (km1) return parseFloat(km1[1]);
+          if (m1) return parseFloat(m1[1]) / 1000;
+          if (it.location && typeof it.location.latitude === "number" && typeof it.location.longitude === "number") {
+            return haversineMeters(lo2!, ln2!, it.location.latitude, it.location.longitude) / 1000;
+          }
+          return -1; // 距離不明 → 除外しない
+        };
+        const MIN_KEEP = 5;
+        const tiers = [baseCapKm, baseCapKm * 1.5, baseCapKm * 2.5];
+        let picked: ScoredItem[] | null = null;
+        for (const t of tiers) {
+          const within = finalItems.filter(it => { const k = kmOfItem(it); return k < 0 || k <= t; });
+          if (within.length >= MIN_KEEP || within.length === finalItems.length) { picked = within; break; }
+        }
+        if (picked && picked.length > 0) {
+          console.log(`[recommend] 距離ハードフィルタ(legacy): cap≈${baseCapKm.toFixed(1)}km(${distancePref.label}) ${finalItems.length}→${picked.length}件`);
+          finalItems = picked;
+        }
+        // picked が空 or 全件不足 → フィルタ無効化（finalItems をそのまま使う＝0件事故防止）
+      }
+    }
 
     // ── 距離表示を全経路と統一（レガシー経路の最終仕上げ）──────────────────────────
     //   ① Google Places結果は実距離(Route Matrix由来の "12.3km")＋実所要時間(durationText
