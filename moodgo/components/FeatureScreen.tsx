@@ -35,7 +35,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
 import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import { apiFetch } from "@/lib/api";
 
 // ── 地図画像（assets/images）。アプリ全体で事前読み込みして遅延表示を防ぐ ──────
@@ -1396,6 +1396,20 @@ export default function FeatureScreen() {
       })
       .catch(() => {});
   }, []);
+
+  // 下部タブの「特集」を押したら振り出し(日本地図)に戻す。
+  //   NativeTabsは@react-navigationベースなので tabPress を購読。再タップ/他タブからの選択どちらでも発火し、
+  //   FeatureScreen内のステージ状態(map→pref-select→content)を初期化する。型にtabPressが無いためcastで購読。
+  const navigation = useNavigation();
+  useEffect(() => {
+    const nav = navigation as unknown as { addListener?: (e: string, cb: () => void) => (() => void) | undefined };
+    const unsub = nav.addListener?.("tabPress", () => {
+      setStage("map");
+      setSelectedRegion("全国");
+      setSelectedTab("全国");
+    });
+    return () => { if (typeof unsub === "function") unsub(); };
+  }, [navigation]);
 
   // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
   // t: 0=通常表示 → 1=トランジション完了（中間 0.5 で雲が画面を覆い、裏でステージ差替）
