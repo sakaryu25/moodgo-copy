@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  Camera, ChevronLeft, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, Wallet,
+  CalendarClock, Camera, ChevronLeft, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -42,7 +42,19 @@ type Spot = {
   stationText: string; openingHoursText: string; prefecture: string;
   reviews?: Review[];
   lat?: number; lng?: number; placeId?: string;
+  availableFrom?: string | null; availableUntil?: string | null;  // 公開期間（期間限定投稿）
 };
+
+// "2026-04-15" → "2026/4/15"。null/未設定はnull。
+function fmtJpDate(d?: string | null): string | null {
+  if (!d) return null;
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}/${Number(m[2])}/${Number(m[3])}` : d;
+}
+// 公開期間の表示。開始未設定→「即日」、終了未設定→「無期限」。
+function fmtPeriod(from?: string | null, until?: string | null): string {
+  return `${fmtJpDate(from) ?? '即日'} 〜 ${fmtJpDate(until) ?? '無期限'}`;
+}
 
 function Stars({ n, size = 16 }: { n: number; size?: number }) {
   return (
@@ -210,6 +222,19 @@ export default function CommunitySpotScreen() {
               <Text style={s.areaChipText} numberOfLines={1} ellipsizeMode="tail">
                 {spot.address.replace(/^日本[、,]\s*/, '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '')}
               </Text>
+            </View>
+          ) : null}
+
+          {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
+          {(spot.availableFrom || spot.availableUntil) ? (
+            <View style={s.periodCard}>
+              <View style={s.periodIconWrap}>
+                <CalendarClock size={17} color="#fff" strokeWidth={2.4} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.periodLabel}>期間限定の穴場</Text>
+                <Text style={s.periodValue}>{fmtPeriod(spot.availableFrom, spot.availableUntil)}</Text>
+              </View>
             </View>
           ) : null}
 
@@ -416,6 +441,19 @@ const s = StyleSheet.create({
     shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
   },
   areaChipText: { fontSize: 12, fontWeight: '700', color: '#6D28D9', flexShrink: 1 },
+
+  // 期間限定カード（公開期間あり）— アンバーで「限定」を強調
+  periodCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#FFF7ED', borderRadius: 16, padding: 13, marginBottom: 14,
+    borderWidth: 1, borderColor: '#FED7AA',
+  },
+  periodIconWrap: {
+    width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F59E0B',
+  },
+  periodLabel: { fontSize: 11, fontWeight: '800', color: '#B45309', marginBottom: 2 },
+  periodValue: { fontSize: 14.5, fontWeight: '800', color: '#9A3412', letterSpacing: -0.2 },
 
   // Comment (大目玉)
   commentCard: {

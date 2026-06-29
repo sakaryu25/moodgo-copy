@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   try {
     const { data: s, error } = await supabase
       .from("suggestions")
-      .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at")
+      .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until")
       .eq("id", id)
       .single();
     if (error || !s) throw error ?? new Error("not found");
@@ -223,6 +223,8 @@ export async function GET(request: Request) {
         placeId,
         autoTags: s.auto_tags ?? [],
         createdAt: s.created_at,
+        availableFrom: s.available_from ?? null,   // 公開期間の開始（期間限定投稿時）
+        availableUntil: s.available_until ?? null, // 公開期間の終了
       },
     });
   } catch (e) {
