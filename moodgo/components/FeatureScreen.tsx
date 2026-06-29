@@ -1397,16 +1397,21 @@ export default function FeatureScreen() {
       .catch(() => {});
   }, []);
 
-  // 下部タブの「特集」を押したら振り出し(日本地図)に戻す。
-  //   NativeTabsは@react-navigationベースなので tabPress を購読。再タップ/他タブからの選択どちらでも発火し、
-  //   FeatureScreen内のステージ状態(map→pref-select→content)を初期化する。型にtabPressが無いためcastで購読。
+  // 下部タブの「特集」を再タップ(=既に特集にいる時に押す)したら振り出し(日本地図)に戻す。
+  //   他タブから特集に切り替えた時は前の場所を保持(リセットしない)＝isFocused()でreタップだけ判定。
+  //   NativeTabsは@react-navigationベースなので tabPress を購読。型にtabPress/isFocusedが無いためcastで購読。
   const navigation = useNavigation();
   useEffect(() => {
-    const nav = navigation as unknown as { addListener?: (e: string, cb: () => void) => (() => void) | undefined };
+    const nav = navigation as unknown as {
+      addListener?: (e: string, cb: () => void) => (() => void) | undefined;
+      isFocused?: () => boolean;
+    };
     const unsub = nav.addListener?.("tabPress", () => {
-      setStage("map");
-      setSelectedRegion("全国");
-      setSelectedTab("全国");
+      if (nav.isFocused?.()) {           // 既に特集タブが前面=再タップのみリセット
+        setStage("map");
+        setSelectedRegion("全国");
+        setSelectedTab("全国");
+      }
     });
     return () => { if (typeof unsub === "function") unsub(); };
   }, [navigation]);
