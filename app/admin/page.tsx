@@ -9,7 +9,6 @@ import ReviewQueuePanel from "./_components/ReviewQueuePanel";
 import MetricsAdmin from "./metrics/page";
 import MoodLogAdmin from "./mood-logs/page";
 import BlogPostsAdmin from "./blog-posts/page";
-import FeaturedPagesAdmin from "./featured-pages/page";
 import ServerErrorsAdmin from "./server-errors/page";
 
 // admin secret はクライアントにハードコードしない。ログイン入力→サーバ検証→localStorageで保持(adminSecret state)。
@@ -632,7 +631,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "featured-edit" | "server-errors">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2838,7 +2837,6 @@ export default function AdminPage() {
             { key: "metrics", label: "📈 検索メトリクス" },
             { key: "mood-logs", label: "📝 moodログ管理" },
             { key: "blog-posts", label: "📰 投稿承認" },
-            { key: "featured-edit", label: "📖 特集ページ編集" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
           ] as const).map((t) => (
             <button
@@ -7555,7 +7553,6 @@ export default function AdminPage() {
         {tab === "metrics" && <MetricsAdmin />}
         {tab === "mood-logs" && <MoodLogAdmin />}
         {tab === "blog-posts" && <BlogPostsAdmin />}
-        {tab === "featured-edit" && <FeaturedPagesAdmin />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
 
       </div>
