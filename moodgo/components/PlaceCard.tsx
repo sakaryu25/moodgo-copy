@@ -412,7 +412,7 @@ export default function PlaceCard({
               <TouchableOpacity
                 key={uri + i}
                 activeOpacity={0.92}
-                onPress={() => setViewerIdx(i)}
+                onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(i); } }}
               >
                 {i <= maxLoaded ? (
                   <Image
@@ -447,7 +447,7 @@ export default function PlaceCard({
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
-          <TouchableOpacity activeOpacity={0.92} onPress={() => setViewerIdx(0)}>
+          <TouchableOpacity activeOpacity={0.92} onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(0); } }}>
             <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
           </TouchableOpacity>
         ) : spooky ? (
@@ -562,6 +562,7 @@ export default function PlaceCard({
           <TouchableOpacity
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); }}
             onLongPress={() => copyPlaceName(item.title)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 24 }}
             activeOpacity={0.75}>
             <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
           </TouchableOpacity>
