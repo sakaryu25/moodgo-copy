@@ -100,6 +100,18 @@ export async function POST(req: Request) {
         if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId が必要です" }, { status: 400 });
         const rtype = String(body?.rtype ?? "");
         if (!VALID_REACTION.has(rtype)) return NextResponse.json({ ok: false, error: "rtype不正" }, { status: 400 });
+        // いいね解除（トグルOFF）: 該当リアクションを削除しカウントを減算（0未満にしない）
+        if (body?.undo === true) {
+          const { data: del } = await db.from("blog_post_reactions").delete()
+            .eq("blog_post_id", postId).eq("device_id", deviceId).eq("reaction_type", rtype).select("blog_post_id");
+          if (del && del.length > 0 && (rtype === "helpful" || rtype === "like")) {
+            const col = rtype === "helpful" ? "helpful_count" : "like_count";
+            const { data } = await db.from("blog_posts").select(col).eq("id", postId).maybeSingle();
+            const cur = (data as Record<string, number> | null)?.[col] ?? 0;
+            await db.from("blog_posts").update({ [col]: Math.max(0, cur - 1) }).eq("id", postId).then(() => {}, () => {});
+          }
+          return NextResponse.json({ ok: true, undone: true });
+        }
         const { error: insErr } = await db.from("blog_post_reactions").insert({ blog_post_id: postId, device_id: deviceId, reaction_type: rtype });
         if (insErr) {
           if (isMissingTable(insErr)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });

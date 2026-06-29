@@ -187,10 +187,9 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
   const insets = useSafeAreaInsets();
   const [reported, setReported] = useState(false);
   const [helped, setHelped] = useState(false);
-  const react = async (rtype: 'helpful' | 'save') => {
+  const react = async (rtype: 'helpful' | 'save', undo = false) => {
     try { const did = await getDeviceId();
-      await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype }) });
-      if (rtype === 'helpful') setHelped(true);
+      await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) });
     } catch { /* noop */ }
   };
   const report = async () => {
@@ -231,7 +230,7 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
 
         {/* ── アクション行: ♡ / マップ ··· 保存 ── */}
         <View style={s.igActions}>
-          <TouchableOpacity onPress={() => react('helpful')} hitSlop={8} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next); }} hitSlop={8} activeOpacity={0.7}>
             <Heart size={28} color={helped ? '#FF3B6B' : COLORS.text} fill={helped ? '#FF3B6B' : 'transparent'} strokeWidth={2} />
           </TouchableOpacity>
           {post.google_maps_url ? (
@@ -240,7 +239,7 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
             </TouchableOpacity>
           ) : null}
           <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={() => { react('save'); setSaved(s => !s); }} hitSlop={8} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next); }} hitSlop={8} activeOpacity={0.7}>
             <Bookmark size={26} color={COLORS.text} fill={saved ? COLORS.text : 'transparent'} strokeWidth={2} />
           </TouchableOpacity>
         </View>
