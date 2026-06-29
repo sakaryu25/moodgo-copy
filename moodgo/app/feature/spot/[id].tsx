@@ -389,7 +389,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: PAPER },
   center: { alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
   notFoundIconWrap: { width: 78, height: 78, borderRadius: 22, backgroundColor: '#F6E7DF', alignItems: 'center', justifyContent: 'center' },
-  notFoundText: { fontSize: 16, color: INK, fontWeight: '700', textAlign: 'center', fontFamily: SERIF },
+  notFoundText: { fontSize: 16, color: INK, fontWeight: '700', textAlign: 'center' },
   backLinkText: { fontSize: 15, color: ACCENT, fontWeight: '700' },
 
   backBtn: {
@@ -401,16 +401,16 @@ const s = StyleSheet.create({
   hero: { width: W, height: 360, justifyContent: 'flex-end', backgroundColor: '#E6DED6' },
   heroText: { paddingHorizontal: 22 },
   heroKicker: { color: 'rgba(255,255,255,0.92)', fontSize: 12, letterSpacing: 2, marginBottom: 8, fontWeight: '700' },
-  heroTitle: { color: '#fff', fontSize: 30, lineHeight: 42, fontFamily: SERIF, letterSpacing: 0.5 },
+  heroTitle: { color: '#fff', fontSize: 26, lineHeight: 34, fontWeight: '800', letterSpacing: -0.3 },
 
   // 本文
   body: { paddingHorizontal: 22, paddingTop: 22 },
   shopNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
   shopName: { fontSize: 15, fontWeight: '700', color: SUB, letterSpacing: 0.3 },
-  lead: { fontFamily: SERIF, fontSize: 19, lineHeight: 32, color: INK },
+  lead: { fontSize: 16, lineHeight: 25, color: INK, fontWeight: '600' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
   tag: { fontSize: 13, color: ACCENT, fontWeight: '700' },
-  paragraph: { fontFamily: SERIF, fontSize: 15.5, lineHeight: 30, color: '#3C3833', marginTop: 16 },
+  paragraph: { fontSize: 14.5, lineHeight: 24, color: '#3C3833', marginTop: 14 },
 
   // 写真ストリップ
   stripContent: { paddingHorizontal: 22, paddingTop: 20, gap: 10 },
@@ -420,7 +420,7 @@ const s = StyleSheet.create({
   section: { paddingHorizontal: 22, paddingTop: 30 },
   secHead: { marginBottom: 16 },
   secKicker: { fontSize: 11, letterSpacing: 2.5, color: ACCENT, fontWeight: '800', marginBottom: 4 },
-  secTitle: { fontSize: 21, fontFamily: SERIF, color: INK, letterSpacing: 0.3 },
+  secTitle: { fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.3 },
 
   featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginBottom: 10 },
   featureText: { flex: 1, fontSize: 15, lineHeight: 23, color: '#3C3833' },
@@ -438,7 +438,7 @@ const s = StyleSheet.create({
   menuRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: LINE },
   menuImg: { width: 62, height: 62, borderRadius: 8, backgroundColor: '#E6DED6' },
   menuNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 },
-  menuName: { flex: 1, fontSize: 16, fontFamily: SERIF, color: INK },
+  menuName: { flex: 1, fontSize: 15, fontWeight: '700', color: INK },
   menuPrice: { fontSize: 14, color: ACCENT, fontWeight: '700' },
   menuDesc: { fontSize: 13, lineHeight: 20, color: SUB, marginTop: 3 },
 
@@ -450,7 +450,7 @@ const s = StyleSheet.create({
   eventBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
   eventPeriod: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   eventPeriodText: { fontSize: 12, fontWeight: '700', color: ACCENT },
-  eventTitle: { fontSize: 16, fontFamily: SERIF, color: INK },
+  eventTitle: { fontSize: 15, fontWeight: '700', color: INK },
   eventDesc: { fontSize: 13, lineHeight: 20, color: '#3C3833' },
 
   // 営業時間
