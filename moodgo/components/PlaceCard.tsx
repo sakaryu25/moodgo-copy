@@ -549,6 +549,14 @@ export default function PlaceCard({
           </View>
         )}
 
+        {/* 写真ゼロ=未開拓スポット強調（写真一番乗りを募集して投稿動機を作る） */}
+        {photos.length === 0 && !spooky ? (
+          <LinearGradient colors={['#F472B6', '#9B6BFF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.pioneerBadge}>
+            <Camera size={12} color="#fff" strokeWidth={2.6} />
+            <Text style={s.pioneerBadgeText}>未開拓スポット・写真一番乗り募集</Text>
+          </LinearGradient>
+        ) : null}
+
         {/* タイトル */}
         {onPressDetail ? (
           <TouchableOpacity
@@ -775,6 +783,8 @@ const s = StyleSheet.create({
   phClean: { backgroundColor: '#F3F0F9', gap: 4, paddingHorizontal: 24 },
   phInviteTitle: { color: '#6B5A8A', fontSize: 14, fontWeight: '800', marginTop: 6, letterSpacing: 0.2, textAlign: 'center' },
   phInviteSub: { color: 'rgba(107,90,138,0.78)', fontSize: 11.5, fontWeight: '600', textAlign: 'center' },
+  pioneerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, marginBottom: 7 },
+  pioneerBadgeText: { color: '#fff', fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
   genrePhEmoji: { fontSize: 44, marginBottom: 4 },
   genrePhLabel: { color: '#7A5A4A', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
   genrePhSub: { color: 'rgba(120,90,74,0.7)', fontSize: 11, fontWeight: '600', marginTop: 2 },
