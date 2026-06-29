@@ -5,8 +5,14 @@ import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined
 import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
 import CoveragePanel from "./_components/CoveragePanel";
 import ReviewQueuePanel from "./_components/ReviewQueuePanel";
+// サブ管理ページを取り込み、タブとして1ページに集約（各ページは localStorage の moodgo-admin-secret で自動認証）
+import MetricsAdmin from "./metrics/page";
+import MoodLogAdmin from "./mood-logs/page";
+import BlogPostsAdmin from "./blog-posts/page";
+import FeaturedPagesAdmin from "./featured-pages/page";
+import ServerErrorsAdmin from "./server-errors/page";
 
-const ADMIN_PASSWORD = "moodgoadmin123";
+// admin secret はクライアントにハードコードしない。ログイン入力→サーバ検証→localStorageで保持(adminSecret state)。
 
 function proxyPhoto(url?: string): string {
   if (!url) return "";
@@ -621,7 +627,12 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState(false);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue">("stats");
+  // 管理シークレット: ハードコード廃止。ログイン入力をそのまま採用しサーバが検証。localStorageでサブパネルと共有＋永続化。
+  const [adminSecret, setAdminSecret] = useState("");
+  useEffect(() => {
+    try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
+  }, []);
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "featured-edit" | "server-errors">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -807,7 +818,7 @@ export default function AdminPage() {
           mode: "places",
           query: quickQuery.trim(),
           tikTokUrl: quickTikTokUrl.trim() || undefined,
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
         }),
       });
       const d1 = await res1.json();
@@ -832,7 +843,7 @@ export default function AdminPage() {
           placeData: d1.place,
           adminHint: quickAdminHint.trim(),
           tikTokContext,
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
         }),
       });
       const d2 = await res2.json();
@@ -857,7 +868,7 @@ export default function AdminPage() {
       if (quickPlace.lat) fd.append("lat", String(quickPlace.lat));
       if (quickPlace.lng) fd.append("lng", String(quickPlace.lng));
       fd.append("source", "admin");
-      fd.append("secret", ADMIN_PASSWORD);
+      fd.append("secret", adminSecret);
       fd.append("autoTags", JSON.stringify(quickAI.tags ?? []));
       if (quickPlace.website) fd.append("manualMapUrl", quickPlace.website);
       // カバー画像を先頭にして全写真URLを渡す
@@ -882,7 +893,7 @@ export default function AdminPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              secret:        ADMIN_PASSWORD,
+              secret:        adminSecret,
               name:          quickPlace.name,
               address:       quickPlace.address ?? "",
               lat:           quickPlace.lat ?? null,
@@ -917,7 +928,7 @@ export default function AdminPage() {
       setQuickRegisterToPlaces(false);
       // admin スポット一覧を再読込
       setAdminSpotsLoading(true);
-      fetch(`/api/suggestions?secret=${ADMIN_PASSWORD}`)
+      fetch(`/api/suggestions?secret=${adminSecret}`)
         .then((r) => r.json())
         .then((data) => {
           if (data.ok) setAdminSpots((data.suggestions as Suggestion[]).filter((s) => s.source === "admin" || s.source === undefined));
@@ -960,7 +971,7 @@ export default function AdminPage() {
     setFeaturedLoading(true);
     setFeaturedError("");
     try {
-      const res = await fetch(`/api/featured?secret=${ADMIN_PASSWORD}`);
+      const res = await fetch(`/api/featured?secret=${adminSecret}`);
       const d = await res.json();
       if (d.ok) setFeaturedPages(d.data);
       else setFeaturedError(d.error ?? "取得失敗");
@@ -980,7 +991,7 @@ export default function AdminPage() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...featuredForm, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ ...featuredForm, secret: adminSecret }),
       });
       const d = await res.json();
       if (!d.ok) throw new Error(d.error ?? "失敗");
@@ -1001,7 +1012,7 @@ export default function AdminPage() {
     await fetch(`/api/featured/${id}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: ADMIN_PASSWORD }),
+      body: JSON.stringify({ secret: adminSecret }),
     });
     await loadFeaturedPages();
     setDeletingFeaturedId(null);
@@ -1343,7 +1354,7 @@ export default function AdminPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            secret: ADMIN_PASSWORD,
+            secret: adminSecret,
             prefecture: city.prefecture,
             cityName: city.cityName,
             lat: city.lat, lng: city.lng, radiusKm: city.radiusKm,
@@ -1392,7 +1403,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/search-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: kw }),
+        body: JSON.stringify({ secret: adminSecret, keyword: kw }),
       });
       const data = await res.json();
       if (!data.ok) setSpSearchError(data.error ?? "エラーが発生しました");
@@ -1411,7 +1422,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/bulk-delete-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, ids: rows.map(r => r.id) }),
+        body: JSON.stringify({ secret: adminSecret, ids: rows.map(r => r.id) }),
       });
       const data = await res.json();
       if (!data.ok) alert("一括削除失敗: " + (data.error ?? "不明なエラー"));
@@ -1431,7 +1442,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/bulk-delete-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, source: src, confirm: src }),
+        body: JSON.stringify({ secret: adminSecret, source: src, confirm: src }),
       });
       const data = await res.json();
       if (!data.ok) alert("一括削除失敗: " + (data.error ?? "不明なエラー"));
@@ -1451,7 +1462,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/update-place-tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, id: spotId, tags: newTags }),
+        body: JSON.stringify({ secret: adminSecret, id: spotId, tags: newTags }),
       });
       const data = await res.json();
       if (!data.ok) { alert("タグ削除失敗: " + (data.error ?? "不明なエラー")); }
@@ -1479,7 +1490,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/update-place-tags", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, id: spotId, tags: newTags }),
+        body: JSON.stringify({ secret: adminSecret, id: spotId, tags: newTags }),
       });
       const data = await res.json();
       if (!data.ok) { alert("タグ追加失敗: " + (data.error ?? "不明なエラー")); }
@@ -1501,7 +1512,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/delete-place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, id }),
+        body: JSON.stringify({ secret: adminSecret, id }),
       });
       const data = await res.json();
       if (!data.ok) { alert("削除失敗: " + (data.error ?? "不明なエラー")); }
@@ -1531,7 +1542,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/manual-register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, names, dryRun: manualDryRun, fixedTags: manualFixedTags }),
+        body: JSON.stringify({ secret: adminSecret, names, dryRun: manualDryRun, fixedTags: manualFixedTags }),
       });
       const data = await res.json();
       if (!data.ok) { setManualError(data.error ?? "エラー"); }
@@ -1674,7 +1685,7 @@ export default function AdminPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            secret: ADMIN_PASSWORD,
+            secret: adminSecret,
             cityName: city.cityName,
             lat: city.lat, lng: city.lng, radiusKm: city.radiusKm,
             keyword,
@@ -1734,7 +1745,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/cleanup-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, subFacilityOnly: true, dryRun: subFacilityDryRun }),
+        body: JSON.stringify({ secret: adminSecret, subFacilityOnly: true, dryRun: subFacilityDryRun }),
       });
       const data = await res.json();
       if (data.ok) setSubFacilityResult({ count: data.count, names: data.names ?? [] });
@@ -1762,7 +1773,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/analyze-duplicates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ secret: adminSecret }),
       });
       const data = await res.json();
       if (data.ok) setAnalysisResult(data);
@@ -1777,7 +1788,7 @@ export default function AdminPage() {
       await fetch("/api/admin/cleanup-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, ids, dryRun: false }),
+        body: JSON.stringify({ secret: adminSecret, ids, dryRun: false }),
       });
       // 削除後に分析を更新
       await handleAnalysis();
@@ -1794,7 +1805,7 @@ export default function AdminPage() {
         const res = await fetch("/api/admin/cleanup-places", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ secret: ADMIN_PASSWORD, namePattern: pattern, tag: null, dryRun: cleanupAllDryRun }),
+          body: JSON.stringify({ secret: adminSecret, namePattern: pattern, tag: null, dryRun: cleanupAllDryRun }),
         });
         const data = await res.json();
         if (data.ok) { details.push({ pattern, count: data.count }); total += data.count; }
@@ -1817,7 +1828,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/cleanup-places", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, namePattern: cleanupPattern || null, tag: cleanupTag || null, dryRun: cleanupDryRun }),
+        body: JSON.stringify({ secret: adminSecret, namePattern: cleanupPattern || null, tag: cleanupTag || null, dryRun: cleanupDryRun }),
       });
       const data = await res.json();
       if (!data.ok) { setCleanupError(data.error ?? "エラーが発生しました"); }
@@ -1884,7 +1895,7 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secret:          ADMIN_PASSWORD,
+          secret:          adminSecret,
           name:            s.spot_name,
           address:         s.address ?? "",
           nearestStation:  (s as Suggestion & { station_info?: string }).station_info ?? "",
@@ -1931,7 +1942,7 @@ export default function AdminPage() {
       fd.append("stationInfo", newSpot.stationInfo.trim());
       fd.append("manualMapUrl", newSpot.mapUrl.trim());
       fd.append("source", "admin");
-      fd.append("secret", ADMIN_PASSWORD);
+      fd.append("secret", adminSecret);
       // 公開期間が設定されている場合は #期間限定 タグを自動付与
       const hasPeriod = Boolean(newSpotAvailableFrom || newSpotAvailableUntil);
       const tagsToSend = hasPeriod && !newSpotTags.includes("#期間限定")
@@ -1967,7 +1978,7 @@ export default function AdminPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              secret:          ADMIN_PASSWORD,
+              secret:          adminSecret,
               name:            newSpot.name.trim(),
               address:         newSpot.address.trim(),
               nearestStation:  newSpot.stationInfo.trim(),
@@ -2027,7 +2038,7 @@ export default function AdminPage() {
     if (!name.trim() || name.trim().length < 2) { setDuplicateWarning(null); return; }
     setDuplicateChecking(true);
     try {
-      const res = await fetch(`/api/suggestions?secret=${ADMIN_PASSWORD}&search=${encodeURIComponent(name.trim())}`);
+      const res = await fetch(`/api/suggestions?secret=${adminSecret}&search=${encodeURIComponent(name.trim())}`);
       const data = await res.json();
       if (data.ok && Array.isArray(data.suggestions)) {
         const similar = data.suggestions.filter((s: { spot_name: string; google_place_name?: string }) => {
@@ -2057,14 +2068,14 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/retag-spots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ secret: adminSecret }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? "再タグ付け失敗");
       setRetagResult(data);
       // スポット一覧を再読み込み
       setAdminSpotsLoading(true);
-      fetch(`/api/suggestions?secret=${ADMIN_PASSWORD}`)
+      fetch(`/api/suggestions?secret=${adminSecret}`)
         .then((r) => r.json())
         .then((d) => {
           if (d.ok) setAdminSpots((d.suggestions as Suggestion[]).filter((s) => s.source === "admin" || s.source === undefined));
@@ -2085,7 +2096,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/places-migrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, force }),
+        body: JSON.stringify({ secret: adminSecret, force }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? "移行失敗");
@@ -2151,7 +2162,7 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
           keyword: importKeyword.trim(),
           lat,
           lng,
@@ -2186,7 +2197,7 @@ export default function AdminPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            secret: ADMIN_PASSWORD,
+            secret: adminSecret,
             name: c.name,
             address: c.address,
             lat: c.lat,
@@ -2207,14 +2218,13 @@ export default function AdminPage() {
   };
 
   const handleLogin = () => {
-    if (passwordInput === ADMIN_PASSWORD) {
-      setAuthed(true);
-      setPasswordError(false);
-      // メインページのadmin判定用フラグを永続化
-      try { localStorage.setItem("moodgo_admin", "1"); } catch { /* ignore */ }
-    } else {
-      setPasswordError(true);
-    }
+    const s = passwordInput.trim();
+    if (s.length === 0) { setPasswordError(true); return; }
+    // 入力値をそのまま管理シークレットとして採用（正否はサーバが検証）。ハードコード照合は廃止。
+    setAdminSecret(s);
+    setAuthed(true);
+    setPasswordError(false);
+    try { localStorage.setItem("moodgo-admin-secret", s); localStorage.setItem("moodgo_admin", "1"); } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -2233,7 +2243,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!authed || tab !== "suggestions") return;
     setSuggestionsLoading(true);
-    fetch(`/api/suggestions?secret=${ADMIN_PASSWORD}`)
+    fetch(`/api/suggestions?secret=${adminSecret}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.ok) {
@@ -2254,7 +2264,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!authed || tab !== "add-spot") return;
     setAdminSpotsLoading(true);
-    fetch(`/api/suggestions?secret=${ADMIN_PASSWORD}`)
+    fetch(`/api/suggestions?secret=${adminSecret}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.ok) {
@@ -2268,7 +2278,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (!authed || tab !== "visited") return;
     setVisitedLoading(true);
-    fetch(`/api/feedback?secret=${ADMIN_PASSWORD}&mode=all`)
+    fetch(`/api/feedback?secret=${adminSecret}&mode=all`)
       .then((r) => r.json())
       .then((data) => { if (data.ok) setVisitedData(data.feedback); })
       .finally(() => setVisitedLoading(false));
@@ -2314,8 +2324,8 @@ export default function AdminPage() {
     setReportsLoading(true);
     setReportsError("");
     Promise.all([
-      fetch("/api/reports", { headers: { "x-admin-secret": ADMIN_PASSWORD } }).then(r => r.json()),
-      fetch("/api/admin/block-place", { headers: { "x-admin-secret": ADMIN_PASSWORD } }).then(r => r.json()),
+      fetch("/api/reports", { headers: { "x-admin-secret": adminSecret } }).then(r => r.json()),
+      fetch("/api/admin/block-place", { headers: { "x-admin-secret": adminSecret } }).then(r => r.json()),
     ]).then(([reportData, blockData]) => {
       if (reportData.ok) setReports(reportData.reports ?? []);
       else setReportsError(reportData.error ?? "取得に失敗しました");
@@ -2333,7 +2343,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/block-place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, spot_name: report.spot_name, spot_address: report.spot_address, reason: report.reason, report_id: report.id }),
+        body: JSON.stringify({ secret: adminSecret, spot_name: report.spot_name, spot_address: report.spot_address, reason: report.reason, report_id: report.id }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -2356,7 +2366,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/block-place", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: ADMIN_PASSWORD, spot_name: spotName }),
+        body: JSON.stringify({ secret: adminSecret, spot_name: spotName }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -2374,7 +2384,7 @@ export default function AdminPage() {
     if (!authed || tab !== "merge") return;
     setMergeLoading(true);
     setMergeResult("");
-    fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
+    fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": adminSecret } })
       .then(r => r.json())
       .then(d => { if (d.ok) setMergeGroups(d.groups ?? []); })
       .catch(() => {})
@@ -2386,7 +2396,7 @@ export default function AdminPage() {
     if (!authed || tab !== "geocode") return;
     setGeoLoading(true);
     setGeoBulkResult("");
-    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
+    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": adminSecret } })
       .then(r => r.json())
       .then(d => { if (d.ok) setGeoPlaces(d.data ?? []); })
       .catch(() => {})
@@ -2438,7 +2448,7 @@ export default function AdminPage() {
       setNewFeedback({ mood: "", area: "", age: "", gender: "", companion: "", atmosphere: "", priority: "", visitedPlace: "", rating: "4", topRecommendations: "" });
       setTimeout(() => setFeedbackSuccess(false), 3000);
       // リロード
-      const refreshed = await fetch(`/api/feedback?secret=${ADMIN_PASSWORD}&mode=all`).then(r => r.json());
+      const refreshed = await fetch(`/api/feedback?secret=${adminSecret}&mode=all`).then(r => r.json());
       if (refreshed.ok) setVisitedData(refreshed.feedback);
     } catch (e) {
       setFeedbackError(e instanceof Error ? e.message : String(e));
@@ -2454,7 +2464,7 @@ export default function AdminPage() {
       await fetch("/api/feedback", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ id, secret: adminSecret }),
       });
       setVisitedData((prev) => prev.filter((f) => f.id !== id));
     } finally {
@@ -2470,7 +2480,7 @@ export default function AdminPage() {
       await fetch("/api/suggestions", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ id, secret: adminSecret }),
       });
       setAdminSpots((prev) => prev.filter((s) => s.id !== id));
     } finally {
@@ -2504,7 +2514,7 @@ export default function AdminPage() {
     try {
       const fd = new FormData();
       fd.append("id", id);
-      fd.append("secret", ADMIN_PASSWORD);
+      fd.append("secret", adminSecret);
       fd.append("spotName", editSpotForm.name.trim());
       fd.append("description", editSpotForm.description.trim() || "");
       fd.append("address", editSpotForm.address.trim() || "");
@@ -2556,7 +2566,7 @@ export default function AdminPage() {
       const res = await fetch("/api/suggestions/find-place", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spotName: autoFillQuery, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ spotName: autoFillQuery, secret: adminSecret }),
       });
       const data = await res.json();
       if (data.ok) setAutoFillCandidates(data.candidates ?? []);
@@ -2575,7 +2585,7 @@ export default function AdminPage() {
           placeName: candidate.name,
           address: candidate.address,
           placeTypes: candidate.types,
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
         }),
       });
       const data = await res.json();
@@ -2614,7 +2624,7 @@ export default function AdminPage() {
           address: s.address,
           lat: s.lat,
           lng: s.lng,
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
           ...(searchQuery[s.id] ? { spotName: searchQuery[s.id] } : {}),
         }),
       });
@@ -2686,7 +2696,7 @@ export default function AdminPage() {
           id: s.id,
           status: "approved",
           adminNote: noteInput[s.id] ?? s.admin_note ?? null,
-          secret: ADMIN_PASSWORD,
+          secret: adminSecret,
           googlePlaceId: candidate?.placeId ?? s.google_place_id ?? null,
           googleMapsUri: candidate?.mapsUri ?? s.google_maps_uri ?? null,
           googlePlaceName: candidate?.name ?? s.google_place_name ?? null,
@@ -2721,7 +2731,7 @@ export default function AdminPage() {
       await fetch("/api/suggestions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "rejected", adminNote: noteInput[id] ?? null, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ id, status: "rejected", adminNote: noteInput[id] ?? null, secret: adminSecret }),
       });
       setSuggestions((prev) => prev.map((s) => s.id === id ? { ...s, status: "rejected", admin_note: noteInput[id] ?? s.admin_note } : s));
     } finally {
@@ -2736,7 +2746,7 @@ export default function AdminPage() {
       await fetch("/api/suggestions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "pending", adminNote: noteInput[id] ?? null, secret: ADMIN_PASSWORD }),
+        body: JSON.stringify({ id, status: "pending", adminNote: noteInput[id] ?? null, secret: adminSecret }),
       });
       setSuggestions((prev) => prev.map((s) => s.id === id ? { ...s, status: "pending" } : s));
     } finally {
@@ -2825,6 +2835,11 @@ export default function AdminPage() {
             { key: "pref-featured", label: "⭐ 特集ページ" },
             { key: "coverage",  label: "📊 カバレッジ" },
             { key: "review-queue", label: "✅ タグ検証" },
+            { key: "metrics", label: "📈 検索メトリクス" },
+            { key: "mood-logs", label: "📝 moodログ管理" },
+            { key: "blog-posts", label: "📰 投稿承認" },
+            { key: "featured-edit", label: "📖 特集ページ編集" },
+            { key: "server-errors", label: "🐞 サーバーエラー" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -4017,7 +4032,7 @@ export default function AdminPage() {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
-                            secret: ADMIN_PASSWORD,
+                            secret: adminSecret,
                             name: newSpot.name.trim(),
                             address: newSpot.address.trim(),
                             nearestStation: newSpot.stationInfo.trim(),
@@ -4111,7 +4126,7 @@ export default function AdminPage() {
                   const res = await fetch("/api/admin/places-debug", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ secret: ADMIN_PASSWORD }),
+                    body: JSON.stringify({ secret: adminSecret }),
                   });
                   const data = await res.json();
                   if (!data.ok) throw new Error(data.error);
@@ -6436,7 +6451,7 @@ export default function AdminPage() {
                                     const res = await fetch("/api/admin/search-places", {
                                       method: "POST",
                                       headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ secret: ADMIN_PASSWORD, keyword: kw }),
+                                      body: JSON.stringify({ secret: adminSecret, keyword: kw }),
                                     });
                                     const d = await res.json();
                                     if (d.ok) setSpSearchResults(d.data ?? []);
@@ -7096,7 +7111,7 @@ export default function AdminPage() {
                 onClick={() => {
                   setMergeLoading(true);
                   setMergeResult("");
-                  fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
+                  fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": adminSecret } })
                     .then(r => r.json())
                     .then(d => { if (d.ok) setMergeGroups(d.groups ?? []); })
                     .finally(() => setMergeLoading(false));
@@ -7144,7 +7159,7 @@ export default function AdminPage() {
                             const res = await fetch("/api/admin/merge-duplicates", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ secret: ADMIN_PASSWORD, keepId, deleteIds, mergedTags }),
+                              body: JSON.stringify({ secret: adminSecret, keepId, deleteIds, mergedTags }),
                             });
                             const d = await res.json();
                             if (d.ok) {
@@ -7238,7 +7253,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => {
                     setGeoLoading(true);
-                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
+                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": adminSecret } })
                       .then(r => r.json())
                       .then(d => { if (d.ok) setGeoPlaces(d.data ?? []); })
                       .finally(() => setGeoLoading(false));
@@ -7255,12 +7270,12 @@ export default function AdminPage() {
                     const res = await fetch("/api/admin/geocode-missing", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ secret: ADMIN_PASSWORD, bulkAll: true }),
+                      body: JSON.stringify({ secret: adminSecret, bulkAll: true }),
                     });
                     const d = await res.json();
                     setGeoBulkResult(`完了: ${d.succeeded ?? 0} / ${d.total ?? 0} 件成功`);
                     // リスト再取得
-                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": ADMIN_PASSWORD } })
+                    fetch("/api/admin/geocode-missing", { headers: { "x-admin-secret": adminSecret } })
                       .then(r => r.json())
                       .then(d2 => { if (d2.ok) setGeoPlaces(d2.data ?? []); });
                     setGeoBulkRunning(false);
@@ -7307,7 +7322,7 @@ export default function AdminPage() {
                             const res = await fetch("/api/admin/geocode-missing", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ secret: ADMIN_PASSWORD, placeId: place.id, address: place.address }),
+                              body: JSON.stringify({ secret: adminSecret, placeId: place.id, address: place.address }),
                             });
                             const d = await res.json();
                             if (d.ok) {
@@ -7364,7 +7379,7 @@ export default function AdminPage() {
                               const res = await fetch("/api/admin/geocode-missing", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ secret: ADMIN_PASSWORD, placeId: place.id, lat, lng }),
+                                body: JSON.stringify({ secret: adminSecret, placeId: place.id, lat, lng }),
                               });
                               const d = await res.json();
                               if (d.ok) {
@@ -7515,28 +7530,33 @@ export default function AdminPage() {
 
         {/* ===== 🔍 生存確認・自浄タブ ===== */}
         {tab === "vitality" && (
-          <VitalityCheckPanel secret={ADMIN_PASSWORD} />
+          <VitalityCheckPanel secret={adminSecret} />
         )}
 
         {/* ===== 🗄 DB統計タブ ===== */}
         {tab === "db-stats" && (
-          <DbStatsPanel secret={ADMIN_PASSWORD} />
+          <DbStatsPanel secret={adminSecret} />
         )}
 
         {/* ===== 🗾 県別特集タブ ===== */}
         {tab === "pref-featured" && (
-          <PrefFeaturedPanel secret={ADMIN_PASSWORD} />
+          <PrefFeaturedPanel secret={adminSecret} />
         )}
 
         {/* ===== 📊 カバレッジタブ (C-1) ===== */}
         {tab === "coverage" && (
-          <CoveragePanel secret={ADMIN_PASSWORD} />
+          <CoveragePanel secret={adminSecret} />
         )}
 
         {/* ===== ✅ AIタグ検証キュー (C-2) ===== */}
         {tab === "review-queue" && (
-          <ReviewQueuePanel secret={ADMIN_PASSWORD} />
+          <ReviewQueuePanel secret={adminSecret} />
         )}
+        {tab === "metrics" && <MetricsAdmin />}
+        {tab === "mood-logs" && <MoodLogAdmin />}
+        {tab === "blog-posts" && <BlogPostsAdmin />}
+        {tab === "featured-edit" && <FeaturedPagesAdmin />}
+        {tab === "server-errors" && <ServerErrorsAdmin />}
 
       </div>
     </div>

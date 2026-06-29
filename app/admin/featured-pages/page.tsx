@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 // ─── 定数 ──────────────────────────────────────────────────────────────────
 
-const ADMIN_SECRET = "moodgoadmin123";
+// admin secret はハードコードしない。localStorage(moodgo-admin-secret)から読み、サーバが検証する。
 
 const PREFECTURES = [
   "全国",
@@ -1002,6 +1002,9 @@ export default function FeaturedPagesAdmin() {
   const [authed, setAuthed] = useState(false);
   const [pw, setPw] = useState("");
   const [pwError, setPwError] = useState(false);
+  const [secret, setSecret] = useState("");
+  useEffect(() => { try { const s = localStorage.getItem("moodgo-admin-secret"); if (s) { setSecret(s); setAuthed(true); } } catch { /* ignore */ } }, []);
+  const doLogin = () => { const s = pw.trim(); if (s.length === 0) { setPwError(true); return; } setSecret(s); setAuthed(true); setPwError(false); try { localStorage.setItem("moodgo-admin-secret", s); } catch { /* ignore */ } };
 
   const [pages, setPages] = useState<PageListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1015,7 +1018,7 @@ export default function FeaturedPagesAdmin() {
   // ── データ読み込み ─────────────────────────────────────────────────────
   const loadPages = async () => {
     setLoading(true);
-    const res = await fetch(`/api/admin/featured-pages?secret=${ADMIN_SECRET}`);
+    const res = await fetch(`/api/admin/featured-pages?secret=${secret}`);
     const json = await res.json();
     setPages(json.data ?? []);
     setLoading(false);
@@ -1031,7 +1034,7 @@ export default function FeaturedPagesAdmin() {
     setSaved(false);
     setSaveError("");
 
-    const res = await fetch(`/api/admin/featured-pages/${p.id}?secret=${ADMIN_SECRET}`);
+    const res = await fetch(`/api/admin/featured-pages/${p.id}?secret=${secret}`);
     const json = await res.json();
     const d = json.data;
     if (!d) return;
@@ -1076,7 +1079,7 @@ export default function FeaturedPagesAdmin() {
         const res = await fetch(`/api/admin/featured-pages/${draft.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...draft, secret: ADMIN_SECRET }),
+          body: JSON.stringify({ ...draft, secret: secret }),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "保存失敗");
       } else {
@@ -1084,7 +1087,7 @@ export default function FeaturedPagesAdmin() {
         const res = await fetch("/api/admin/featured-pages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...draft, secret: ADMIN_SECRET }),
+          body: JSON.stringify({ ...draft, secret: secret }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "保存失敗");
@@ -1106,7 +1109,7 @@ export default function FeaturedPagesAdmin() {
     if (!draft?.id) return;
     if (!confirm(`「${draft.prefecture}」の特集ページを削除しますか？\nこの操作は取り消せません。`)) return;
 
-    const res = await fetch(`/api/admin/featured-pages/${draft.id}?secret=${ADMIN_SECRET}`, {
+    const res = await fetch(`/api/admin/featured-pages/${draft.id}?secret=${secret}`, {
       method: "DELETE",
     });
     if (res.ok) {
@@ -1130,14 +1133,14 @@ export default function FeaturedPagesAdmin() {
             type="password"
             value={pw}
             onChange={(e) => { setPw(e.target.value); setPwError(false); }}
-            onKeyDown={(e) => { if (e.key === "Enter") { setAuthed(pw === ADMIN_SECRET); setPwError(pw !== ADMIN_SECRET); } }}
+            onKeyDown={(e) => { if (e.key === "Enter") { doLogin(); } }}
             placeholder="パスワード"
             style={{ ...css.input, marginBottom: "12px", textAlign: "center", fontSize: "16px" }}
             autoFocus
           />
           {pwError && <div style={{ color: "#dc2626", fontSize: "13px", marginBottom: "10px" }}>パスワードが違います</div>}
           <button
-            onClick={() => { setAuthed(pw === ADMIN_SECRET); setPwError(pw !== ADMIN_SECRET); }}
+            onClick={() => { doLogin(); }}
             style={{ ...css.btnPrimary, width: "100%", justifyContent: "center" }}
           >
             ログイン
