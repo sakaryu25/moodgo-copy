@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { openInGoogleMaps } from '@/lib/openMaps';
 
 const SCREEN_W = Dimensions.get('window').width;
 const GAP = 8;       // カード間の余白（丸みカード感）
@@ -268,10 +269,16 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
           </View>
         ) : null}
 
-        {/* ── この気分で探す ── */}
-        {tags[0] ? (
-          <TouchableOpacity onPress={() => onSearchMood(post.mood_tags?.[0] ?? tags[0])} style={s.searchMoodBtn}>
-            <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.searchMoodInner}><Text style={s.searchMoodText}>この気分で探す</Text></LinearGradient>
+        {/* ── この場所を見る（Googleマップアプリで開く）── */}
+        {(post.place_name || post.google_maps_url) ? (
+          <TouchableOpacity
+            onPress={() => openInGoogleMaps({
+              query: [post.place_name, post.address].filter(Boolean).join(' '),
+              mapsUri: post.google_maps_url ?? undefined,
+            })}
+            style={s.searchMoodBtn}
+          >
+            <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.searchMoodInner}><Text style={s.searchMoodText}>この場所を見る</Text></LinearGradient>
           </TouchableOpacity>
         ) : null}
 
