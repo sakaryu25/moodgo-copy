@@ -1248,29 +1248,20 @@ function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; onOpenSpo
   const quote = spots[0]?.catch_copy;
   return (
     <View>
-      {/* カバー（特集扉） */}
-      <View style={s.mzCover}>
+      {/* ヒーロー（タイトルを画像に重ねたアプリ風カード。表紙＋別タイトル＋長文リードの"記事感"を排除）*/}
+      <View style={s.mzHero}>
         <ExpoImage source={{ uri: cover }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
-        <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.5)"]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
-        <View style={s.mzCoverKicker}>
-          <Text style={s.mzCoverKickerText}>{kicker}</Text>
+        <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.78)"]} locations={[0.3, 1]} style={StyleSheet.absoluteFill} />
+        <View style={s.mzHeroBody}>
+          <View style={s.mzHeroKicker}><Text style={s.mzHeroKickerText}>{kicker}</Text></View>
+          <Text style={s.mzHeroTitle}>{title}</Text>
+          {!!lead && <Text style={s.mzHeroLead} numberOfLines={2}>{lead}</Text>}
         </View>
-        {!!page.issue && <Text style={s.mzCoverIssue}>{page.issue}</Text>}
       </View>
 
-      {/* タイトル＋リード */}
-      <View style={s.mzHead}>
-        <Text style={s.mzTitle}>{title}</Text>
-        {!!lead && <Text style={s.mzLead}>{lead}</Text>}
-      </View>
-      <View style={s.mzDivider} />
-
-      {/* 記事セクション（スポット） */}
+      {/* スポット（アプリ風の縦カードリスト。記事の番号付き流し込みではなく独立カード）*/}
       {spots.map((sp, i) => (
-        <View key={sp.id}>
-          <SpotArticle index={i + 1} spot={sp} onOpen={() => onOpenSpot(sp.id)} />
-          {i === 0 && !!quote && <PullQuote text={quote} />}
-        </View>
+        <SpotArticle key={sp.id} index={i + 1} spot={sp} onOpen={() => onOpenSpot(sp.id)} />
       ))}
       {spots.length === 0 && <Text style={s.mzEmptyNote}>スポットは準備中です。</Text>}
     </View>
@@ -1970,6 +1961,12 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.30)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, overflow: "hidden",
   },
   mzHead: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 6 },
+  mzHero: { height: 270, marginHorizontal: 16, marginTop: 10, marginBottom: 4, borderRadius: 20, overflow: "hidden", justifyContent: "flex-end", backgroundColor: C.segBg },
+  mzHeroBody: { padding: 16 },
+  mzHeroKicker: { alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5, marginBottom: 9 },
+  mzHeroKickerText: { fontSize: 11, fontWeight: "800", color: C.accent, letterSpacing: 0.6 },
+  mzHeroTitle: { fontSize: 24, fontWeight: "800", color: "#fff", letterSpacing: -0.4, lineHeight: 31 },
+  mzHeroLead: { fontSize: 13, color: "rgba(255,255,255,0.92)", marginTop: 7, lineHeight: 19, fontWeight: "500" },
   mzTitle: { fontSize: 24, lineHeight: 32, color: C.text, fontWeight: "800", letterSpacing: -0.4 },
   mzLead: { fontSize: 14, lineHeight: 23, color: C.subText, marginTop: 10, fontWeight: "500" },
   mzDivider: { height: 1, backgroundColor: C.border, marginHorizontal: 20, marginTop: 16, marginBottom: 4 },
