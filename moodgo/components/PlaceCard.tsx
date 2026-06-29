@@ -10,6 +10,7 @@ import PuniPressable from './PuniPressable';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { showToast } from '@/lib/toast';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { sendEngagement } from '@/lib/engagement';
 import { copyPlaceName } from '@/lib/clipboard';
@@ -304,6 +305,7 @@ export default function PlaceCard({
       if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
       addSpotPhoto(item.supabaseId, item.title, data.url);  // 共有ストアへ→全画面に即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('写真ありがとう！✨', 'あなたの1枚がみんなの参考になります');
     } catch (e) {
       Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
     } finally {
@@ -461,10 +463,12 @@ export default function PlaceCard({
             </TouchableOpacity>
           </LinearGradient>
         ) : (
-          // 写真なし: クリーンな「?」アイコンのプレースホルダー（写真追加で投稿を促す）
+          // 写真なし: 投稿を促す招待プレースホルダー（「最初の1枚」＝貢献の動機づけ）
           <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
-            <HelpCircle size={50} color="#C7BEEA" strokeWidth={1.6} />
-            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.genrePhBtn}>
+            <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />
+            <Text style={s.phInviteTitle}>最初の1枚を追加しませんか？</Text>
+            <Text style={s.phInviteSub}>あなたの写真がみんなの参考に📸</Text>
+            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.genrePhBtn}>
               {uploading
                 ? <ActivityIndicator color={BRAND} size="small" />
                 : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
@@ -768,7 +772,9 @@ const s = StyleSheet.create({
   photo:            { width: '100%', height: 220 },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   // 写真なし時のクリーンな「?」プレースホルダー背景（淡いviolet-gray）
-  phClean: { backgroundColor: '#F3F0F9', gap: 4 },
+  phClean: { backgroundColor: '#F3F0F9', gap: 4, paddingHorizontal: 24 },
+  phInviteTitle: { color: '#6B5A8A', fontSize: 14, fontWeight: '800', marginTop: 6, letterSpacing: 0.2, textAlign: 'center' },
+  phInviteSub: { color: 'rgba(107,90,138,0.78)', fontSize: 11.5, fontWeight: '600', textAlign: 'center' },
   genrePhEmoji: { fontSize: 44, marginBottom: 4 },
   genrePhLabel: { color: '#7A5A4A', fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
   genrePhSub: { color: 'rgba(120,90,74,0.7)', fontSize: 11, fontWeight: '600', marginTop: 2 },
