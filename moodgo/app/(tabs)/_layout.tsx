@@ -6,7 +6,7 @@ import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 
 export default function TabsLayout() {
   return (
-    <NativeTabs tintColor="#7C3AED" minimizeBehavior="onScrollDown" labelVisibilityMode="unlabeled">
+    <NativeTabs tintColor="#7C3AED" minimizeBehavior="onScrollDown" labelVisibilityMode="unlabeled" disableTransparentOnScrollEdge={true}>
       <NativeTabs.Trigger name="index">
         <Label hidden>ホーム</Label>
         <Icon sf={{ default: 'house', selected: 'house.fill' }} />
