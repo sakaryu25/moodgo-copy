@@ -10,7 +10,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark, ChevronLeft, Heart, MapPin } from 'lucide-react-native';
+import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Users, Wallet } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -22,6 +22,12 @@ const GAP = 8;       // カード間の余白（丸みカード感）
 const PAD_H = 12;    // 画面端からの余白
 const COL = 3;
 const CELL = Math.floor((SCREEN_W - PAD_H * 2 - GAP * (COL - 1)) / COL);
+
+// 投稿詳細を「全国みんなの穴場」詳細(community-spot)と同じ配色に
+const CS_PINK = '#F56CB3';
+const CS_PURPLE = '#9B6BFF';
+const CS_BLUE = '#4FA3FF';
+const CS_GRAD: [string, string, string] = [CS_PINK, CS_PURPLE, CS_BLUE];
 
 const MOODS: { label: string; tag: string }[] = [
   { label: '自然', tag: '#自然感じたい' }, { label: 'まったり', tag: '#まったりしたい' },
@@ -205,86 +211,141 @@ function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () =
   const name = post.poster_name || 'MoodGoユーザー';
   const initial = (name.trim().charAt(0) || 'M').toUpperCase();
   const likeCount = (post.helpful_count ?? 0) + (helped ? 1 : 0);
+  const openMap = () => openInGoogleMaps({ query: [post.place_name, post.address].filter(Boolean).join(' '), mapsUri: post.google_maps_url ?? undefined });
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      {/* ── インスタ風ヘッダー: 戻る＋アバター＋投稿者＋場所 ── */}
-      <View style={[s.igTop, { paddingTop: insets.top + 6 }]}>
-        <TouchableOpacity onPress={onBack} hitSlop={10}><ChevronLeft size={26} color={COLORS.text} strokeWidth={2.2} /></TouchableOpacity>
-        <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.igAvatar}><Text style={s.igAvatarText}>{initial}</Text></LinearGradient>
-        <View style={{ flex: 1 }}>
-          <Text style={s.igName} numberOfLines={1}>{name}</Text>
-          {post.place_name ? <Text style={s.igPlace} numberOfLines={1}>{post.place_name}</Text> : null}
-        </View>
-      </View>
-      <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
-        {/* ── 大きい写真カルーセル ── */}
-        <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}>
-          {photos.map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: SCREEN_W, height: SCREEN_W }} contentFit="cover" />)}
-        </ScrollView>
-        {photos.length > 1 ? (
-          <View style={s.igDots}>
-            {photos.map((_, i) => <View key={i} style={[s.igDot, i === page && s.igDotOn]} />)}
-          </View>
-        ) : null}
-
-        {/* ── アクション行: ♡ / マップ ··· 保存 ── */}
-        <View style={s.igActions}>
-          <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next); }} hitSlop={8} activeOpacity={0.7}>
-            <Heart size={28} color={helped ? '#FF3B6B' : COLORS.text} fill={helped ? '#FF3B6B' : 'transparent'} strokeWidth={2} />
+    <View style={{ flex: 1, backgroundColor: '#F3F1F7' }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 30 }} showsVerticalScrollIndicator={false}>
+        {/* ── 写真カルーセル（穴場詳細と同じ構成）── */}
+        <View style={s.csPhotoWrap}>
+          {photos.length > 0 ? (
+            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} decelerationRate="fast"
+              onMomentumScrollEnd={(e) => setPage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}>
+              {photos.map((u, i) => <Image key={i} source={{ uri: u }} style={{ width: SCREEN_W, height: 340 }} contentFit="cover" transition={250} />)}
+            </ScrollView>
+          ) : (
+            <LinearGradient colors={['#E8E0FF', '#D6EAF8']} style={{ width: '100%', height: 340, alignItems: 'center', justifyContent: 'center' }}>
+              <MapPin size={44} color={CS_PURPLE} strokeWidth={1.5} />
+            </LinearGradient>
+          )}
+          <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent']} style={s.csTopScrim} pointerEvents="none" />
+          <TouchableOpacity onPress={onBack} style={[s.csCircleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}>
+            <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
-          {post.google_maps_url ? (
-            <TouchableOpacity onPress={() => Linking.openURL(post.google_maps_url!)} hitSlop={8} activeOpacity={0.7} style={{ marginLeft: 16 }}>
-              <MapPin size={26} color={COLORS.text} strokeWidth={2} />
+          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next); }} style={[s.csCircleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}>
+            <Bookmark size={18} color={saved ? CS_PINK : '#1A0A2E'} fill={saved ? CS_PINK : 'transparent'} strokeWidth={2.4} />
+          </TouchableOpacity>
+          {photos.length > 0 ? <View style={s.csCounter}><Text style={s.csCounterText}>{page + 1} / {photos.length}</Text></View> : null}
+          {photos.length > 1 ? (
+            <View style={s.csDots}>{photos.slice(0, 10).map((_, i) => <View key={i} style={[s.csDot, i === page && s.csDotOn]} />)}</View>
+          ) : null}
+        </View>
+
+        {/* ── 本文 ── */}
+        <View style={s.csBody}>
+          {/* 投稿者 */}
+          <View style={s.csPosterRow}>
+            <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csPosterAvatar}><Text style={s.csPosterAvatarText}>{initial}</Text></LinearGradient>
+            <Text style={s.csPosterName} numberOfLines={1}>{name}さんのおすすめ</Text>
+          </View>
+
+          {/* タイトル + マップピル */}
+          <View style={s.csTitleRow}>
+            <Text style={s.csTitle}>{post.title}</Text>
+            {(post.place_name || post.google_maps_url) ? (
+              <TouchableOpacity onPress={openMap} activeOpacity={0.85}>
+                <LinearGradient colors={CS_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.csMapPill}>
+                  <MapPin size={15} color="#fff" strokeWidth={2.5} />
+                  <Text style={s.csMapPillText}>地図</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {post.place_name ? <Text style={s.csPlaceName}>{post.place_name}</Text> : null}
+
+          {/* エリアチップ */}
+          {post.address ? (
+            <View style={s.csAreaChip}>
+              <MapPin size={13} color={CS_PURPLE} strokeWidth={2.2} />
+              <Text style={s.csAreaChipText} numberOfLines={1} ellipsizeMode="tail">{post.address}</Text>
+            </View>
+          ) : null}
+
+          {/* 参考になった数 */}
+          {likeCount > 0 ? (
+            <View style={s.csLikesRow}>
+              <Heart size={13} color={CS_PINK} fill={CS_PINK} strokeWidth={0} />
+              <Text style={s.csLikesText}>{formatNum(likeCount)}件の「参考になった」</Text>
+            </View>
+          ) : null}
+
+          {/* コメントカード（大目玉）*/}
+          {(post.caption || post.body) ? (
+            <View style={s.csCommentCard}>
+              <View style={s.csCommentLabelRow}>
+                <MessageCircle size={14} color={CS_PURPLE} fill={CS_PURPLE} strokeWidth={0} />
+                <Text style={s.csCommentLabel}>どんな場所？</Text>
+              </View>
+              {post.caption ? <Text style={s.csCommentText}>{post.caption}</Text> : null}
+              {post.body ? <Text style={[s.csCommentText, post.caption ? { marginTop: 8 } : null]}>{post.body}</Text> : null}
+            </View>
+          ) : null}
+
+          {/* タグ（タップで気分検索）*/}
+          {tags.length > 0 ? (
+            <View style={s.csTags}>
+              {tags.map(t => (
+                <TouchableOpacity key={t} onPress={() => onSearchMood(post.mood_tags?.[0] ?? t)} activeOpacity={0.6} style={s.csTagChip}>
+                  <Text style={s.csTagText}>{t.startsWith('#') ? t : `#${t}`}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
+          {/* 情報カード（予算・誰と）*/}
+          {(post.budget_level || (post.companion_tags && post.companion_tags.length > 0)) ? (
+            <View style={s.csInfoCard}>
+              {post.budget_level ? (
+                <View style={s.csInfoRow}>
+                  <View style={s.csInfoIcon}><Wallet size={17} color={CS_PURPLE} strokeWidth={2} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.csInfoLabel}>予算感</Text>
+                    <Text style={s.csInfoValue}>{post.budget_level.replace('#', '')}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {post.companion_tags && post.companion_tags.length > 0 ? (
+                <>
+                  {post.budget_level ? <View style={s.csDivider} /> : null}
+                  <View style={s.csInfoRow}>
+                    <View style={s.csInfoIcon}><Users size={17} color={CS_PURPLE} strokeWidth={2} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.csInfoLabel}>おすすめの相手</Text>
+                      <Text style={s.csInfoValue}>{post.companion_tags.map(c => c.replace('#', '')).join('・')}</Text>
+                    </View>
+                  </View>
+                </>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* この場所を見る */}
+          {(post.place_name || post.google_maps_url) ? (
+            <TouchableOpacity onPress={openMap} style={s.csMapBtn} activeOpacity={0.9}>
+              <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csMapBtnInner}><Text style={s.csMapBtnText}>この場所を見る</Text></LinearGradient>
             </TouchableOpacity>
           ) : null}
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next); }} hitSlop={8} activeOpacity={0.7}>
-            <Bookmark size={26} color={COLORS.text} fill={saved ? COLORS.text : 'transparent'} strokeWidth={2} />
+
+          {/* 通報 */}
+          <TouchableOpacity onPress={report} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
+            <Text style={s.reportText}>{reported ? '通報しました' : '⚠ この投稿を通報'}</Text>
           </TouchableOpacity>
         </View>
-
-        {/* ── いいね数 ── */}
-        {likeCount > 0 ? <Text style={s.igLikes}>{formatNum(likeCount)} 件の「参考になった」</Text> : null}
-
-        {/* ── キャプション: 太字の投稿者名＋タイトル＋本文 ── */}
-        <View style={s.igCaptionWrap}>
-          <Text style={s.igCaption}>
-            <Text style={s.igCaptionName}>{name}　</Text>
-            <Text style={s.igCaptionTitle}>{post.title}</Text>
-            {post.caption ? `\n${post.caption}` : ''}
-            {post.body ? `\n${post.body}` : ''}
-          </Text>
-        </View>
-
-        {/* ── タグ（タップで気分検索）── */}
-        {tags.length > 0 ? (
-          <View style={s.igTags}>
-            {tags.map(t => (
-              <TouchableOpacity key={t} onPress={() => onSearchMood(post.mood_tags?.[0] ?? t)} activeOpacity={0.6}>
-                <Text style={s.igTag}>{t.startsWith('#') ? t : `#${t}`}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-
-        {/* ── この場所を見る（Googleマップアプリで開く）── */}
-        {(post.place_name || post.google_maps_url) ? (
-          <TouchableOpacity
-            onPress={() => openInGoogleMaps({
-              query: [post.place_name, post.address].filter(Boolean).join(' '),
-              mapsUri: post.google_maps_url ?? undefined,
-            })}
-            style={s.searchMoodBtn}
-          >
-            <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.searchMoodInner}><Text style={s.searchMoodText}>この場所を見る</Text></LinearGradient>
-          </TouchableOpacity>
-        ) : null}
-
-        <TouchableOpacity onPress={report} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
-          <Text style={s.reportText}>{reported ? '通報しました' : '⚠ この投稿を通報'}</Text>
-        </TouchableOpacity>
       </ScrollView>
+
+      {/* 参考になった FAB */}
+      <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next); }} style={[s.csFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
+        <Heart size={24} color={CS_PINK} fill={helped ? CS_PINK : 'transparent'} strokeWidth={2.4} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -490,4 +551,44 @@ const s = StyleSheet.create({
   checkText: { flex: 1, fontSize: 13, color: COLORS.textSub, lineHeight: 19 },
   submitBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   submitText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  // ── 投稿詳細（穴場詳細＝community-spot のデザイン言語に統一）──
+  csPhotoWrap: { position: 'relative', backgroundColor: '#E8E0FF' },
+  csTopScrim: { position: 'absolute', top: 0, left: 0, right: 0, height: 100 },
+  csCircleBtn: { position: 'absolute', width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.92)', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 },
+  csCounter: { position: 'absolute', bottom: 28, right: 14, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
+  csCounterText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  csDots: { position: 'absolute', bottom: 14, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 5 },
+  csDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.55)' },
+  csDotOn: { backgroundColor: '#fff', width: 18 },
+  csBody: { backgroundColor: '#F3F1F7', borderTopLeftRadius: 26, borderTopRightRadius: 26, marginTop: -22, paddingHorizontal: 18, paddingTop: 18 },
+  csPosterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  csPosterAvatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  csPosterAvatarText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  csPosterName: { fontSize: 13, color: '#6B7280', fontWeight: '700', flex: 1 },
+  csTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  csTitle: { flex: 1, fontSize: 21, fontWeight: '800', color: '#1A0A2E', lineHeight: 28, letterSpacing: -0.3 },
+  csMapPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, shadowColor: CS_PURPLE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  csMapPillText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  csPlaceName: { fontSize: 13, color: '#6B7280', marginTop: -2, marginBottom: 10, fontWeight: '600' },
+  csAreaChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 12, shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1 },
+  csAreaChipText: { fontSize: 12, fontWeight: '700', color: '#6D28D9', flexShrink: 1 },
+  csLikesRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 12 },
+  csLikesText: { fontSize: 12.5, fontWeight: '700', color: '#EC4899' },
+  csCommentCard: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(155,107,255,0.14)', shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
+  csCommentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  csCommentLabel: { fontSize: 12.5, fontWeight: '900', color: CS_PURPLE },
+  csCommentText: { fontSize: 14, color: '#2D2240', lineHeight: 22, fontWeight: '500' },
+  csTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  csTagChip: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(155,107,255,0.18)' },
+  csTagText: { fontSize: 12.5, color: '#6D28D9', fontWeight: '700' },
+  csInfoCard: { backgroundColor: '#fff', borderRadius: 18, paddingHorizontal: 16, marginBottom: 14, shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2 },
+  csInfoRow: { flexDirection: 'row', gap: 13, paddingVertical: 14, alignItems: 'center' },
+  csInfoIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#F3EFFC', alignItems: 'center', justifyContent: 'center' },
+  csInfoLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '700', marginBottom: 2 },
+  csInfoValue: { fontSize: 14, color: '#1F2937', lineHeight: 21, fontWeight: '600' },
+  csDivider: { height: 1, backgroundColor: '#F2EFF7' },
+  csMapBtn: { marginTop: 2, marginBottom: 4 },
+  csMapBtnInner: { paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  csMapBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  csFab: { position: 'absolute', right: 18, width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FCE7F3', shadowColor: '#F56CB3', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
 });
