@@ -117,13 +117,16 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const aiTags = await generateTags(place.name, place.formatted_address ?? "");
-      const withUrban = addUrbanTagIfNeeded(aiTags, place.geometry?.location.lat ?? 0, place.geometry?.location.lng ?? 0);
-      // 固定タグを先頭に入れ、AIタグで重複するものは除外してマージ
-      const fixedSet = new Set(fixedTags);
-      const finalTags = fixedTags.length > 0
-        ? [...fixedTags, ...withUrban.filter(t => !fixedSet.has(t))]
-        : withUrban;
+      // 固定タグ(admin入力の#)があれば、それだけを使う。OpenAIの自動タグ付けは一切行わない
+      //   （「adminが最初に登録した#のみ」。AIが勝手に#を足すのを防ぐ＝コストも削減）。
+      //   固定タグ未指定の時だけ、空登録を避けるため OpenAI にフォールバックする。
+      let finalTags: string[];
+      if (fixedTags.length > 0) {
+        finalTags = fixedTags;
+      } else {
+        const aiTags = await generateTags(place.name, place.formatted_address ?? "");
+        finalTags = addUrbanTagIfNeeded(aiTags, place.geometry?.location.lat ?? 0, place.geometry?.location.lng ?? 0);
+      }
 
       results.push({ name: place.name, status: "inserted", address: place.formatted_address, tags: finalTags });
 
