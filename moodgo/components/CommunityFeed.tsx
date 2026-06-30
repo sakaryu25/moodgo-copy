@@ -309,6 +309,7 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
   const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');  // 人気/近く トグル
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locLoading, setLocLoading] = useState(false);
+  const [gridW, setGridW] = useState(0);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -382,27 +383,27 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
     return full ? arr : arr.slice(0, 8);
   }, [visibleItems, sortMode, coords, full]);
 
-  // 2カラムに分割。
-  // ・画像なし（テキスト）カードは左右交互に振り分け → 片側だけ画像/テキストに偏らない
-  // ・画像ありカードは枚数の少ない列に入れて左右をバランス
-  const hasImg = (it: FeedItem) => Array.isArray(it.image_urls) && it.image_urls.length > 0;
-  const leftItems: FeedItem[] = [];
-  const rightItems: FeedItem[] = [];
-  let textToggle = 0;
-  for (const it of sorted) {
-    if (!hasImg(it)) {
-      (textToggle === 0 ? leftItems : rightItems).push(it);
-      textToggle ^= 1;
-    } else {
-      (leftItems.length <= rightItems.length ? leftItems : rightItems).push(it);
-    }
-  }
-
-  const renderItem = (item: FeedItem) => {
-    const hasImg = Array.isArray(item.image_urls) && item.image_urls.length > 0;
-    return hasImg
-      ? <PhotoCard key={item.id} item={item} onReport={openReport} />
-      : <TextCard  key={item.id} item={item} onReport={openReport} />;
+  // インスタExplore風 3列写真グリッド。コンテナ幅からタイルサイズを算出。
+  const GAP = 3, COL = 3;
+  const tileSize = gridW > 0 ? (gridW - GAP * (COL - 1)) / COL : 0;
+  const renderTile = (item: FeedItem) => {
+    const photo = item.image_urls?.[0];
+    const { Icon, color } = tagIcon(item.auto_tags);
+    const m = kindMeta(item.kind);
+    return (
+      <TouchableOpacity key={item.id} onPress={() => openSpot(item)} onLongPress={() => openReport(item)} activeOpacity={0.85} style={[s.tile, { width: tileSize, height: tileSize }]}>
+        {photo ? (
+          <Image source={{ uri: photo }} style={s.tileImg} contentFit="cover" transition={200} />
+        ) : (
+          <LinearGradient colors={['#C5D8F0', '#A8C8E8']} style={[s.tileImg, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Icon size={Math.round(tileSize * 0.26)} color={color} strokeWidth={1.6} />
+          </LinearGradient>
+        )}
+        <View style={[s.tileKind, { backgroundColor: m.bg }]}><Text style={[s.tileKindText, { color: m.color }]}>{m.label}</Text></View>
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
+        <Text style={s.tileLoc} numberOfLines={1}>{item.prefecture || item.spot_name}</Text>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -435,11 +436,10 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
         </View>
       )}
 
-      {/* ── Masonry 2カラム ── */}
+      {/* ── 写真グリッド（インスタExplore風・タップで詳細・長押しで報告）── */}
       {!loading && (
-        <View style={s.columns}>
-          <View style={s.column}>{leftItems.map(renderItem)}</View>
-          <View style={s.column}>{rightItems.map(renderItem)}</View>
+        <View onLayout={(e) => setGridW(e.nativeEvent.layout.width)} style={s.grid}>
+          {tileSize > 0 && sorted.map(renderTile)}
         </View>
       )}
 
@@ -564,6 +564,13 @@ const s = StyleSheet.create({
   moreBtnText: { fontSize: 13, fontWeight: '700', color: PURPLE },
   kindBadge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 7 },
   kindBadgeText: { fontSize: 9.5, fontWeight: '800' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
+  tile: { borderRadius: 4, overflow: 'hidden', backgroundColor: '#E8E0FF', position: 'relative' },
+  tileImg: { width: '100%', height: '100%' },
+  tileKind: { position: 'absolute', top: 5, left: 5, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1.5 },
+  tileKindText: { fontSize: 8, fontWeight: '800' },
+  tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
+  tileLoc: { position: 'absolute', left: 5, right: 5, bottom: 4, color: '#fff', fontSize: 9.5, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
 
   // 人気/近く トグル
   toggleRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
