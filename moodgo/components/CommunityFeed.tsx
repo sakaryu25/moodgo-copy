@@ -183,7 +183,12 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
 // カードタップ → 詳細ページへ。Moodログは場所詳細(/place)、穴場は /community-spot。
 function openSpot(item: FeedItem) {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  if (item.kind === 'moodlog' || item.kind === 'blog') {
+  if (item.kind === 'blog') {
+    // ブログは専用詳細へ（id は 'bp-' 接頭辞を外す）
+    router.push({ pathname: '/blog-post', params: { id: item.id.replace(/^bp-/, '') } });
+    return;
+  }
+  if (item.kind === 'moodlog') {
     setSelectedPlace({
       title: item.place_name || item.spot_name,
       supabaseId: item.place_id ?? undefined,
@@ -193,6 +198,21 @@ function openSpot(item: FeedItem) {
     return;
   }
   router.push({ pathname: '/community-spot', params: { id: item.id } });
+}
+
+// ─── KindBadge（穴場/moodログ/おすすめ の軽い区別）──────────────────────────────
+function kindMeta(kind?: string): { label: string; color: string; bg: string } {
+  if (kind === 'moodlog') return { label: 'moodログ', color: '#DB2777', bg: '#FCE7F3' };
+  if (kind === 'blog')    return { label: 'おすすめ', color: '#2563EB', bg: '#DBEAFE' };
+  return { label: '穴場', color: '#7C3AED', bg: '#EDE9FE' };  // suggestion(デフォルト)
+}
+function KindBadge({ kind }: { kind?: string }) {
+  const m = kindMeta(kind);
+  return (
+    <View style={[s.kindBadge, { backgroundColor: m.bg }]}>
+      <Text style={[s.kindBadgeText, { color: m.color }]}>{m.label}</Text>
+    </View>
+  );
 }
 
 // ─── PhotoCard ───────────────────────────────────────────────────────────────
@@ -229,6 +249,7 @@ function PhotoCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem)
 
       {/* Body */}
       <View style={s.cardBody}>
+        <KindBadge kind={item.kind} />
         {hasReview && (
           <Text style={s.reviewText} numberOfLines={3}>
             {item.description}
@@ -250,6 +271,7 @@ function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) 
   return (
     <TouchableOpacity style={s.card} activeOpacity={0.85} onPress={() => openSpot(item)}>
       <View style={s.cardBody}>
+        <KindBadge kind={item.kind} />
         {/* ヘッダー: サムネ + スポット名 */}
         <View style={s.textCardHeader}>
           <View style={[s.thumb, { backgroundColor: bg }]}>
@@ -540,6 +562,8 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   moreBtnText: { fontSize: 13, fontWeight: '700', color: PURPLE },
+  kindBadge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 7 },
+  kindBadgeText: { fontSize: 9.5, fontWeight: '800' },
 
   // 人気/近く トグル
   toggleRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },

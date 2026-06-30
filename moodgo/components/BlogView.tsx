@@ -49,7 +49,7 @@ function formatNum(n: number): string {
 }
 
 type GridItem = { id: string; title: string; placeName: string | null; moodTags: string[]; photo: string; helpfulCount: number };
-type Detail = {
+export type Detail = {
   id: string; title: string; caption: string | null; body: string | null; place_name: string | null;
   address: string | null; mood_tags: string[] | null; scene_tags: string[] | null; companion_tags: string[] | null;
   budget_level: string | null; google_maps_url: string | null; poster_name: string | null;
@@ -126,7 +126,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 }
 
 // ── 詳細 ──
-function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () => void; onSearchMood: (tag: string) => void }) {
+export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () => void; onSearchMood: (tag: string) => void }) {
   const insets = useSafeAreaInsets();
   const [reported, setReported] = useState(false);
   const [helped, setHelped] = useState(false);

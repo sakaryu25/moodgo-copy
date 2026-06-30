@@ -1,13 +1,13 @@
 // ── app/post.tsx ──────────────────────────────────────────────────────────────
 // 統一投稿画面（Phase2）。穴場・moodログ・ブログを1つのフォームに集約。
-//   - 既存スポット(placeId param あり)→ /api/spot-posts（moodログ＝場所への口コミ）
-//   - 新スポット(placeId なし／名前入力)→ /api/suggestions（穴場＝運営が審査して掲載）
+//   - 既存スポット(placeId param あり／検索で選択)→ /api/spot-posts（moodログ＝場所への口コミ）
+//   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Camera, Check, MapPin, Send, Star, X } from 'lucide-react-native';
-import React, { useState } from 'react';
+import { ArrowLeft, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
+import React, { useRef, useState } from 'react';
 import {
-  Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,11 +24,12 @@ import { showToast } from '@/lib/toast';
 const GRAD: [string, string, string] = ['#F56CB3', '#9B6BFF', '#4FA3FF'];
 const MOODS = ['#まったりしたい', '#自然感じたい', '#わいわい楽しみたい', '#お腹すいた', '#ドライブしたい', '#集中したい', '#体動かしたい', '#遠くに行きたい', '#ショッピング', '#スリル味わいたい'];
 
+type PlaceHit = { id: string; name: string; address?: string };
+
 export default function PostScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ placeId?: string; placeName?: string; address?: string }>();
-  const existingPlaceId = (params.placeId ?? '').toString();
-  const isExisting = !!existingPlaceId;
+  const paramPlaceId = (params.placeId ?? '').toString();   // 場所詳細から来た既存スポット
 
   const [spotName, setSpotName] = useState((params.placeName ?? '').toString());
   const [address, setAddress] = useState((params.address ?? '').toString());
@@ -38,9 +39,41 @@ export default function PostScreen() {
   const [moodTags, setMoodTags] = useState<string[]>([]);
   const [caption, setCaption] = useState('');
   const [rating, setRating] = useState(0);
+  const [availFrom, setAvailFrom] = useState('');   // 期間限定(任意・新スポットのみ)
+  const [availUntil, setAvailUntil] = useState('');
   const [licenseOk, setLicenseOk] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // 既存スポット検索
+  const [searchQ, setSearchQ] = useState('');
+  const [results, setResults] = useState<PlaceHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [pickedId, setPickedId] = useState('');   // 検索で選んだ既存スポットID
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const existingPlaceId = paramPlaceId || pickedId;  // 既存(param or 検索選択)
+  const isExisting = !!existingPlaceId;
+  const lockedFromParam = !!paramPlaceId;
+
+  const runSearch = (text: string) => {
+    setSearchQ(text);
+    if (timer.current) clearTimeout(timer.current);
+    if (text.trim().length < 2) { setResults([]); return; }
+    timer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await apiFetch(`/api/place-search?q=${encodeURIComponent(text.trim())}`);
+        const d = await res.json();
+        setResults(Array.isArray(d?.places) ? d.places : []);
+      } catch { setResults([]); } finally { setSearching(false); }
+    }, 350);
+  };
+  const pickPlace = (p: PlaceHit) => {
+    setPickedId(p.id); setSpotName(p.name); setAddress(p.address ?? '');
+    setSearchQ(''); setResults([]);
+  };
+  const clearPicked = () => { setPickedId(''); setSpotName(''); setAddress(''); };
 
   const pickImages = async () => {
     try {
@@ -112,7 +145,12 @@ export default function PostScreen() {
         if (lat !== null) fd.append('lat', String(lat));
         if (lng !== null) fd.append('lng', String(lng));
         if (rating > 0) fd.append('rating', String(rating));
-        fd.append('autoTags', JSON.stringify([...moodTags, '#穴場スポット']));
+        const sugTags = [...moodTags, '#穴場スポット'];
+        const pf = availFrom.trim(), pu = availUntil.trim();
+        if (pf || pu) sugTags.push('#期間限定');
+        if (pf) fd.append('availableFrom', pf);
+        if (pu) fd.append('availableUntil', pu);
+        fd.append('autoTags', JSON.stringify(sugTags));
         images.forEach((img, i) => {
           if (img.uri) fd.append('images', { uri: img.uri, name: `photo_${i}.jpg`, type: 'image/jpeg' } as unknown as Blob);
         });
@@ -137,13 +175,32 @@ export default function PostScreen() {
 
           {/* 場所 */}
           <Text style={s.label}>場所</Text>
-          {isExisting ? (
-            <View style={s.placeLocked}>
+          {lockedFromParam ? (
+            <View style={s.pickedRow}>
               <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
-              <Text style={s.placeLockedText} numberOfLines={1}>{spotName}</Text>
+              <Text style={s.pickedText} numberOfLines={1}>{spotName}</Text>
+            </View>
+          ) : pickedId ? (
+            <View style={s.pickedRow}>
+              <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
+              <Text style={s.pickedText} numberOfLines={1}>{spotName}</Text>
+              <TouchableOpacity onPress={clearPicked} hitSlop={8}><Text style={s.changeBtn}>変更</Text></TouchableOpacity>
             </View>
           ) : (
             <>
+              {/* 既存スポット検索 */}
+              <View style={s.searchWrap}>
+                <Search size={16} color="#A78BCA" strokeWidth={2.2} />
+                <TextInput style={s.searchInput} value={searchQ} onChangeText={runSearch} placeholder="既存のスポットを検索" placeholderTextColor="#B9ABD2" />
+                {searching && <ActivityIndicator size="small" color="#9B6BFF" />}
+              </View>
+              {results.map(p => (
+                <TouchableOpacity key={p.id} onPress={() => pickPlace(p)} style={s.resultRow} activeOpacity={0.8}>
+                  <Text style={s.resultName} numberOfLines={1}>{p.name}</Text>
+                  {p.address ? <Text style={s.resultAddr} numberOfLines={1}>{p.address}</Text> : null}
+                </TouchableOpacity>
+              ))}
+              <Text style={s.orText}>または新しいスポットを登録</Text>
               <TextInput style={s.input} value={spotName} onChangeText={setSpotName} placeholder="スポット名（例: 称名寺市民の森）" placeholderTextColor="#B9ABD2" />
               <View style={s.addrRow}>
                 <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder="住所・エリア（任意）" placeholderTextColor="#B9ABD2" />
@@ -152,6 +209,14 @@ export default function PostScreen() {
                   <Text style={s.locBtnText}>{locating ? '取得中' : '現在地'}</Text>
                 </TouchableOpacity>
               </View>
+              {/* 期間限定（任意・新スポットのみ）*/}
+              <Text style={[s.label, { marginTop: 14 }]}>期間限定にする（任意）</Text>
+              <View style={s.periodRow}>
+                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={availFrom} onChangeText={setAvailFrom} placeholder="開始 例:2026-07-01" placeholderTextColor="#B9ABD2" />
+                <Text style={s.periodTilde}>〜</Text>
+                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={availUntil} onChangeText={setAvailUntil} placeholder="終了 例:2026-08-31" placeholderTextColor="#B9ABD2" />
+              </View>
+              <Text style={s.note}>期間を設けると、その期間だけ検索に出ます（みんなの穴場には残ります）。</Text>
             </>
           )}
 
@@ -219,8 +284,15 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14 },
   headTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
   label: { fontSize: 13, fontWeight: '800', color: '#4A2D7E', marginTop: 16, marginBottom: 8 },
-  placeLocked: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#F3EEFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E3D8F5' },
-  placeLockedText: { flex: 1, fontSize: 15, fontWeight: '800', color: '#7C3AED' },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#fff' },
+  searchInput: { flex: 1, paddingVertical: 12, fontSize: 14, color: '#2A2235' },
+  resultRow: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6, borderWidth: 1, borderColor: '#EFE8FB' },
+  resultName: { fontSize: 14, fontWeight: '700', color: '#2A2235' },
+  resultAddr: { fontSize: 11.5, color: '#9B89BE', marginTop: 2 },
+  orText: { fontSize: 12, color: '#9B89BE', marginTop: 14, marginBottom: 6, fontWeight: '700' },
+  pickedRow: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#F3EEFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E3D8F5' },
+  pickedText: { flex: 1, fontSize: 15, fontWeight: '800', color: '#7C3AED' },
+  changeBtn: { color: '#7C3AED', fontSize: 12, fontWeight: '800' },
   addrRow: { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' },
   locBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C3AED', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12 },
   locBtnText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
@@ -237,6 +309,8 @@ const s = StyleSheet.create({
   chipTextOn: { color: '#fff' },
   input: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, padding: 12, fontSize: 14, color: '#2A2235', minHeight: 48, textAlignVertical: 'top', backgroundColor: '#fff' },
   starsRow: { flexDirection: 'row', gap: 8 },
+  periodRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  periodTilde: { fontSize: 14, color: '#9B89BE', fontWeight: '700' },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#C9B6FF', alignItems: 'center', justifyContent: 'center' },
   boxOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
