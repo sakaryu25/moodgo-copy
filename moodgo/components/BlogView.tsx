@@ -102,7 +102,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
         <Text style={s.heroTitle}>全国みんなの穴場</Text>
-        <Text style={s.heroSub}>穴場・moodログ・おすすめを、みんなでシェア</Text>
+        <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
       </LinearGradient>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
         <CommunityFeed full />
