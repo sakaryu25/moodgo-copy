@@ -390,7 +390,7 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
   const renderTile = (item: FeedItem, size: number) => {
     const photo = item.image_urls?.[0];
     const { Icon, color } = tagIcon(item.auto_tags);
-    const m = kindMeta(item.kind);
+    // 種類(穴場/moodログ/おすすめ)はユーザーに見せない＝全部「1種類の投稿」として統一表示。遷移先のみ内部で出し分け。
     return (
       <TouchableOpacity key={item.id} onPress={() => openSpot(item)} onLongPress={() => openReport(item)} activeOpacity={0.85} style={[s.tile, { width: size, height: size }]}>
         {photo ? (
@@ -400,7 +400,6 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
             <Icon size={Math.round(size * 0.26)} color={color} strokeWidth={1.6} />
           </LinearGradient>
         )}
-        <View style={[s.tileKind, { backgroundColor: m.bg }]}><Text style={[s.tileKindText, { color: m.color }]}>{m.label}</Text></View>
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
         <Text style={s.tileLoc} numberOfLines={1}>{item.prefecture || item.spot_name}</Text>
       </TouchableOpacity>
