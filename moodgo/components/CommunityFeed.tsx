@@ -183,7 +183,7 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
 // カードタップ → 詳細ページへ。Moodログは場所詳細(/place)、穴場は /community-spot。
 function openSpot(item: FeedItem) {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  if (item.kind === 'moodlog') {
+  if (item.kind === 'moodlog' || item.kind === 'blog') {
     setSelectedPlace({
       title: item.place_name || item.spot_name,
       supabaseId: item.place_id ?? undefined,
@@ -280,7 +280,7 @@ function TextCard({ item, onReport }: { item: FeedItem; onReport: (i: FeedItem) 
 // ─── Dummy data (API が空の場合のフォールバック) ──────────────────────────────
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CommunityFeed() {
+export default function CommunityFeed({ full }: { full?: boolean }) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
@@ -357,8 +357,8 @@ export default function CommunityFeed() {
     } else {
       arr.sort((a, b) => popScore(b) - popScore(a));
     }
-    return arr.slice(0, 8);
-  }, [visibleItems, sortMode, coords]);
+    return full ? arr : arr.slice(0, 8);
+  }, [visibleItems, sortMode, coords, full]);
 
   // 2カラムに分割。
   // ・画像なし（テキスト）カードは左右交互に振り分け → 片側だけ画像/テキストに偏らない
@@ -387,6 +387,7 @@ export default function CommunityFeed() {
     <View style={s.section}>
       {/* ── セクションヘッダー ── */}
       <View style={s.sectionHeader}>
+        {full ? <View /> : (
         <View>
           <Text style={s.sectionSub}>COMMUNITY PICKS</Text>
           <View style={s.titleRow}>
@@ -394,6 +395,7 @@ export default function CommunityFeed() {
             <Map size={16} color={PURPLE} strokeWidth={2.2} />
           </View>
         </View>
+        )}
         <View style={s.toggleRow}>
           <TouchableOpacity onPress={() => setSortMode('popular')} style={[s.toggleBtn, sortMode === 'popular' && s.toggleBtnOn]} activeOpacity={0.8}>
             <Text style={[s.toggleText, sortMode === 'popular' && s.toggleTextOn]}>人気</Text>
@@ -427,7 +429,7 @@ export default function CommunityFeed() {
       )}
 
       {/* もっと見るボタン */}
-      {!loading && visibleItems.length > 0 && (
+      {!loading && !full && visibleItems.length > 0 && (
         <TouchableOpacity style={s.moreBtn} activeOpacity={0.7} onPress={() => router.navigate('/blog')}>
           <Text style={s.moreBtnText}>みんなの投稿をもっと見る</Text>
           <ChevronDown size={15} color={PURPLE} strokeWidth={2.4} />

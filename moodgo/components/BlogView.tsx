@@ -16,6 +16,7 @@ import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import CommunityFeed from './CommunityFeed';
 
 const SCREEN_W = Dimensions.get('window').width;
 const GAP = 8;       // カード間の余白（丸みカード感）
@@ -92,85 +93,20 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   if (mode === 'create') return <CreateForm onDone={() => { setMode('list'); loadList(); }} onCancel={() => setMode('list')} />;
   if (mode === 'detail' && detail) return <DetailView post={detail} onBack={() => setMode('list')} onSearchMood={(t) => { setMoodFilter(t); setMode('list'); }} />;
 
-  // ── 一覧（Insta風グリッド）──
+  // ── 統一フィード（穴場＋moodログ＋ブログを1つに）──
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      {/* 保存/特集と統一感のあるグラデ帯ヘッダー */}
+      {/* グラデ帯ヘッダー（タブ見出し）*/}
       <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 14 }]}>
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
-        <Text style={s.heroTitle}>みんなのMoodログ</Text>
-        <Text style={s.heroSub}>気分でめぐる、みんなのおすすめ</Text>
+        <Text style={s.heroTitle}>全国みんなの穴場</Text>
+        <Text style={s.heroSub}>穴場・moodログ・おすすめを、みんなでシェア</Text>
       </LinearGradient>
-      <View style={s.searchWrap}>
-        <TextInput value={q} onChangeText={setQ} onSubmitEditing={loadList} returnKeyType="search"
-          placeholder="場所・お店を検索" placeholderTextColor={COLORS.textMuted} style={s.search} />
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipRow} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, alignItems: 'center' }}>
-        <Chip label="すべて" active={!moodFilter} onPress={() => setMoodFilter('')} />
-        {MOODS.map(m => <Chip key={m.tag} label={m.label} active={moodFilter === m.tag} onPress={() => setMoodFilter(moodFilter === m.tag ? '' : m.tag)} />)}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
+        <CommunityFeed full />
       </ScrollView>
-      {loading ? <ActivityIndicator color={COLORS.primary} style={{ marginTop: 40 }} /> : (
-        <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-          <View style={{ gap: GAP, paddingHorizontal: PAD_H }}>
-            {(() => {
-              // インスタExplore風: 通常3列グリッドに、時々2x2の大タイルを挟む（丸みのあるカード）
-              const BIG = CELL * 2 + GAP;
-              const renderTile = (it: GridItem, size: number) => (
-                <TouchableOpacity key={it.id} activeOpacity={0.85} onPress={() => openDetail(it.id)} style={[s.card, { width: size, height: size }]}>
-                  <View style={s.cardInner}>
-                    <Image source={{ uri: it.photo }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={s.tileScrim} pointerEvents="none" />
-                    <View style={s.tileCount}>
-                      <Heart size={size > CELL ? 13 : 11} color="#fff" fill="#fff" strokeWidth={0} />
-                      <Text style={[s.tileCountText, size > CELL && { fontSize: 13 }]}>{formatNum(it.helpfulCount)}</Text>
-                    </View>
-                    {/* 大タイルは右下に場所名（全国みんなの穴場風）*/}
-                    {size > CELL && it.placeName ? (
-                      <View style={s.tileLoc}>
-                        <MapPin size={11} color="#fff" strokeWidth={2.4} />
-                        <Text style={s.tileLocText} numberOfLines={1}>{it.placeName}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </TouchableOpacity>
-              );
-              const rows: React.ReactNode[] = [];
-              let i = 0, unit = 0;
-              while (i < items.length) {
-                if (unit % 2 === 0 && i + 3 <= items.length) {
-                  // フィーチャー帯: 2x2大タイル＋小タイル2枚（左右交互）
-                  const bigLeft = unit % 4 === 0;
-                  const big = renderTile(items[i], BIG);
-                  const col = (
-                    <View key={`col${i}`} style={{ gap: GAP }}>
-                      {renderTile(items[i + 1], CELL)}
-                      {renderTile(items[i + 2], CELL)}
-                    </View>
-                  );
-                  rows.push(
-                    <View key={`f${i}`} style={{ flexDirection: 'row', gap: GAP }}>
-                      {bigLeft ? [big, col] : [col, big]}
-                    </View>
-                  );
-                  i += 3;
-                } else {
-                  // 通常行: 3列
-                  rows.push(
-                    <View key={`n${i}`} style={{ flexDirection: 'row', gap: GAP }}>
-                      {items.slice(i, i + 3).map((it) => renderTile(it, CELL))}
-                    </View>
-                  );
-                  i += 3;
-                }
-                unit++;
-              }
-              return rows;
-            })()}
-          </View>
-          {items.length === 0 && <Text style={s.empty}>まだ投稿がありません。最初のおすすめを投稿してみよう！</Text>}
-        </ScrollView>
-      )}
+      {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <TouchableOpacity activeOpacity={0.9} onPress={() => setMode('create')} style={s.fab}>
         <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.fabInner}>
           <Text style={s.fabText}>＋ 投稿</Text>

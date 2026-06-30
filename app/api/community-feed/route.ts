@@ -180,9 +180,52 @@ export async function GET(request: Request) {
       }
     } catch { /* spot_posts未作成は穴場のみ表示 */ }
 
-    // cleanAddr は内部用なので返却から除外。suggestions(kind=suggestion)＋Moodログを新着順マージ。
+    // ── ユーザーおすすめブログ(blog_posts)も全国フィードに合流（穴場＋moodログ＋ブログを1つに統一）──
+    let blogItems: Array<Record<string, unknown>> = [];
+    try {
+      const { data: bposts } = await supabase
+        .from("blog_posts")
+        .select("id, device_id, poster_name, place_id, place_name, address, area, lat, lng, title, caption, mood_tags, like_count, helpful_count, created_at")
+        .eq("approval_status", "approved").eq("visibility", "public")
+        .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      const blist = (bposts ?? []) as Array<Record<string, unknown>>;
+      if (blist.length > 0) {
+        const bIds = blist.map(b => String(b.id));
+        const photoByBlog = new Map<string, string[]>();
+        const { data: bphs } = await supabase.from("blog_post_photos")
+          .select("blog_post_id, photo_url, photo_order")
+          .in("blog_post_id", bIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected")
+          .order("photo_order", { ascending: true });
+        for (const ph of (bphs ?? []) as Array<Record<string, unknown>>) {
+          const k = String(ph.blog_post_id); if (!photoByBlog.has(k)) photoByBlog.set(k, []);
+          if (!isLegacyPhotoUrl(String(ph.photo_url))) photoByBlog.get(k)!.push(String(ph.photo_url));
+        }
+        const toPrefB = (addr: unknown): string => {
+          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
+          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+          return m ? m[1].replace(/[都道府県]$/, "") : "";
+        };
+        blogItems = blist.map(b => ({
+          id: `bp-${b.id}`, kind: "blog",
+          place_id: b.place_id ?? null, place_name: String(b.place_name ?? ""),
+          spot_name: String(b.title || b.place_name || ""),
+          prefecture: toPrefB(b.area || b.address),
+          description: b.caption ?? "", address: (b.address as string | null) ?? null,
+          image_urls: photoByBlog.get(String(b.id)) ?? [],
+          auto_tags: b.mood_tags ?? [],
+          lat: b.lat ?? null, lng: b.lng ?? null,
+          likes: (Number(b.like_count) || 0) + (Number(b.helpful_count) || 0),
+          created_at: b.created_at,
+          poster_name: (b.poster_name as string | null) ?? null,
+          poster_icon: iconFor(b.device_id),
+          poster_id: (b.device_id as string | null) ?? null,
+        }));
+      }
+    } catch { /* blog_posts未作成は穴場＋moodログのみ */ }
+
+    // cleanAddr は内部用なので返却から除外。穴場(suggestion)＋moodログ(moodlog)＋ブログ(blog)を新着順マージ。
     const out = items.map(({ cleanAddr, ...rest }) => ({ kind: "suggestion", ...rest }));
-    const merged = [...out, ...moodItems]
+    const merged = [...out, ...moodItems, ...blogItems]
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
