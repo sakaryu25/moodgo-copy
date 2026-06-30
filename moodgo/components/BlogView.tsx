@@ -12,6 +12,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Users, Wallet } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { GlassView } from 'expo-glass-effect';
+import { LIQUID_GLASS } from './GlassSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -110,6 +112,9 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/post')} style={s.fab}>
         <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.fabInner}>
+          {LIQUID_GLASS && (
+            <GlassView glassEffectStyle="clear" isInteractive style={[StyleSheet.absoluteFill, { borderRadius: 30 }]} />
+          )}
           <Text style={s.fabText}>＋ 投稿</Text>
         </LinearGradient>
       </TouchableOpacity>

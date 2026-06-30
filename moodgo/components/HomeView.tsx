@@ -246,6 +246,9 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                   end={{ x: 1, y: 0 }}
                   style={s.startBtn}
                 >
+                  {LIQUID_GLASS && (
+                    <GlassView glassEffectStyle="clear" isInteractive style={[StyleSheet.absoluteFill, { borderRadius: 99 }]} />
+                  )}
                   <Text style={s.startText}>✦  START  →</Text>
                 </LinearGradient>
               </View>
