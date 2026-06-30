@@ -14,7 +14,8 @@ import {
   Activity, Car, ChevronDown, Cloud, Leaf, Map, MapPin,
   MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
 } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -49,6 +50,9 @@ type FeedItem = {
   kind?: string;                 // 'suggestion'(穴場) | 'moodlog'(Moodログ)
   place_id?: string | null;      // moodlog用: 場所詳細を開くID
   place_name?: string;
+  likes?: number;                // moodログのいいね数(穴場はundefined→★おすすめ度で代替)
+  lat?: number | null;           // 近く順ソート用
+  lng?: number | null;
 };
 
 type IconComp = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number; fill?: string }>;
@@ -65,6 +69,15 @@ function relativeTime(iso: string): string {
   const d = Math.floor(h / 24);
   if (d < 7)   return d === 1 ? '昨日' : `${d}日前`;
   return `${Math.floor(d / 7)}週間前`;
+}
+
+// 2点間の距離(m)。近く順ソート用。
+function distM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // spot_name の文字コードから淡いパステル色を生成
@@ -271,6 +284,9 @@ export default function CommunityFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');  // 人気/近く トグル
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locLoading, setLocLoading] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
@@ -279,7 +295,7 @@ export default function CommunityFeed() {
       try {
         const blocked = await loadJSON<string[]>(BLOCKED_USERS_KEY, []);
         if (isMounted.current) setBlockedUsers(blocked);
-        const res = await apiFetch('/api/community-feed?limit=20');
+        const res = await apiFetch('/api/community-feed?limit=40');
         const data = await res.json();
         if (isMounted.current) {
           const fetched: FeedItem[] = data?.items ?? [];
@@ -312,6 +328,38 @@ export default function CommunityFeed() {
   // ブロック済み投稿者の投稿を除外
   const visibleItems = items.filter(it => !it.poster_id || !blockedUsers.includes(it.poster_id));
 
+  // 近く順: 端末の現在地を遅延取得（近くタップ時のみ・人気順は位置情報不要）
+  const selectNear = async () => {
+    if (coords) { setSortMode('near'); return; }
+    setLocLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setSortMode('near');
+      }
+    } catch { /* 位置取得失敗時は人気順のまま */ } finally { setLocLoading(false); }
+  };
+
+  // 人気スコア: moodログ=いいね数 / 穴場=★おすすめ度（お互いの強みで統一）
+  const popScore = (it: FeedItem) => (it.likes != null ? it.likes : userRating(it.description));
+
+  // トグルで並べ替え → 8件に絞る
+  const sorted = useMemo(() => {
+    const arr = [...visibleItems];
+    if (sortMode === 'near' && coords) {
+      arr.sort((a, b) => {
+        const da = a.lat != null && a.lng != null ? distM(coords.lat, coords.lng, a.lat, a.lng) : Infinity;
+        const db = b.lat != null && b.lng != null ? distM(coords.lat, coords.lng, b.lat, b.lng) : Infinity;
+        return da - db;
+      });
+    } else {
+      arr.sort((a, b) => popScore(b) - popScore(a));
+    }
+    return arr.slice(0, 8);
+  }, [visibleItems, sortMode, coords]);
+
   // 2カラムに分割。
   // ・画像なし（テキスト）カードは左右交互に振り分け → 片側だけ画像/テキストに偏らない
   // ・画像ありカードは枚数の少ない列に入れて左右をバランス
@@ -319,7 +367,7 @@ export default function CommunityFeed() {
   const leftItems: FeedItem[] = [];
   const rightItems: FeedItem[] = [];
   let textToggle = 0;
-  for (const it of visibleItems) {
+  for (const it of sorted) {
     if (!hasImg(it)) {
       (textToggle === 0 ? leftItems : rightItems).push(it);
       textToggle ^= 1;
@@ -345,6 +393,14 @@ export default function CommunityFeed() {
             <Text style={s.sectionTitle}>全国みんなの穴場</Text>
             <Map size={16} color={PURPLE} strokeWidth={2.2} />
           </View>
+        </View>
+        <View style={s.toggleRow}>
+          <TouchableOpacity onPress={() => setSortMode('popular')} style={[s.toggleBtn, sortMode === 'popular' && s.toggleBtnOn]} activeOpacity={0.8}>
+            <Text style={[s.toggleText, sortMode === 'popular' && s.toggleTextOn]}>人気</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={selectNear} style={[s.toggleBtn, sortMode === 'near' && s.toggleBtnOn]} activeOpacity={0.8}>
+            <Text style={[s.toggleText, sortMode === 'near' && s.toggleTextOn]}>{locLoading ? '取得中…' : '近く'}</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -372,8 +428,8 @@ export default function CommunityFeed() {
 
       {/* もっと見るボタン */}
       {!loading && visibleItems.length > 0 && (
-        <TouchableOpacity style={s.moreBtn} activeOpacity={0.7}>
-          <Text style={s.moreBtnText}>もっと見る</Text>
+        <TouchableOpacity style={s.moreBtn} activeOpacity={0.7} onPress={() => router.navigate('/blog')}>
+          <Text style={s.moreBtnText}>みんなの投稿をもっと見る</Text>
           <ChevronDown size={15} color={PURPLE} strokeWidth={2.4} />
         </TouchableOpacity>
       )}
@@ -482,4 +538,11 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   moreBtnText: { fontSize: 13, fontWeight: '700', color: PURPLE },
+
+  // 人気/近く トグル
+  toggleRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  toggleBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(155,107,255,0.08)' },
+  toggleBtnOn: { backgroundColor: PURPLE },
+  toggleText: { fontSize: 12, fontWeight: '800', color: PURPLE },
+  toggleTextOn: { color: '#fff' },
 });

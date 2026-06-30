@@ -179,24 +179,8 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
 
       {/* ── Header ── */}
       <View style={s.header}>
-        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-          <PuniPressable
-            style={[s.suggestPill, LIQUID_GLASS && s.glassChip]}
-            onPress={() => router.push({ pathname: '/suggest', params: { lang } })}
-          >
-            {LIQUID_GLASS && (
-              <GlassView
-                glassEffectStyle="regular"
-                tintColor="rgba(245,108,179,0.10)"
-                style={[StyleSheet.absoluteFill, { borderRadius: 999 }]}
-              />
-            )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <MapPin size={13} color={PINK} strokeWidth={2.5} />
-              <Text style={s.suggestText}>{lang === 'en' ? 'Share a spot!' : '穴場を教えて！'}</Text>
-            </View>
-          </PuniPressable>
-        </Animated.View>
+        {/* 穴場を教えて!は削除（投稿はみんなタブ等から）。右側ボタンを右寄せ維持するため空スペーサー */}
+        <View />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {onShowHistory && (
             <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowHistory}>

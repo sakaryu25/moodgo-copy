@@ -118,7 +118,7 @@ export async function GET(request: Request) {
     try {
       const { data: posts } = await supabase
         .from("spot_posts")
-        .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility")
+        .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, like_count, helpful_count")
         .eq("status", "approved").in("visibility", ["spot_public_anonymous", "public"])
         .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
       const plist = (posts ?? []) as Array<Record<string, unknown>>;
@@ -141,14 +141,22 @@ export async function GET(request: Request) {
         };
         const prefByPlace = new Map<string, string>();
         const prefByName = new Map<string, string>();
+        const coordByPlace = new Map<string, { lat: number; lng: number }>();
+        const coordByName = new Map<string, { lat: number; lng: number }>();
         const names2 = [...new Set(plist.map(p => p.place_name).filter(Boolean).map(String))];
         if (placeIds.length > 0) {
-          const { data: pls } = await supabase.from("places").select("id, address").in("id", placeIds);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) prefByPlace.set(String(pl.id), toPref(pl.address));
+          const { data: pls } = await supabase.from("places").select("id, address, lat, lng").in("id", placeIds);
+          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
+            prefByPlace.set(String(pl.id), toPref(pl.address));
+            if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
+          }
         }
         if (names2.length > 0) {
-          const { data: pls } = await supabase.from("places").select("name, address").in("name", names2);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) prefByName.set(String(pl.name), toPref(pl.address));
+          const { data: pls } = await supabase.from("places").select("name, address, lat, lng").in("name", names2);
+          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
+            prefByName.set(String(pl.name), toPref(pl.address));
+            if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
+          }
         }
         moodItems = plist.map(p => {
           const anon = p.visibility === "spot_public_anonymous";
@@ -159,7 +167,11 @@ export async function GET(request: Request) {
             prefecture: prefByPlace.get(String(p.place_id)) || prefByName.get(String(p.place_name)) || "",
             description: p.caption ?? "", address: null,
             image_urls: photoByPost.get(String(p.id)) ?? [],
-            auto_tags: p.mood_tags ?? [], lat: null, lng: null, created_at: p.created_at,
+            auto_tags: p.mood_tags ?? [],
+            lat: (coordByPlace.get(String(p.place_id)) || coordByName.get(String(p.place_name)))?.lat ?? null,
+            lng: (coordByPlace.get(String(p.place_id)) || coordByName.get(String(p.place_name)))?.lng ?? null,
+            likes: (Number(p.like_count) || 0) + (Number(p.helpful_count) || 0),
+            created_at: p.created_at,
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
             poster_icon: anon ? null : iconFor(p.device_id),
             poster_id: (p.device_id as string | null) ?? null,
