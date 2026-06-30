@@ -14,6 +14,7 @@ import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Users, Wallet } fr
 import { router } from 'expo-router';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
+import PuniPressable from './PuniPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -110,14 +111,14 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         <CommunityFeed full />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
-      <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/post')} style={s.fab}>
+      <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
         <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.fabInner}>
           {LIQUID_GLASS && (
             <GlassView glassEffectStyle="clear" isInteractive style={[StyleSheet.absoluteFill, { borderRadius: 30 }]} />
           )}
           <Text style={s.fabText}>＋ 投稿</Text>
         </LinearGradient>
-      </TouchableOpacity>
+      </PuniPressable>
     </View>
   );
 }
