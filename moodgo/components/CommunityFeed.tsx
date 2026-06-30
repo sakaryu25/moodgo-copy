@@ -26,8 +26,6 @@ import {
 import * as Haptics from 'expo-haptics';
 import { apiFetch } from '@/lib/api';
 import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
-import { setSelectedPlace } from '@/lib/selectedPlace';
-import type { Recommendation } from '@/types/app';
 import ReportModal from './ReportModal';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -180,7 +178,8 @@ function LocationBadge({ prefecture, spotName }: { prefecture: string; spotName:
   );
 }
 
-// カードタップ → 詳細ページへ。Moodログは場所詳細(/place)、穴場は /community-spot。
+// カードタップ → 詳細ページへ。穴場もMoodログ投稿も同じ詳細UI(/community-spot)で開く。
+// （「投稿」ボタンから入る統一投稿＝Moodログも、穴場の作り込んだ詳細カードで表示する）
 function openSpot(item: FeedItem) {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   if (item.kind === 'blog') {
@@ -188,15 +187,7 @@ function openSpot(item: FeedItem) {
     router.push({ pathname: '/blog-post', params: { id: item.id.replace(/^bp-/, '') } });
     return;
   }
-  if (item.kind === 'moodlog') {
-    setSelectedPlace({
-      title: item.place_name || item.spot_name,
-      supabaseId: item.place_id ?? undefined,
-      address: item.address ?? undefined,
-    } as Recommendation);
-    router.push('/place');
-    return;
-  }
+  // 穴場(suggestion)= UUID、Moodログ(moodlog)= 'ml-<id>' を /api/community-spot が両対応。
   router.push({ pathname: '/community-spot', params: { id: item.id } });
 }
 

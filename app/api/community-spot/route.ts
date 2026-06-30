@@ -2,11 +2,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 /**
  * 全国みんなの穴場 — スポット詳細（公開）
- * GET /api/community-spot?id=UUID
- * suggestions テーブルの1件を、利用者データ＋Google補強情報で返す。
+ * GET /api/community-spot?id=UUID            … suggestions(穴場)
+ * GET /api/community-spot?id=ml-<spot_post>  … spot_posts(みんなのMoodログ＝統一投稿)
+ *
+ * 同じ Spot 形（写真カルーセル＋「どんな場所？」＋投稿者おすすめ度＋Google補強）で返す。
  *  - 写真は利用者投稿を優先（無ければ Google から補強）
- *  - 電話・公式サイト・営業時間・最寄駅は Google Places から取得
- *  - 説明文から「目安価格」「おすすめ度★」をパースして分離
+ *  - 電話・公式サイト・営業時間・最寄駅・評価・口コミは Google Places から取得
+ *  - 穴場は説明文から「目安価格」「おすすめ度★」をパースして分離（moodログは素のcaption）
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
@@ -27,7 +29,7 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// 説明文から 価格・おすすめ度 を分離
+// 説明文から 価格・おすすめ度 を分離（穴場の旧記法）
 function parseDescription(raw: string | null): { desc: string; priceText: string; rating: number } {
   if (!raw) return { desc: "", priceText: "", rating: 0 };
   let priceText = "";
@@ -42,40 +44,121 @@ function parseDescription(raw: string | null): { desc: string; priceText: string
   return { desc: lines.join("\n").trim(), priceText, rating };
 }
 
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
+  const idParam = searchParams.get("id");
+  if (!idParam) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
 
-  try {
-    const { data: s, error } = await supabase
-      .from("suggestions")
-      .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until")
-      .eq("id", id)
-      .single();
-    if (error || !s) throw error ?? new Error("not found");
+  const isMoodlog = idParam.startsWith("ml-");
+  const realId = isMoodlog ? idParam.slice(3) : idParam;
 
-    const userTitle = (s.spot_name ?? "").trim();
-    const placeName = (s.google_place_name ?? s.spot_name ?? "").trim();
-    const { desc, priceText, rating } = parseDescription(s.description);
+  try {
+    // ── 基本フィールド（穴場 / Moodログ で出所が違うが、以降は共通処理）──
+    let respId = realId;
+    let userTitle = "";
+    let placeName = "";
+    let descBody = "";
+    let priceText = "";
+    let rating = 0;
+    let baseAddress = "";
+    let baseLat: number | undefined;
+    let baseLng: number | undefined;
+    let userPhotos: string[] = [];
+    let createdAt: string | null = null;
+    let autoTags: unknown = [];
+    let stationSeed = "";
+    let googleMapsUriSeed = "";
+    let availableFrom: string | null = null;
+    let availableUntil: string | null = null;
+
+    if (isMoodlog) {
+      // ── みんなのMoodログ(spot_posts)＝「投稿」ボタンから入る統一投稿 ──
+      const { data: p, error } = await supabase
+        .from("spot_posts")
+        .select("id, place_id, place_name, caption, mood_tags, created_at")
+        .eq("id", realId)
+        .single();
+      if (error || !p) throw error ?? new Error("not found");
+      const post = p as Record<string, unknown>;
+      respId = String(post.id);
+      userTitle = String(post.place_name ?? "").trim();
+      placeName = userTitle;
+      descBody = String(post.caption ?? "");   // moodログは素のcaption（価格/★記法なし）
+      createdAt = (post.created_at as string | null) ?? null;
+      autoTags = post.mood_tags ?? [];
+
+      // 投稿写真（旧形式は除外・非表示/却下は除く）
+      const { data: phs } = await supabase
+        .from("spot_photos")
+        .select("image_url")
+        .eq("post_id", realId)
+        .neq("moderation_status", "hidden")
+        .neq("moderation_status", "rejected");
+      userPhotos = ((phs ?? []) as Array<{ image_url?: string }>)
+        .map((x) => String(x.image_url ?? ""))
+        .filter((u) => u && !isLegacyPhotoUrl(u));
+
+      // 紐づくplace: Supabase UUID の時だけ住所/座標を引く（選択スポット・新スポット仮登録）。
+      // Google id(ChIJ..)/null は住所が取れないので、後段のGoogle補強は名前検索に委ねる。
+      const pid = post.place_id ? String(post.place_id) : "";
+      if (UUID_RE.test(pid)) {
+        const { data: pl } = await supabase
+          .from("places")
+          .select("address, lat, lng")
+          .eq("id", pid)
+          .single();
+        if (pl) {
+          const place = pl as Record<string, unknown>;
+          baseAddress = String(place.address ?? "");
+          if (place.lat != null) baseLat = Number(place.lat);
+          if (place.lng != null) baseLng = Number(place.lng);
+        }
+      }
+    } else {
+      // ── 全国みんなの穴場(suggestions)──
+      const { data: s, error } = await supabase
+        .from("suggestions")
+        .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until")
+        .eq("id", realId)
+        .single();
+      if (error || !s) throw error ?? new Error("not found");
+      respId = String(s.id);
+      userTitle = (s.spot_name ?? "").trim();
+      placeName = (s.google_place_name ?? s.spot_name ?? "").trim();
+      const parsed = parseDescription(s.description);
+      descBody = parsed.desc;
+      priceText = parsed.priceText;
+      rating = parsed.rating;
+      baseAddress = s.address ?? "";
+      baseLat = typeof s.lat === "number" ? s.lat : undefined;
+      baseLng = typeof s.lng === "number" ? s.lng : undefined;
+      const rawImgs = (s.image_urls ?? []).filter(Boolean) as string[];
+      userPhotos = rawImgs.filter((u) => !isLegacyPhotoUrl(u));
+      createdAt = s.created_at ?? null;
+      autoTags = s.auto_tags ?? [];
+      stationSeed = (s.station_info ?? "").trim();
+      googleMapsUriSeed = s.google_maps_uri ?? "";
+      availableFrom = s.available_from ?? null;
+      availableUntil = s.available_until ?? null;
+    }
 
     // 都道府県
-    const cleanAddr0 = (s.address ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "").trim();
+    const cleanAddr0 = baseAddress.replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "").trim();
     const prefMatch = cleanAddr0.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
     const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
 
-    // 利用者投稿写真（旧形式は除外）
-    const rawImgs = (s.image_urls ?? []).filter(Boolean) as string[];
-    let userPhotos = rawImgs.filter((u) => !isLegacyPhotoUrl(u));
+    const description = descBody;
     const hasUserPhotos = userPhotos.length > 0;
 
-    // ── Google Places で補強 ───────────────────────────────────────────────
-    let phone = "", website = "", openingHoursText = "", googleMapsUri = s.google_maps_uri ?? "";
-    let address = s.address ?? "";
+    // ── Google Places で補強（穴場・Moodログ共通）───────────────────────────
+    let phone = "", website = "", openingHoursText = "", googleMapsUri = googleMapsUriSeed;
+    let address = baseAddress;
     let placeId: string | undefined;
-    let placeLat = typeof s.lat === "number" ? s.lat : undefined;
-    let placeLng = typeof s.lng === "number" ? s.lng : undefined;
+    let placeLat = baseLat;
+    let placeLng = baseLng;
     let googlePhotos: string[] = [];
     let googleRating: number | null = null;
     let reviewCount: number | null = null;
@@ -98,8 +181,8 @@ export async function GET(request: Request) {
           body: JSON.stringify({
             textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1,
             // 投稿に座標があれば近傍を優先（名前だけ一致の遠方店を拾わないように）
-            ...(typeof s.lat === "number" && typeof s.lng === "number"
-              ? { locationBias: { circle: { center: { latitude: s.lat, longitude: s.lng }, radius: 1000 } } }
+            ...(typeof baseLat === "number" && typeof baseLng === "number"
+              ? { locationBias: { circle: { center: { latitude: baseLat, longitude: baseLng }, radius: 1000 } } }
               : {}),
           }),
           cache: "no-store",
@@ -113,9 +196,9 @@ export async function GET(request: Request) {
           // 投稿の座標から500m超、座標が無ければ市区不一致のGoogle結果は破棄する。
           if (p) {
             const gLat = p.location?.latitude, gLng = p.location?.longitude;
-            if (typeof s.lat === "number" && typeof s.lng === "number" &&
+            if (typeof baseLat === "number" && typeof baseLng === "number" &&
                 typeof gLat === "number" && typeof gLng === "number") {
-              if (haversineM(s.lat, s.lng, gLat, gLng) > 500) p = null;
+              if (haversineM(baseLat, baseLng, gLat, gLng) > 500) p = null;
             } else {
               const cityM = cleanAddr0.match(/^(?:東京都|北海道|大阪府|京都府|.{2,3}県)?(.+?[市区町村郡])/);
               if (cityM && !(p.formattedAddress ?? "").includes(cityM[1])) p = null;
@@ -160,7 +243,7 @@ export async function GET(request: Request) {
     if (!hasUserPhotos) userPhotos = googlePhotos;
 
     // ── 最寄駅 + 徒歩時間 ───────────────────────────────────────────────────
-    let stationText = (s.station_info ?? "").trim();
+    let stationText = stationSeed;
     if (!stationText && GOOGLE_API_KEY && typeof placeLat === "number" && typeof placeLng === "number") {
       try {
         const res = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
@@ -199,12 +282,12 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       spot: {
-        id: s.id,
+        id: respId,
         userTitle,            // 利用者が書いたスポット名
         placeName,            // 場所名（Google名 or 同じ）
-        description: desc,    // 利用者が書いた説明（大目玉）
-        priceText,            // 目安価格（利用者記入）
-        rating,               // 投稿者のおすすめ度（★1-5）
+        description,          // 利用者が書いた説明 / caption（大目玉）
+        priceText,            // 目安価格（穴場のみ）
+        rating,               // 投稿者のおすすめ度（★1-5・穴場のみ）
         googleRating,         // Google評価（平均）
         reviewCount,          // Google口コミ件数
         openNow,              // 営業中か
@@ -221,10 +304,10 @@ export async function GET(request: Request) {
         lat: placeLat,
         lng: placeLng,
         placeId,
-        autoTags: s.auto_tags ?? [],
-        createdAt: s.created_at,
-        availableFrom: s.available_from ?? null,   // 公開期間の開始（期間限定投稿時）
-        availableUntil: s.available_until ?? null, // 公開期間の終了
+        autoTags,
+        createdAt,
+        availableFrom,        // 公開期間の開始（期間限定投稿時・穴場）
+        availableUntil,       // 公開期間の終了
       },
     });
   } catch (e) {
