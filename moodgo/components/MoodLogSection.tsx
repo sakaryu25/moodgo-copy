@@ -51,7 +51,7 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // 新規ルート（expo-routerの型は次回生成で解決・実行時はファイルベースで有効）→ unknown経由でHrefにキャスト
-  const goPost = () => router.push({ pathname: '/mood-log', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
+  const goPost = () => router.push({ pathname: '/post', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
 
   const react = async (post: MoodPost, rtype: 'like' | 'helpful' | 'revisit') => {
     const mine = rtype === 'like' ? post.myLike : rtype === 'helpful' ? post.myHelpful : post.myRevisit;

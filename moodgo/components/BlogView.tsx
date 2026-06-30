@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Users, Wallet } from 'lucide-react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { apiFetch } from '@/lib/api';
@@ -107,7 +108,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         <CommunityFeed full />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
-      <TouchableOpacity activeOpacity={0.9} onPress={() => setMode('create')} style={s.fab}>
+      <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/post')} style={s.fab}>
         <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.fabInner}>
           <Text style={s.fabText}>＋ 投稿</Text>
         </LinearGradient>
