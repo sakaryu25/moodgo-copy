@@ -121,44 +121,21 @@ export default function PostScreen() {
       // おすすめ度を本文末に埋め込み（フィードが【おすすめ度】★Nを拾って★表示する）
       const descWithRating = [caption.trim(), rating > 0 ? `【おすすめ度】★${rating}` : ''].filter(Boolean).join('\n');
 
-      if (isExisting) {
-        // 既存スポット → moodログ(spot-posts・JSON)
-        const imgs = images.map(i => (i.base64 ? `data:image/jpeg;base64,${i.base64}` : '')).filter(Boolean);
-        const res = await apiFetch('/api/spot-posts', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
-          body: JSON.stringify({
-            action: 'create', deviceId, posterName, placeId: existingPlaceId, placeName: spotName, address,
-            caption: descWithRating, moodTags, visibility: 'spot_public_anonymous',
-            canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
-          }),
-        });
-        const d = await res.json();
-        if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくして再度お試しください'); setSubmitting(false); return; }
-      } else {
-        // 新スポット → 穴場(suggestions・multipart/form-data)
-        const fd = new FormData();
-        fd.append('spotName', spotName.trim());
-        if (deviceId) fd.append('deviceId', deviceId);
-        if (posterName) fd.append('posterName', posterName);
-        if (descWithRating) fd.append('description', descWithRating);
-        if (address) fd.append('address', address);
-        if (lat !== null) fd.append('lat', String(lat));
-        if (lng !== null) fd.append('lng', String(lng));
-        if (rating > 0) fd.append('rating', String(rating));
-        const sugTags = [...moodTags, '#穴場スポット'];
-        const pf = availFrom.trim(), pu = availUntil.trim();
-        if (pf || pu) sugTags.push('#期間限定');
-        if (pf) fd.append('availableFrom', pf);
-        if (pu) fd.append('availableUntil', pu);
-        fd.append('autoTags', JSON.stringify(sugTags));
-        images.forEach((img, i) => {
-          if (img.uri) fd.append('images', { uri: img.uri, name: `photo_${i}.jpg`, type: 'image/jpeg' } as unknown as Blob);
-        });
-        const res = await apiFetch('/api/suggestions', { method: 'POST', body: fd, timeoutMs: 30000 });
-        const d = await res.json();
-        if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくして再度お試しください'); setSubmitting(false); return; }
-      }
-      showToast('投稿ありがとう！✨', isExisting ? 'みんなの穴場に載りました' : '確認後にみんなの穴場へ載ります');
+      const imgs = images.map(i => (i.base64 ? `data:image/jpeg;base64,${i.base64}` : '')).filter(Boolean);
+      // 投稿は全て spot-posts に一本化。新スポット(placeId無し)はAPI側でplacesに仮登録され、admin承認で検索に出る。
+      const res = await apiFetch('/api/spot-posts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
+        body: JSON.stringify({
+          action: 'create', deviceId, posterName,
+          placeId: existingPlaceId || undefined, placeName: spotName, address,
+          lat: lat ?? undefined, lng: lng ?? undefined,
+          caption: descWithRating, moodTags, visibility: 'spot_public_anonymous',
+          canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
+        }),
+      });
+      const d = await res.json();
+      if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくして再度お試しください'); setSubmitting(false); return; }
+      showToast('投稿ありがとう！✨', existingPlaceId ? '投稿しました' : '新スポットとして投稿（確認後に検索にも反映）');
       router.back();
     } catch { showToast('投稿に失敗しました', '通信環境を確認して再度お試しください'); setSubmitting(false); }
   };
@@ -209,14 +186,6 @@ export default function PostScreen() {
                   <Text style={s.locBtnText}>{locating ? '取得中' : '現在地'}</Text>
                 </TouchableOpacity>
               </View>
-              {/* 期間限定（任意・新スポットのみ）*/}
-              <Text style={[s.label, { marginTop: 14 }]}>期間限定にする（任意）</Text>
-              <View style={s.periodRow}>
-                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={availFrom} onChangeText={setAvailFrom} placeholder="開始 例:2026-07-01" placeholderTextColor="#B9ABD2" />
-                <Text style={s.periodTilde}>〜</Text>
-                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={availUntil} onChangeText={setAvailUntil} placeholder="終了 例:2026-08-31" placeholderTextColor="#B9ABD2" />
-              </View>
-              <Text style={s.note}>期間を設けると、その期間だけ検索に出ます（みんなの穴場には残ります）。</Text>
             </>
           )}
 

@@ -129,6 +129,10 @@ export async function POST(req: Request) {
     const timeOfDay = body?.timeOfDay ? String(body.timeOfDay).slice(0, 10) : null;
     const wantRevisit = typeof body?.wantRevisit === "boolean" ? body.wantRevisit : null;
     const matchesPhoto = typeof body?.matchesPhoto === "boolean" ? body.matchesPhoto : null;
+    // 新スポット投稿用（既存placeなら不要）。placesへ仮登録するための住所・座標。
+    const newAddress = body?.address ? String(body.address).trim().slice(0, 300) : null;
+    const newLat = typeof body?.lat === "number" ? body.lat : (body?.lat != null && body.lat !== "" ? Number(body.lat) : null);
+    const newLng = typeof body?.lng === "number" ? body.lng : (body?.lng != null && body.lng !== "" ? Number(body.lng) : null);
 
     const images: string[] = Array.isArray(body?.images) ? body.images.filter((s: unknown) => typeof s === "string").slice(0, 3) : [];
     for (const img of images) {
@@ -157,9 +161,20 @@ export async function POST(req: Request) {
       }))).filter(Boolean) as { url: string; path: string }[];
     }
 
+    // 新スポット投稿(place_id無し)は places に仮登録(is_active=false=承認待ち)。admin承認で検索に出る＝穴場の役割を吸収。
+    let effectivePlaceId = placeId;
+    if (!placeId && placeName) {
+      const { data: place } = await db.from("places").insert({
+        name: placeName, address: newAddress || "日本", tags: [...moodTags, "#穴場スポット"],
+        area: null, nearest_station: null, source_type: "user", is_active: false,
+        lat: newLat, lng: newLng,
+      }).select("id").single();
+      if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
+    }
+
     // 本文 insert
     const { data: post, error: postErr } = await db.from("spot_posts").insert({
-      device_id: deviceId, poster_name: posterName, place_id: placeId, place_name: placeName || null,
+      device_id: deviceId, poster_name: posterName, place_id: effectivePlaceId, place_name: placeName || null,
       caption, mood_tags: moodTags, companion, visibility, group_id: groupId,
       time_of_day: timeOfDay, want_revisit: wantRevisit, matches_photo: matchesPhoto, status,
     }).select("id").single();
@@ -173,7 +188,7 @@ export async function POST(req: Request) {
     if (uploaded.length > 0) {
       const reuseOk = canUseAsSpotPhoto && (visibility === "spot_public_anonymous" || visibility === "public");
       const rows = uploaded.map((u, i) => ({
-        post_id: postId, place_id: placeId, place_name: placeName || null,
+        post_id: postId, place_id: effectivePlaceId, place_name: placeName || null,
         image_url: u.url, storage_path: u.path, device_id: deviceId,
         photo_source: "user_uploaded", can_use_as_spot_photo: reuseOk,
         license_declared: true, moderation_status: status, is_primary: i === 0, score: 0,

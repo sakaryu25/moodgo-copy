@@ -225,7 +225,7 @@ export async function GET(request: Request) {
 
     // cleanAddr は内部用なので返却から除外。穴場(suggestion)＋moodログ(moodlog)＋ブログ(blog)を新着順マージ。
     const out = items.map(({ cleanAddr, ...rest }) => ({ kind: "suggestion", ...rest }));
-    const merged = [...out, ...moodItems, ...blogItems]
+    const merged = [...moodItems]  // spot_posts(moodログ＋新スポット)に一本化。穴場(suggestions)/ブログ(blog)の合流は停止
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
