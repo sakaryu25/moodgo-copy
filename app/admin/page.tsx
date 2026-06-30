@@ -622,6 +622,45 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
 
 
 
+function PendingSpotsPanel({ secret }: { secret: string }) {
+  const [places, setPlaces] = useState<Array<{ id: string; name: string; address: string; tags: string[]; created_at: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/pending-spots?secret=${encodeURIComponent(secret)}`);
+      const d = await res.json();
+      setPlaces(d?.places ?? []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const act = async (id: string, action: "approve" | "reject") => {
+    await fetch("/api/admin/pending-spots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, id, action }) }).catch(() => {});
+    setPlaces(prev => prev.filter(p => p.id !== id));
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E" }}>🆕 ユーザー投稿の新スポット承認（{places.length}件）</h2>
+        <button onClick={load} style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer" }}>{loading ? "読込中…" : "更新"}</button>
+      </div>
+      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>統一投稿で新スポットが投稿されると、ここに承認待ちで溜まります。承認すると検索結果に出るようになります。</p>
+      {!loading && places.length === 0 && <p style={{ color: "#9CA3AF" }}>承認待ちの新スポットはありません。</p>}
+      {places.map(p => (
+        <div key={p.id} style={{ border: "1px solid #EEE", borderRadius: 10, padding: 12, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: "#1A0A2E" }}>{p.name}</div>
+            <div style={{ fontSize: 12, color: "#888" }}>{p.address}</div>
+            <div style={{ fontSize: 11, color: "#7C3AED", marginTop: 3 }}>{(p.tags ?? []).join(" ")}</div>
+          </div>
+          <button onClick={() => act(p.id, "approve")} style={{ background: "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>承認→検索に出す</button>
+          <button onClick={() => act(p.id, "reject")} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "9px 12px", fontWeight: 700, cursor: "pointer" }}>却下</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -631,7 +670,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2838,6 +2877,7 @@ export default function AdminPage() {
             { key: "mood-logs", label: "📝 moodログ管理" },
             { key: "blog-posts", label: "📰 投稿承認" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
+            { key: "pending-spots", label: "🆕 新スポット承認" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7554,6 +7594,7 @@ export default function AdminPage() {
         {tab === "mood-logs" && <MoodLogAdmin />}
         {tab === "blog-posts" && <BlogPostsAdmin />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
+        {tab === "pending-spots" && <PendingSpotsPanel secret={adminSecret} />}
 
       </div>
     </div>
