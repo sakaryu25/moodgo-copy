@@ -383,20 +383,21 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
     return full ? arr : arr.slice(0, 8);
   }, [visibleItems, sortMode, coords, full]);
 
-  // インスタExplore風 3列写真グリッド。コンテナ幅からタイルサイズを算出。
-  const GAP = 3, COL = 3;
-  const tileSize = gridW > 0 ? (gridW - GAP * (COL - 1)) / COL : 0;
-  const renderTile = (item: FeedItem) => {
+  // インスタExplore風グリッド。3列の小タイルに、一定間隔で2x2の大タイルを挟む。
+  const GAP = 3;
+  const CELL = gridW > 0 ? (gridW - GAP * 2) / 3 : 0;  // 小タイル(3列)
+  const BIG = CELL * 2 + GAP;                          // 大タイル(2x2)
+  const renderTile = (item: FeedItem, size: number) => {
     const photo = item.image_urls?.[0];
     const { Icon, color } = tagIcon(item.auto_tags);
     const m = kindMeta(item.kind);
     return (
-      <TouchableOpacity key={item.id} onPress={() => openSpot(item)} onLongPress={() => openReport(item)} activeOpacity={0.85} style={[s.tile, { width: tileSize, height: tileSize }]}>
+      <TouchableOpacity key={item.id} onPress={() => openSpot(item)} onLongPress={() => openReport(item)} activeOpacity={0.85} style={[s.tile, { width: size, height: size }]}>
         {photo ? (
           <Image source={{ uri: photo }} style={s.tileImg} contentFit="cover" transition={200} />
         ) : (
           <LinearGradient colors={['#C5D8F0', '#A8C8E8']} style={[s.tileImg, { alignItems: 'center', justifyContent: 'center' }]}>
-            <Icon size={Math.round(tileSize * 0.26)} color={color} strokeWidth={1.6} />
+            <Icon size={Math.round(size * 0.26)} color={color} strokeWidth={1.6} />
           </LinearGradient>
         )}
         <View style={[s.tileKind, { backgroundColor: m.bg }]}><Text style={[s.tileKindText, { color: m.color }]}>{m.label}</Text></View>
@@ -436,10 +437,33 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
         </View>
       )}
 
-      {/* ── 写真グリッド（インスタExplore風・タップで詳細・長押しで報告）── */}
+      {/* ── 写真グリッド（インスタExplore風・大タイルを一定間隔で・タップで詳細・長押しで報告）── */}
       {!loading && (
         <View onLayout={(e) => setGridW(e.nativeEvent.layout.width)} style={s.grid}>
-          {tileSize > 0 && sorted.map(renderTile)}
+          {CELL > 0 && (() => {
+            const rows: React.ReactNode[] = [];
+            let i = 0, unit = 0;
+            while (i < sorted.length) {
+              if (unit % 2 === 0 && i + 3 <= sorted.length) {
+                // フィーチャー帯: 2x2大タイル＋小タイル2枚（左右交互）
+                const bigLeft = unit % 4 === 0;
+                const big = renderTile(sorted[i], BIG);
+                const col = (
+                  <View key={`c${i}`} style={{ gap: GAP }}>
+                    {renderTile(sorted[i + 1], CELL)}
+                    {renderTile(sorted[i + 2], CELL)}
+                  </View>
+                );
+                rows.push(<View key={`f${i}`} style={s.gridRow}>{bigLeft ? [big, col] : [col, big]}</View>);
+                i += 3;
+              } else {
+                rows.push(<View key={`n${i}`} style={s.gridRow}>{sorted.slice(i, i + 3).map(it => renderTile(it, CELL))}</View>);
+                i += 3;
+              }
+              unit++;
+            }
+            return rows;
+          })()}
         </View>
       )}
 
@@ -564,7 +588,8 @@ const s = StyleSheet.create({
   moreBtnText: { fontSize: 13, fontWeight: '700', color: PURPLE },
   kindBadge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 7 },
   kindBadgeText: { fontSize: 9.5, fontWeight: '800' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
+  grid: { gap: 3 },
+  gridRow: { flexDirection: 'row', gap: 3 },
   tile: { borderRadius: 4, overflow: 'hidden', backgroundColor: '#E8E0FF', position: 'relative' },
   tileImg: { width: '100%', height: '100%' },
   tileKind: { position: 'absolute', top: 5, left: 5, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 1.5 },
