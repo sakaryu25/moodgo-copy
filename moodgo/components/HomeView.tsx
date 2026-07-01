@@ -37,7 +37,6 @@ import Svg, {
   Path,
   Stop,
   Text as SvgText,
-  TSpan,
 } from 'react-native-svg';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -124,49 +123,6 @@ function GradientLogo() {
       >
         MoodGo
       </SvgText>
-    </Svg>
-  );
-}
-
-// ─── GradientTagline ──────────────────────────────────────────────────────────
-// タグライン全体をSVGで描画し「気分」(en: "mood") だけブランドグラデにして目立たせる。
-// react-native-svg の TSpan で1行内に色を混在させる（インライン整列が崩れない）。
-function GradientTagline({ lang }: { lang: 'ja' | 'en' }) {
-  const fontSize = 28;
-  const lineH = 38;
-  const svgW = W * 0.94;
-  const svgH = lineH * 2 + 6;
-  const base = '#1A0A2E';
-  const common = { textAnchor: 'middle' as const, fontSize, fontWeight: '900' as const, letterSpacing: -0.6 };
-  return (
-    <Svg width={svgW} height={svgH}>
-      <Defs>
-        <SvgGradient id="tagGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <Stop offset="0%" stopColor={PINK} />
-          <Stop offset="50%" stopColor={PURPLE} />
-          <Stop offset="100%" stopColor={BLUE} />
-        </SvgGradient>
-      </Defs>
-      {/* 1行目 */}
-      {lang === 'en' ? (
-        <SvgText x="50%" y={fontSize} fill={base} {...common}>Find where to go</SvgText>
-      ) : (
-        <SvgText x="50%" y={fontSize} {...common}>
-          <TSpan fill={base}>今の</TSpan>
-          <TSpan fill="url(#tagGrad)">気分</TSpan>
-          <TSpan fill={base}>から、</TSpan>
-        </SvgText>
-      )}
-      {/* 2行目 */}
-      {lang === 'en' ? (
-        <SvgText x="50%" y={fontSize + lineH} {...common}>
-          <TSpan fill={base}>by </TSpan>
-          <TSpan fill="url(#tagGrad)">mood</TSpan>
-          <TSpan fill={base}>.</TSpan>
-        </SvgText>
-      ) : (
-        <SvgText x="50%" y={fontSize + lineH} fill={base} {...common}>行きたい場所を見つけよう</SvgText>
-      )}
     </Svg>
   );
 }
@@ -262,7 +218,14 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
           {/* ── Hero: logo + tagline ── */}
           <View style={s.hero}>
             <GradientLogo />
-            <GradientTagline lang={lang} />
+            {/* 「気分」(en: mood) をブランド色で強調。単一Textなので中央寄せ・ベースラインが崩れない。 */}
+            <Text style={s.tagline}>
+              {lang === 'en' ? (
+                <>Find where to go{'\n'}by <Text style={s.gPink}>m</Text><Text style={s.gPurple}>o</Text><Text style={s.gPurple}>o</Text><Text style={s.gBlue}>d</Text>.</>
+              ) : (
+                <>今の<Text style={s.gPink}>気</Text><Text style={s.gPurple}>分</Text>から、{'\n'}行きたい場所を見つけよう</>
+              )}
+            </Text>
             <Text style={s.heroSub}>
               {lang === 'en'
                 ? 'AI suggests the perfect spot for your vibe.'
@@ -388,6 +351,10 @@ const s = StyleSheet.create({
     fontSize: 28, fontWeight: '900', color: '#1A0A2E',
     textAlign: 'center', lineHeight: 38, letterSpacing: -0.6,
   },
+  // 「気分」(en: mood) 強調用のブランド色。ネストTextは親のサイズ/太さを継承し色だけ上書き。
+  gPink: { color: '#F56CB3' },
+  gPurple: { color: '#9B6BFF' },
+  gBlue: { color: '#4FA3FF' },
   // 要件④: 読みやすさ・信頼感向上 → fontSize 13→15, color #888→#555
   heroSub: {
     fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, fontWeight: '500',
