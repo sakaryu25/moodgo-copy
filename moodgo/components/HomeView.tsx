@@ -39,6 +39,11 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 
+// masked-view は本物のグラデ文字用。dev client 未搭載環境ではネイティブが無く描画時に投げるため、
+// 下の Tagline（エラーバウンダリ）で 2色版に安全フォールバックする。TestFlightビルドでは本物グラデ。
+let MaskedViewLib: any = null;
+try { MaskedViewLib = require('@react-native-masked-view/masked-view').default; } catch { MaskedViewLib = null; }
+
 // ─── Design tokens ───────────────────────────────────────────────────────────
 
 const { width: W } = Dimensions.get('window');
@@ -125,6 +130,68 @@ function GradientLogo() {
       </SvgText>
     </Svg>
   );
+}
+
+// ─── Tagline（「気分」= mood を強調）──────────────────────────────────────────
+
+// 2色版（確実・単一Textで中央寄せ/ベースライン不変）。masked-view 未搭載環境のフォールバックにも使う。
+function TwoColorTagline({ lang }: { lang: 'ja' | 'en' }) {
+  return (
+    <Text style={s.tagline}>
+      {lang === 'en'
+        ? <>Find where to go{'\n'}by <Text style={s.gPink}>m</Text><Text style={s.gPurple}>o</Text><Text style={s.gPurple}>o</Text><Text style={s.gBlue}>d</Text>.</>
+        : <>今の<Text style={s.gPink}>気</Text><Text style={s.gPurple}>分</Text>から、{'\n'}行きたい場所を見つけよう</>}
+    </Text>
+  );
+}
+
+// 単語だけ本物のなめらかグラデ（文字型に LinearGradient をマスク）
+function GradientWord({ text }: { text: string }) {
+  const MV = MaskedViewLib;
+  return (
+    <MV maskElement={<Text style={s.tagline}>{text}</Text>}>
+      <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+        <Text style={[s.tagline, { opacity: 0 }]}>{text}</Text>
+      </LinearGradient>
+    </MV>
+  );
+}
+
+// なめらかグラデ版。1行を「Text＋GradientWord＋Text」の中央寄せRowで組む（行全体は必ず中央）。
+function SmoothTagline({ lang }: { lang: 'ja' | 'en' }) {
+  return (
+    <View style={s.taglineBlock}>
+      {lang === 'en' ? (
+        <>
+          <Text style={s.tagline}>Find where to go</Text>
+          <View style={s.taglineRow}>
+            <Text style={s.tagline}>by </Text>
+            <GradientWord text="mood" />
+            <Text style={s.tagline}>.</Text>
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={s.taglineRow}>
+            <Text style={s.tagline}>今の</Text>
+            <GradientWord text="気分" />
+            <Text style={s.tagline}>から、</Text>
+          </View>
+          <Text style={s.tagline}>行きたい場所を見つけよう</Text>
+        </>
+      )}
+    </View>
+  );
+}
+
+// masked-view が使えれば SmoothTagline、描画で投げたら（dev client未搭載）2色版に自動フォールバック。
+class Tagline extends React.Component<{ lang: 'ja' | 'en' }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed || !MaskedViewLib) return <TwoColorTagline lang={this.props.lang} />;
+    return <SmoothTagline lang={this.props.lang} />;
+  }
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -218,14 +285,8 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
           {/* ── Hero: logo + tagline ── */}
           <View style={s.hero}>
             <GradientLogo />
-            {/* 「気分」(en: mood) をブランド色で強調。単一Textなので中央寄せ・ベースラインが崩れない。 */}
-            <Text style={s.tagline}>
-              {lang === 'en' ? (
-                <>Find where to go{'\n'}by <Text style={s.gPink}>m</Text><Text style={s.gPurple}>o</Text><Text style={s.gPurple}>o</Text><Text style={s.gBlue}>d</Text>.</>
-              ) : (
-                <>今の<Text style={s.gPink}>気</Text><Text style={s.gPurple}>分</Text>から、{'\n'}行きたい場所を見つけよう</>
-              )}
-            </Text>
+            {/* 「気分」(en: mood) を強調。masked-viewで本物グラデ、未搭載環境は2色版に自動フォールバック。 */}
+            <Tagline lang={lang} />
             <Text style={s.heroSub}>
               {lang === 'en'
                 ? 'AI suggests the perfect spot for your vibe.'
@@ -355,6 +416,9 @@ const s = StyleSheet.create({
   gPink: { color: '#F56CB3' },
   gPurple: { color: '#9B6BFF' },
   gBlue: { color: '#4FA3FF' },
+  // なめらかグラデ版のレイアウト。blockで2行を1かたまりにして行間を安定、rowで1行を中央寄せ。
+  taglineBlock: { alignItems: 'center' },
+  taglineRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-end' },
   // 要件④: 読みやすさ・信頼感向上 → fontSize 13→15, color #888→#555
   heroSub: {
     fontSize: 15, color: '#555', textAlign: 'center', lineHeight: 22, fontWeight: '500',
