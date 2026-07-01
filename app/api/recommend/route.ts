@@ -6936,7 +6936,7 @@ async function handleRecommend(request: Request) {
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiResult] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
           //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
-          (hasLocation && !skipAllSupplements)
+          (hasLocation && !skipAllSupplements && !RECOMMEND_DISABLE_GOOGLE)
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
@@ -6946,8 +6946,9 @@ async function handleRecommend(request: Request) {
             : Promise.resolve([]),
           // Yahoo!ローカルサーチ 補足検索（最終15件確保のため多めに15件取得＝補填プール用）
           //   B: Supabaseが10件以上 or 15件以上なら Yahoo を呼ばない（コスト削減）
-          (hasLocation && !skipAllSupplements && !skipYahooOnly)
+          (hasLocation && !skipAllSupplements && !skipYahooOnly && !RECOMMEND_DISABLE_GOOGLE)
             // Yahoo結果はGoogleで写真補完する（=コスト）。表示は5件なので取得数を10に抑える
+            // RECOMMEND_DISABLE_GOOGLE 時は Yahoo検索も停止（外部検索オフ＝DBのみ）。
             ? fetchYahooSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", effectiveDeepDive,
@@ -7743,24 +7744,10 @@ async function handleRecommend(request: Request) {
             .filter(e => e.googlePlaceId && e.name)
             // 飲食NGコンテキストでは飲食店をSupabaseに保存しない（mood汚染を防ぐ＝根本対策）
             .filter(e => isFoodAllowedContext(answers.mood, effectiveDeepDive) || !isRestaurantName(e.name));
-          // Yahoo補足結果も保存（google_place_id無し → 名前+住所でdedup・由来は"yahoo"）。
-          //   Yahoo結果はGoogleで写真補完済み。これでYahooで見つけた店も次回からSupabaseで賄える。
-          const yahooEntries = (yahooSupplements as Array<Record<string, unknown>>)
-            .filter(y => y.title && typeof y.lat === "number" && typeof y.lng === "number")
-            .map(y => ({
-              googlePlaceId: String(y.placeId ?? ""),  // 写真補完で取得したGoogle Place ID（item4）
-              name: String(y.title ?? ""),
-              address: String(y.address ?? ""),
-              lat: y.lat as number,
-              lng: y.lng as number,
-              photoUrl: (y.photoUrl as string | undefined) ?? null,
-              rating: (y.rating as number | null | undefined) ?? null,
-              openNow: (y.openNow as boolean | null | undefined) ?? null,
-            }))
-            .filter(e => e.name)
-            .filter(e => isFoodAllowedContext(answers.mood, effectiveDeepDive) || !isRestaurantName(e.name));
-
-          if (googleEntries.length > 0 || yahooEntries.length > 0) {
+          // 【Yahoo保存は廃止（規約対応 2026-07-01）】Yahoo(YOLP)結果もキャッシュ制限があり、
+          //   Google同様に名前/住所の恒久保存は規約グレー → Yahoo補足の auto-save を撤去。
+          //   Yahoo検索自体も RECOMMEND_DISABLE_GOOGLE で停止（上の補足取得を参照）。
+          if (googleEntries.length > 0) {
             const { scheduleAutoSave, scheduleGenericAutoSave, detectFoodGenreTag } =
               await import("@/lib/google-places-auto-save");
             const foodGenreTag = isFoodMood ? detectFoodGenreTag(effectiveDeepDive || (answers.mood ?? "")) : null;
@@ -7769,10 +7756,6 @@ async function handleRecommend(request: Request) {
             if (googleEntries.length > 0) {
               if (foodGenreTag) scheduleAutoSave(googleEntries, foodGenreTag);
               else if (genericTags.length > 0) scheduleGenericAutoSave(googleEntries, genericTags);
-            }
-            // Yahoo: mustタグで保存（由来=yahoo）
-            if (yahooEntries.length > 0 && genericTags.length > 0) {
-              scheduleGenericAutoSave(yahooEntries, genericTags, "yahoo");
             }
           }
         } catch { /* 自動保存失敗は検索結果に影響させない */ }
