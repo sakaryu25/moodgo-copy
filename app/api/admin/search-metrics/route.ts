@@ -9,6 +9,25 @@ import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const ADMIN = ADMIN_SECRET;
 
+// Google Places API (New) の単価 → ¥換算。recommend の FIELD_MASK は rating/営業時間/priceLevel を
+// 含むため Text/Nearby は Enterprise SKU、写真は Photo SKU。約 ¥150/$（レート/為替で変動＝ここを更新）。
+const YEN_PER_USD = 150;
+const PRICE_YEN = {
+  searchText: 0.035 * YEN_PER_USD,  // ≈ ¥5.25
+  nearby:     0.035 * YEN_PER_USD,  // ≈ ¥5.25
+  photo:      0.007 * YEN_PER_USD,  // ≈ ¥1.05
+};
+// 内訳列が無い旧行は google_calls から概算（検索寄りの平均単価）
+const FALLBACK_YEN_PER_CALL = 4;
+const costYenOf = (r: {
+  google_calls?: number | null; google_searchtext?: number | null;
+  google_nearby?: number | null; google_photo?: number | null;
+}): number => {
+  const st = r.google_searchtext, nb = r.google_nearby, ph = r.google_photo;
+  if (st == null && nb == null && ph == null) return (r.google_calls ?? 0) * FALLBACK_YEN_PER_CALL;
+  return (st ?? 0) * PRICE_YEN.searchText + (nb ?? 0) * PRICE_YEN.nearby + (ph ?? 0) * PRICE_YEN.photo;
+};
+
 export async function GET(request: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const { searchParams } = new URL(request.url);
@@ -20,7 +39,7 @@ export async function GET(request: Request) {
   try {
     const { data, error } = await supabase
       .from("search_metrics")
-      .select("mood, deep_dive, google_calls, rec_count, source, created_at")
+      .select("mood, deep_dive, google_calls, google_searchtext, google_nearby, google_photo, rec_count, source, created_at")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(5000);
@@ -34,15 +53,17 @@ export async function GET(request: Request) {
     const n = rows.length;
     const zero = rows.filter(r => (r.google_calls ?? 0) === 0).length;
     const sumGoogle = rows.reduce((s, r) => s + (r.google_calls ?? 0), 0);
+    const totalCostYen = rows.reduce((s, r) => s + costYenOf(r), 0);
 
     // 気分別の集計
-    const byMood = new Map<string, { n: number; zero: number; sumGoogle: number }>();
+    const byMood = new Map<string, { n: number; zero: number; sumGoogle: number; cost: number }>();
     for (const r of rows) {
       const k = r.mood || "(不明)";
-      const e = byMood.get(k) ?? { n: 0, zero: 0, sumGoogle: 0 };
+      const e = byMood.get(k) ?? { n: 0, zero: 0, sumGoogle: 0, cost: 0 };
       e.n += 1;
       if ((r.google_calls ?? 0) === 0) e.zero += 1;
       e.sumGoogle += r.google_calls ?? 0;
+      e.cost += costYenOf(r);
       byMood.set(k, e);
     }
     const moods = [...byMood.entries()]
@@ -51,6 +72,7 @@ export async function GET(request: Request) {
         searches: e.n,
         googleZeroRate: e.n ? Math.round((e.zero / e.n) * 1000) / 10 : 0,
         avgGoogleCalls: e.n ? Math.round((e.sumGoogle / e.n) * 10) / 10 : 0,
+        costYen: Math.round(e.cost),
       }))
       .sort((a, b) => b.searches - a.searches);
 
@@ -60,6 +82,8 @@ export async function GET(request: Request) {
       totalSearches: n,
       googleZeroRate: n ? Math.round((zero / n) * 1000) / 10 : 0,   // %
       avgGoogleCallsPerSearch: n ? Math.round((sumGoogle / n) * 10) / 10 : 0,
+      totalCostYen: Math.round(totalCostYen),                                  // 期間合計¥
+      avgCostYenPerSearch: n ? Math.round((totalCostYen / n) * 10) / 10 : 0,   // 1検索あたり¥
       byMood: moods,
     });
   } catch (e) {

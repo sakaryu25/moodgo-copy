@@ -5,8 +5,8 @@
 //   ・気分別の検索数・Googleゼロ率・平均Google呼び出し
 import { useCallback, useEffect, useState } from "react";
 
-type MoodRow = { mood: string; searches: number; googleZeroRate: number; avgGoogleCalls: number };
-type Data = { ok: boolean; days?: number; totalSearches?: number; googleZeroRate?: number; avgGoogleCallsPerSearch?: number; byMood?: MoodRow[]; tableMissing?: boolean; error?: string };
+type MoodRow = { mood: string; searches: number; googleZeroRate: number; avgGoogleCalls: number; costYen?: number };
+type Data = { ok: boolean; days?: number; totalSearches?: number; googleZeroRate?: number; avgGoogleCallsPerSearch?: number; totalCostYen?: number; avgCostYenPerSearch?: number; byMood?: MoodRow[]; tableMissing?: boolean; error?: string };
 const C = { purple: "#7C3AED", gray: "#6B7280", bg: "#F7F5FB", green: "#16A34A", amber: "#D97706" };
 
 export default function MetricsAdmin({ secret: propSecret }: { secret?: string } = {}) {
@@ -74,7 +74,11 @@ export default function MetricsAdmin({ secret: propSecret }: { secret?: string }
             {card("総検索数", `${(data.totalSearches ?? 0).toLocaleString()}`, `直近${data.days}日`)}
             {card("Googleゼロ率", `${data.googleZeroRate ?? 0}%`, "高いほど安い（Supabaseで賄えた割合）")}
             {card("平均Google呼び出し", `${data.avgGoogleCallsPerSearch ?? "-"}`, "1検索あたり（少ないほど安い）")}
+            {card("推定コスト", `¥${(data.totalCostYen ?? 0).toLocaleString()}`, `1検索 ¥${data.avgCostYenPerSearch ?? 0}・直近${data.days}日`)}
           </div>
+          <p style={{ fontSize: 11, color: C.gray, marginTop: -6, marginBottom: 10 }}>
+            ¥はGoogle Places API単価の概算（Text/Nearby≈¥5.3・写真≈¥1.1/回・約¥150/$）。Googleゼロ率が高い＝¥0の検索が多い＝安い。
+          </p>
           <h3 style={{ color: "#3A1D6E", fontSize: 15 }}>気分別</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 12, overflow: "hidden" }}>
             <thead>
@@ -83,6 +87,7 @@ export default function MetricsAdmin({ secret: propSecret }: { secret?: string }
                 <th style={{ padding: 10, fontSize: 13 }}>検索数</th>
                 <th style={{ padding: 10, fontSize: 13 }}>Googleゼロ率</th>
                 <th style={{ padding: 10, fontSize: 13 }}>平均Google呼び出し</th>
+                <th style={{ padding: 10, fontSize: 13 }}>推定¥</th>
               </tr>
             </thead>
             <tbody>
@@ -92,6 +97,7 @@ export default function MetricsAdmin({ secret: propSecret }: { secret?: string }
                   <td style={{ padding: 10, fontSize: 13 }}>{m.searches.toLocaleString()}</td>
                   <td style={{ padding: 10, fontSize: 13, color: m.googleZeroRate >= 50 ? C.green : C.gray }}>{m.googleZeroRate}%</td>
                   <td style={{ padding: 10, fontSize: 13 }}>{m.avgGoogleCalls}</td>
+                  <td style={{ padding: 10, fontSize: 13, fontWeight: 700, color: "#B45309" }}>¥{(m.costYen ?? 0).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

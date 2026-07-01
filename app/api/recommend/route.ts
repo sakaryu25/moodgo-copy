@@ -6242,6 +6242,9 @@ export async function POST(request: Request): Promise<Response> {
       logSearchMetric({
         mood: meta.mood, area: meta.area, deep_dive: meta.deepDive,
         google_calls: counts.searchText + counts.searchNearby + counts.photo,
+        google_searchtext: counts.searchText,   // 内訳（¥集計用）: Text Search
+        google_nearby: counts.searchNearby,     // 内訳: Nearby Search
+        google_photo: counts.photo,             // 内訳: 写真取得
         total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
       });
       // 15件揃った標準検索のみスナップショット保存（薄い/失敗結果はキャッシュしない）
