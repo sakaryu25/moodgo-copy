@@ -11,7 +11,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Clock, MapPin, Settings } from 'lucide-react-native';
+import { Clock, MapPin, MessagesSquare } from 'lucide-react-native';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
 import React, { useEffect, useRef } from 'react';
@@ -202,15 +202,15 @@ type Props = {
   lang: 'ja' | 'en';
   onStart: () => void;
   onStartWithMood?: (moodKey: string) => void;  // （旧）気分ショートカット用・現在未使用
-  onShowSettings: () => void;
   onShowFeatured: () => void;
   onShowHistory?: () => void;  // 履歴サブ画面を開く（NativeTabs移行で履歴をタブから外したため）
-  onOpenAiChat: () => void;  // AI相談を開く（位置情報自動取得）
+  onOpenAiChat: () => void;    // AI相談を開く（旧・設定ギアの位置＝右上のグラデボタン）
+  onOpenTsubuyaki: () => void; // つぶやき(GroupsView)を開く（チャットの隣のボタン）
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured, onShowHistory, onOpenAiChat }: Props) {
+export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki }: Props) {
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
@@ -261,7 +261,8 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
               <Clock size={20} color="#888" strokeWidth={2} />
             </PuniPressable>
           )}
-          <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowSettings}>
+          {/* つぶやき（GroupsView）を開く。設定ギアは撤去（設定はプロフィールタブへ） */}
+          <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onOpenTsubuyaki}>
             {LIQUID_GLASS && (
               <GlassView
                 glassEffectStyle="regular"
@@ -269,7 +270,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
                 style={[StyleSheet.absoluteFill, { borderRadius: 20 }]}
               />
             )}
-            <Settings size={20} color="#888" strokeWidth={2} />
+            <MessagesSquare size={19} color="#7C3AED" strokeWidth={2} />
           </PuniPressable>
         </View>
       </View>

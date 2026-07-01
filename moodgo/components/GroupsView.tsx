@@ -149,9 +149,11 @@ type Props = {
   onChatOpenChange?: (open: boolean) => void;
   /** いいねした場所・投稿（チャットからそのまま共有するため） */
   favorites?: FavoriteItem[];
+  /** つぶやきを独立ルート(/groups)で開いた時の「戻る」。タブ表示時は未指定でスペーサーのまま。 */
+  onBack?: () => void;
 };
 
-export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites = [] }: Props) {
+export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites = [], onBack }: Props) {
   const insets = useSafeAreaInsets();
 
   const [deviceId, setDeviceId]   = useState('');
@@ -430,7 +432,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!nick) {
       Alert.alert(
         '名前を設定してね',
-        'ホーム右上の⚙設定 → プロフィールの「名前」を入れると、グループを作成・参加できるよ',
+        'プロフィールタブ → 設定 → プロフィールの「名前」を入れると、グループを作成・参加できるよ',
       );
       return null;
     }
@@ -1591,7 +1593,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
       <View style={s.header}>
-        <View style={{ width: 40 }} />
+        {onBack ? (
+          <PuniPressable onPress={onBack} style={s.backCircle}>
+            <ChevronLeft size={20} color="#7C3AED" strokeWidth={2.5} />
+          </PuniPressable>
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
         <Text style={s.headerTitle}>トーク</Text>
         <PuniPressable onPress={openAdd} style={s.addBtn}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.addBtnInner}>
@@ -1661,7 +1669,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               </View>
             ) : (
               <Text style={s.warnText}>
-                先にホーム右上の⚙設定 → プロフィールで「名前」を入れてね
+                先にプロフィールタブ → 設定 → プロフィールで「名前」を入れてね
               </Text>
             )}
 

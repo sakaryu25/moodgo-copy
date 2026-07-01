@@ -19,13 +19,13 @@ export default function TabsLayout() {
         <Label hidden>みんな</Label>
         <Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="groups">
-        <Label hidden>つぶやき</Label>
-        <Icon sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} />
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="featured">
         <Label hidden>特集</Label>
         <Icon sf={{ default: 'star', selected: 'star.fill' }} />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="profile">
+        <Label hidden>プロフィール</Label>
+        <Icon sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }} />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

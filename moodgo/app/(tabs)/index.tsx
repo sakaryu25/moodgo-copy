@@ -41,6 +41,8 @@ import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
+// 設定まわりの共有state（言語/プロフィール/非表示）。設定UIをプロフィールタブへ移したためストア化。
+import { useSettings, hydrateSettings, saveProfile, addBlockedPlace } from '@/lib/settingsStore';
 import * as Location from 'expo-location';
 import { Asset } from 'expo-asset';
 import { preloadMaps } from '@/components/FeatureScreen';
@@ -72,7 +74,6 @@ import ProfileSetup     from '@/components/ProfileSetup';
 import Onboarding       from '@/components/Onboarding';
 import QuizFlow         from '@/components/QuizFlow';
 import ResultsView      from '@/components/ResultsView';
-import SettingsView     from '@/components/SettingsView';
 import type {
   Recommendation, FavoriteItem, FeedbackItem, HistoryItem,
   Answers, DynamicQuestion, FeaturedPageSummary,
@@ -136,10 +137,9 @@ export default function Home() {
   const [profileLoaded,    setProfileLoaded]    = useState(false);
   const [onboarded,        setOnboarded]        = useState(false);   // 初回オンボーディングを通過済みか
   const [firstRunStep,     setFirstRunStep]     = useState<'onboarding' | 'profile'>('onboarding');
-  const [profileAge,       setProfileAge]       = useState('');
-  const [profileGender,    setProfileGender]    = useState('');
-  const [profilePrefecture, setProfilePrefecture] = useState('');
-  const [showSettings,     setShowSettings]     = useState(false);
+  // 言語/プロフィール/非表示スポットは settingsStore（共有）から取得。設定UIはプロフィールタブへ移設。
+  const settings = useSettings();
+  const { lang, profileAge, profileGender, blockedPlaces } = settings;
 
   // ── Results ──────────────────────────────────────────────────────────────
   const [apiRecommendations,     setApiRecommendations]     = useState<Recommendation[]>([]);
@@ -164,8 +164,6 @@ export default function Home() {
 
   // ── UI ───────────────────────────────────────────────────────────────────
   const [photoIndices,  setPhotoIndices]  = useState<Record<string, number>>({});
-  const [blockedPlaces, setBlockedPlaces] = useState<string[]>([]);
-  const [lang,          setLang]          = useState<'ja' | 'en'>('ja');
 
   // ── Favorites & History ──────────────────────────────────────────────────
   const [favorites,           setFavorites]           = useState<FavoriteItem[]>([]);
@@ -202,6 +200,8 @@ export default function Home() {
     Asset.loadAsync([require('../../assets/images/home-featured.png')]).catch(() => {});
     // G-2: A/Bテスト variant をロード
     getABVariant().then(setAbVariant).catch(() => {});
+    // 設定ストア（言語/プロフィール/非表示）を AsyncStorage から初期化
+    hydrateSettings();
   }, []);
 
   useEffect(() => {
@@ -209,7 +209,8 @@ export default function Home() {
       const faves   = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
       const hist    = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
       const feed    = await loadJSON<FeedbackItem[]>(FEEDBACK_KEY, []);
-      const blocked = await loadJSON<string[]>(BLOCKED_PLACES_KEY, []);
+      // プロフィール本体（言語/年代/性別/都道府県）は settingsStore が保持。ここでは
+      // 初回オンボーディング要否の判定にだけ PROFILE_KEY を参照する（表示/検索用stateは持たない）。
       const profile = await loadJSON<{ age?: string; gender?: string; prefecture?: string }>(PROFILE_KEY, {});
       setFavorites(faves);
       // 履歴内の旧形式photoURLをphoto-proxy経由に変換（保存時の旧URL対策）
@@ -219,10 +220,6 @@ export default function Home() {
       }));
       setHistory(fixedHist);
       setPastFeedback(feed);
-      setBlockedPlaces(blocked);
-      if (profile.age)        setProfileAge(profile.age);
-      if (profile.gender)     setProfileGender(profile.gender);
-      if (profile.prefecture) setProfilePrefecture(profile.prefecture);
       setProfileSetupDone(!!(profile.age || profile.gender));
       // 初回オンボーディング: 明示フラグ、または既存ユーザー（プロフィール/履歴/お気に入りあり）は通過済み扱い
       const ob = await loadJSON<boolean>(ONBOARDED_KEY, false);
@@ -233,20 +230,25 @@ export default function Home() {
 
   useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,     favorites);    }, [favorites,    profileLoaded]);
 
-  // 詳細ページ等(別ルート)で♡された内容をストレージから再読込して同期
-  // → 穴場詳細でいいねした投稿が、戻った瞬間にお気に入りへリアルタイム反映される
+  // 別ルート(詳細ページ/プロフィールタブ)での変更をホームに再同期する。
+  // → 穴場詳細でいいねした投稿が戻った瞬間お気に入りに反映され、
+  //   プロフィールタブの設定「履歴をクリア」もホームに戻れば反映される。
   useFocusEffect(
     useCallback(() => {
       if (!profileLoaded) return;
       (async () => {
         const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
         setFavorites(faves);
+        const hist = await loadJSON<HistoryItem[]>(HISTORY_KEY, []);
+        setHistory(hist.map(item => ({
+          ...item,
+          recommendations: (item.recommendations ?? []).map(fixRec),
+        })));
       })();
     }, [profileLoaded])
   );
   useEffect(() => { if (profileLoaded) saveJSON(HISTORY_KEY,       history);      }, [history,      profileLoaded]);
   useEffect(() => { if (profileLoaded) saveJSON(FEEDBACK_KEY,      pastFeedback); }, [pastFeedback, profileLoaded]);
-  useEffect(() => { if (profileLoaded) saveJSON(BLOCKED_PLACES_KEY, blockedPlaces); }, [blockedPlaces, profileLoaded]);
 
   // ─── Location ──────────────────────────────────────────────────────────
 
@@ -953,12 +955,9 @@ export default function Home() {
         <AppBackground />
         <ProfileSetup
           onDone={(age, gender, prefecture) => {
-            setProfileAge(age);
-            setProfileGender(gender);
-            setProfilePrefecture(prefecture);
+            saveProfile(age, gender, prefecture);      // 共有ストアへ保存（PROFILE_KEYも更新）
             setProfileSetupDone(!!(age || gender));   // 入力があればプロフィール完了
             setOnboarded(true);                        // スキップでも初回フローは完了＝再表示しない
-            saveJSON(PROFILE_KEY, { age, gender, prefecture });
             saveJSON(ONBOARDED_KEY, true);
           }}
         />
@@ -1088,7 +1087,7 @@ export default function Home() {
             photoIndices={photoIndices}
             onSetPhotoIndices={setPhotoIndices}
             blockedPlaces={blockedPlaces}
-            onBlockPlace={(title) => setBlockedPlaces(prev => [...prev, title])}
+            onBlockPlace={(title) => addBlockedPlace(title)}
             // ── フィードバック ────────────────────────────────────────────────
             feedbackRating={feedbackRating}
             feedbackSubmitted={feedbackSubmitted}
@@ -1210,10 +1209,10 @@ export default function Home() {
           setStep(2);
           setStarted(true);
         }}
-        onShowSettings={() => setShowSettings(true)}
         onShowFeatured={() => router.navigate('/featured')}
         onShowHistory={() => setHomeView('history')}
         onOpenAiChat={handleOpenAiChat}
+        onOpenTsubuyaki={() => router.push('/groups')}
       />
     );
   };
@@ -1224,28 +1223,6 @@ export default function Home() {
       <Animated.View style={{ flex: 1, opacity: tabFade }}>
         {renderContent()}
       </Animated.View>
-      <SettingsView
-        visible={showSettings}
-        onClose={() => setShowSettings(false)}
-        lang={lang}
-        onChangeLang={(l) => setLang(l)}
-        profileAge={profileAge}
-        profileGender={profileGender}
-        profilePrefecture={profilePrefecture}
-        onSaveProfile={(age, gender, prefecture) => {
-          setProfileAge(age);
-          setProfileGender(gender);
-          setProfilePrefecture(prefecture);
-          saveJSON(PROFILE_KEY, { age, gender, prefecture });
-        }}
-        onClearHistory={() => {
-          setHistory([]);
-          setShowSettings(false);
-        }}
-        blockedPlaces={blockedPlaces}
-        onUnblockPlace={(title) => setBlockedPlaces(prev => prev.filter(t => t !== title))}
-        onClearBlocked={() => setBlockedPlaces([])}
-      />
 
       {/* AI相談 入力画面（最前面オーバーレイ・TabBarより上に重ねて下部バーを隠す）*/}
       {aiChatOpen && (
