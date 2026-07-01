@@ -24,8 +24,22 @@ const apiCounterStore = new AsyncLocalStorage<{ counts: ApiCounts }>();
 function newApiCounts(): ApiCounts {
   return { searchText: 0, searchNearby: 0, geocode: 0, routes: 0, photo: 0, other: 0 };
 }
+// ── Google-offモード（env・既定OFF＝従来通り）─────────────────────────────────
+//   RECOMMEND_DISABLE_GOOGLE=true にすると recommend からの Google Places 検索
+//   (searchText/searchNearby) を止め、DB(Supabase/OSM)だけで結果を返す。
+//   → ①coverage穴埋め ②写真/営業時間のGoogleエンリッチ ③補足が空になり auto-save
+//     (Google→DB保存)も自動停止＝規約リスクも消える。
+//   geocode(位置解決)/routes(経路・移動時間)は対象外＝GSI優先で元々最小・維持。
+//   代償: 極端に薄いエリアで結果が少なめ・一部写真がプレースホルダー・最寄駅が出ない場合あり。
+//   Vercelのenvで即オン/オフ・全気分に即反映（コード改変なしで戻せる）。
+const RECOMMEND_DISABLE_GOOGLE = process.env.RECOMMEND_DISABLE_GOOGLE === "true";
+
 /** Google API を叩く fetch のラッパー。URLから種別を判定してカウントする。 */
 function gfetch(url: string, init?: RequestInit): Promise<Response> {
+  if (RECOMMEND_DISABLE_GOOGLE && (url.includes("places:searchText") || url.includes("places:searchNearby"))) {
+    // 実際には叩かず空の結果を返す＝呼び出し側は「候補0件」として安全に処理（＝課金ゼロ・カウントもしない）。
+    return Promise.resolve(new Response('{"places":[]}', { status: 200, headers: { "Content-Type": "application/json" } }));
+  }
   const store = apiCounterStore.getStore();
   if (store) {
     const c = store.counts;
