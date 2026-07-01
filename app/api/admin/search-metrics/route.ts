@@ -39,13 +39,16 @@ export async function GET(request: Request) {
   try {
     const { data, error } = await supabase
       .from("search_metrics")
-      .select("mood, deep_dive, google_calls, google_searchtext, google_nearby, google_photo, rec_count, source, created_at")
+      // 内訳列(google_searchtext等)がSQL未適用でも 42703 で落ちないよう全列取得。
+      // costYenOf は欠損列を undefined 扱いして google_calls から概算するので安全。
+      .select("*")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(5000);
     if (error) {
-      if (error.code === "42P01" || error.code === "PGRST205") {
-        return NextResponse.json({ ok: false, tableMissing: true, error: "search_metrics 未作成（supabase/search-metrics.sql を実行）" });
+      // 42P01=テーブル無し / 42703=列無し → どちらも「SQL実行して」を案内（真っ白回避）
+      if (error.code === "42P01" || error.code === "PGRST205" || error.code === "42703") {
+        return NextResponse.json({ ok: false, tableMissing: true, error: "search_metrics のテーブル/列が未作成（supabase/search-metrics.sql を実行）" });
       }
       throw error;
     }
@@ -87,6 +90,7 @@ export async function GET(request: Request) {
       byMood: moods,
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = (e as { message?: string })?.message ?? String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
