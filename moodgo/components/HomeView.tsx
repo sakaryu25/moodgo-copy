@@ -37,6 +37,7 @@ import Svg, {
   Path,
   Stop,
   Text as SvgText,
+  TSpan,
 } from 'react-native-svg';
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -123,6 +124,49 @@ function GradientLogo() {
       >
         MoodGo
       </SvgText>
+    </Svg>
+  );
+}
+
+// ─── GradientTagline ──────────────────────────────────────────────────────────
+// タグライン全体をSVGで描画し「気分」(en: "mood") だけブランドグラデにして目立たせる。
+// react-native-svg の TSpan で1行内に色を混在させる（インライン整列が崩れない）。
+function GradientTagline({ lang }: { lang: 'ja' | 'en' }) {
+  const fontSize = 28;
+  const lineH = 38;
+  const svgW = W * 0.94;
+  const svgH = lineH * 2 + 6;
+  const base = '#1A0A2E';
+  const common = { textAnchor: 'middle' as const, fontSize, fontWeight: '900' as const, letterSpacing: -0.6 };
+  return (
+    <Svg width={svgW} height={svgH}>
+      <Defs>
+        <SvgGradient id="tagGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <Stop offset="0%" stopColor={PINK} />
+          <Stop offset="50%" stopColor={PURPLE} />
+          <Stop offset="100%" stopColor={BLUE} />
+        </SvgGradient>
+      </Defs>
+      {/* 1行目 */}
+      {lang === 'en' ? (
+        <SvgText x="50%" y={fontSize} fill={base} {...common}>Find where to go</SvgText>
+      ) : (
+        <SvgText x="50%" y={fontSize} {...common}>
+          <TSpan fill={base}>今の</TSpan>
+          <TSpan fill="url(#tagGrad)">気分</TSpan>
+          <TSpan fill={base}>から、</TSpan>
+        </SvgText>
+      )}
+      {/* 2行目 */}
+      {lang === 'en' ? (
+        <SvgText x="50%" y={fontSize + lineH} {...common}>
+          <TSpan fill={base}>by </TSpan>
+          <TSpan fill="url(#tagGrad)">mood</TSpan>
+          <TSpan fill={base}>.</TSpan>
+        </SvgText>
+      ) : (
+        <SvgText x="50%" y={fontSize + lineH} fill={base} {...common}>行きたい場所を見つけよう</SvgText>
+      )}
     </Svg>
   );
 }
@@ -218,9 +262,7 @@ export default function HomeView({ lang, onStart, onShowSettings, onShowFeatured
           {/* ── Hero: logo + tagline ── */}
           <View style={s.hero}>
             <GradientLogo />
-            <Text style={s.tagline}>
-              {lang === 'en' ? 'Find where to go\nby mood.' : '今の気分から、\n行きたい場所を見つけよう'}
-            </Text>
+            <GradientTagline lang={lang} />
             <Text style={s.heroSub}>
               {lang === 'en'
                 ? 'AI suggests the perfect spot for your vibe.'
