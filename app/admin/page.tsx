@@ -7590,9 +7590,9 @@ export default function AdminPage() {
         {tab === "review-queue" && (
           <ReviewQueuePanel secret={adminSecret} />
         )}
-        {tab === "metrics" && <MetricsAdmin />}
-        {tab === "mood-logs" && <MoodLogAdmin />}
-        {tab === "blog-posts" && <BlogPostsAdmin />}
+        {tab === "metrics" && <MetricsAdmin secret={adminSecret} />}
+        {tab === "mood-logs" && <MoodLogAdmin secret={adminSecret} />}
+        {tab === "blog-posts" && <BlogPostsAdmin secret={adminSecret} />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
         {tab === "pending-spots" && <PendingSpotsPanel secret={adminSecret} />}
 

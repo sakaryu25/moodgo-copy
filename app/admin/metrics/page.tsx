@@ -9,7 +9,7 @@ type MoodRow = { mood: string; searches: number; googleZeroRate: number; avgGoog
 type Data = { ok: boolean; days?: number; totalSearches?: number; googleZeroRate?: number; avgGoogleCallsPerSearch?: number; byMood?: MoodRow[]; tableMissing?: boolean; error?: string };
 const C = { purple: "#7C3AED", gray: "#6B7280", bg: "#F7F5FB", green: "#16A34A", amber: "#D97706" };
 
-export default function MetricsAdmin() {
+export default function MetricsAdmin({ secret: propSecret }: { secret?: string } = {}) {
   const [secret, setSecret] = useState("");
   const [authed, setAuthed] = useState(false);
   const [days, setDays] = useState(7);
@@ -27,9 +27,11 @@ export default function MetricsAdmin() {
   }, []);
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null;
+    // 埋め込み(admin本体)時は親から secret を prop で受け取る＝他パネルと同じ確実な経路。
+    // 単独ページ(/admin/metrics)時は prop 無し→localStorage にフォールバック。
+    const saved = propSecret || (typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null);
     if (saved) { setSecret(saved); load(saved, 7); }
-  }, [load]);
+  }, [load, propSecret]);
 
   if (!authed) {
     return (

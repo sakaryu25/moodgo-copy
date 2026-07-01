@@ -16,7 +16,7 @@ type Post = {
 const C = { purple: "#7C3AED", gray: "#6B7280", bg: "#F7F5FB", green: "#16A34A", red: "#DC2626", amber: "#D97706" };
 type Filter = "pending" | "approved" | "rejected" | "hidden" | "reported";
 
-export default function BlogPostsAdmin() {
+export default function BlogPostsAdmin({ secret: propSecret }: { secret?: string } = {}) {
   const [secret, setSecret] = useState("");
   const [authed, setAuthed] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -34,9 +34,9 @@ export default function BlogPostsAdmin() {
   }, []);
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null;
+    const saved = propSecret || (typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null);
     if (saved) { setSecret(saved); load(saved, filter); }
-  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load, propSecret]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (authed) load(secret, filter); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 

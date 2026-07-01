@@ -13,7 +13,7 @@ type Post = {
 
 const C = { purple: "#7C3AED", gray: "#6B7280", bg: "#F7F5FB", green: "#16A34A", red: "#DC2626", amber: "#D97706" };
 
-export default function MoodLogAdmin() {
+export default function MoodLogAdmin({ secret: propSecret }: { secret?: string } = {}) {
   const [secret, setSecret] = useState("");
   const [authed, setAuthed] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -31,9 +31,9 @@ export default function MoodLogAdmin() {
   }, []);
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null;
+    const saved = propSecret || (typeof window !== "undefined" ? localStorage.getItem("moodgo-admin-secret") : null);
     if (saved) { setSecret(saved); load(saved); }
-  }, [load]);
+  }, [load, propSecret]);
 
   const moderate = async (postId: string, status: string) => {
     try {
