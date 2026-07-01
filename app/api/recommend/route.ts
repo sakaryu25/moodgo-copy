@@ -7161,7 +7161,10 @@ async function handleRecommend(request: Request) {
             priceLevel: r.priceLevel ?? undefined,
             placeId: googlePlaceId,      // Google Places ID（detail ページで使用）
             supabaseId: supabaseUUID,    // Supabase UUID（閉店報告で使用）
-            source: r.source ?? "admin", // Supabase ソース種別（admin/user/google/hotpepper）
+            // 保存済みDBスポットは「DB登録済み」に統一。source_type=google/hotpepper を "Google検索" と
+            // 出すと、実際は叩いてないキャッシュなのに『Googleをライブ検索した(=課金)』と誤解される。
+            // ライブGoogle結果のみ別途 source="google"（supabaseId無し）で本物のGoogle検索を表す。
+            source: r.source === "user" ? "user" : "admin",
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,
