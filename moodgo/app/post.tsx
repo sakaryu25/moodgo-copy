@@ -45,19 +45,19 @@ export default function PostScreen() {
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 既存スポット検索
-  const [searchQ, setSearchQ] = useState('');
+  // 既存スポット候補（スポット名を打つと被る既存placeが出る）
   const [results, setResults] = useState<PlaceHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pickedId, setPickedId] = useState('');   // 検索で選んだ既存スポットID
+  const [pickedId, setPickedId] = useState('');   // 候補から選んだ既存スポットID
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const existingPlaceId = paramPlaceId || pickedId;  // 既存(param or 検索選択)
   const isExisting = !!existingPlaceId;
   const lockedFromParam = !!paramPlaceId;
 
-  const runSearch = (text: string) => {
-    setSearchQ(text);
+  // スポット名を打つたびに既存placeを検索（被り候補を出す）。空/1文字なら候補クリア。
+  const onNameChange = (text: string) => {
+    setSpotName(text);
     if (timer.current) clearTimeout(timer.current);
     if (text.trim().length < 2) { setResults([]); return; }
     timer.current = setTimeout(async () => {
@@ -67,13 +67,15 @@ export default function PostScreen() {
         const d = await res.json();
         setResults(Array.isArray(d?.places) ? d.places : []);
       } catch { setResults([]); } finally { setSearching(false); }
-    }, 350);
+    }, 300);
   };
+  // 候補から既存スポットを選択＝その場所への口コミ(moodログ)として投稿
   const pickPlace = (p: PlaceHit) => {
+    if (timer.current) clearTimeout(timer.current);
     setPickedId(p.id); setSpotName(p.name); setAddress(p.address ?? '');
-    setSearchQ(''); setResults([]);
+    setResults([]);
   };
-  const clearPicked = () => { setPickedId(''); setSpotName(''); setAddress(''); };
+  const clearPicked = () => { setPickedId(''); setSpotName(''); setAddress(''); setResults([]); };
 
   const pickImages = async () => {
     try {
@@ -165,20 +167,31 @@ export default function PostScreen() {
             </View>
           ) : (
             <>
-              {/* 既存スポット検索 */}
+              {/* スポット名（打つと被る既存スポットが候補で出る）*/}
               <View style={s.searchWrap}>
                 <Search size={16} color="#A78BCA" strokeWidth={2.2} />
-                <TextInput style={s.searchInput} value={searchQ} onChangeText={runSearch} placeholder="既存のスポットを検索" placeholderTextColor="#B9ABD2" />
+                <TextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder="スポット名を入力（例: 称名寺市民の森）" placeholderTextColor="#B9ABD2" />
                 {searching && <ActivityIndicator size="small" color="#9B6BFF" />}
               </View>
-              {results.map(p => (
-                <TouchableOpacity key={p.id} onPress={() => pickPlace(p)} style={s.resultRow} activeOpacity={0.8}>
-                  <Text style={s.resultName} numberOfLines={1}>{p.name}</Text>
-                  {p.address ? <Text style={s.resultAddr} numberOfLines={1}>{p.address}</Text> : null}
-                </TouchableOpacity>
-              ))}
-              <Text style={s.orText}>または新しいスポットを登録</Text>
-              <TextInput style={s.input} value={spotName} onChangeText={setSpotName} placeholder="スポット名（例: 称名寺市民の森）" placeholderTextColor="#B9ABD2" />
+
+              {/* 既存スポットと名前が被ったら候補表示。タップ＝その場所への口コミ、無ければそのまま新規登録 */}
+              {results.length > 0 && (
+                <View style={s.suggestBox}>
+                  <Text style={s.suggestHint}>同じ名前のスポットが見つかりました。タップで選ぶと、その場所への投稿になります👇</Text>
+                  {results.map(p => (
+                    <TouchableOpacity key={p.id} onPress={() => pickPlace(p)} style={s.resultRow} activeOpacity={0.8}>
+                      <MapPin size={14} color="#7C3AED" strokeWidth={2.2} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.resultName} numberOfLines={1}>{p.name}</Text>
+                        {p.address ? <Text style={s.resultAddr} numberOfLines={1}>{p.address}</Text> : null}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  <Text style={s.suggestNew}>一覧に無ければ、このまま「{spotName.trim()}」を新しいスポットとして登録できます</Text>
+                </View>
+              )}
+
+              {/* 住所（新しいスポットとして登録する場合）*/}
               <View style={s.addrRow}>
                 <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder="住所・エリア（任意）" placeholderTextColor="#B9ABD2" />
                 <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>
@@ -255,10 +268,12 @@ const s = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '800', color: '#4A2D7E', marginTop: 16, marginBottom: 8 },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#fff' },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 14, color: '#2A2235' },
-  resultRow: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6, borderWidth: 1, borderColor: '#EFE8FB' },
+  suggestBox: { marginTop: 8, backgroundColor: '#F7F2FF', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#E9DEFB' },
+  suggestHint: { fontSize: 11.5, color: '#7C3AED', fontWeight: '800', lineHeight: 17 },
+  suggestNew: { fontSize: 11, color: '#9B89BE', fontWeight: '700', marginTop: 8, lineHeight: 16 },
+  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6, borderWidth: 1, borderColor: '#EFE8FB' },
   resultName: { fontSize: 14, fontWeight: '700', color: '#2A2235' },
   resultAddr: { fontSize: 11.5, color: '#9B89BE', marginTop: 2 },
-  orText: { fontSize: 12, color: '#9B89BE', marginTop: 14, marginBottom: 6, fontWeight: '700' },
   pickedRow: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#F3EEFF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#E3D8F5' },
   pickedText: { flex: 1, fontSize: 15, fontWeight: '800', color: '#7C3AED' },
   changeBtn: { color: '#7C3AED', fontSize: 12, fontWeight: '800' },
