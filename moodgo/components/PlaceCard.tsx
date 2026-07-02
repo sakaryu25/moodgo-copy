@@ -389,7 +389,8 @@ export default function PlaceCard({
   return (
     <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
 
-      {/* ── 写真エリア ────────────────────────────── */}
+      {/* ── 写真エリア（写真がある時 or 心霊系のみ。写真0の通常カードは帯自体を出さない）── */}
+      {(photos.length > 0 || spooky) && (
       <View
         style={s.photoWrap}
         onLayout={e => setPhotoWidth(e.nativeEvent.layout.width)}
@@ -462,19 +463,7 @@ export default function PlaceCard({
                 : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
             </TouchableOpacity>
           </LinearGradient>
-        ) : (
-          // 写真なし: 投稿を促す招待プレースホルダー（「最初の1枚」＝貢献の動機づけ）
-          <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
-            <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />
-            <Text style={s.phInviteTitle}>最初の1枚を追加しませんか？</Text>
-            <Text style={s.phInviteSub}>あなたの写真がみんなの参考に📸</Text>
-            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.genrePhBtn}>
-              {uploading
-                ? <ActivityIndicator color={BRAND} size="small" />
-                : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
-            </TouchableOpacity>
-          </View>
-        )}
+        ) : null}
 
         <LinearGradient
           colors={['transparent', 'rgba(15,10,30,0.45)']}
@@ -518,26 +507,28 @@ export default function PlaceCard({
         )}
 
 
-        {/* ハートボタン — top-right */}
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(isFavorited ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium);
-            pulseHeart();
-            onToggleFavorite();
-          }}
-          style={s.favBtn}
-          activeOpacity={0.9}
-        >
-          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-            <Heart
-              size={20}
-              color={isFavorited ? BRAND : '#C084FC'}
-              fill={isFavorited ? BRAND : 'none'}
-              strokeWidth={2}
-            />
-          </Animated.View>
-        </TouchableOpacity>
       </View>
+      )}
+
+      {/* ハートボタン — カード右上（写真の有無に関わらず常に表示） */}
+      <TouchableOpacity
+        onPress={() => {
+          Haptics.impactAsync(isFavorited ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium);
+          pulseHeart();
+          onToggleFavorite();
+        }}
+        style={s.favBtn}
+        activeOpacity={0.9}
+      >
+        <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+          <Heart
+            size={20}
+            color={isFavorited ? BRAND : '#C084FC'}
+            fill={isFavorited ? BRAND : 'none'}
+            strokeWidth={2}
+          />
+        </Animated.View>
+      </TouchableOpacity>
 
       {/* ── ボディ ────────────────────────────────── */}
       <View style={s.body}>
@@ -564,10 +555,10 @@ export default function PlaceCard({
             onLongPress={() => copyPlaceName(item.title)}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 24 }}
             activeOpacity={0.75}>
-            <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark, photos.length === 0 && !spooky && s.titleNoPhoto]} numberOfLines={2}>{item.title}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
+          <Text style={[s.title, darkTheme && s.titleDark, photos.length === 0 && !spooky && s.titleNoPhoto]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
         )}
 
         {/* 説明文（Web版と同じ small gray text） */}
@@ -834,6 +825,8 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6,
+    // 写真0のカードではハートがbody上に重なるため、最前面＆タップ可能に
+    zIndex: 5, elevation: 5,
   },
 
   // ボディ
@@ -845,6 +838,7 @@ const s = StyleSheet.create({
   moodLogSub:    { fontSize: 11, fontWeight: '700', color: '#A06CB8', backgroundColor: '#F7EEFB', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
   titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
+  titleNoPhoto:  { marginRight: 40 },   // 写真0カード: 右上ハートとタイトルの重なり回避
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
 
   // AI相談のおすすめ理由ブロック

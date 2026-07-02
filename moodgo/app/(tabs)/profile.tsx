@@ -74,6 +74,7 @@ export default function ProfileTab() {
   const [loading,  setLoading]  = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'profile' | 'other'>('other');
 
   // 名前・アイコンを読み直す（設定で変更後の反映用）
   const loadProfile = useCallback(async () => {
@@ -132,7 +133,7 @@ export default function ProfileTab() {
         {/* ── ヘッダー（タイトル＋設定ギア）── */}
         <View style={s.headerRow}>
           <Text style={s.pageTitle}>プロフィール</Text>
-          <PuniPressable onPress={() => setShowSettings(true)} style={s.gearBtn}>
+          <PuniPressable onPress={() => { setSettingsSection('other'); setShowSettings(true); }} style={s.gearBtn}>
             <SettingsIcon size={20} color="#7C3AED" strokeWidth={2} />
           </PuniPressable>
         </View>
@@ -151,7 +152,7 @@ export default function ProfileTab() {
           <Text style={s.nickname} numberOfLines={1}>
             {nickname.trim() || 'MoodGoユーザー'}
           </Text>
-          <PuniPressable onPress={() => setShowSettings(true)} style={s.editBtn}>
+          <PuniPressable onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} style={s.editBtn}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.editBtnInner}>
               <Text style={s.editBtnText}>プロフィールを編集</Text>
             </LinearGradient>
@@ -215,6 +216,7 @@ export default function ProfileTab() {
       {/* ── ③ 設定（ホームから撤去し、ここへ集約）── */}
       <SettingsView
         visible={showSettings}
+        section={settingsSection}
         onClose={() => { setShowSettings(false); loadProfile(); }}
         lang={settings.lang}
         onChangeLang={setLang}

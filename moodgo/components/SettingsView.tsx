@@ -44,6 +44,7 @@ const GENDER_OPTIONS_EN = ['Male', 'Female', 'Other', 'Prefer not to say'];
 type Props = {
   visible: boolean;
   onClose: () => void;
+  section?: 'profile' | 'other';   // profile=プロフィール項目のみ / other=言語・位置情報・データ等 / 省略=全部
   lang: 'ja' | 'en';
   onChangeLang: (v: 'ja' | 'en') => void;
   profileAge: string;
@@ -110,11 +111,14 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function SettingsView({
-  visible, onClose, lang, onChangeLang,
+  visible, onClose, section, lang, onChangeLang,
   profileAge, profileGender, profilePrefecture, onSaveProfile, onClearHistory,
   blockedPlaces, onUnblockPlace, onClearBlocked,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // section で表示を出し分け（profile=プロフィールだけ / other=それ以外だけ / 省略=全部）
+  const showProfile = section !== 'other';
+  const showOther   = section !== 'profile';
 
   const ageOptions    = lang === 'ja' ? AGE_OPTIONS_JA    : AGE_OPTIONS_EN;
   const genderOptions = lang === 'ja' ? GENDER_OPTIONS_JA : GENDER_OPTIONS_EN;
@@ -131,6 +135,9 @@ export default function SettingsView({
   // 位置情報の許可状態
   const [locStatus, setLocStatus] = useState<Location.PermissionStatus | null>(null);
   const [locCanAsk, setLocCanAsk] = useState(true);
+  // 写真ライブラリの許可状態
+  const [photoStatus, setPhotoStatus] = useState<ImagePicker.PermissionStatus | null>(null);
+  const [photoCanAsk, setPhotoCanAsk] = useState(true);
 
   useEffect(() => {
     if (visible) {
@@ -145,6 +152,9 @@ export default function SettingsView({
       // 開くたびに最新の許可状態をチェック
       Location.getForegroundPermissionsAsync()
         .then(p => { setLocStatus(p.status); setLocCanAsk(p.canAskAgain); })
+        .catch(() => {});
+      ImagePicker.getMediaLibraryPermissionsAsync()
+        .then(p => { setPhotoStatus(p.status); setPhotoCanAsk(p.canAskAgain); })
         .catch(() => {});
     }
   }, [visible, profileAge, profileGender, profilePrefecture]);
@@ -198,6 +208,19 @@ export default function SettingsView({
       const p = await Location.requestForegroundPermissionsAsync();
       setLocStatus(p.status);
       setLocCanAsk(p.canAskAgain);
+    } catch { /* noop */ }
+  };
+
+  const handlePhotoPermission = async () => {
+    // 許可済み or 再確認不可（一度拒否）→ 設定アプリへ。未設定ならその場でOSダイアログ
+    if (photoStatus === 'granted' || (photoStatus === 'denied' && !photoCanAsk)) {
+      Linking.openSettings();
+      return;
+    }
+    try {
+      const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      setPhotoStatus(p.status);
+      setPhotoCanAsk(p.canAskAgain);
     } catch { /* noop */ }
   };
 
@@ -332,9 +355,14 @@ export default function SettingsView({
             showsVerticalScrollIndicator={false}
           >
             {/* タイトル */}
-            <Text style={s.pageTitle}>{lang === 'ja' ? '設定' : 'Settings'}</Text>
+            <Text style={s.pageTitle}>
+              {section === 'profile'
+                ? (lang === 'ja' ? 'プロフィールを編集' : 'Edit Profile')
+                : (lang === 'ja' ? '設定' : 'Settings')}
+            </Text>
 
-            {/* ── プロフィール ── */}
+            {/* ── プロフィール（section='other'の時は隠す）── */}
+            {showProfile && (<>
             <SectionHeader
               icon={<UserRound size={15} color={PURPLE} strokeWidth={2} />}
               label={lang === 'ja' ? 'プロフィール' : 'Profile'}
@@ -415,7 +443,10 @@ export default function SettingsView({
                 }
               </LinearGradient>
             </PuniPressable>
+            </>)}
 
+            {/* ── 言語以降（section='profile'の時は隠す）── */}
+            {showOther && (<>
             {/* ── 言語 ── */}
             <SectionHeader
               icon={<Globe size={15} color={PURPLE} strokeWidth={2} />}
@@ -474,6 +505,42 @@ export default function SettingsView({
                     : locStatus === 'denied' && !locCanAsk
                       ? (lang === 'ja' ? '設定アプリで許可する' : 'Allow in Settings app')
                       : (lang === 'ja' ? '位置情報を許可する' : 'Allow location access')}
+                </Text>
+              </PuniPressable>
+            </View>
+
+            {/* ── 写真 ── */}
+            <SectionHeader
+              icon={<Camera size={15} color={PURPLE} strokeWidth={2} />}
+              label={lang === 'ja' ? '写真' : 'Photos'}
+            />
+            <View style={s.card}>
+              <View style={s.locStatusRow}>
+                <View style={[s.locDot, {
+                  backgroundColor:
+                    photoStatus === 'granted' ? '#10B981' :
+                    photoStatus === 'denied'  ? '#EF4444' : '#F59E0B',
+                }]} />
+                <Text style={s.locStatusText}>
+                  {photoStatus === 'granted'
+                    ? (lang === 'ja' ? '許可されています' : 'Allowed')
+                    : photoStatus === 'denied'
+                      ? (lang === 'ja' ? '許可されていません' : 'Not allowed')
+                      : (lang === 'ja' ? '未設定' : 'Not set')}
+                </Text>
+              </View>
+              <Text style={s.locHint}>
+                {lang === 'ja'
+                  ? 'アイコンやスポットの写真を投稿するときに使います'
+                  : 'Used when you post an icon or spot photos.'}
+              </Text>
+              <PuniPressable onPress={handlePhotoPermission} style={s.locBtn}>
+                <Text style={s.locBtnText}>
+                  {photoStatus === 'granted'
+                    ? (lang === 'ja' ? '設定アプリで変更する' : 'Change in Settings app')
+                    : photoStatus === 'denied' && !photoCanAsk
+                      ? (lang === 'ja' ? '設定アプリで許可する' : 'Allow in Settings app')
+                      : (lang === 'ja' ? '写真へのアクセスを許可する' : 'Allow photo access')}
                 </Text>
               </PuniPressable>
             </View>
@@ -570,6 +637,7 @@ export default function SettingsView({
                   : 'Some place data © OpenStreetMap contributors'}
               </Text>
             </View>
+            </>)}
           </ScrollView>
         )}
       </View>
