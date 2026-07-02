@@ -5,7 +5,7 @@
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -20,9 +20,17 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
 import { showToast } from '@/lib/toast';
+import { DEEP_DIVE } from '@/components/QuizFlow';
 
 const GRAD: [string, string, string] = ['#F56CB3', '#9B6BFF', '#4FA3FF'];
 const MOODS = ['#まったりしたい', '#自然感じたい', '#わいわい楽しみたい', '#お腹すいた', '#ドライブしたい', '#集中したい', '#体動かしたい', '#遠くに行きたい', '#ショッピング', '#スリル味わいたい'];
+// 投稿の気分タグ → QuizFlowのDEEP_DIVEキー（綴りが違うのでマップ）。深掘り(サブジャンル)タグを出すため。
+const MOOD_TAG_TO_DIVE: Record<string, string> = {
+  '#お腹すいた': 'お腹すいた', '#まったりしたい': 'まったり', '#自然感じたい': '自然',
+  '#わいわい楽しみたい': '楽しみたい', '#ドライブしたい': 'ドライブ', '#集中したい': '集中',
+  '#体動かしたい': '運動', '#遠くに行きたい': '旅行', '#ショッピング': 'ショッピング',
+  '#スリル味わいたい': 'スリル',
+};
 
 type PlaceHit = { id: string; name: string; address?: string };
 
@@ -112,6 +120,23 @@ export default function PostScreen() {
   };
 
   const toggleMood = (t: string) => setMoodTags(p => (p.includes(t) ? p.filter(x => x !== t) : [...p, t]));
+
+  // 選んだ気分の深掘り(サブジャンル)タグを L1＋L2 フラットで出す（重複排除）
+  const deepDiveOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string }[] = [];
+    for (const m of moodTags) {
+      const cfg = DEEP_DIVE[MOOD_TAG_TO_DIVE[m] ?? ''];
+      if (!cfg) continue;
+      for (const opt of cfg.options) {
+        if (!seen.has(opt.key)) { seen.add(opt.key); out.push({ key: opt.key, label: opt.label }); }
+        for (const sub of (opt.subs ?? [])) {
+          if (!seen.has(sub.key)) { seen.add(sub.key); out.push({ key: sub.key, label: sub.label }); }
+        }
+      }
+    }
+    return out;
+  }, [moodTags]);
 
   const submit = async () => {
     if (!isExisting && !spotName.trim()) { showToast('場所の名前を入力してください', '新しいスポット名を入れてね'); return; }
@@ -247,6 +272,24 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* 詳しいジャンル（選んだ気分の深掘りタグ・任意）*/}
+          {deepDiveOptions.length > 0 && (
+            <>
+              <Text style={s.label}>詳しいジャンル（任意・当てはまるものをタップ）</Text>
+              <View style={s.chips}>
+                {deepDiveOptions.map(o => {
+                  const tag = '#' + o.key;
+                  const on = moodTags.includes(tag);
+                  return (
+                    <TouchableOpacity key={o.key} onPress={() => toggleMood(tag)} style={[s.chip, on && s.chipOn]} activeOpacity={0.8}>
+                      <Text style={[s.chipText, on && s.chipTextOn]}>{o.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
 
           {/* ひとこと */}
           <Text style={s.label}>ひとこと（短くても長くてもOK）</Text>

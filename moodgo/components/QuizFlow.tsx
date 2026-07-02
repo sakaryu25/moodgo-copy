@@ -127,7 +127,7 @@ type SubOpt  = { key: string; label: string; Icon: LucideIcon };
 type DiveOpt = { key: string; label: string; sub: string; Icon: LucideIcon; subs?: SubOpt[] };
 type DiveConfig = { title: string; options: DiveOpt[] };
 
-const DEEP_DIVE: Record<string, DiveConfig> = {
+export const DEEP_DIVE: Record<string, DiveConfig> = {
   'お腹すいた': {
     title: 'どんなジャンルを食べたい？',
     options: [
