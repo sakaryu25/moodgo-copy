@@ -133,6 +133,15 @@ export async function POST(req: Request) {
     const newAddress = body?.address ? String(body.address).trim().slice(0, 300) : null;
     const newLat = typeof body?.lat === "number" ? body.lat : (body?.lat != null && body.lat !== "" ? Number(body.lat) : null);
     const newLng = typeof body?.lng === "number" ? body.lng : (body?.lng != null && body.lng !== "" ? Number(body.lng) : null);
+    // 新スポット(穴場)の詳細: 営業時間・最寄駅・期間限定(公開期間)。既存placeでは無視。
+    const newOpenHours = body?.openingHours ? String(body.openingHours).trim().slice(0, 400) : null;
+    const newStation = body?.station ? String(body.station).trim().slice(0, 100) : null;
+    const dateOrNull = (v: unknown): string | null => {
+      const s = typeof v === "string" ? v.trim() : "";
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;   // YYYY-MM-DD のみ許可（不正日付は無視）
+    };
+    const newAvailFrom = dateOrNull(body?.availableFrom);
+    const newAvailUntil = dateOrNull(body?.availableUntil);
 
     const images: string[] = Array.isArray(body?.images) ? body.images.filter((s: unknown) => typeof s === "string").slice(0, 3) : [];
     for (const img of images) {
@@ -166,10 +175,15 @@ export async function POST(req: Request) {
     if (!placeId && placeName) {
       const { data: place } = await db.from("places").insert({
         name: placeName, address: newAddress || "日本", tags: [...moodTags, "#穴場スポット"],
-        area: null, nearest_station: null, source_type: "user", is_active: false,
-        lat: newLat, lng: newLng,
+        area: null, nearest_station: newStation, source_type: "user", is_active: false,
+        lat: newLat, lng: newLng, open_hours: newOpenHours,
       }).select("id").single();
       if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
+      // 期間限定(公開期間): available_from/until 列が未作成でも投稿は成功させる（列があれば保存）。
+      if (effectivePlaceId && (newAvailFrom || newAvailUntil)) {
+        await db.from("places").update({ available_from: newAvailFrom, available_until: newAvailUntil })
+          .eq("id", effectivePlaceId).then(() => {}, () => {});
+      }
     }
 
     // 本文 insert

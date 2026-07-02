@@ -41,6 +41,8 @@ export default function PostScreen() {
   const [rating, setRating] = useState(0);
   const [availFrom, setAvailFrom] = useState('');   // 期間限定(任意・新スポットのみ)
   const [availUntil, setAvailUntil] = useState('');
+  const [openingHours, setOpeningHours] = useState('');  // 営業時間(任意・新スポット)
+  const [station, setStation] = useState('');            // 最寄駅(任意・新スポット)
   const [licenseOk, setLicenseOk] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -133,6 +135,11 @@ export default function PostScreen() {
           lat: lat ?? undefined, lng: lng ?? undefined,
           caption: descWithRating, moodTags, visibility: 'spot_public_anonymous',
           canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
+          // 新スポット(穴場)の詳細。既存スポットへの投稿(moodログ)では送らない＝既存placeを上書きしない
+          openingHours: !isExisting ? (openingHours.trim() || undefined) : undefined,
+          station: !isExisting ? (station.trim() || undefined) : undefined,
+          availableFrom: !isExisting ? (availFrom.trim() || undefined) : undefined,
+          availableUntil: !isExisting ? (availUntil.trim() || undefined) : undefined,
         }),
       });
       const d = await res.json();
@@ -199,6 +206,19 @@ export default function PostScreen() {
                   <Text style={s.locBtnText}>{locating ? '取得中' : '現在地'}</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* 営業時間・最寄駅（新しい穴場スポットの詳細情報・任意）*/}
+              <TextInput style={[s.input, { marginTop: 8 }]} value={openingHours} onChangeText={setOpeningHours} placeholder="営業時間（任意・例: 11:00〜22:00、月曜休）" placeholderTextColor="#B9ABD2" multiline />
+              <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder="最寄駅（任意・例: JR横浜駅 徒歩5分）" placeholderTextColor="#B9ABD2" />
+
+              {/* 期間限定の公開（任意・穴場） */}
+              <Text style={s.label}>期間限定の公開（任意）</Text>
+              <View style={s.periodRow}>
+                <TextInput style={[s.input, { flex: 1, minHeight: 48 }]} value={availFrom} onChangeText={setAvailFrom} placeholder="開始 2026-07-01" placeholderTextColor="#B9ABD2" />
+                <Text style={s.periodTilde}>〜</Text>
+                <TextInput style={[s.input, { flex: 1, minHeight: 48 }]} value={availUntil} onChangeText={setAvailUntil} placeholder="終了 2026-08-31" placeholderTextColor="#B9ABD2" />
+              </View>
+              <Text style={s.note}>※ 期間限定イベント等の穴場に。空欄なら常時公開です。</Text>
             </>
           )}
 

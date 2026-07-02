@@ -70,6 +70,7 @@ export async function GET(request: Request) {
     let createdAt: string | null = null;
     let autoTags: unknown = [];
     let stationSeed = "";
+    let hoursSeed = "";
     let googleMapsUriSeed = "";
     let availableFrom: string | null = null;
     let availableUntil: string | null = null;
@@ -105,16 +106,24 @@ export async function GET(request: Request) {
       // Google id(ChIJ..)/null は住所が取れないので、後段のGoogle補強は名前検索に委ねる。
       const pid = post.place_id ? String(post.place_id) : "";
       if (UUID_RE.test(pid)) {
-        const { data: pl } = await supabase
-          .from("places")
-          .select("address, lat, lng")
-          .eq("id", pid)
-          .single();
+        // 選択スポット/新スポット仮登録の詳細を読む。available_from/until 列が未作成でも
+        //   壊れないよう「フル列→安全列」にフォールバックする。
+        let pl = (await supabase.from("places")
+          .select("address, lat, lng, open_hours, nearest_station, available_from, available_until")
+          .eq("id", pid).single()).data as Record<string, unknown> | null;
+        if (!pl) {
+          pl = (await supabase.from("places")
+            .select("address, lat, lng, open_hours, nearest_station")
+            .eq("id", pid).single()).data as Record<string, unknown> | null;
+        }
         if (pl) {
-          const place = pl as Record<string, unknown>;
-          baseAddress = String(place.address ?? "");
-          if (place.lat != null) baseLat = Number(place.lat);
-          if (place.lng != null) baseLng = Number(place.lng);
+          baseAddress = String(pl.address ?? "");
+          if (pl.lat != null) baseLat = Number(pl.lat);
+          if (pl.lng != null) baseLng = Number(pl.lng);
+          if (pl.nearest_station) stationSeed = String(pl.nearest_station);   // 友達が入力した最寄駅
+          if (pl.open_hours) hoursSeed = String(pl.open_hours);               // 友達が入力した営業時間
+          if (pl.available_from) availableFrom = String(pl.available_from);   // 期間限定(列があれば)
+          if (pl.available_until) availableUntil = String(pl.available_until);
         }
       }
     } else {
@@ -154,7 +163,7 @@ export async function GET(request: Request) {
     const hasUserPhotos = userPhotos.length > 0;
 
     // ── Google Places で補強（穴場・Moodログ共通）───────────────────────────
-    let phone = "", website = "", openingHoursText = "", googleMapsUri = googleMapsUriSeed;
+    let phone = "", website = "", openingHoursText = hoursSeed, googleMapsUri = googleMapsUriSeed;
     let address = baseAddress;
     let placeId: string | undefined;
     let placeLat = baseLat;
@@ -210,7 +219,8 @@ export async function GET(request: Request) {
             website = p.websiteUri ?? "";
             googleMapsUri = googleMapsUri || (p.googleMapsUri ?? "");
             address = address || (p.formattedAddress ?? "");
-            openingHoursText = (p.regularOpeningHours?.weekdayDescriptions ?? []).join("\n");
+            // ユーザー入力の営業時間があればそれを優先し、無い時だけGoogleで補完
+            if (!openingHoursText) openingHoursText = (p.regularOpeningHours?.weekdayDescriptions ?? []).join("\n");
             googleRating = typeof p.rating === "number" ? p.rating : null;
             reviewCount = typeof p.userRatingCount === "number" ? p.userRatingCount : null;
             openNow = typeof p.currentOpeningHours?.openNow === "boolean" ? p.currentOpeningHours.openNow : null;
