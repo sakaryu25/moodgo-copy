@@ -4,12 +4,13 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,6 +52,8 @@ export default function PostScreen() {
   const [availUntil, setAvailUntil] = useState('');
   const [openingHours, setOpeningHours] = useState('');  // 営業時間(任意・新スポット)
   const [station, setStation] = useState('');            // 最寄駅(任意・新スポット)
+  const [showPicker, setShowPicker] = useState<null | 'from' | 'until'>(null);  // 公開期間のカレンダー
+  const [tempDate, setTempDate] = useState(new Date());
   const [licenseOk, setLicenseOk] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +123,18 @@ export default function PostScreen() {
   };
 
   const toggleMood = (t: string) => setMoodTags(p => (p.includes(t) ? p.filter(x => x !== t) : [...p, t]));
+
+  // 公開期間のカレンダー。ローカル日付で YYYY-MM-DD 化（TZずれ回避）
+  const fmtDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const openPicker = (which: 'from' | 'until') => {
+    const cur = which === 'from' ? availFrom : availUntil;
+    setTempDate(cur ? new Date(`${cur}T00:00:00`) : new Date());
+    setShowPicker(which);
+  };
+  const applyPickedDate = (d: Date) => {
+    const st = fmtDate(d);
+    if (showPicker === 'from') setAvailFrom(st); else if (showPicker === 'until') setAvailUntil(st);
+  };
 
   // 選んだ気分の深掘り(サブジャンル)タグを L1＋L2 フラットで出す（重複排除）
   const deepDiveOptions = useMemo(() => {
@@ -236,12 +251,20 @@ export default function PostScreen() {
               <TextInput style={[s.input, { marginTop: 8 }]} value={openingHours} onChangeText={setOpeningHours} placeholder="営業時間（任意・例: 11:00〜22:00、月曜休）" placeholderTextColor="#B9ABD2" multiline />
               <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder="最寄駅（任意・例: JR横浜駅 徒歩5分）" placeholderTextColor="#B9ABD2" />
 
-              {/* 期間限定の公開（任意・穴場） */}
+              {/* 期間限定の公開（任意・穴場・カレンダー選択） */}
               <Text style={s.label}>期間限定の公開（任意）</Text>
               <View style={s.periodRow}>
-                <TextInput style={[s.input, { flex: 1, minHeight: 48 }]} value={availFrom} onChangeText={setAvailFrom} placeholder="開始 2026-07-01" placeholderTextColor="#B9ABD2" />
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('from')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availFrom && s.dateBtnPh]} numberOfLines={1}>{availFrom || '開始日'}</Text>
+                  {availFrom ? <TouchableOpacity onPress={() => setAvailFrom('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
                 <Text style={s.periodTilde}>〜</Text>
-                <TextInput style={[s.input, { flex: 1, minHeight: 48 }]} value={availUntil} onChangeText={setAvailUntil} placeholder="終了 2026-08-31" placeholderTextColor="#B9ABD2" />
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('until')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availUntil && s.dateBtnPh]} numberOfLines={1}>{availUntil || '終了日'}</Text>
+                  {availUntil ? <TouchableOpacity onPress={() => setAvailUntil('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
               </View>
               <Text style={s.note}>※ 期間限定イベント等の穴場に。空欄なら常時公開です。</Text>
             </>
@@ -320,6 +343,40 @@ export default function PostScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 公開期間のカレンダー（iOS=モーダル内インライン / Android=ネイティブダイアログ） */}
+      {showPicker !== null && (Platform.OS === 'ios' ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShowPicker(null)}>
+          <View style={s.pickerOverlay}>
+            <View style={s.pickerSheet}>
+              <Text style={s.pickerTitle}>{showPicker === 'from' ? '公開を始める日' : '公開を終える日'}</Text>
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="inline"
+                locale="ja-JP"
+                onChange={(_e, d) => { if (d) setTempDate(d); }}
+                style={{ alignSelf: 'stretch' }}
+                accentColor="#9B6BFF"
+              />
+              <View style={s.pickerBtns}>
+                <TouchableOpacity onPress={() => setShowPicker(null)} style={s.pickerCancel} activeOpacity={0.8}>
+                  <Text style={s.pickerCancelText}>キャンセル</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { applyPickedDate(tempDate); setShowPicker(null); }} style={s.pickerOk} activeOpacity={0.8}>
+                  <Text style={s.pickerOkText}>この日にする</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      ) : (
+        <DateTimePicker
+          value={tempDate}
+          mode="date"
+          onChange={(e, d) => { if (e.type === 'set' && d) applyPickedDate(d); setShowPicker(null); }}
+        />
+      ))}
     </View>
   );
 }
@@ -358,6 +415,17 @@ const s = StyleSheet.create({
   starsRow: { flexDirection: 'row', gap: 8 },
   periodRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   periodTilde: { fontSize: 14, color: '#9B89BE', fontWeight: '700' },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateBtnText: { flex: 1, fontSize: 14, color: '#2A2235', fontWeight: '700' },
+  dateBtnPh: { color: '#B9ABD2', fontWeight: '500' },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(20,10,40,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  pickerSheet: { backgroundColor: '#fff', borderRadius: 20, padding: 16, width: '100%', maxWidth: 380 },
+  pickerTitle: { fontSize: 15, fontWeight: '800', color: '#4A2D7E', textAlign: 'center', marginBottom: 4 },
+  pickerBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  pickerCancel: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: '#E3D8F5', alignItems: 'center' },
+  pickerCancelText: { fontSize: 14, fontWeight: '800', color: '#9B89BE' },
+  pickerOk: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#7C3AED', alignItems: 'center' },
+  pickerOkText: { fontSize: 14, fontWeight: '800', color: '#fff' },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#C9B6FF', alignItems: 'center', justifyContent: 'center' },
   boxOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
