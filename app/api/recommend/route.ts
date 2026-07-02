@@ -7053,7 +7053,7 @@ async function handleRecommend(request: Request) {
           // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
           ((): Promise<{ order: number[]; reject: number[] }> => {
-            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 2) return Promise.resolve({ order: [], reject: [] });
+            if (!openai || isProprietaryOnly || scored.length <= 2) return Promise.resolve({ order: [], reject: [] });
             // 候補に「住所・距離・説明文（実説明のみ）」を載せて判別材料を増やす。
             //   Supabaseは rating/reviewCount が常にnull（★-）なので評価は使わず、
             //   テーマ合致を見抜ける具体情報（説明・立地）を渡すのが精度の鍵。
@@ -7119,8 +7119,12 @@ async function handleRecommend(request: Request) {
         // OpenAIが判別した順に Supabase候補を並べ替え（残りは元の順序で後ろに）
         // OpenAI判別順(order)＋reject(場違い排除)を候補に適用。詳細・安全装置は lib/ai-ranking.ts。
         //   aiRanked=false のときは元順そのまま（_aiRank を付けず後段の昇格boostに使わない）。
+        // #3 飲食: 近い順を維持しつつ場違い/閉店疑いだけ落とす。恒等orderでreject限定
+        //   （食のsortOrShuffleは_aiRank不使用＝並びは距離バンド順のまま。applyAiRankingはminKeep=8で痩せ防止）。
         const { ranked: scoredRanked, aiRanked } = applyAiRanking(
-          scored, sbAiResult?.order ?? [], sbAiResult?.reject ?? [],
+          scored,
+          isFoodMood ? scored.map((_, i) => i) : (sbAiResult?.order ?? []),
+          sbAiResult?.reject ?? [],
         );
 
         // OpenAIで説明文を蓄積: 説明が空の場所に中立的な一言を生成→places.descriptionへ永続化。
@@ -7145,6 +7149,8 @@ async function handleRecommend(request: Request) {
             // OpenAI判別順位（0=最良）。後段sortOrShuffleでこの順位を昇格boostに使い、
             //   ランダムシャッフルに埋もれず「OpenAIが選んだ順」を最終結果に反映させる。
             _aiRank: aiRanked ? _aiIdx : undefined,
+            // #2 サブジャンル選択時、具体サブタグ(#味噌ラーメン等)一致行を最終ソートで最上位固定するための印。
+            _subTagMatch: specificTrust.length > 0 && (r.tags ?? []).some((t: string) => specificTrust.includes(t)),
             // 心霊(独自モード)は Google由来/places保存の写真を一切使わない（利用者投稿のみ）。
             //   → ここでは空にし、後段の spot_photos ブロックでユーザー投稿だけを添付する。
             // 旧形式の photo_reference (AU_ZVEF...) はv1 API非対応 → sbPhotoMap で上書きを優先。
@@ -7397,7 +7403,13 @@ async function handleRecommend(request: Request) {
           const sorted = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(familyFoodSanitize(qualitySanitize(seenFilter(foodSanitize(applyMallFilter(normalizeDistance(arr))))))))));
           return diversifyFood ? diversifyByCoarseGenre(sorted, 2) : sorted;
         };
-        const sbSorted = finalizeSource(mergedSb);
+        // #2 サブジャンル時: サブタグ一致行を（既存の並び順を保ったまま安定的に）最上位へ固定。
+        //   在庫が薄い時にfallbackの汎用親ジャンル行が距離順で上に来るのを防ぐ。V8のsortは安定。
+        const sbSorted = specificTrust.length > 0
+          ? [...finalizeSource(mergedSb)].sort((a, b) =>
+              Number((b as { _subTagMatch?: boolean })._subTagMatch ?? false)
+              - Number((a as { _subTagMatch?: boolean })._subTagMatch ?? false))
+          : finalizeSource(mergedSb);
         const gSorted  = finalizeSource(googleSupplements as Rec[]);
         const ySorted  = finalizeSource(yahooSupplements as Rec[]);
 
