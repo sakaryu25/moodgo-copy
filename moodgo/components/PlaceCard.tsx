@@ -389,8 +389,7 @@ export default function PlaceCard({
   return (
     <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
 
-      {/* ── 写真エリア（写真がある時 or 心霊系のみ。写真0の通常カードは帯自体を出さない）── */}
-      {(photos.length > 0 || spooky) && (
+      {/* ── 写真エリア（常時表示。写真0は「写真を追加」招待枠）── */}
       <View
         style={s.photoWrap}
         onLayout={e => setPhotoWidth(e.nativeEvent.layout.width)}
@@ -463,13 +462,28 @@ export default function PlaceCard({
                 : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
             </TouchableOpacity>
           </LinearGradient>
-        ) : null}
+        ) : (
+          // 写真なし: 投稿を促す招待プレースホルダー（「最初の1枚」＝写真追加の入口。帯は残し下部グラデだけ消す）
+          <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
+            <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />
+            <Text style={s.phInviteTitle}>最初の1枚を追加しませんか？</Text>
+            <Text style={s.phInviteSub}>あなたの写真がみんなの参考に📸</Text>
+            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.genrePhBtn}>
+              {uploading
+                ? <ActivityIndicator color={BRAND} size="small" />
+                : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
+            </TouchableOpacity>
+          </View>
+        )}
 
-        <LinearGradient
-          colors={['transparent', 'rgba(15,10,30,0.45)']}
-          style={s.photoOverlay}
-          pointerEvents="none"
-        />
+        {/* 下部グラデ（可読性用）— 写真がある時だけ。写真0の招待枠には出さない（"スライドバー"消し）*/}
+        {photos.length > 0 && (
+          <LinearGradient
+            colors={['transparent', 'rgba(15,10,30,0.45)']}
+            style={s.photoOverlay}
+            pointerEvents="none"
+          />
+        )}
 
         {/* Wikimedia Commons 写真クレジット（CC帰属表示・ファイルページへリンク）— 写真表示中のみ */}
         {photos.length > 0 && (() => {
@@ -508,7 +522,6 @@ export default function PlaceCard({
 
 
       </View>
-      )}
 
       {/* ハートボタン — カード右上（写真の有無に関わらず常に表示） */}
       <TouchableOpacity
@@ -555,10 +568,10 @@ export default function PlaceCard({
             onLongPress={() => copyPlaceName(item.title)}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 24 }}
             activeOpacity={0.75}>
-            <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark, photos.length === 0 && !spooky && s.titleNoPhoto]} numberOfLines={2}>{item.title}</Text>
+            <Text style={[s.title, s.titleTappable, darkTheme && s.titleDark]} numberOfLines={2}>{item.title}</Text>
           </TouchableOpacity>
         ) : (
-          <Text style={[s.title, darkTheme && s.titleDark, photos.length === 0 && !spooky && s.titleNoPhoto]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
+          <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
         )}
 
         {/* 説明文（Web版と同じ small gray text） */}
