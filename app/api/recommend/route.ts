@@ -2926,6 +2926,7 @@ async function fetchYahooLocalSearch(
   answers: Answers,
   timeCtx: ReturnType<typeof getTimeContext>
 ): Promise<ScoredItem[]> {
+  if (RECOMMEND_DISABLE_GOOGLE) return [];   // 規約対応: 外部検索オフ時はYahoo検索も停止
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
   try {
@@ -3044,6 +3045,7 @@ async function fetchYahooRelax(
   hasUserPhotos: boolean; userPhotoCount: number;
   location: { latitude: number; longitude: number } | undefined;
 }>> {
+  if (RECOMMEND_DISABLE_GOOGLE) return [];   // 規約対応: 外部検索オフ時はYahoo検索も停止
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
 
@@ -4568,6 +4570,7 @@ async function fetchYahooSupplement(
   minRadiusKm: number = 0,   // 遠端バイアス: この距離以上のスポットを優先
   googleApiKey: string = "", // Yahoo結果の写真をGoogle Placesで補完するためのキー
 ): Promise<Array<Record<string, unknown>>> {
+  if (RECOMMEND_DISABLE_GOOGLE) return [];   // 規約対応: 外部検索オフ時はYahoo検索も停止
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
   if (!apiKey) return [];
 
@@ -7050,7 +7053,7 @@ async function handleRecommend(request: Request) {
           // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
           ((): Promise<{ order: number[]; reject: number[] }> => {
-            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 8) return Promise.resolve({ order: [], reject: [] });
+            if (!openai || isFoodMood || isProprietaryOnly || scored.length <= 2) return Promise.resolve({ order: [], reject: [] });
             // 候補に「住所・距離・説明文（実説明のみ）」を載せて判別材料を増やす。
             //   Supabaseは rating/reviewCount が常にnull（★-）なので評価は使わず、
             //   テーマ合致を見抜ける具体情報（説明・立地）を渡すのが精度の鍵。
