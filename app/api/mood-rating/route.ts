@@ -13,12 +13,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // 悪用防止: 1IPあたり20票/分（投票の水増し＋good時のGoogle検索/課金の増幅を抑止）
+    if (!rateLimit(`mood-rating:${clientIp(req)}`, 20, 60_000)) {
+      return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+    }
     const body = await req.json();
     const { place_name, mood, sub_category, verdict } = body;
 

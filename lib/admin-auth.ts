@@ -7,10 +7,12 @@
 //   （ハードコード値による無制限なGoogle呼び出し＝課金攻撃を構造的に遮断）。
 //   ※ env 未設定だと本番の管理APIはロックされます＝これが安全側のデフォルトです。開発時のみフォールバックを使用。
 import type { NextRequest } from "next/server";
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqual, randomUUID } from "crypto";
 
-// 本番は env 必須。未設定なら "" → isValidAdminSecret が提供値の length>0 必須で全入力を拒否（""同士の誤一致も起きない）。
-export const ADMIN_SECRET = process.env.ADMIN_SECRET ?? (process.env.NODE_ENV === "production" ? "" : "moodgoadmin123");
+// 本番は env 必須。未設定なら推測不能なランダム値にフォールバック＝どの入力にも一致せず全管理リクエストを拒否。
+//   ※ 生比較 `secret === ADMIN_SECRET` を使う旧ルートでも、"" 同士の誤一致で空secretが通る事故を防ぐため
+//     （"" ではなく）ランダム値にしている。isValidAdminSecret 経由のルートは元々 length>0 必須で安全。
+export const ADMIN_SECRET = process.env.ADMIN_SECRET ?? (process.env.NODE_ENV === "production" ? randomUUID() : "moodgoadmin123");
 
 // タイミング攻撃を避けるため定数時間で比較（長さ不一致は即false）
 function safeEqual(a: string, b: string): boolean {
