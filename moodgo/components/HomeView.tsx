@@ -225,17 +225,6 @@ export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory,
     ]).start();
   }, []);
 
-  // 穴場ぷるぷるアニメ（大きく・小さく）
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.00, duration: 900, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
   const handleStart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onStart();

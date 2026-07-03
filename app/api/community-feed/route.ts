@@ -18,36 +18,6 @@ function isLegacyPhotoUrl(url: string): boolean {
   return url.includes("maps.googleapis.com/maps/api/place/photo");
 }
 
-// photoName → photo-proxy 経由URL
-function buildProxyUrl(origin: string, photoName: string): string {
-  const mediaUrl = `https://places.googleapis.com/v1/${photoName}/media`;
-  return `${origin}/api/photo-proxy?url=${encodeURIComponent(mediaUrl)}`;
-}
-
-// Google Places Text Search でスポットの写真名を取得
-async function fetchGooglePhotos(query: string): Promise<string[]> {
-  if (!GOOGLE_API_KEY) return [];
-  try {
-    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": "places.photos",
-      },
-      body: JSON.stringify({ textQuery: query, languageCode: "ja", pageSize: 1 }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json().catch(() => null);
-    const photos = (data?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
-    return photos.slice(0, 3).map((p) => p.name).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 40);
@@ -58,19 +28,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    // select("*"): device_id / poster_name 列が未作成のDBでもエラーにならない
-    // 穴場投稿は審査なしで即「全国みんなの穴場」フィードに表示（pending含む）。
-    //   検索結果への露出だけは admin 承認(status=approved)が必要（recommendは approved のみ注入）。
-    //   rejected は除外。NGワードは投稿時(/api/suggestions)で弾き、通報・ブロックはフィード側で対応。
-    const { data, error } = await supabase
-      .from("suggestions")
-      .select("*")
-      .in("status", ["approved", "pending"])
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw error;
-
     // 投稿者アイコン: user-icons/{device_id}.jpg の公開URLを導出（写真未設定なら404→アプリ側でフォールバック）
     const vHour = Math.floor(Date.now() / 3_600_000);
     const iconFor = (deviceId: unknown): string | null => {
@@ -78,38 +35,6 @@ export async function GET(request: Request) {
       const { data: pub } = supabase!.storage.from("user-icons").getPublicUrl(`${deviceId}.jpg`);
       return `${pub.publicUrl}?v=${vHour}`;
     };
-
-    // 各アイテムを整形（まずは投稿画像のみ）
-    const items = (data ?? []).map((s) => {
-      const name = (s.google_place_name ?? s.spot_name ?? "").trim();
-      // address から都道府県を抽出
-      const cleanAddr = (s.address ?? "")
-        .replace(/^日本[、,]\s*/, "")
-        .replace(/^〒?\s*\d{3}-?\d{4}\s*/, "")
-        .trim();
-      const prefMatch = cleanAddr.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-      const prefecture = prefMatch ? prefMatch[1].replace(/[都道府県]$/, "") : "";
-
-      const rawImgs = (s.image_urls ?? []).filter(Boolean);
-      const image_urls: string[] = rawImgs.filter((u: string) => !isLegacyPhotoUrl(u));
-
-      return {
-        id: s.id,
-        spot_name: name,
-        prefecture,
-        description: s.description,
-        address: s.address as string | null,
-        cleanAddr,
-        image_urls,
-        auto_tags: s.auto_tags,
-        lat: s.lat,
-        lng: s.lng,
-        created_at: s.created_at,
-        poster_name: (s.poster_name as string | null) ?? null,
-        poster_icon: iconFor(s.device_id),
-        poster_id: (s.device_id as string | null) ?? null,   // 投稿者ブロック用（端末ID）
-      };
-    });
 
     // ── みんなのMoodログ(spot_posts)も全国穴場フィードに合流 ────────────────────
     //   承認済み・公開(spot_public_anonymous/public)の投稿を同じカード形に整形して混ぜる。
@@ -180,52 +105,8 @@ export async function GET(request: Request) {
       }
     } catch { /* spot_posts未作成は穴場のみ表示 */ }
 
-    // ── ユーザーおすすめブログ(blog_posts)も全国フィードに合流（穴場＋moodログ＋ブログを1つに統一）──
-    let blogItems: Array<Record<string, unknown>> = [];
-    try {
-      const { data: bposts } = await supabase
-        .from("blog_posts")
-        .select("id, device_id, poster_name, place_id, place_name, address, area, lat, lng, title, caption, mood_tags, like_count, helpful_count, created_at")
-        .eq("approval_status", "approved").eq("visibility", "public")
-        .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
-      const blist = (bposts ?? []) as Array<Record<string, unknown>>;
-      if (blist.length > 0) {
-        const bIds = blist.map(b => String(b.id));
-        const photoByBlog = new Map<string, string[]>();
-        const { data: bphs } = await supabase.from("blog_post_photos")
-          .select("blog_post_id, photo_url, photo_order")
-          .in("blog_post_id", bIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected")
-          .order("photo_order", { ascending: true });
-        for (const ph of (bphs ?? []) as Array<Record<string, unknown>>) {
-          const k = String(ph.blog_post_id); if (!photoByBlog.has(k)) photoByBlog.set(k, []);
-          if (!isLegacyPhotoUrl(String(ph.photo_url))) photoByBlog.get(k)!.push(String(ph.photo_url));
-        }
-        const toPrefB = (addr: unknown): string => {
-          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
-          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-          return m ? m[1].replace(/[都道府県]$/, "") : "";
-        };
-        blogItems = blist.map(b => ({
-          id: `bp-${b.id}`, kind: "blog",
-          place_id: b.place_id ?? null, place_name: String(b.place_name ?? ""),
-          spot_name: String(b.title || b.place_name || ""),
-          prefecture: toPrefB(b.area || b.address),
-          description: b.caption ?? "", address: (b.address as string | null) ?? null,
-          image_urls: photoByBlog.get(String(b.id)) ?? [],
-          auto_tags: b.mood_tags ?? [],
-          lat: b.lat ?? null, lng: b.lng ?? null,
-          likes: (Number(b.like_count) || 0) + (Number(b.helpful_count) || 0),
-          created_at: b.created_at,
-          poster_name: (b.poster_name as string | null) ?? null,
-          poster_icon: iconFor(b.device_id),
-          poster_id: (b.device_id as string | null) ?? null,
-        }));
-      }
-    } catch { /* blog_posts未作成は穴場＋moodログのみ */ }
-
-    // cleanAddr は内部用なので返却から除外。穴場(suggestion)＋moodログ(moodlog)＋ブログ(blog)を新着順マージ。
-    const out = items.map(({ cleanAddr, ...rest }) => ({ kind: "suggestion", ...rest }));
-    const merged = [...moodItems]  // spot_posts(moodログ＋新スポット)に一本化。穴場(suggestions)/ブログ(blog)の合流は停止
+    // moodログ(spot_posts=moodログ＋新スポット投稿)のみを新着順で返す。穴場(suggestions)/ブログ(blog)の合流は停止済み。
+    const merged = [...moodItems]
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 

@@ -609,9 +609,6 @@ export default function ResultsView(props: Props) {
             isVisited={visitedTitles.includes(item.title)}
             accentColor={accentColor}
             lang={lang}
-            moodRating={placeRatings[item.title] ?? null}
-            onMoodMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'good' }); onSubmitPlaceRating?.(item.title, 'good'); }}
-            onMoodNotMatch={() => { onSetPlaceRatings({ ...placeRatings, [item.title]: 'bad' }); onSubmitPlaceRating?.(item.title, 'bad'); }}
             moodLabel={notSkipped(selectedMood) ? selectedMood : undefined}
             onPressDetail={onPressDetail ? () => onPressDetail(item) : undefined}
             spooky={isShinrei}

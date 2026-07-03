@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Dimensions, Linking, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Dimensions, Linking, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -279,7 +279,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           ) : null}
 
           {/* 通報 */}
-          <TouchableOpacity onPress={report} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
+          <TouchableOpacity onPress={() => Alert.alert('この投稿を通報しますか？', '不適切な内容として運営に報告します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '通報する', style: 'destructive', onPress: report }])} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
             <Text style={s.reportText}>{reported ? '通報しました' : '⚠ この投稿を通報'}</Text>
           </TouchableOpacity>
         </View>

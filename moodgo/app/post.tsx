@@ -120,6 +120,9 @@ export default function PostScreen() {
           const d = await res.json();
           if (d.ok && d.address) setAddress(d.address);
         } catch { /* 住所自動入力は失敗してもOK */ }
+      } else {
+        // 拒否時は無反応にせずフィードバック（写真許可と同様）
+        showToast('位置情報の許可が必要です', '設定アプリ → MoodGo → 位置情報 で許可してください');
       }
     } catch { /* 位置取得失敗 */ } finally { setLocating(false); }
   };

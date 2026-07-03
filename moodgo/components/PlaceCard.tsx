@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Check, Clock, Flame, Heart, HelpCircle, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Sparkles, Star, Train, ThumbsUp, ThumbsDown, X } from 'lucide-react-native';
+import { Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -227,9 +227,6 @@ type Props = {
   isVisited?: boolean;
   accentColor?: string;
   lang?: 'ja' | 'en';
-  moodRating?: 'good' | 'bad' | null;
-  onMoodMatch?: () => void;
-  onMoodNotMatch?: () => void;
   moodLabel?: string;   // 気分ラベル（任意）
   /** タイトルタップで詳細ページへ */
   onPressDetail?: () => void;
@@ -244,7 +241,7 @@ type Props = {
 export default function PlaceCard({
   item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
-  moodRating, onMoodMatch, onMoodNotMatch, moodLabel, onPressDetail, spooky = false, darkTheme = false,
+  moodLabel, onPressDetail, spooky = false, darkTheme = false,
   compact = false,
 }: Props) {
   const t = T[lang];
@@ -384,7 +381,6 @@ export default function PlaceCard({
 
   // 説明文：featuresの中で長い文はdescription扱い
   const description = item.features?.find(f => f.length > 15) ?? '';
-  const tags = item.features?.filter(f => f !== description && f.length > 0) ?? [];
 
   return (
     <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
@@ -851,7 +847,6 @@ const s = StyleSheet.create({
   moodLogSub:    { fontSize: 11, fontWeight: '700', color: '#A06CB8', backgroundColor: '#F7EEFB', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
   title:         { fontSize: 20, fontWeight: '800', color: '#1E0753', letterSpacing: -0.4, lineHeight: 26 },
   titleTappable: { textDecorationLine: 'underline', textDecorationColor: 'rgba(192,132,252,0.5)' },
-  titleNoPhoto:  { marginRight: 40 },   // 写真0カード: 右上ハートとタイトルの重なり回避
   description: { fontSize: 13, color: '#9CA3AF', lineHeight: 18 },
 
   // AI相談のおすすめ理由ブロック
