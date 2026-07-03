@@ -5764,6 +5764,8 @@ type FinalizeDedupeKey = { key: string; lat?: number; lng?: number };
 
 // 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
 const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
+// 目的地でないPOI（OSM由来のトイレ/給水所/バス停/自販機/喫煙所等）。どの気分でも検索結果に出さない。
+const NON_DESTINATION_RE = /(?:公衆)?トイレ|お手洗い|給水所|給水塔|配水場|公衆便所|バス停|バス停留所|自動販売機|自販機コーナー|公衆電話|喫煙所|変電所|ポンプ場|防災倉庫|ゴミ集積|ゴミ処理/;
 // お腹すいた時に除外する老舗系（観光客向けでない古すぎる地元店の抑制）。
 // ※「食堂」「大衆食堂」は正規の定食屋・大衆食堂(〇〇食堂)が多く、docx仕様も除外を求めて
 //   いないため除外対象から外した（定食食堂の取りこぼし防止）。
@@ -5896,6 +5898,8 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     return n <= 0 ? 0 : Math.min(1, Math.log10(n + 1) / 4);
   };
   const finalizeAssembled = <T extends FinalizeRec>(arr: T[]): T[] => {
+    // 目的地でないPOI(トイレ/給水所/バス停等)は全気分で除外＝mood単体検索のOSMノイズを断つ
+    arr = (arr ?? []).filter(r => !NON_DESTINATION_RE.test(r.title ?? ""));
     if (isFoodMood || effectiveDeepDive === "心霊") return arr;  // food/心霊は既存ロジック厳守
     if (!arr || arr.length <= 4) return arr;
     const BRAND_CAP = 2, SUBCAT_CAP = 3;
