@@ -5,7 +5,7 @@
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -63,6 +63,8 @@ export default function PostScreen() {
   const [searching, setSearching] = useState(false);
   const [pickedId, setPickedId] = useState('');   // 候補から選んだ既存スポットID
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 画面を離れる時に検索タイマーを止める（unmount後のsetState/古い結果上書きを防ぐ）
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const existingPlaceId = paramPlaceId || pickedId;  // 既存(param or 検索選択)
   const isExisting = !!existingPlaceId;
@@ -154,10 +156,11 @@ export default function PostScreen() {
   }, [moodTags]);
 
   const submit = async () => {
+    // バリデーションはフォームの並び順（名前→気分→本文→権利）に合わせる＝下の項目のエラーが先に出ない
     if (!isExisting && !spotName.trim()) { showToast('場所の名前を入力してください', '新しいスポット名を入れてね'); return; }
-    if (!licenseOk) { showToast('権利確認が必要です', '「自分で撮影／使用許可あり」にチェック'); return; }
     if (moodTags.length === 0) { showToast('気分タグを選んでください', '合う気分を1つ以上タップ'); return; }
     if (findNgWord(caption) || findNgWord(spotName)) { showToast('不適切な表現があります', '内容を見直してください'); return; }
+    if (!licenseOk) { showToast('権利確認が必要です', '「自分で撮影／使用許可あり」にチェック'); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
