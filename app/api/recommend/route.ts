@@ -5802,10 +5802,10 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     foodAllowed ? arr : arr.filter(r => !isRestaurantName(r.title ?? "") && !tagsAreFood(r.tags));
 
   // distanceText 例: "車で約2分 / 1.0km" から km をパース
-  const parseKmFromDistText = (distText?: string): number => {
-    if (!distText) return 0;
+  const parseKmFromDistText = (distText?: string): number | null => {
+    if (!distText) return null;   // 距離不明は null（kmOf の ?? 9999 を生かし「最至近0km」誤判定を防ぎ末尾へ）
     const m = distText.match(/\/\s*([\d.]+)\s*km/);
-    return m ? parseFloat(m[1]) : 0;
+    return m ? parseFloat(m[1]) : null;
   };
 
   const shuffleArr = <T,>(arr: T[]): T[] => {

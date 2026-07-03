@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { showToast } from '@/lib/toast';
 import PuniPressable from '@/components/PuniPressable';
 
 const PINK = '#F56CB3';
@@ -58,7 +59,7 @@ export default function ContactScreen() {
       setDone(true);
     } catch {
       setSubmitting(false);
-      // 失敗時はボタンを再度押せる状態に戻すだけ（簡潔に）
+      showToast('送信できませんでした', '通信環境を確認して再度お試しください');
     }
   };
 

@@ -41,6 +41,7 @@ import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
+import { showToast } from '@/lib/toast';
 // 設定まわりの共有state（言語/プロフィール/非表示）。設定UIをプロフィールタブへ移したためストア化。
 import { useSettings, hydrateSettings, saveProfile, addBlockedPlace } from '@/lib/settingsStore';
 import * as Location from 'expo-location';
@@ -1149,8 +1150,10 @@ export default function Home() {
                     note:         reportNote,
                   }),
                 });
-              } catch {}
-              setReportDone(true);
+                setReportDone(true);
+              } catch {
+                showToast('通報を送信できませんでした', '通信環境を確認して再度お試しください');
+              }
               setReportSubmitting(false);
             }}
             seenPlaceTitles={history.flatMap(h =>

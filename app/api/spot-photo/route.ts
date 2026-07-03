@@ -109,6 +109,7 @@ export async function GET(req: Request) {
     let q = supabase.from("spot_photos").select("id, image_url, created_at").order("is_primary", { ascending: false }).order("created_at", { ascending: false });
     q = placeId ? q.eq("place_id", placeId) : q.eq("place_name", placeName!);
     if (reusable) q = q.eq("moderation_status", "approved").eq("can_use_as_spot_photo", true);
+    else q = q.neq("moderation_status", "hidden").neq("moderation_status", "rejected");   // 一般パスでも非表示/却下写真は返さない
     const { data, error } = await q;
     if (error && !isMissingTable(error)) throw error;
     const photos = (data ?? []).map(r => r.image_url);

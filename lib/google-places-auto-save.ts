@@ -205,7 +205,7 @@ export async function autoSaveGooglePlaces(
         google_place_id: p.googlePlaceId || null,
         source_type: "google",
         tags: assignTags(genreTag, p.name),
-        photo_url: p.photoUrl ?? null,
+        photo_url: null,   // 規約対応: Google由来の写真URLは恒久保存しない（recommendのwriteback無効化と整合）
         is_active: true,
         report_count: 0,
         area: extractArea(p.address ?? ""),
@@ -271,7 +271,7 @@ export async function autoSavePlacesWithTags(
         google_place_id: p.googlePlaceId || null,
         source_type: sourceType,
         tags,
-        photo_url: p.photoUrl ?? null,
+        photo_url: null,   // 規約対応: Google由来の写真URLは恒久保存しない（recommendのwriteback無効化と整合）
         is_active: true,
         report_count: 0,
         area: extractArea(p.address ?? ""),
@@ -399,7 +399,7 @@ export async function autoSaveHotPepperShops(
         hotpepper_id: s.id ?? null,
         source_type: "hotpepper",
         tags: assignTags(genreTag, `${s.name} ${s.genreCatch ?? ""} ${s.shopCatch ?? ""}`),
-        photo_url: s.photoUrl ?? null,
+        photo_url: null,   // 規約対応: 外部由来の写真URLは恒久保存しない
         is_active: true,
         report_count: 0,
         area: extractArea(s.address ?? ""),

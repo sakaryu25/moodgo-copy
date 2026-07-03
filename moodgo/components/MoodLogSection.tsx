@@ -72,9 +72,14 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
     Alert.alert('この投稿を通報', '不適切・無断転載・関係ない写真などの場合に通報できます。', [
       { text: 'キャンセル', style: 'cancel' },
       { text: '通報する', style: 'destructive', onPress: async () => {
-        try { const did = await getDeviceId(); await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: 'user_report' }) }); } catch {}
-        setPosts(prev => prev.filter(p => p.id !== post.id));
-        Alert.alert('通報を受け付けました', 'ご協力ありがとうございます。');
+        try {
+          const did = await getDeviceId();
+          await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: 'user_report' }) });
+          setPosts(prev => prev.filter(p => p.id !== post.id));
+          Alert.alert('通報を受け付けました', 'ご協力ありがとうございます。');
+        } catch {
+          Alert.alert('通報を送信できませんでした', '通信環境を確認して再度お試しください。');
+        }
       } },
     ]);
   };
