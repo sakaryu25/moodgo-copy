@@ -5737,6 +5737,7 @@ type FinalizeRec = {
   hasUserPhotos?: boolean;
   features?: string[];
   source?: string;   // 手動追加(manual/admin/user)優先のために参照
+  placeId?: string;  // #2: 重複排除の安全網（同一placeId=同一スポット）
   _aiRank?: number;  // OpenAI判別順位(0=最良)。Supabase候補のみ付与。sortOrShuffleで昇格boostに使う
 };
 
@@ -5760,7 +5761,7 @@ type FinalizeContext = {
   transport?: string | string[];  // 距離テキストの交通手段
 };
 
-type FinalizeDedupeKey = { key: string; lat?: number; lng?: number };
+type FinalizeDedupeKey = { key: string; lat?: number; lng?: number; pid?: string };
 
 // 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
 const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
@@ -5849,9 +5850,12 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (!key) continue;
       const rl = typeof r.lat === "number" ? r.lat : undefined;
       const rg = typeof r.lng === "number" ? r.lng : undefined;
+      // #2: 同一placeId(=同一スポット)は確実な重複。名前が違って80m判定を抜けるケースも塞ぐ安全網。
+      const pid = typeof r.placeId === "string" && r.placeId ? r.placeId : undefined;
       let isDup = false;
       for (const e of seen) {
         if (e.key === key) { isDup = true; break; }
+        if (pid && e.pid === pid) { isDup = true; break; }
         if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined
             && haversineMeters(rl, rg, e.lat, e.lng) <= 80 && namesOverlap(key, e.key)) {
           isDup = true; break;
@@ -5862,7 +5866,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       const chainCnt = brand.length >= 3 ? (chainCounts.get(brand) ?? 0) : 0;
       if (chainCnt >= 2) { skipped.push(r); continue; }
       if (taken.length < max) {
-        seen.push({ key, lat: rl, lng: rg });
+        seen.push({ key, lat: rl, lng: rg, pid });
         taken.push(r);
         if (brand.length >= 3) chainCounts.set(brand, chainCnt + 1);
       } else {
