@@ -613,9 +613,10 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        {/* 住所 */}
+        {/* 住所（長押しでコピー） */}
         {item.address ? (
-          <Text style={[s.address, darkTheme && s.textDimDark]} numberOfLines={2}>{item.address}</Text>
+          <Text style={[s.address, darkTheme && s.textDimDark]} numberOfLines={2}
+            onLongPress={() => copyPlaceName(item.address)} suppressHighlighting>{item.address}</Text>
         ) : null}
 
         {/* 現在地からの所要（車で何分か）— マスト表示 */}

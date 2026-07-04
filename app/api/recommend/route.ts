@@ -5880,6 +5880,10 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   //   food/心霊は対象外（早期return）。超過分は除去せず末尾へ回し15件は維持。
   const NONFOOD_SUBCATS: { key: string; re: RegExp }[] = [
     { key: "カラオケ", re: /カラオケ|まねきねこ|ビッグエコー|カラオケ館|ジャンカラ|banban|ビッグ\s?エコー|joysound|ジョイサウンド|ワンカラ|歌広場|シダックス|カラ館|カラオケの鉄人/i },
+    // 「こだわらない/わいわい」等でジャンル指定が無いと同種のアミューズメントが氾濫する（ボウリング5件等）。
+    //   別ブランドでも同サブカテなので SUBCAT_CAP(=3) で間引く。
+    { key: "ボウリング", re: /ボウリング|ボーリング|bowling|ラウンドワン|round\s?1|スポッチャ|spo-?cha/i },
+    { key: "ゲーセン",   re: /ゲームセンター|ゲーセン|アミューズメント(?!パーク)|amusement\s?(?:arcade|center)|タイトーステーション|adores|アドアーズ/i },
     { key: "図書館",   re: /図書館|library|自習|ライブラリー/i },
     { key: "水族館",   re: /水族館|aquarium|アクアリウム/i },
     { key: "展望",     re: /展望|スカイ\s?ツリー|スカイツリー|タワー|展望台|sky\s?tree/i },
