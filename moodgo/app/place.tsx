@@ -446,6 +446,9 @@ export default function PlaceDetailPage() {
     setFetchError(false);
     setExtra(prev => ({ ...prev, loaded: false }));
 
+    // #9: 「通信失敗」と「正常応答だが詳細データ無し(Google未収録のOSM/自前スポット等)」を区別する。
+    //   後者は失敗ではないのでエラー表示せず、基本情報だけ出す（口コミ・営業時間は元から無いのが正常）。
+    let hadNetError = false;
     // APIを呼び出してデータを返す（stateはセットしない）
     type PlaceData = Record<string, unknown>;
     const fetchPlace = async (body: Record<string, unknown>): Promise<PlaceData | null> => {
@@ -457,8 +460,9 @@ export default function PlaceDetailPage() {
         });
         const d = await res.json();
         if (d.ok && d.place) return d.place as PlaceData;
-        return null;
+        return null;  // 正常応答・詳細なし（通信失敗ではない）
       } catch {
+        hadNetError = true;  // 通信失敗のみ true
         return null;
       }
     };
@@ -531,8 +535,9 @@ export default function PlaceDetailPage() {
     if (best) {
       applyData(best);
     } else {
+      // 詳細データが取れなくても、通信失敗でなければエラーにしない（Google未収録＝正常）。
       setExtra(prev => ({ ...prev, loaded: true }));
-      setFetchError(true);
+      setFetchError(hadNetError);
     }
   }, [rec?.title, rec?.placeId]);
 
@@ -794,7 +799,7 @@ export default function PlaceDetailPage() {
             /* ── APIエラー（リトライボタン）── 評価や住所があっても常に表示 */
             <TouchableOpacity style={s.retryBtn} onPress={() => fetchDetail()} activeOpacity={0.8}>
               <RefreshCw size={14} color="#C084FC" strokeWidth={2} />
-              <Text style={s.retryText}>口コミ・営業時間の読み込みに失敗。タップして再試行</Text>
+              <Text style={s.retryText}>営業時間などの読み込みに失敗しました。タップして再試行</Text>
             </TouchableOpacity>
           ) : null}
 

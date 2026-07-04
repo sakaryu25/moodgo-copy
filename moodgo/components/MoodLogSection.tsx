@@ -54,17 +54,19 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
   const goPost = () => router.push({ pathname: '/post', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
 
   const react = async (post: MoodPost, rtype: 'like' | 'helpful' | 'revisit') => {
+    // #13: 既に押していたら解除(undo)、でなければ付与＝トグル。以前は if(mine) return で解除不可だった。
     const mine = rtype === 'like' ? post.myLike : rtype === 'helpful' ? post.myHelpful : post.myRevisit;
-    if (mine) return; // 二重防止（楽観的にトグルOFFは無し）
+    const undo = mine;
+    const d = undo ? -1 : 1;
     setPosts(prev => prev.map(p => p.id !== post.id ? p : ({
       ...p,
-      likeCount: p.likeCount + (rtype === 'like' ? 1 : 0), myLike: p.myLike || rtype === 'like',
-      helpfulCount: p.helpfulCount + (rtype === 'helpful' ? 1 : 0), myHelpful: p.myHelpful || rtype === 'helpful',
-      revisitCount: p.revisitCount + (rtype === 'revisit' ? 1 : 0), myRevisit: p.myRevisit || rtype === 'revisit',
+      likeCount: Math.max(0, p.likeCount + (rtype === 'like' ? d : 0)), myLike: rtype === 'like' ? !undo : p.myLike,
+      helpfulCount: Math.max(0, p.helpfulCount + (rtype === 'helpful' ? d : 0)), myHelpful: rtype === 'helpful' ? !undo : p.myHelpful,
+      revisitCount: Math.max(0, p.revisitCount + (rtype === 'revisit' ? d : 0)), myRevisit: rtype === 'revisit' ? !undo : p.myRevisit,
     })));
     try {
       const did = await getDeviceId();
-      await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype }) });
+      await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) });
     } catch { /* 失敗は楽観表示のまま */ }
   };
 

@@ -68,14 +68,27 @@ export async function POST(req: Request) {
       if (action === "react") {
         const rtype = String(body?.rtype ?? "");
         if (!VALID_RTYPE.has(rtype)) return NextResponse.json({ ok: false, error: "rtype不正" }, { status: 400 });
-        // 二重防止: unique(post_id,device_id,rtype)。新規挿入できた時だけカウンタ++
+        const col = rtype === "like" ? "like_count" : rtype === "helpful" ? "helpful_count" : "revisit_count";
+        // 解除（トグルoff）: 押していたリアクション行を削除できた時だけカウンタ-1（0未満にしない）。
+        //   いいねを押しても解除できない問題(#13)への対応。undo=true で呼ばれる。
+        if (body?.undo === true) {
+          const { data: del, error: delErr } = await db.from("spot_post_reactions")
+            .delete().match({ post_id: postId, device_id: deviceId, rtype }).select("post_id");
+          if (delErr && isMissingTable(delErr)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
+          if (Array.isArray(del) && del.length > 0) {
+            const { data } = await db.from("spot_posts").select(col).eq("id", postId).maybeSingle();
+            const cur = (data as Record<string, number> | null)?.[col] ?? 0;
+            await db.from("spot_posts").update({ [col]: Math.max(0, cur - 1) }).eq("id", postId).then(() => {}, () => {});
+          }
+          return NextResponse.json({ ok: true, removed: Array.isArray(del) && del.length > 0 });
+        }
+        // 付与: 二重防止 unique(post_id,device_id,rtype)。新規挿入できた時だけカウンタ++
         const { error: insErr } = await db.from("spot_post_reactions").insert({ post_id: postId, device_id: deviceId, rtype });
         if (insErr) {
           if (isMissingTable(insErr)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
           // 一意制約違反(23505)=既にリアクション済み → 何もしない
           return NextResponse.json({ ok: true, already: true });
         }
-        const col = rtype === "like" ? "like_count" : rtype === "helpful" ? "helpful_count" : "revisit_count";
         await db.rpc("increment_spot_post_counter", { p_post: postId, p_col: col }).then(() => {}, async () => {
           // RPC未作成時のフォールバック: read→+1（厳密性は不要な集計値）
           const { data } = await db.from("spot_posts").select(col).eq("id", postId).maybeSingle();
