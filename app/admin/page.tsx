@@ -836,6 +836,11 @@ export default function AdminPage() {
     recommended_items: string[];
   } | null>(null);
   const [quickCoverUrl, setQuickCoverUrl] = useState("");
+  // クイック投稿のタグは admin が選んだものだけを登録する（ユーザー要望 2026-07-05:
+  // 「OpenAIが勝手に#を入れない・adminが登録した#のみ」）。AI生成タグ(quickAI.tags)は
+  // “タップで追加できる提案”としてだけ表示し、自動では一切登録しない。
+  const [quickTags, setQuickTags] = useState<string[]>([]);
+  const [quickTagPickerOpen, setQuickTagPickerOpen] = useState(false);
   const [quickAdminHint, setQuickAdminHint] = useState("");
   const [quickTikTokUrl, setQuickTikTokUrl] = useState("");
   const [quickTikTokInfo, setQuickTikTokInfo] = useState<{ title: string; authorName: string } | null>(null);
@@ -887,6 +892,9 @@ export default function AdminPage() {
       const d2 = await res2.json();
       if (!d2.ok) throw new Error(d2.error ?? "AI生成に失敗しました");
       setQuickAI(d2.ai);
+      // タグは空から開始（AI案は提案として表示のみ・adminが選んだ#だけ登録される）
+      setQuickTags([]);
+      setQuickTagPickerOpen(false);
       setQuickStep("preview");
     } catch (e) {
       setQuickError(e instanceof Error ? e.message : String(e));
@@ -896,6 +904,12 @@ export default function AdminPage() {
 
   const handleQuickPublish = async () => {
     if (!quickPlace || !quickAI) return;
+    // 登録されるタグは admin が選んだ quickTags のみ（AIタグの自動登録は廃止）。
+    // add-spot フォームと同じく気分タグ必須。
+    if (quickTags.length === 0 || !quickTags.some((t) => MOOD_TAGS.includes(t))) {
+      setQuickError("気分タグを含むタグを選択してください（AI提案をタップ or 「タグを選ぶ」から追加）");
+      return;
+    }
     setQuickPublishing(true);
     setQuickError("");
     try {
@@ -907,7 +921,7 @@ export default function AdminPage() {
       if (quickPlace.lng) fd.append("lng", String(quickPlace.lng));
       fd.append("source", "admin");
       fd.append("secret", adminSecret);
-      fd.append("autoTags", JSON.stringify(quickAI.tags ?? []));
+      fd.append("autoTags", JSON.stringify(quickTags));  // adminが選んだタグのみ登録（AIタグ自動登録は廃止）
       if (quickPlace.website) fd.append("manualMapUrl", quickPlace.website);
       // カバー画像を先頭にして全写真URLを渡す
       const orderedPhotos = quickCoverUrl
@@ -922,7 +936,7 @@ export default function AdminPage() {
       let successMsg = "クイック投稿で追加しました ✅";
 
       // ── Supabase places にも登録 ─────────────────────────────────────────
-      if (quickRegisterToPlaces && quickAI && quickAI.tags.length > 0) {
+      if (quickRegisterToPlaces && quickTags.length > 0) {
         try {
           const orderedPhotos2 = quickCoverUrl
             ? [quickCoverUrl, ...(quickPlace.photoUrls ?? []).filter((u) => u !== quickCoverUrl)]
@@ -936,7 +950,7 @@ export default function AdminPage() {
               address:       quickPlace.address ?? "",
               lat:           quickPlace.lat ?? null,
               lng:           quickPlace.lng ?? null,
-              tags:          quickAI.tags,
+              tags:          quickTags,
               description:   quickAI.description ?? null,
               imageUrls:     orderedPhotos2,
             }),
@@ -960,6 +974,8 @@ export default function AdminPage() {
       setQuickQuery("");
       setQuickPlace(null);
       setQuickAI(null);
+      setQuickTags([]);
+      setQuickTagPickerOpen(false);
       setQuickCoverUrl("");
       setQuickAdminHint("");
       setQuickTikTokUrl("");
@@ -993,12 +1009,15 @@ export default function AdminPage() {
       mapUrl: quickPlace.website ?? "",
       tagInput: "",
     });
-    setNewSpotTags(quickAI.tags ?? []);
+    // フォームへ流し込むタグも「adminがプレビューで選んだもの」だけ（AIタグの自動流し込みは廃止）
+    setNewSpotTags(quickTags);
     setQuickModal(false);
     setQuickStep("input");
     setQuickQuery("");
     setQuickPlace(null);
     setQuickAI(null);
+    setQuickTags([]);
+    setQuickTagPickerOpen(false);
     setQuickCoverUrl("");
     setQuickAdminHint("");
     setQuickTikTokUrl("");
@@ -3507,7 +3526,7 @@ export default function AdminPage() {
                   {/* ヘッダー */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
                     <div style={{ fontSize: "18px", fontWeight: 900, color: "#4a3034" }}>⚡ クイック投稿</div>
-                    <button onClick={() => { setQuickModal(false); setQuickStep("input"); setQuickError(""); }} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#9b7080" }}>✕</button>
+                    <button onClick={() => { setQuickModal(false); setQuickStep("input"); setQuickError(""); setQuickTags([]); setQuickTagPickerOpen(false); }} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#9b7080" }}>✕</button>
                   </div>
 
                   {quickError && (
@@ -3636,18 +3655,73 @@ export default function AdminPage() {
                             />
                           </div>
                           <div>
-                            <strong>🏷 タグ</strong> <span style={{ fontWeight: 400, fontSize: "11px", color: "#888" }}>(クリックで削除)</span>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                              {quickAI.tags.map((tag, i) => (
-                                <span
-                                  key={i}
-                                  onClick={() => setQuickAI({ ...quickAI, tags: quickAI.tags.filter((_, idx) => idx !== i) })}
-                                  style={{ background: "#ede9fe", color: "#7c3aed", fontSize: "12px", fontWeight: 700, padding: "4px 10px", borderRadius: "999px", cursor: "pointer", userSelect: "none" }}
-                                >
-                                  {tag} ✕
-                                </span>
-                              ))}
+                            {/* 登録タグ＝adminが選んだものだけ。AIタグの自動登録は廃止（提案として表示のみ）。 */}
+                            <strong>🏷 タグ</strong> <span style={{ fontWeight: 400, fontSize: "11px", color: "#888" }}>(登録されるのは選択したタグのみ・クリックで削除)</span>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px", minHeight: "26px" }}>
+                              {quickTags.length === 0 && (
+                                <span style={{ fontSize: "12px", color: "#c06030", fontWeight: 700 }}>⚠️ 気分タグを含むタグを選択してください（AIは自動で付けません）</span>
+                              )}
+                              {quickTags.map((tag, i) => {
+                                const isMood = MOOD_TAGS.includes(tag);
+                                return (
+                                  <span
+                                    key={i}
+                                    onClick={() => setQuickTags((prev) => prev.filter((_, j) => j !== i))}
+                                    style={{ padding: "4px 10px", borderRadius: "999px", background: isMood ? "#ffe0e8" : "#ede9fe", border: `1px solid ${isMood ? "#ffb0c0" : "#c4b5fd"}`, fontSize: "12px", fontWeight: 700, color: isMood ? "#c0385a" : "#7c3aed", cursor: "pointer", userSelect: "none" }}
+                                  >
+                                    {tag} ✕
+                                  </span>
+                                );
+                              })}
                             </div>
+                            {quickAI.tags.filter((t) => !quickTags.includes(t)).length > 0 && (
+                              <div style={{ marginTop: "8px" }}>
+                                <div style={{ fontSize: "11px", color: "#888", fontWeight: 700, marginBottom: "4px" }}>🤖 AIの提案（タップで追加・自動では登録されません）</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                                  {quickAI.tags.filter((t) => !quickTags.includes(t)).map((tag) => (
+                                    <span
+                                      key={tag}
+                                      onClick={() => setQuickTags((prev) => [...prev, tag])}
+                                      style={{ padding: "4px 10px", borderRadius: "999px", background: "#f6f6f6", border: "1px dashed #bbb", fontSize: "12px", fontWeight: 700, color: "#666", cursor: "pointer", userSelect: "none" }}
+                                    >
+                                      ＋ {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setQuickTagPickerOpen((v) => !v)}
+                              style={{ marginTop: "8px", padding: "5px 12px", borderRadius: "999px", border: "1px solid #d0c0f0", background: "#faf8ff", color: "#7c3aed", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              {quickTagPickerOpen ? "▲ 閉じる" : "▼ タグを選ぶ"}
+                            </button>
+                            {quickTagPickerOpen && (
+                              <div style={{ border: "1px solid #ead7db", borderRadius: "14px", padding: "12px", background: "#fffaf8", maxHeight: "300px", overflowY: "auto", marginTop: "6px" }}>
+                                {TAG_CATEGORIES.map((cat) => (
+                                  <div key={cat.key} style={{ marginBottom: "12px" }}>
+                                    <div style={{ fontSize: "11px", fontWeight: 900, color: cat.key === "mood" ? "#c0385a" : "#6a4a50", marginBottom: "6px" }}>
+                                      {cat.key === "mood" ? "🎭 " : ""}{cat.label}
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+                                      {cat.tags.map((tag) => {
+                                        const selected = quickTags.includes(tag);
+                                        return (
+                                          <span
+                                            key={tag}
+                                            onClick={() => setQuickTags((prev) => selected ? prev.filter((t) => t !== tag) : [...prev, tag])}
+                                            style={{ padding: "3px 9px", borderRadius: "999px", fontSize: "12px", fontWeight: 700, cursor: "pointer", background: selected ? (cat.key === "mood" ? "#ffe0e8" : "#e8f4ff") : "#f0f0f0", border: `1px solid ${selected ? (cat.key === "mood" ? "#ffb0c0" : "#90c0f0") : "#d0d0d0"}`, color: selected ? (cat.key === "mood" ? "#c0385a" : "#1a5080") : "#555" }}
+                                          >
+                                            {selected ? "✓ " : ""}{tag}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           {quickAI.recommended_items.length > 0 && (
                             <div>
