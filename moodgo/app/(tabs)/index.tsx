@@ -40,6 +40,7 @@ import { apiFetch, API_BASE, prewarmRecommend } from '@/lib/api';
 import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import { useTabReset } from '@/lib/useTabReset';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 // 設定まわりの共有state（言語/プロフィール/非表示）。設定UIをプロフィールタブへ移したためストア化。
@@ -102,7 +103,9 @@ export default function Home() {
   // NativeTabs移行: 保存/みんな/つぶやき/特集 は独立タブルートに分離。
   //   このホームルートは home と history(ボタンで開くサブ画面) のみを切替える。
   const [homeView,   setHomeView]   = useState<'home' | 'history'>('home');
-  const [historyResetKey] = useState(0);
+  const [historyResetKey, setHistoryResetKey] = useState(0);
+  // #14: ホームタブを再タップ → 履歴サブ画面を閉じてホーム(START)へ戻す（振り出し）
+  useTabReset(() => { setHomeView('home'); setHistoryResetKey(k => k + 1); });
 
   // ── Quiz state ───────────────────────────────────────────────────────────
   const [selectedMood,       setSelectedMood]       = useState('');

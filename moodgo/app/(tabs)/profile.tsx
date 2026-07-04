@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { MapPin, Settings as SettingsIcon, Sparkles, UserRound } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator, Dimensions, RefreshControl, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import PuniPressable from '@/components/PuniPressable';
 import SettingsView from '@/components/SettingsView';
+import { useTabReset } from '@/lib/useTabReset';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { HISTORY_KEY } from '@/lib/storage';
@@ -75,6 +76,9 @@ export default function ProfileTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'profile' | 'other'>('other');
+  // #14: プロフィールタブを再タップ → 設定を閉じてスクロール先頭へ（振り出し）
+  const scrollRef = useRef<ScrollView>(null);
+  useTabReset(() => { setShowSettings(false); scrollRef.current?.scrollTo({ y: 0, animated: true }); });
 
   // 名前・アイコンを読み直す（設定で変更後の反映用）
   const loadProfile = useCallback(async () => {
@@ -126,6 +130,7 @@ export default function ProfileTab() {
     <View style={s.root}>
       <AppBackground />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 110 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PURPLE} />}

@@ -6,11 +6,15 @@ import AppBackground from '@/components/AppBackground';
 import FavoritesView from '@/components/FavoritesView';
 import { useFavorites } from '@/lib/useFavorites';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import { useTabReset } from '@/lib/useTabReset';
 import type { FavoriteItem, Recommendation } from '@/types/app';
 
 export default function FavoritesTab() {
   const { favorites, removeFavorite } = useFavorites();
   const [favoriteSort, setFavoriteSort] = useState<'newest' | 'title'>('newest');
+  // #14: 保存タブを再タップ → 詳細を閉じてリスト先頭へ（振り出しに戻す）
+  const [resetKey, setResetKey] = useState(0);
+  useTabReset(() => setResetKey(k => k + 1));
 
   const handlePressCard = (item: FavoriteItem) => {
     const rec: Recommendation = {
@@ -45,6 +49,7 @@ export default function FavoritesTab() {
         onSetFavoriteSort={setFavoriteSort}
         onRemoveFavorite={removeFavorite}
         onPressCard={handlePressCard}
+        resetKey={resetKey}
       />
     </View>
   );
