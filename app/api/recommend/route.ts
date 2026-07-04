@@ -5933,7 +5933,14 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (sub) subCnt.set(sub, sc + 1);
       kept.push(r);
     }
-    const merged = [...kept, ...overflow];  // 超過は除去せず末尾へ＝15件維持
+    // #16(多様性優先・ユーザー選択2026-07-05): 同ブランド/同サブカテの超過は"末尾送り"ではなく"削除"して
+    //   多様化する（「こだわらない」で薄いエリアだと末尾に同種が残り"類似施設が大量"に見える問題への対応）。
+    //   ただし全体が薄くなり過ぎないよう最低 DIVERSE_FLOOR 件までは overflow から補填。薄いエリアは15件未満を許容。
+    //   food/心霊は上で早期returnのため影響なし。ユーザーが明示選択した深掘りジャンル(requestedSub)はcap対象外。
+    const DIVERSE_FLOOR = 8;
+    let merged = kept.length >= DIVERSE_FLOOR
+      ? kept
+      : [...kept, ...overflow.slice(0, DIVERSE_FLOOR - kept.length)];
     // (c): 著名スポット(レビュー多)が上位5枠に1件も無ければ、最良の1件を3位付近へ昇格。
     const FAME_MIN = 0.6;  // ~250件以上で著名とみなす
     const topHasFame = merged.slice(0, 5).some(r => fameScore(r) >= FAME_MIN);
