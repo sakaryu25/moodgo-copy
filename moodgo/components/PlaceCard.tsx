@@ -698,19 +698,8 @@ export default function PlaceCard({
 
         {/* 気分が合う/合わないボタンは廃止。学習は詳細ページの★評価に一本化（SpotRating）。 */}
 
-        {/* ソース表示（osm-* 等の内部ラベルは出さず、意味のあるソースのみ表示）*/}
-        {(() => {
-          const label =
-            item.source === 'admin'     ? '🗄 DB登録済み' :
-            item.source === 'user'      ? '👤 ユーザー投稿' :
-            item.source === 'google'    ? '🔍 Google検索' :
-            item.source === 'hotpepper' ? '🍽 ホットペッパー' : '';
-          return label ? (
-            <View style={s.sourceRow}>
-              <Text style={s.sourceText}>{label}</Text>
-            </View>
-          ) : null;
-        })()}
+        {/* ソース表示（「🗄 DB登録済み」等）は見栄えが悪いためユーザー要望(2026-07-05)で全面非表示。
+            データ由来は内部情報であり利用者価値が無い。source自体は学習/写真等で引き続き使用。 */}
 
         {/* フッター */}
         <View style={s.footRow}>
@@ -955,8 +944,6 @@ const s = StyleSheet.create({
   moodDoneText:     { fontSize: 13, fontWeight: '600' },
 
   // ソース
-  sourceRow:  { marginBottom: 2 },
-  sourceText: { fontSize: 11, color: '#A78BFA', fontWeight: '500' },
 
   // フッター
   footRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
