@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -350,11 +350,13 @@ export default function PostScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* 公開期間のカレンダー（iOS=モーダル内インライン / Android=ネイティブダイアログ） */}
+      {/* 公開期間のカレンダー（iOS=ツリー内オーバーレイ / Android=ネイティブダイアログ）
+          ⚠ New Arch(Fabric)の <Modal transparent> は中身を描画せず透明のままタッチを奪う不具合が
+             あるため（ConsentGate で実証・c5adb7c）、showPickerセット時に即マウントされる本Modalを
+             やめ、post画面（Stackルート＝ネイティブタブバー無し）内の絶対配置オーバーレイに置換。 */}
       {showPicker !== null && (Platform.OS === 'ios' ? (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setShowPicker(null)}>
-          <View style={s.pickerOverlay}>
-            <View style={s.pickerSheet}>
+        <View style={s.pickerOverlay}>
+          <View style={s.pickerSheet}>
               <Text style={s.pickerTitle}>{showPicker === 'from' ? '公開を始める日' : '公開を終える日'}</Text>
               <DateTimePicker
                 value={tempDate}
@@ -374,8 +376,7 @@ export default function PostScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
-        </Modal>
+        </View>
       ) : (
         <DateTimePicker
           value={tempDate}
@@ -424,7 +425,7 @@ const s = StyleSheet.create({
   dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dateBtnText: { flex: 1, fontSize: 14, color: '#2A2235', fontWeight: '700' },
   dateBtnPh: { color: '#B9ABD2', fontWeight: '500' },
-  pickerOverlay: { flex: 1, backgroundColor: 'rgba(20,10,40,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  pickerOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, elevation: 9999, backgroundColor: 'rgba(20,10,40,0.4)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   pickerSheet: { backgroundColor: '#fff', borderRadius: 20, padding: 16, width: '100%', maxWidth: 380 },
   pickerTitle: { fontSize: 15, fontWeight: '800', color: '#4A2D7E', textAlign: 'center', marginBottom: 4 },
   pickerBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },

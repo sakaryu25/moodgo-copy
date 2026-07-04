@@ -3,12 +3,18 @@
  * shareSpotToGroup() から呼ばれ、画面下からスライドして所属グループをグリッド表示。
  * 複数選択 → 「転送」で選んだ全グループにスポットカードを一括送信。
  * _layout.tsx にマウントしてあるので、どの画面の「トーク」ボタンからでも出る。
+ *
+ * ⚠ New Architecture(Fabric)では <Modal transparent> の中身が描画されず、
+ *   “見えないのに最前面でタッチだけ奪う”不具合が起きる（ConsentGate で実証・コミット c5adb7c）。
+ *   このシートは spot をセットした瞬間に visible=true でマウントされる＝同じ発火パターンなので、
+ *   Modal をやめ、_layout の最前面に置くツリー内の絶対配置オーバーレイで表示する。
+ *   spot===null 時は null を返すため、閉じている間はタッチを一切ブロックしない。
  */
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check, MapPin, MessageCircle, X } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Dimensions, Image, Modal, Pressable,
+  ActivityIndicator, Alert, Animated, Dimensions, Image, Pressable,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,7 +95,7 @@ export default function GroupShareSheet() {
   const canForward = selected.size > 0 && !sending;
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={close}>
+    <View style={s.host}>
       <View style={{ flex: 1 }}>
         <Animated.View
           style={[
@@ -180,11 +186,13 @@ export default function GroupShareSheet() {
           )}
         </Animated.View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
+  // _layout の最前面に重ねるツリー内オーバーレイ（Modal を使わず Fabric でも確実に描画）
+  host: { ...StyleSheet.absoluteFillObject, zIndex: 9999, elevation: 9999 },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30,7,83,0.4)' },
   sheet: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

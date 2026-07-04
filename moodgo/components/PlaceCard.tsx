@@ -161,8 +161,12 @@ function PhotoViewer({ photos, initialIdx, onClose }: {
 }) {
   const { width: SW, height: SH } = Dimensions.get('window');
   const [idx, setIdx] = useState(initialIdx);
+  // ⚠ New Arch(Fabric)の <Modal transparent> は中身を描画せず透明のままタッチを奪う不具合がある
+  //   （ConsentGate で実証・c5adb7c）。このビューアは viewerIdx をセットした瞬間に visible=true で
+  //   マウントされる同じ発火パターンなので transparent を避ける。背景はほぼ不透明な黒なので、
+  //   ネイティブの不透明フルスクリーンModal（＝onboarding/quizと同じ実績のある描画経路）に変更。
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible animationType="fade" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={pv.root}>
         <ScrollView
           horizontal
@@ -202,7 +206,7 @@ function PhotoViewer({ photos, initialIdx, onClose }: {
 }
 
 const pv = StyleSheet.create({
-  root: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' },
+  root: { flex: 1, backgroundColor: '#000' },
   closeBtn: {
     position: 'absolute', top: 56, right: 18,
     width: 40, height: 40, borderRadius: 20,
