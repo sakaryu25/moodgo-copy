@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -28,11 +29,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 投稿者アイコン: user-icons/{device_id}.jpg の公開URLを導出（写真未設定なら404→アプリ側でフォールバック）
+    // 投稿者アイコン: user-icons/{deviceHash}.jpg の公開URLを導出（写真未設定なら404→アプリ側でフォールバック）
+    //   ⚠ device_id は「ベアラ資格情報」なので生値をURL/レスポンスに出さない（2026-07-05監査対応）。
     const vHour = Math.floor(Date.now() / 3_600_000);
     const iconFor = (deviceId: unknown): string | null => {
       if (typeof deviceId !== "string" || !deviceId) return null;
-      const { data: pub } = supabase!.storage.from("user-icons").getPublicUrl(`${deviceId}.jpg`);
+      const { data: pub } = supabase!.storage.from("user-icons").getPublicUrl(iconPathFor(deviceId));
       return `${pub.publicUrl}?v=${vHour}`;
     };
 
@@ -99,7 +101,8 @@ export async function GET(request: Request) {
             created_at: p.created_at,
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
             poster_icon: anon ? null : iconFor(p.device_id),
-            poster_id: (p.device_id as string | null) ?? null,
+            // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
+            poster_id: typeof p.device_id === "string" && p.device_id ? deviceHash(p.device_id) : null,
           };
         });
       }

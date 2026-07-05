@@ -4,6 +4,7 @@
 export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { iconPathFor } from "@/lib/device-hash";
 
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
@@ -20,7 +21,9 @@ export async function POST(req: Request) {
 
     const BUCKET = "user-icons";
     await supabase.storage.createBucket(BUCKET, { public: true }); // 既存ならエラーが返るだけ（無視）
-    const path = `${deviceId}.jpg`;
+    // 公開URLに生deviceId(=ベアラ資格情報)が載る漏洩を防ぐためハッシュ名で保存（2026-07-05監査対応）。
+    // 旧 {deviceId}.jpg のアイコンは404→アプリ側で頭文字フォールバック（再アップロードで移行）。
+    const path = iconPathFor(deviceId);
     const { error } = await supabase.storage
       .from(BUCKET)
       .upload(path, Buffer.from(imageBase64, "base64"), { contentType: "image/jpeg", upsert: true });

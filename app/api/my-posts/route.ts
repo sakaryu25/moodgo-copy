@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 
 // 旧形式 Google Maps Photo URL（Expoから直接表示できない）は除外
 function isLegacyPhotoUrl(url: string): boolean {
@@ -27,21 +28,35 @@ function toPref(addr: unknown): string {
   return m ? m[1].replace(/[都道府県]$/, "") : "";
 }
 
+// deviceId はベアラ資格情報のため、URLクエリに載せない POST(body) を正とする
+// （クエリはアクセスログに残る）。旧クライアント互換で GET も当面受け付ける。
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => null);
+  const deviceId = String(body?.deviceId ?? "").trim();
+  const limit = Math.min(Number(body?.limit ?? 60), 100);
+  return handle(deviceId, limit);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const deviceId = (searchParams.get("deviceId") ?? "").trim();
   const limit = Math.min(Number(searchParams.get("limit") ?? "60"), 100);
+  return handle(deviceId, limit);
+}
 
+async function handle(deviceId: string, limit: number) {
   if (!supabase || !deviceId) {
     return NextResponse.json({ ok: true, items: [] });
   }
 
-  // 投稿者アイコン: user-icons/{device_id}.jpg の公開URL（時間でキャッシュバスト）
+  // 投稿者アイコン: user-icons/{deviceHash}.jpg の公開URL（時間でキャッシュバスト・生ID非露出）
   const vHour = Math.floor(Date.now() / 3_600_000);
   const myIcon = (() => {
-    const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(`${deviceId}.jpg`);
+    const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(deviceId));
     return `${pub.publicUrl}?v=${vHour}`;
   })();
+  // 本人へのレスポンスでも生deviceIdは返さない（レスポンスに資格情報を含めない不変条件）
+  const myPosterId = deviceHash(deviceId);
 
   try {
     const out: Array<Record<string, unknown>> = [];
@@ -72,7 +87,7 @@ export async function GET(request: Request) {
           status: (s.status as string | null) ?? null,
           poster_name: (s.poster_name as string | null) ?? null,
           poster_icon: myIcon,
-          poster_id: deviceId,
+          poster_id: myPosterId,
         });
       }
     } catch { /* suggestions 未作成でもスキップ */ }
@@ -140,7 +155,7 @@ export async function GET(request: Request) {
             status: (p.status as string | null) ?? null,
             poster_name: (p.poster_name as string | null) ?? null,
             poster_icon: myIcon,
-            poster_id: deviceId,
+            poster_id: myPosterId,
           });
         }
       }
@@ -186,7 +201,7 @@ export async function GET(request: Request) {
             status: (b.approval_status as string | null) ?? null,
             poster_name: (b.poster_name as string | null) ?? null,
             poster_icon: myIcon,
-            poster_id: deviceId,
+            poster_id: myPosterId,
           });
         }
       }

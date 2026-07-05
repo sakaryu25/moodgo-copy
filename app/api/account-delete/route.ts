@@ -11,6 +11,27 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { iconPathFor } from "@/lib/device-hash";
+
+// ── 永続レート制限（api_cacheテーブル利用・Vercelの複数インスタンスでも回避不可）──
+//   メモリ内rateLimitはサーバーレスでインスタンス毎に分離され回避可能（監査2026-07-05）。
+//   破壊的操作のここだけは api_cache を日次カウンタとして使い、IP単位で確実に制限する。
+//   api_cache 未作成でも安全に素通り（graceful degradation・その場合メモリ内制限のみ）。
+async function persistentDailyLimit(key: string, max: number): Promise<boolean> {
+  if (!supabase) return true;
+  const day = new Date().toISOString().slice(0, 10);
+  const cacheKey = `ratelimit:${key}:${day}`;
+  try {
+    const { data } = await supabase.from("api_cache").select("data").eq("cache_key", cacheKey).maybeSingle();
+    const cur = Number((data?.data as { n?: number } | null)?.n ?? 0);
+    if (cur >= max) return false;
+    await supabase.from("api_cache").upsert(
+      { cache_key: cacheKey, data: { n: cur + 1 }, expires_at: new Date(Date.now() + 86_400_000).toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: "cache_key" },
+    );
+    return true;
+  } catch { return true; }
+}
 
 // device_id 列で本人データを持つテーブル
 const TABLES_BY_DEVICE = [
@@ -29,6 +50,11 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const deviceId = String(body?.deviceId ?? "").trim();
     if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId が必要です" }, { status: 400 });
+    // deviceId=ベアラモデル（ログイン無し）のため、資格情報の秘匿(レスポンス非露出・生成の暗号強度化)と
+    // 併せて、総当たり/嫌がらせを永続カウンタで抑止: 同一IPは1日10回まで（インスタンス分離でも回避不可）。
+    if (!(await persistentDailyLimit(`acctdel:${clientIp(req)}`, 10))) {
+      return NextResponse.json({ ok: false, error: "本日の削除リクエスト上限に達しました" }, { status: 429 });
+    }
 
     const deleted: Record<string, number | string> = {};
 
@@ -49,9 +75,11 @@ export async function POST(req: Request) {
       } catch (e) { deleted[t] = `skip(${String(e).slice(0, 30)})`; }
     }
 
-    // 3) プロフィール画像（user-icons/{deviceId}.jpg）
-    try { await db.storage.from("user-icons").remove([`${deviceId}.jpg`]).then(() => {}, () => {}); deleted["user_icon"] = "removed"; }
-    catch { deleted["user_icon"] = "skip"; }
+    // 3) プロフィール画像（新: ハッシュ名 / 旧: 生deviceId名 の両方を削除）
+    try {
+      await db.storage.from("user-icons").remove([iconPathFor(deviceId), `${deviceId}.jpg`]).then(() => {}, () => {});
+      deleted["user_icon"] = "removed";
+    } catch { deleted["user_icon"] = "skip"; }
 
     return NextResponse.json({ ok: true, deleted });
   } catch (e) {

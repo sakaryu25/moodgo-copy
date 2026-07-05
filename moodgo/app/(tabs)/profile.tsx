@@ -94,7 +94,11 @@ export default function ProfileTab() {
   const loadPosts = useCallback(async () => {
     try {
       const deviceId = await getDeviceId();
-      const res = await apiFetch(`/api/my-posts?deviceId=${encodeURIComponent(deviceId)}`);
+      // deviceIdは資格情報なのでURLクエリに載せずPOST bodyで送る（アクセスログ残留対策）
+      const res = await apiFetch('/api/my-posts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId }),
+      });
       const data = await res.json();
       setPosts(Array.isArray(data?.items) ? data.items : []);
     } catch {

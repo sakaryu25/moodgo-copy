@@ -9,12 +9,19 @@ const AB_DEVICE_ID_KEY = "moodgo-device-id";
 
 let _cachedVariant: "A" | "B" | null = null;
 
-/** デバイス固有IDを取得（無ければ生成して保存）。閉店報告の重複防止(sessionId)にも使う。 */
+/** デバイス固有IDを取得（無ければ生成して保存）。閉店報告の重複防止(sessionId)にも使う。
+ *  ⚠ deviceId はログイン無しモデルの「ベアラ資格情報」（漏れると本人として投稿削除・
+ *  アカウント削除まで可能）。2026-07-05監査対応:
+ *   - 新規生成のエントロピーを強化（旧: 時刻+8桁 ≈41bit → 新: 時刻+32桁 ≈165bit。
+ *     API側の永続レート制限と合わせ総当たりを実質不可能に）
+ *   - サーバーAPIは生deviceIdをレスポンス/公開URLに出さない（lib/device-hash.ts）
+ *  既存端末のIDは変えない（変えると投稿・お気に入い等の本人紐付けが切れるため）。 */
 export async function getDeviceId(): Promise<string> {
   try {
     let id = await AsyncStorage.getItem(AB_DEVICE_ID_KEY);
     if (!id) {
-      id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const rand = () => Math.random().toString(36).slice(2, 10);
+      id = `${Date.now()}-${rand()}${rand()}${rand()}${rand()}`;
       await AsyncStorage.setItem(AB_DEVICE_ID_KEY, id);
     }
     return id;
