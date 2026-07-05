@@ -8,6 +8,9 @@
 // POST { action: "join",   code, nickname, deviceId }       → 招待コードで参加
 // POST { action: "post",   groupId, deviceId, mood, comment } → 気分をつぶやく
 // POST { action: "leave",  groupId, deviceId }               → グループを抜ける
+//
+// レスポンスの device_id は deviceHash() の公開ID（生device_idはベアラ資格情報なので
+// 同グループのメンバーにも返さない）。本人の行には mine=true を付ける。
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +18,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { findNgWord } from "@/lib/ngwords";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 
 // 紛らわしい文字（0/O, 1/I）を除いた招待コード用文字セット
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const genCode = () =>
   Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join("");
+
+// 公開レスポンス用: device_id を一方向ハッシュに置換し、リクエスト元本人の行に mine を立てる
+// （クライアントは mine で「自分の投稿/リアクション」を判定。ブロック・アバター照合はハッシュ同士で成立）
+function publicRow<T extends { device_id?: unknown }>(row: T, requesterId: string) {
+  const raw = typeof row.device_id === "string" ? row.device_id : "";
+  return { ...row, device_id: raw ? deviceHash(raw) : null, mine: !!raw && raw === requesterId };
+}
 
 export async function GET(req: NextRequest) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
@@ -61,16 +72,24 @@ export async function GET(req: NextRequest) {
         reactions = rx ?? [];
       }
 
-      // プロフィールアイコン: user-icons/{deviceId}.jpg の公開URLを導出
+      // プロフィールアイコン: user-icons/{deviceHash}.jpg の公開URLを導出
       // （未設定の人は404になるのでアプリ側で頭文字にフォールバック。?vは1時間単位で更新検知）
       const vHour = Math.floor(Date.now() / 3_600_000);
       const sb = supabase;
       const membersWithIcon = (members ?? []).map(m => {
-        const { data: pub } = sb.storage.from("user-icons").getPublicUrl(`${m.device_id}.jpg`);
-        return { ...m, icon: `${pub.publicUrl}?v=${vHour}` };
+        const { data: pub } = sb.storage.from("user-icons").getPublicUrl(iconPathFor(m.device_id));
+        return { ...publicRow(m, deviceId), icon: `${pub.publicUrl}?v=${vHour}` };
       });
 
-      return NextResponse.json({ ok: true, group, members: membersWithIcon, posts: posts ?? [], reactions });
+      // created_by はグループ作成者の生device_id（ベアラ資格情報）なのでレスポンスに含めない
+      const { created_by: _createdBy, ...groupPublic } = (group ?? {}) as Record<string, unknown>;
+      return NextResponse.json({
+        ok: true,
+        group: groupPublic,
+        members: membersWithIcon,
+        posts: (posts ?? []).map(p => publicRow(p, deviceId)),
+        reactions: reactions.map(r => publicRow(r, deviceId)),
+      });
     }
 
     // ── 自分の所属グループ一覧 ──
@@ -107,7 +126,8 @@ export async function GET(req: NextRequest) {
     const lastByGroup: Record<string, (typeof lastPosts)[number]> = {};
     for (const p of lastPosts) if (p) lastByGroup[p.group_id] = p;
 
-    const enriched = (groups ?? []).map(g => ({
+    // created_by（作成者の生device_id=ベアラ資格情報）は一覧にも出さない
+    const enriched = (groups ?? []).map(({ created_by: _createdBy, ...g }) => ({
       ...g,
       member_count: counts[g.id] ?? 0,
       last_post: lastByGroup[g.id] ?? null,
@@ -261,7 +281,8 @@ export async function POST(req: NextRequest) {
         } catch { /* 検出失敗は無視（投稿自体は成功） */ }
       }
 
-      return NextResponse.json({ ok: true, post, moodMatch });
+      // 返す post も公開形に（クライアントはこれをそのままタイムラインへ追加する）
+      return NextResponse.json({ ok: true, post: post ? publicRow(post, deviceId) : null, moodMatch });
     }
 
     // ── 送信を取り消す（自分の投稿のみ削除） ──

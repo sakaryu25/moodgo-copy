@@ -74,14 +74,16 @@ type Group = {
 };
 
 const isIconUrl = (icon?: string | null): icon is string => !!icon && icon.startsWith('http');
+// device_id はサーバーがハッシュ化した公開ID（ブロック照合・アバター照合にのみ使う）。
+// 「自分の投稿/リアクションか」はサーバーが付ける mine で判定する（生deviceIdとの比較はしない）。
 type Post  = {
   id: string; device_id: string; nickname: string; mood: string; comment: string | null;
   spot_name?: string | null; spot_address?: string | null; spot_url?: string | null;
   reply_to_name?: string | null; reply_to_text?: string | null;
-  created_at: string;
+  created_at: string; mine?: boolean;
 };
-type Member = { device_id: string; nickname: string; icon?: string | null };
-type Reaction = { post_id: string; device_id: string; rtype: 'vote' | 'emoji'; value: string };
+type Member = { device_id: string; nickname: string; icon?: string | null; mine?: boolean };
+type Reaction = { post_id: string; device_id?: string | null; rtype: 'vote' | 'emoji'; value: string; mine?: boolean };
 
 // メンバーアバター: 設定したプロフィール写真を表示（未設定/読込失敗なら頭文字）
 function MemberAvatar({ icon, label, size = 36, style }: {
@@ -178,7 +180,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const [replyTo, setReplyTo] = useState<{ id: string; name: string; text: string } | null>(null);
   const [translated, setTranslated] = useState<Record<string, string>>({});  // postId→翻訳文
   const [hiddenPosts, setHiddenPosts] = useState<Set<string>>(new Set());     // 自分の端末だけで非表示
-  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);             // ブロックした投稿者(device_id)
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);             // ブロックした投稿者(ハッシュ化公開ID)
   const [reportTarget, setReportTarget] = useState<Post | null>(null);        // 通報対象の投稿
   const [reactFrame, setReactFrame] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const bubbleRefs = useRef<Record<string, View | null>>({});
@@ -615,14 +617,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!active) return;
     Haptics.selectionAsync();
     setReactions(prev => {
-      const i = prev.findIndex(r => r.post_id === postId && r.device_id === deviceId && r.rtype === rtype);
+      const i = prev.findIndex(r => r.post_id === postId && r.mine && r.rtype === rtype);
       if (i >= 0) {
         const next = prev.slice();
-        const mine = next.splice(i, 1)[0];
-        if (mine.value !== value) next.push({ post_id: postId, device_id: deviceId, rtype, value });
+        const prevMine = next.splice(i, 1)[0];
+        if (prevMine.value !== value) next.push({ post_id: postId, rtype, value, mine: true });
         return next;
       }
-      return [...prev, { post_id: postId, device_id: deviceId, rtype, value }];
+      return [...prev, { post_id: postId, rtype, value, mine: true }];
     });
     try {
       const res = await apiFetch('/api/mood-groups', {
@@ -814,7 +816,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     // バブルの中身（タイムラインと長押しオーバーレイの両方で使う共通描画）
     const bubbleInner = (p: Post) => {
       const isBot = p.nickname === 'MoodGo';
-      const mine = p.device_id === deviceId && !isBot;
+      const mine = !!p.mine && !isBot;
       const darkMood = p.mood === '疲れた・眠い';
       const isSpot = !!p.spot_name;
 
@@ -825,12 +827,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         if (r.rtype !== 'emoji') continue;
         const e = emojiAgg.get(r.value) ?? { count: 0, mine: false };
         e.count++;
-        if (r.device_id === deviceId) e.mine = true;
+        if (r.mine) e.mine = true;
         emojiAgg.set(r.value, e);
       }
       const wantCount = rx.filter(r => r.rtype === 'vote' && r.value === 'want').length;
       const mehCount  = rx.filter(r => r.rtype === 'vote' && r.value === 'meh').length;
-      const myVote = rx.find(r => r.rtype === 'vote' && r.device_id === deviceId)?.value;
+      const myVote = rx.find(r => r.rtype === 'vote' && r.mine)?.value;
       const decided = members.length >= 2 && wantCount > members.length / 2;
       const hasChips = emojiAgg.size > 0 || wantCount > 0 || mehCount > 0;
 
@@ -1040,7 +1042,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               </View>
             ) : timeline.map(p => {
               const isBot = p.nickname === 'MoodGo';
-              const mine = p.device_id === deviceId && !isBot;  // AI投稿は常に左側に出す
+              const mine = !!p.mine && !isBot;  // AI投稿は常に左側に出す
               if (mine) {
                 // 自分: 右側の紫グラデバブル（長押しでインスタ風リアクション）
                 return (
@@ -1219,7 +1221,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     <View key={m.device_id} style={s.memberRow}>
                       <MemberAvatar icon={m.icon} label={m.nickname} size={36} />
                       <Text style={s.memberNick} numberOfLines={1}>{m.nickname}</Text>
-                      {m.device_id === deviceId && <Text style={s.meBadge}>自分</Text>}
+                      {m.mine && <Text style={s.meBadge}>自分</Text>}
                     </View>
                   ))}
 
@@ -1242,7 +1244,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               const tp = posts.find(pp => pp.id === reactTarget);
               if (!tp) return <View />;
               const isBotT = tp.nickname === 'MoodGo';
-              const mineT = tp.device_id === deviceId && !isBotT;
+              const mineT = !!tp.mine && !isBotT;
               const isSpotT = !!tp.spot_name;
               const SH = Dimensions.get('window').height;
               const f = reactFrame ?? { x: 16, y: SH * 0.38, w: SW - 32, h: 60 };

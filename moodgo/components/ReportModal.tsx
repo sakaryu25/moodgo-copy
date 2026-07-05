@@ -22,10 +22,10 @@ type Props = {
   spotAddress?: string;
   /** 任意: 対象スポットのID（adminが特定・削除しやすくする） */
   suggestionId?: string;
-  /** 任意: 投稿者の端末ID。指定時は「投稿者をブロック」を表示 */
+  /** 任意: 投稿者の公開ID（サーバーが返すdeviceHash）。指定時は「投稿者をブロック」を表示 */
   posterId?: string;
-  /** 任意: 投稿者ブロック時のコールバック（device_idを渡す） */
-  onBlockUser?: (deviceId: string) => void;
+  /** 任意: 投稿者ブロック時のコールバック（公開IDを渡す。生device_idは扱わない） */
+  onBlockUser?: (posterId: string) => void;
   onClose: () => void;
 };
 
