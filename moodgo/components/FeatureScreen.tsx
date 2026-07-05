@@ -37,6 +37,7 @@ import { Asset } from "expo-asset";
 import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
 import { useRouter, useNavigation } from "expo-router";
 import { apiFetch } from "@/lib/api";
+import { HERO_BAND_H } from "@/lib/headerBand";
 
 // ── 地図画像（assets/images）。アプリ全体で事前読み込みして遅延表示を防ぐ ──────
 const JAPAN_MAP = require("../assets/images/japan-map.png");
@@ -1484,7 +1485,7 @@ export default function FeatureScreen() {
         colors={GRAD}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[s.header, { paddingTop: insets.top + 14 }]}
+        style={[s.header, { paddingTop: insets.top + 14, minHeight: insets.top + HERO_BAND_H }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
         <View style={s.decoCircle2} pointerEvents="none" />
@@ -1613,9 +1614,11 @@ const s = StyleSheet.create({
 
   // ── Header ──
   header: {
+    // 帯高はお気に入り基準で統一(HERO_BAND_H)・テキストは下端寄せ
     paddingHorizontal: 20,
-    paddingBottom: 22,
+    paddingBottom: 20,
     overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
   decoCircle1: {
     position: 'absolute',

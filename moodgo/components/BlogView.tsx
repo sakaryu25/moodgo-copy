@@ -17,6 +17,7 @@ import { LIQUID_GLASS } from './GlassSurface';
 import PuniPressable from './PuniPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
+import { HERO_BAND_H } from '@/lib/headerBand';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
@@ -102,7 +103,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       {/* グラデ帯ヘッダー（タブ見出し）*/}
-      <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 14 }]}>
+      <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 14, minHeight: insets.top + HERO_BAND_H }]}>
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
         <Text style={s.heroTitle}>全国みんなの穴場</Text>
@@ -427,7 +428,8 @@ const s = StyleSheet.create({
   csPosterHandle: { fontSize: 11.5, fontWeight: '600', color: '#8B88A6', marginTop: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 6 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
-  hero: { paddingHorizontal: 20, paddingBottom: 18, overflow: 'hidden' },
+  // 帯高はお気に入り基準で統一(HERO_BAND_H)・テキストは下端寄せ
+  hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end' },
   heroTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
   heroDeco1: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.10)', top: -60, right: -40 },
