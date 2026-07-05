@@ -86,7 +86,33 @@ export async function findNearbyPlacesRaw(
     return [];
   }
 
-  return (data ?? []) as NearbyPlaceRow[];
+  return await excludeOutOfPeriodRows((data ?? []) as NearbyPlaceRow[]);
+}
+
+// ── 期間限定（places.available_from/until）の期間外除外 ──────────────────────
+// RPC find_nearby_places は期間列を返さないため、idバッチ1クエリで「期間外のidだけ」を
+// 引いて除外する（列未作成/エラー時は素通り＝安全劣化）。フォームの約束
+// 「期間を設けると期間外は検索結果に出ません」を places 経路でも保証する（2026-07-06検証で発覚）。
+export async function outOfPeriodPlaceIds(ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const uniq = [...new Set(ids.filter(Boolean))];
+  if (!supabase || uniq.length === 0) return out;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from("places").select("id")
+      .in("id", uniq)
+      .or(`available_from.gt.${today},available_until.lt.${today}`);
+    if (error || !data) return out;
+    for (const d of data) out.add((d as { id: string }).id);
+  } catch { /* noop */ }
+  return out;
+}
+
+async function excludeOutOfPeriodRows(rows: NearbyPlaceRow[]): Promise<NearbyPlaceRow[]> {
+  if (rows.length === 0) return rows;
+  const out = await outOfPeriodPlaceIds(rows.map(r => r.id));
+  return out.size === 0 ? rows : rows.filter(r => !out.has(r.id));
 }
 
 // 距離テキストは lib/distance.ts の formatDistText に一本化（全経路で同一表示）

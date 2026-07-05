@@ -8118,6 +8118,20 @@ async function handleRecommend(request: Request) {
         //     diversifyByCategory のラウンドロビンで cap 超過要素が中位へ繰り上がり cap が無効化されるため
         //     （カラオケ同チェーンが再び上位に並ぶ）。最後に置くことで cap 並びが最終出力に確実に残る。
         recommendations = finalizeAssembled(recommendations);
+        // 期間限定の最終保証: places本体の期間外スポットを除外（RPC/意味検索/名前救済など
+        //   全SB経路をここで一括ガード。2026-07-06検証: RPCが期間外を返すことを実証→修正）。
+        try {
+          const { outOfPeriodPlaceIds } = await import("@/lib/spatial-search");
+          const outIds = await outOfPeriodPlaceIds(
+            recommendations.map(r => (r as { supabaseId?: string }).supabaseId ?? "").filter(Boolean),
+          );
+          if (outIds.size > 0) {
+            recommendations = recommendations.filter(r => {
+              const sid = (r as { supabaseId?: string }).supabaseId;
+              return !sid || !outIds.has(sid);
+            });
+          }
+        } catch { /* 期間ガード失敗は素通り（検索自体は成立させる） */ }
         // 領域R2(最終確定): LLMリランカー(7819)・多様化の後でも「近め指定の距離外れ値」を末尾へ。
         //   rerankerが遠方を上位に戻すため、ここで cap 超過を安定パーティションで末尾固定する(順序保持)。
         //   far-bias(minRadiusKm>0)・高層ビル目的地・心霊は対象外＝遠方意図/独自データを壊さない。

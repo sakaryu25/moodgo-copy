@@ -420,7 +420,12 @@ export async function searchPlacesByTags(
     sorted = [...candidates].sort(() => Math.random() - 0.5).map(x => x.place);
   }
 
-  const sliced = sorted.slice(0, limit);
+  // 期間限定: 期間外は検索結果に出さない（select * で来る available_from/until を使用・列欠損は素通り）
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const inPeriod = (p: { available_from?: string | null; available_until?: string | null }) =>
+    (!p.available_from || String(p.available_from) <= todayStr) &&
+    (!p.available_until || String(p.available_until) >= todayStr);
+  const sliced = sorted.filter(p => inPeriod(p as { available_from?: string | null; available_until?: string | null })).slice(0, limit);
 
   // ── 写真取得 ───────────────────────────────────────────────────────────
   const placeIds = sliced.map(p => p.id);
