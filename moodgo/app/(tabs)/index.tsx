@@ -1175,33 +1175,22 @@ export default function Home() {
 
   const renderContent = () => {
     if (homeView === 'history') {
-      // 履歴はタブから外したのでホーム内のサブ画面として表示（再検索ロジックを保持）
+      // 履歴はタブから外したのでホーム内のサブ画面として表示（再検索ロジックを保持）。
+      // 戻る導線は HistoryView 内のヘッダー(ガラス‹)に統合＝二重ヘッダーを解消（2026-07-06）。
       return (
-        <View style={{ flex: 1 }}>
-          <View style={{ paddingTop: insets.top + 8, paddingBottom: 2, paddingHorizontal: 10 }}>
-            <Pressable
-              onPress={() => setHomeView('home')}
-              hitSlop={12}
-              style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10 }}
-            >
-              <Text style={{ fontSize: 16, color: '#7C3AED', fontWeight: '700' }}>‹ ホーム</Text>
-            </Pressable>
-          </View>
-          <View style={{ flex: 1 }}>
-            <HistoryView
-              lang={lang}
-              history={history}
-              selectedHistoryItem={selectedHistoryItem}
-              onSelectHistoryItem={setSelectedHistoryItem}
-              onClearHistory={() => setHistory([])}
-              favorites={favorites}
-              onToggleFavorite={toggleFavorite}
-              onResearch={handleResearch}
-              onPressDetail={handlePressDetail}
-              resetKey={historyResetKey}
-            />
-          </View>
-        </View>
+        <HistoryView
+          lang={lang}
+          history={history}
+          selectedHistoryItem={selectedHistoryItem}
+          onSelectHistoryItem={setSelectedHistoryItem}
+          onClearHistory={() => setHistory([])}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
+          onResearch={handleResearch}
+          onPressDetail={handlePressDetail}
+          resetKey={historyResetKey}
+          onBackHome={() => setHomeView('home')}
+        />
       );
     }
     return (

@@ -30,6 +30,11 @@ import ReportModal from './ReportModal';
 import { copyPlaceName } from '@/lib/clipboard';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
+// 一覧画面はプロフィールと同じデザイン言語（2026-07-06 刷新）
+const INK  = '#1E1548';
+const SUB  = '#8B88A6';
+const BLUE = '#5A8DFF';
+const CARD_BORDER = 'rgba(90,90,120,0.08)';
 
 // ── 気分ごとの画像マッピング ────────────────────────────────────────────────
 // 画像ファイルを assets/moods/ に置いたら require() に変更してください
@@ -89,6 +94,8 @@ type Props = {
   onPressDetail?: (rec: Recommendation) => void;
   lang?: 'ja' | 'en';
   resetKey?: number;
+  /** ホームへ戻る（ヘッダーのガラス‹。省略時は非表示） */
+  onBackHome?: () => void;
 };
 
 type TStrings = {
@@ -410,6 +417,7 @@ function DetailView({
 export default function HistoryView({
   history, selectedHistoryItem, onSelectHistoryItem, onClearHistory,
   favorites, onToggleFavorite, onResearch, onPressDetail, lang = 'ja', resetKey,
+  onBackHome,
 }: Props) {
   const insets = useSafeAreaInsets();
   const t = T[lang];
@@ -437,26 +445,34 @@ export default function HistoryView({
   return (
     <View style={{ flex: 1 }}>
     <View style={s.root}>
-      {/* グラデーションヘッダー */}
-      <LinearGradient
-        colors={GRAD}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[s.heroHeader, { paddingTop: insets.top + 12 }]}
-      >
-        <View style={s.heroContent}>
-          <View>
-            <Text style={s.heroTitle}>{t.title}</Text>
-            <Text style={s.heroSub}>{t.sub}</Text>
-          </View>
-          {history.length > 0 && (
-            <PuniPressable onPress={onClearHistory} style={s.clearBtn}>
-              <Trash2 size={15} color="rgba(255,255,255,0.8)" />
-              <Text style={s.clearText}>{t.clear}</Text>
-            </PuniPressable>
-          )}
-        </View>
-      </LinearGradient>
+      {/* 上部ラベンダーフェード（プロフィールと同トーン） */}
+      <LinearGradient colors={['#E9E3FF', 'rgba(233,227,255,0)']} style={s.topFade} pointerEvents="none" />
+      {/* ヘッダー: ガラス‹（ホームへ）/ 中央タイトル / クリア（確認つき） */}
+      <View style={[s.header, { paddingTop: insets.top + 6 }]}>
+        {onBackHome ? (
+          <PuniPressable onPress={onBackHome} style={s.glassBtn}>
+            <ChevronLeft size={20} color={INK} strokeWidth={2.2} />
+          </PuniPressable>
+        ) : <View style={{ width: 42 }} />}
+        <Text style={s.headerTitle}>{t.title}</Text>
+        {history.length > 0 ? (
+          <PuniPressable
+            onPress={() => {
+              Alert.alert(
+                lang === 'ja' ? '履歴を削除' : 'Clear history',
+                lang === 'ja' ? 'これまでの検索履歴がすべて消えます。よろしいですか？' : 'All history will be deleted. Continue?',
+                [
+                  { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+                  { text: lang === 'ja' ? '削除する' : 'Delete', style: 'destructive', onPress: onClearHistory },
+                ],
+              );
+            }}
+            style={s.glassBtn}
+          >
+            <Trash2 size={17} color="#DC2626" strokeWidth={2} />
+          </PuniPressable>
+        ) : <View style={{ width: 42 }} />}
+      </View>
 
       <ScrollView
         ref={scrollRef}
@@ -466,9 +482,9 @@ export default function HistoryView({
       >
         {history.length === 0 ? (
           <View style={s.emptyBox}>
-            <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.emptyIconBg}>
-              <Clock size={36} color="#C084FC" strokeWidth={1.5} />
-            </LinearGradient>
+            <View style={s.emptyIconBg}>
+              <Clock size={24} color={BLUE} strokeWidth={1.8} />
+            </View>
             <Text style={s.emptyTitle}>{t.empty}</Text>
             <Text style={s.emptySubText}>{t.emptySub}</Text>
           </View>
@@ -490,12 +506,11 @@ export default function HistoryView({
                     activeOpacity={0.75}
                     hitSlop={{ top: 4, bottom: 4, left: 8, right: 8 }}
                   >
-                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
                     <View style={s.cardBody}>
                       <View style={s.cardTop}>
-                        <LinearGradient colors={GRAD_LIGHT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.moodBadge}>
+                        <View style={s.moodBadge}>
                           <Text style={s.moodBadgeText}>{item.mood}</Text>
-                        </LinearGradient>
+                        </View>
                         <View style={s.cardTopRight}>
                           {recCount > 0 && (
                             <View style={s.recBadge}>
@@ -509,19 +524,19 @@ export default function HistoryView({
                       <View style={s.tagRow}>
                         {item.area ? (
                           <View style={s.tagChip}>
-                            <MapPin size={11} color="#9CA3AF" />
+                            <MapPin size={11} color="#8B88A6" />
                             <Text style={s.tagText} numberOfLines={1}>{item.area}</Text>
                           </View>
                         ) : null}
                         {item.companion ? (
                           <View style={s.tagChip}>
-                            <Users size={11} color="#9CA3AF" />
+                            <Users size={11} color="#8B88A6" />
                             <Text style={s.tagText}>{item.companion}</Text>
                           </View>
                         ) : null}
                       </View>
                     </View>
-                    <ChevronRight size={18} color="#D1D5DB" style={s.cardArrow} />
+                    <ChevronRight size={18} color="#C9C6D9" style={s.cardArrow} />
                   </TouchableOpacity>
                 );
               })}
@@ -552,55 +567,64 @@ export default function HistoryView({
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F9FAFB' },
+  root: { flex: 1, backgroundColor: '#F7F7FA' },
+  topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260 },
 
   // ── ヒーローヘッダー ──
-  heroHeader:  { paddingHorizontal: 20, paddingBottom: 20 },
-  heroContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  heroTitle:   { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  heroSub:     { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 3 },
-  clearBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.2)' },
-  clearText:   { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingBottom: 10,
+  },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.3 },
+  glassBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: CARD_BORDER,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
+  },
 
   // ── リスト ──
   listScroll:  { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingTop: 20 },
+  listContent: { paddingHorizontal: 20, paddingTop: 8 },
 
   // ── セクション ──
   section:       { marginBottom: 8 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, marginTop: 4 },
-  sectionLabel:  { fontSize: 12, fontWeight: '700', color: '#9CA3AF', letterSpacing: 0.5, textTransform: 'uppercase' },
-  sectionLine:   { flex: 1, height: 1, backgroundColor: '#F3F4F6' },
+  sectionLabel:  { fontSize: 12.5, fontWeight: '800', color: SUB, letterSpacing: 0.4 },
+  sectionLine:   { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(90,90,120,0.14)' },
 
   // ── カード ──
   card: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 18, marginBottom: 10,
     overflow: 'hidden',
-    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3,
-    borderWidth: 1, borderColor: 'rgba(192,132,252,0.12)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 3,
+    borderWidth: 1, borderColor: CARD_BORDER,
   },
-  cardAccentBar: { width: 4, alignSelf: 'stretch' },
   cardBody:      { flex: 1, padding: 14, gap: 7 },
   cardTop:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  moodBadge:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  moodBadgeText: { fontSize: 12, fontWeight: '700', color: '#C084FC' },
+  moodBadge:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F4F1FF' },
+  moodBadgeText: { fontSize: 12, fontWeight: '800', color: '#7A5CFF' },
   cardTopRight:  { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  recBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0' },
-  recBadgeText:  { fontSize: 11, fontWeight: '600', color: '#10B981' },
-  timeText:      { fontSize: 12, color: '#9CA3AF', fontWeight: '500' },
-  spotName:      { fontSize: 17, fontWeight: '700', color: '#111827', letterSpacing: -0.2 },
+  recBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#EAF9F0', borderWidth: 1, borderColor: '#C9EEDA' },
+  recBadgeText:  { fontSize: 11, fontWeight: '800', color: '#16A34A' },
+  timeText:      { fontSize: 11.5, color: SUB, fontWeight: '600' },
+  spotName:      { fontSize: 15.5, fontWeight: '800', color: INK, letterSpacing: -0.2 },
   tagRow:        { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tagChip:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6' },
-  tagText:       { fontSize: 11, color: '#6B7280', fontWeight: '500' },
+  tagChip:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: '#F6F6FA', borderWidth: 1, borderColor: CARD_BORDER },
+  tagText:       { fontSize: 11, color: SUB, fontWeight: '600' },
   cardArrow:     { marginRight: 12 },
 
   // ── 空状態 ──
-  emptyBox:    { alignItems: 'center', paddingVertical: 72, gap: 14 },
-  emptyIconBg: { width: 88, height: 88, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle:  { fontSize: 17, fontWeight: '700', color: '#111827' },
-  emptySubText:{ fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
-  emptyText:   { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+  emptyBox:    { alignItems: 'center', paddingVertical: 64, gap: 8 },
+  emptyIconBg: {
+    width: 64, height: 64, borderRadius: 32, backgroundColor: '#F0EDFF',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+  },
+  emptyTitle:  { fontSize: 15, fontWeight: '800', color: INK },
+  emptySubText:{ fontSize: 12.5, color: SUB, textAlign: 'center', fontWeight: '500' },
+  emptyText:   { fontSize: 13, color: SUB, textAlign: 'center' },
 
   // ── 詳細ヘッダー ──
   detailHeader: {
