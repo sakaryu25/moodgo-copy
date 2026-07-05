@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
+import { handlesByDevice, deviceByHandle } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -21,8 +22,10 @@ function isLegacyPhotoUrl(url: string): boolean {
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 40);
+  const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 60);
   const offset = Number(searchParams.get("offset") ?? "0");
+  // @IDでのユーザー絞り込み（プロフィール検索）。匿名投稿の帰属バレ防止のため public のみ返す。
+  const posterHandle = (searchParams.get("posterHandle") ?? "").trim().toLowerCase().replace(/^@+/, "");
 
   if (!supabase) {
     return NextResponse.json({ ok: false, items: [] }, { status: 503 });
@@ -43,10 +46,20 @@ export async function GET(request: Request) {
     //   タップ時は場所詳細(/place)を開くため kind='moodlog'＋place_id を付ける。未作成でも安全。
     let moodItems: Array<Record<string, unknown>> = [];
     try {
-      const { data: posts } = await supabase
+      // ユーザー絞り込み時: handle→device_id をサーバー内で解決（生IDは外に出さない）
+      let posterDeviceId: string | null = null;
+      if (posterHandle) {
+        posterDeviceId = await deviceByHandle(supabase, posterHandle);
+        if (!posterDeviceId) return NextResponse.json({ ok: true, items: [] });  // 存在しないID
+      }
+      let q = supabase
         .from("spot_posts")
         .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, like_count, helpful_count")
-        .eq("status", "approved").in("visibility", ["spot_public_anonymous", "public"])
+        .eq("status", "approved");
+      q = posterDeviceId
+        ? q.eq("device_id", posterDeviceId).eq("visibility", "public")   // 匿名投稿は本人特定になるため除外
+        : q.in("visibility", ["spot_public_anonymous", "public"]);
+      const { data: posts } = await q
         .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
       const plist = (posts ?? []) as Array<Record<string, unknown>>;
       if (plist.length > 0) {
@@ -85,6 +98,11 @@ export async function GET(request: Request) {
             if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
           }
         }
+        // @ハンドル添付（非匿名のみ・テーブル未適用は空Map）
+        const handleMap = await handlesByDevice(
+          supabase,
+          plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? "")),
+        );
         moodItems = plist.map(p => {
           const anon = p.visibility === "spot_public_anonymous";
           return {
@@ -100,6 +118,7 @@ export async function GET(request: Request) {
             likes: (Number(p.like_count) || 0) + (Number(p.helpful_count) || 0),
             created_at: p.created_at,
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
+            poster_handle: anon ? null : (handleMap.get(String(p.device_id ?? "")) ?? null),
             poster_icon: anon ? null : iconFor(p.device_id),
             // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
             poster_id: typeof p.device_id === "string" && p.device_id ? deviceHash(p.device_id) : null,

@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { iconPathFor } from "@/lib/device-hash";
+import { handlesByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -74,16 +76,26 @@ export async function GET(request: Request) {
     let googleMapsUriSeed = "";
     let availableFrom: string | null = null;
     let availableUntil: string | null = null;
+    // 投稿者（@ID表示用）。匿名投稿(spot_public_anonymous)では一切出さない。
+    let posterName: string | null = null;
+    let posterHandle: string | null = null;
+    let posterIcon: string | null = null;
 
     if (isMoodlog) {
       // ── みんなのMoodログ(spot_posts)＝「投稿」ボタンから入る統一投稿 ──
       const { data: p, error } = await supabase
         .from("spot_posts")
-        .select("id, place_id, place_name, caption, mood_tags, created_at")
+        .select("id, place_id, place_name, caption, mood_tags, created_at, poster_name, device_id, visibility")
         .eq("id", realId)
         .single();
       if (error || !p) throw error ?? new Error("not found");
       const post = p as Record<string, unknown>;
+      if (post.visibility !== "spot_public_anonymous" && typeof post.device_id === "string" && post.device_id) {
+        posterName = (post.poster_name as string | null) ?? null;
+        posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
+        const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
+        posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+      }
       respId = String(post.id);
       userTitle = String(post.place_name ?? "").trim();
       placeName = userTitle;
@@ -130,10 +142,17 @@ export async function GET(request: Request) {
       // ── 全国みんなの穴場(suggestions)──
       const { data: s, error } = await supabase
         .from("suggestions")
-        .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until")
+        .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until, poster_name, device_id")
         .eq("id", realId)
         .single();
       if (error || !s) throw error ?? new Error("not found");
+      if (typeof (s as Record<string, unknown>).device_id === "string" && (s as Record<string, unknown>).device_id) {
+        const dev = String((s as Record<string, unknown>).device_id);
+        posterName = ((s as Record<string, unknown>).poster_name as string | null) ?? null;
+        posterHandle = (await handlesByDevice(supabase, [dev])).get(dev) ?? null;
+        const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
+        posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+      }
       respId = String(s.id);
       userTitle = (s.spot_name ?? "").trim();
       placeName = (s.google_place_name ?? s.spot_name ?? "").trim();
@@ -318,6 +337,9 @@ export async function GET(request: Request) {
         createdAt,
         availableFrom,        // 公開期間の開始（期間限定投稿時・穴場）
         availableUntil,       // 公開期間の終了
+        posterName,           // 投稿者（匿名投稿はnull・生device_idは返さない）
+        posterHandle,         // 投稿者の@ID（未設定はnull）
+        posterIcon,           // 投稿者アイコン（ハッシュ名URL）
       },
     });
   } catch (e) {

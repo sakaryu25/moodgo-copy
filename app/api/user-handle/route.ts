@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 
 const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
 // なりすまし/紛らわしいIDを防ぐ予約語
@@ -71,6 +72,27 @@ export async function POST(req: Request) {
       const deviceId = String(body?.deviceId ?? "").trim();
       const mine = !!deviceId && data?.device_id === deviceId;
       return NextResponse.json({ ok: true, available: !data || mine, reason: data && !mine ? "このIDはすでに使われています" : undefined });
+    }
+
+    // ── ユーザー検索（@ID前方一致・最大10件）─────────────────────────────────
+    //   返すのは handle / posterId(=deviceHash・ブロック用公開ID) / ハッシュ名アイコンURL のみ。
+    //   生device_idは絶対に返さない（資格情報）。
+    if (action === "search") {
+      const qn = normalize(body?.query);
+      if (!/^[a-z0-9_]{2,20}$/.test(qn)) return NextResponse.json({ ok: true, users: [] });
+      const { data, error } = await db.from("user_handles")
+        .select("handle, device_id").ilike("handle", `${qn}%`).order("handle").limit(10);
+      if (error) {
+        if (isMissingTable(error)) return NextResponse.json({ ok: true, users: [], tableMissing: true });
+        throw error;
+      }
+      const vHour = Math.floor(Date.now() / 3_600_000);
+      const users = (data ?? []).map((r) => {
+        const dev = (r as { device_id: string }).device_id;
+        const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
+        return { handle: (r as { handle: string }).handle, posterId: deviceHash(dev), icon: `${pub.publicUrl}?v=${vHour}` };
+      });
+      return NextResponse.json({ ok: true, users });
     }
 
     // ── 取得/変更（一意性はDBのunique制約が最終保証・レースも23505で弾く）────

@@ -12,14 +12,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
   Activity, Car, ChevronDown, Cloud, Leaf, Map, MapPin,
-  MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
+  MoreHorizontal, Plane, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed, X,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import {
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -43,6 +45,7 @@ type FeedItem = {
   auto_tags: string[] | null;
   created_at: string;
   poster_name?: string | null;
+  poster_handle?: string | null;   // @ユーザーID（匿名投稿はnull）
   poster_icon?: string | null;
   poster_id?: string | null;
   kind?: string;                 // 'suggestion'(穴場) | 'moodlog'(Moodログ)
@@ -219,7 +222,46 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [gridW, setGridW] = useState(0);
+  // ── @IDユーザー検索（fullモード=みんなタブのみ表示）──
+  const [uq, setUq] = useState('');
+  const [uUsers, setUUsers] = useState<Array<{ handle: string; posterId: string; icon: string }>>([]);
+  const [uActive, setUActive] = useState<{ handle: string } | null>(null);
+  const [uItems, setUItems] = useState<FeedItem[]>([]);
+  const [uLoading, setULoading] = useState(false);
+  const uTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
+
+  const onChangeUq = (raw: string) => {
+    setUq(raw);
+    if (uActive) { setUActive(null); setUItems([]); }   // 入力し直したら絞り込み解除
+    if (uTimer.current) clearTimeout(uTimer.current);
+    const qn = raw.trim().toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
+    if (qn.length < 2) { setUUsers([]); return; }
+    uTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'search', query: qn }),
+        });
+        const d = await res.json();
+        if (isMounted.current) setUUsers(Array.isArray(d?.users) ? d.users : []);
+      } catch { /* noop */ }
+    }, 400);
+  };
+  const selectUser = async (u: { handle: string }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setUActive({ handle: u.handle });
+    setUUsers([]);
+    setUq(`@${u.handle}`);
+    setULoading(true);
+    try {
+      const res = await apiFetch(`/api/community-feed?limit=60&posterHandle=${encodeURIComponent(u.handle)}`);
+      const d = await res.json();
+      if (isMounted.current) setUItems(Array.isArray(d?.items) ? d.items : []);
+    } catch { if (isMounted.current) setUItems([]); }
+    finally { if (isMounted.current) setULoading(false); }
+  };
+  const clearUser = () => { setUActive(null); setUItems([]); setUq(''); setUUsers([]); };
 
   useEffect(() => {
     isMounted.current = true;
@@ -338,34 +380,75 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
         </View>
       </View>
 
+      {/* ── @IDユーザー検索（みんなタブのみ）── */}
+      {full && (
+        <View style={s.uSearchWrap}>
+          <View style={s.uSearchBox}>
+            <Search size={15} color="#8B88A6" strokeWidth={2.2} />
+            <TextInput
+              value={uq}
+              onChangeText={onChangeUq}
+              placeholder="@ユーザーIDで検索"
+              placeholderTextColor="#B9B6CC"
+              style={s.uSearchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {(uq.length > 0 || uActive) && (
+              <TouchableOpacity onPress={clearUser} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={15} color="#8B88A6" strokeWidth={2.4} />
+              </TouchableOpacity>
+            )}
+          </View>
+          {uUsers.length > 0 && !uActive && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.uChipRow} keyboardShouldPersistTaps="handled">
+              {uUsers.map((u) => (
+                <TouchableOpacity key={u.handle} onPress={() => selectUser(u)} style={s.uChip} activeOpacity={0.8}>
+                  <Image source={{ uri: u.icon }} style={s.uChipIcon} contentFit="cover" />
+                  <Text style={s.uChipText}>@{u.handle}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          {uActive && (
+            <View style={s.uBanner}>
+              <Text style={s.uBannerText}>@{uActive.handle} さんの投稿</Text>
+              <Text style={s.uBannerCount}>{uItems.length}件</Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── ローディング ── */}
-      {loading && (
+      {(loading || uLoading) && (
         <View style={s.loadingWrap}>
           <ActivityIndicator color={PURPLE} size="small" />
         </View>
       )}
 
       {/* ── 写真グリッド（インスタExplore風・大タイルを一定間隔で・タップで詳細・長押しで報告）── */}
-      {!loading && (
+      {!loading && !uLoading && (
         <View onLayout={(e) => setGridW(e.nativeEvent.layout.width)} style={s.grid}>
           {CELL > 0 && (() => {
+            // ユーザー絞り込み中はその人の公開投稿だけ（ブロック済みは除外）
+            const feed = uActive ? uItems.filter(it => !it.poster_id || !blockedUsers.includes(it.poster_id)) : sorted;
             const rows: React.ReactNode[] = [];
             let i = 0, unit = 0;
-            while (i < sorted.length) {
-              if (unit % 2 === 0 && i + 3 <= sorted.length) {
+            while (i < feed.length) {
+              if (unit % 2 === 0 && i + 3 <= feed.length) {
                 // フィーチャー帯: 2x2大タイル＋小タイル2枚（左右交互）
                 const bigLeft = unit % 4 === 0;
-                const big = renderTile(sorted[i], BIG);
+                const big = renderTile(feed[i], BIG);
                 const col = (
                   <View key={`c${i}`} style={{ gap: GAP }}>
-                    {renderTile(sorted[i + 1], CELL)}
-                    {renderTile(sorted[i + 2], CELL)}
+                    {renderTile(feed[i + 1], CELL)}
+                    {renderTile(feed[i + 2], CELL)}
                   </View>
                 );
                 rows.push(<View key={`f${i}`} style={s.gridRow}>{bigLeft ? [big, col] : [col, big]}</View>);
                 i += 3;
               } else {
-                rows.push(<View key={`n${i}`} style={s.gridRow}>{sorted.slice(i, i + 3).map(it => renderTile(it, CELL))}</View>);
+                rows.push(<View key={`n${i}`} style={s.gridRow}>{feed.slice(i, i + 3).map(it => renderTile(it, CELL))}</View>);
                 i += 3;
               }
               unit++;
@@ -376,9 +459,9 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
       )}
 
       {/* 空状態（API空/失敗時。捏造投稿は出さない＝App Store審査対策） */}
-      {!loading && visibleItems.length === 0 && (
+      {!loading && !uLoading && (uActive ? uItems.length === 0 : visibleItems.length === 0) && (
         <View style={s.loadingWrap}>
-          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>まだ投稿がありません</Text>
+          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>{uActive ? 'このユーザーの公開投稿はまだありません' : 'まだ投稿がありません'}</Text>
         </View>
       )}
 
@@ -406,6 +489,30 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
+  // ── @IDユーザー検索 ──
+  uSearchWrap: { marginBottom: 10, gap: 8 },
+  uSearchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, height: 42,
+    borderWidth: 1, borderColor: 'rgba(90,90,120,0.08)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 1,
+  },
+  uSearchInput: { flex: 1, fontSize: 13.5, fontWeight: '600', color: '#1E1548', paddingVertical: 0 },
+  uChipRow: { gap: 8, paddingRight: 8 },
+  uChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fff', borderRadius: 999, paddingLeft: 4, paddingRight: 12, paddingVertical: 4,
+    borderWidth: 1, borderColor: 'rgba(90,90,120,0.08)',
+  },
+  uChipIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0EDFF' },
+  uChipText: { fontSize: 12.5, fontWeight: '800', color: '#5A8DFF' },
+  uBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#F4F1FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  uBannerText: { fontSize: 12.5, fontWeight: '800', color: '#7A5CFF' },
+  uBannerCount: { fontSize: 11.5, fontWeight: '700', color: '#8B88A6' },
+
   // HomeView の scrollContent (paddingHorizontal:20) 内に置かれるため水平paddingは0
   section: { paddingTop: 4 },
 

@@ -44,6 +44,7 @@ type Spot = {
   reviews?: Review[];
   lat?: number; lng?: number; placeId?: string;
   availableFrom?: string | null; availableUntil?: string | null;  // 公開期間（期間限定投稿）
+  posterName?: string | null; posterHandle?: string | null; posterIcon?: string | null;  // 投稿者（匿名はnull）
 };
 
 // "2026-04-15" → "2026/4/15"。null/未設定はnull。
@@ -243,6 +244,21 @@ export default function CommunitySpotScreen() {
           {/* ── 大目玉: 利用者コメント＋投稿者のおすすめ度 ── */}
           {(spot.description || spot.rating > 0) ? (
             <View style={s.commentCard}>
+              {(spot.posterName || spot.posterHandle) ? (
+                <View style={s.posterRow}>
+                  {spot.posterIcon ? (
+                    <Image source={{ uri: spot.posterIcon }} style={s.posterAvatar} contentFit="cover" />
+                  ) : (
+                    <View style={[s.posterAvatar, s.posterAvatarPh]}>
+                      <Text style={s.posterAvatarInitial}>{(spot.posterName?.trim().charAt(0) || 'M').toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || 'MoodGoユーザー'}</Text>
+                    {spot.posterHandle ? <Text style={s.posterHandle} numberOfLines={1}>@{spot.posterHandle}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
               {spot.description ? (
                 <>
                   <View style={s.commentLabelRow}>
@@ -466,6 +482,12 @@ const s = StyleSheet.create({
   commentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   commentLabel: { fontSize: 12.5, fontWeight: '900', color: PURPLE },
   commentText: { fontSize: 14, color: '#2D2240', lineHeight: 22, fontWeight: '500' },
+  posterRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 10 },
+  posterAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0EDFF' },
+  posterAvatarPh: { alignItems: 'center', justifyContent: 'center' },
+  posterAvatarInitial: { fontSize: 14, fontWeight: '800', color: '#7A5CFF' },
+  posterName: { fontSize: 13, fontWeight: '800', color: '#1E1548' },
+  posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', marginTop: 0.5 },
   posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
   posterRateTop: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },

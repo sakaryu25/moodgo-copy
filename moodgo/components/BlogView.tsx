@@ -56,6 +56,7 @@ export type Detail = {
   id: string; title: string; caption: string | null; body: string | null; place_name: string | null;
   address: string | null; mood_tags: string[] | null; scene_tags: string[] | null; companion_tags: string[] | null;
   budget_level: string | null; google_maps_url: string | null; poster_name: string | null;
+  poster_handle?: string | null;   // @ユーザーID（未設定はnull）
   helpful_count: number; photos: string[]; isOwn?: boolean;
 };
 
@@ -188,7 +189,10 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           {/* 投稿者 */}
           <View style={s.csPosterRow}>
             <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csPosterAvatar}><Text style={s.csPosterAvatarText}>{initial}</Text></LinearGradient>
-            <Text style={s.csPosterName} numberOfLines={1}>{name}さんのおすすめ</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.csPosterName} numberOfLines={1}>{name}さんのおすすめ</Text>
+              {post.poster_handle ? <Text style={s.csPosterHandle} numberOfLines={1}>@{post.poster_handle}</Text> : null}
+            </View>
           </View>
 
           {/* タイトル + マップピル */}
@@ -420,6 +424,7 @@ function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: (
 }
 
 const s = StyleSheet.create({
+  csPosterHandle: { fontSize: 11.5, fontWeight: '600', color: '#8B88A6', marginTop: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 6 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
   hero: { paddingHorizontal: 20, paddingBottom: 18, overflow: 'hidden' },

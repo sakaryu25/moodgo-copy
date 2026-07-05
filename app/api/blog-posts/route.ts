@@ -261,7 +261,15 @@ export async function GET(req: Request) {
       const own = deviceId && data.device_id === deviceId;
       if (data.approval_status !== "approved" && !own) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
       const photos = (await fetchPhotos(db, [id])).get(id) ?? [];
-      return NextResponse.json({ ok: true, post: { ...data, photos, isOwn: !!own } });
+      // ⚠ device_id は資格情報のためレスポンスから除去（従来 ...data で漏れていた・2026-07-06修正）。
+      //   代わりに公開識別子 @ハンドルを添付（未設定/テーブル未適用は null）。
+      const { device_id: _dev, ...pub } = data as Record<string, unknown>;
+      let posterHandle: string | null = null;
+      try {
+        const { data: h } = await db.from("user_handles").select("handle").eq("device_id", data.device_id).maybeSingle();
+        posterHandle = (h?.handle as string | undefined) ?? null;
+      } catch { /* noop */ }
+      return NextResponse.json({ ok: true, post: { ...pub, photos, isOwn: !!own, poster_handle: posterHandle } });
     } catch (e) { return NextResponse.json({ ok: false, error: String(e) }, { status: 500 }); }
   }
 
@@ -283,11 +291,20 @@ export async function GET(req: Request) {
   // ── 公開ブログ一覧（Insta風グリッド）: approved のみ ──
   const mood = searchParams.get("mood")?.trim();
   const qtext = searchParams.get("q")?.trim();
+  // @IDでのユーザー絞り込み（handle→device_idはサーバー内で解決・生IDは非公開）
+  const posterHandle = (searchParams.get("posterHandle") ?? "").trim().toLowerCase().replace(/^@+/, "");
   try {
+    let posterDeviceId: string | null = null;
+    if (posterHandle) {
+      const { data: h } = await db.from("user_handles").select("device_id").eq("handle", posterHandle).maybeSingle();
+      posterDeviceId = (h?.device_id as string | undefined) ?? null;
+      if (!posterDeviceId) return NextResponse.json({ ok: true, posts: [] });
+    }
     let q = db.from("blog_posts")
       .select("id, title, place_name, mood_tags, scene_tags, helpful_count, like_count, created_at")
       .eq("approval_status", "approved").eq("visibility", "public")
       .order("created_at", { ascending: false }).limit(60);
+    if (posterDeviceId) q = q.eq("device_id", posterDeviceId);
     if (mood) q = q.contains("mood_tags", [mood]);
     if (qtext) q = q.or(`title.ilike.%${qtext}%,place_name.ilike.%${qtext}%`);
     const { data, error } = await q;
