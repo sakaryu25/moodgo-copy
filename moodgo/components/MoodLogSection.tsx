@@ -66,8 +66,18 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
     })));
     try {
       const did = await getDeviceId();
-      await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) });
-    } catch { /* 失敗は楽観表示のまま */ }
+      const res = await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) });
+      const ok = (await res.json().catch(() => null))?.ok === true;
+      if (!ok) throw new Error('react failed');
+    } catch {
+      // 失敗時は楽観表示を巻き戻す（表示とサーバー状態の不整合防止・監査2026-07-05）
+      setPosts(prev => prev.map(p => p.id !== post.id ? p : ({
+        ...p,
+        likeCount: Math.max(0, p.likeCount - (rtype === 'like' ? d : 0)), myLike: rtype === 'like' ? undo : p.myLike,
+        helpfulCount: Math.max(0, p.helpfulCount - (rtype === 'helpful' ? d : 0)), myHelpful: rtype === 'helpful' ? undo : p.myHelpful,
+        revisitCount: Math.max(0, p.revisitCount - (rtype === 'revisit' ? d : 0)), myRevisit: rtype === 'revisit' ? undo : p.myRevisit,
+      })));
+    }
   };
 
   const report = (post: MoodPost) => {

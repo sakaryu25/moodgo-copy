@@ -18,11 +18,11 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 // AsyncLocalStorage で並行リクエスト間の混在を防ぐ。gfetch で実 fetch をラップして計上。
 type ApiCounts = {
   searchText: number; searchNearby: number; geocode: number;
-  routes: number; photo: number; other: number;
+  routes: number; photo: number; detail: number; other: number;
 };
 const apiCounterStore = new AsyncLocalStorage<{ counts: ApiCounts }>();
 function newApiCounts(): ApiCounts {
-  return { searchText: 0, searchNearby: 0, geocode: 0, routes: 0, photo: 0, other: 0 };
+  return { searchText: 0, searchNearby: 0, geocode: 0, routes: 0, photo: 0, detail: 0, other: 0 };
 }
 // ── Google-offモード（env・既定OFF＝従来通り）─────────────────────────────────
 //   RECOMMEND_DISABLE_GOOGLE=true にすると recommend からの Google Places 検索
@@ -48,6 +48,9 @@ function gfetch(url: string, init?: RequestInit): Promise<Response> {
     else if (url.includes("maps/api/geocode")) c.geocode++;
     else if (url.includes("routes.googleapis") || url.includes("computeRouteMatrix") || url.includes(":computeRoutes")) c.routes++;
     else if (url.includes("/photos/") || url.includes("/photo") || url.includes("/media")) c.photo++;
+    // Place Details (GET /v1/places/{id})。media/photosを先に判定済みなのでここは純粋なDetails。
+    //   従来otherに落ちて¥集計から漏れていた（監査2026-07-05・コスト過小計上）。
+    else if (/places\.googleapis\.com\/v1\/places\/[^:]/.test(url)) c.detail++;
     else c.other++;
   }
   return fetch(url, init);
@@ -555,11 +558,6 @@ function schedulePlaceWriteBack(
   };
   try { after(async () => { await run(); }); } catch { void run(); }
 }
-// 後方互換ラッパー（既存呼び出し用・写真URL単発）
-function schedulePhotoWriteBack(name: string, url: string): void {
-  if (url) schedulePlaceWriteBack({ name }, { photoUrl: url });
-}
-
 // ── A-6: Bayesian/Wilson lower-bound score ──────────────────────────────────
 // 5段階評価(1-5)を比率に変換し、Wilson下限(95%)を計算。
 // 少件数の高評価(★5/2件)が多件数の平均(★4.3/800件)に勝てないようにする。
@@ -1541,23 +1539,11 @@ function buildFallbackRelaxQuery(answers: Answers): string {
   return [area, bigWord, extraKw].filter(Boolean).join(" ");
 }
 
-function toPriceLabel(budget?: number) {
-  if (budget === undefined || budget === null) return "";
-  if (budget <= 1000) return "低予算";
-  if (budget <= 3000) return "手頃";
-  if (budget <= 10000) return "中価格帯";
-  return "高価格帯";
-}
-
 // 複数選択対応ヘルパー
 function getTransports(transport?: string | string[]): string[] {
   if (!transport) return [];
   if (Array.isArray(transport)) return transport;
   return transport ? [transport] : [];
-}
-
-function hasTransport(transport: string | string[] | undefined, mode: string): boolean {
-  return getTransports(transport).includes(mode);
 }
 
 // 時間から最大移動時間（片道分）を算出
@@ -1680,25 +1666,6 @@ function mapTransportToTravelMode(transport?: string | string[], mood?: string):
   // 徒歩
   if (transports.includes("徒歩")) return "WALK";
   return undefined;
-}
-
-function companionHint(companion?: string) {
-  switch (companion) {
-    case "一人":
-      return "一人でも行きやすい";
-    case "友達":
-      return "友達と楽しめる";
-    case "恋人":
-      return "デート向き";
-    case "家族":
-      return "家族で行きやすい";
-    case "大人数グループ":
-      return "大人数でも楽しめる";
-    case "先輩":
-      return "会話しやすい";
-    default:
-      return "";
-  }
 }
 
 function moodPlans(mood?: string): Array<[string, number, Bucket]> {
@@ -5839,12 +5806,14 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 
   // クロスソース重複排除しながら pool から最大 max 件取得。A-7: 同チェーン最大2件抑制。
+  //   sharedBrandCounts を渡すと呼び出し越しにブランドcapを共有する（SB/G/Y/backfillの
+  //   4回で各2件=最大6件同チェーンが通り、後段finalizeAssembledの削除で件数が減る問題への対応）。
   const pickUnique = <T extends FinalizeRec>(
-    pool: T[], max: number, seen: FinalizeDedupeKey[],
+    pool: T[], max: number, seen: FinalizeDedupeKey[], sharedBrandCounts?: Map<string, number>,
   ): { taken: T[]; skipped: T[] } => {
     const taken: T[] = [];
     const skipped: T[] = [];
-    const chainCounts = new Map<string, number>();
+    const chainCounts = sharedBrandCounts ?? new Map<string, number>();
     for (const r of pool) {
       const key = normalizeName(r.title ?? "");
       if (!key) continue;
@@ -6177,8 +6146,16 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
 function logSearchMetric(row: Record<string, unknown>): void {
   if (!supabase) return;
   const sb = supabase;
-  const run = () => sb.from("search_metrics").insert(row).then(() => {}, () => {});
-  try { after(async () => { await run(); }); } catch { void run(); }
+  // google_detail 列が未作成(supabase/search-metrics-detail.sql未適用)でも従来メトリクスを失わないよう、
+  // insert失敗時は新列を落として1回だけリトライする。
+  const run = async () => {
+    const { error } = await sb.from("search_metrics").insert(row);
+    if (error && "google_detail" in row) {
+      const { google_detail: _drop, ...rest } = row;
+      await sb.from("search_metrics").insert(rest).then(() => {}, () => {});
+    }
+  };
+  try { after(async () => { await run().catch(() => {}); }); } catch { void run().catch(() => {}); }
 }
 
 // item10: 検索スナップショット。同条件の再検索をパイプライン丸ごとスキップ（最速・最安）。
@@ -6207,8 +6184,10 @@ function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): stri
   if (a.freeWord || body?.refinementText || body?.showUnseenOnly || body?.excludeShown) return "";
   if (deepDive === "心霊") return "";  // 心霊は投稿写真が変わるのでキャッシュしない
   return [
-    "v2",  // 距離単一化/ランキング統一でフォーマット変更 → 旧スナップショットを無効化
-    a.mood ?? "", lat.toFixed(2), lng.toFixed(2), a.radiusKm ?? "",
+    // v3: 座標丸めを2桁(≈1.1km)→3桁(≈110m)に精密化（1km先の別地点と同一キャッシュに
+    //     衝突して「すぐそこ」の距離感が狂う誤ヒットを解消・監査2026-07-05）。旧v2を無効化。
+    "v3",
+    a.mood ?? "", lat.toFixed(3), lng.toFixed(3), a.radiusKm ?? "",
     a.distanceFeeling ?? "", deepDive, a.companion ?? "", a.transport ?? "",
   ].join("|");
 }
@@ -6277,10 +6256,11 @@ export async function POST(request: Request): Promise<Response> {
       source = body?.source ?? "";
       logSearchMetric({
         mood: meta.mood, area: meta.area, deep_dive: meta.deepDive,
-        google_calls: counts.searchText + counts.searchNearby + counts.photo,
+        google_calls: counts.searchText + counts.searchNearby + counts.photo + counts.detail,
         google_searchtext: counts.searchText,   // 内訳（¥集計用）: Text Search
         google_nearby: counts.searchNearby,     // 内訳: Nearby Search
         google_photo: counts.photo,             // 内訳: 写真取得
+        google_detail: counts.detail,           // 内訳: Place Details(★評価等)。列未作成時はinsert失敗→黙殺(既存挙動)
         total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
       });
       // 15件揃った標準検索のみスナップショット保存（薄い/失敗結果はキャッシュしない）
@@ -7435,9 +7415,11 @@ async function handleRecommend(request: Request) {
         // ソース配分: Supabase 8 / Google 2 / Yahoo 5（独自DB優先・Google最小化）。
         // 足りない分は Supabase余り → Yahoo余り → Google余り の順で補填して15件にする。
         const seen: DedupeKey[] = [];
-        const { taken: sbTaken, skipped: sbExtra } = pickUnique(sbSorted, 8, seen);
-        const { taken: gTaken,  skipped: gExtra  } = pickUnique(gSorted,  2, seen);
-        const { taken: yTaken,  skipped: yExtra  } = pickUnique(ySorted,  5, seen);
+        // ブランドcapを全ソース越しに共有（呼び出し毎リセットだと同チェーンが2×4=8件通り得た）
+        const brandSeen = new Map<string, number>();
+        const { taken: sbTaken, skipped: sbExtra } = pickUnique(sbSorted, 8, seen, brandSeen);
+        const { taken: gTaken,  skipped: gExtra  } = pickUnique(gSorted,  2, seen, brandSeen);
+        const { taken: yTaken,  skipped: yExtra  } = pickUnique(ySorted,  5, seen, brandSeen);
 
         // ショートフォール補填:
         // 合計15件に足りない分を、他ソースの余り（skipped）から順次補充する。
@@ -7445,7 +7427,7 @@ async function handleRecommend(request: Request) {
         const totalTaken = sbTaken.length + gTaken.length + yTaken.length;
         const backfillNeed = Math.max(0, 15 - totalTaken);
         const backfillPool = [...sortOrShuffle(sbExtra), ...sortOrShuffle(yExtra), ...sortOrShuffle(gExtra)];
-        const { taken: backfill } = pickUnique(backfillPool, backfillNeed, seen);
+        const { taken: backfill } = pickUnique(backfillPool, backfillNeed, seen, brandSeen);
 
         let recommendations: typeof supabaseRecs = [
           ...sbTaken, ...gTaken, ...yTaken, ...backfill,
@@ -7490,7 +7472,7 @@ async function handleRecommend(request: Request) {
                 : Promise.resolve([] as Record<string, unknown>[]),
             ]);
             const genrePool = ratingSanitize(sortOrShuffle(nonFoodSanitize(genreFidelityFilter(qualitySanitize(seenFilter(foodSanitize(applyMallFilter([...gGenre, ...yGenre] as Rec[]))))))));
-            const { taken } = pickUnique(genrePool, 15 - recommendations.length, seen);
+            const { taken } = pickUnique(genrePool, 15 - recommendations.length, seen, brandSeen);
             recommendations = [...recommendations, ...taken];
           }
 
@@ -7528,11 +7510,11 @@ async function handleRecommend(request: Request) {
             const wideGenre = genreFidelityFilter(wideBase);
             const wideRest  = wideBase.filter(r => !wideGenre.includes(r));
             // ① 同ジャンル広域で15件まで（純度OK）
-            const { taken: takenGenre } = pickUnique(ratingSanitize(sortOrShuffle(wideGenre)), 15 - recommendations.length, seen);
+            const { taken: takenGenre } = pickUnique(ratingSanitize(sortOrShuffle(wideGenre)), 15 - recommendations.length, seen, brandSeen);
             recommendations = [...recommendations, ...takenGenre];
             // ② それでも足りなければ「ジャンル外」で混在補填。ただし MIXED_BACKFILL_FLOOR 件まで。
             if (recommendations.length < MIXED_BACKFILL_FLOOR) {
-              const { taken: takenRest } = pickUnique(ratingSanitize(sortOrShuffle(wideRest)), MIXED_BACKFILL_FLOOR - recommendations.length, seen);
+              const { taken: takenRest } = pickUnique(ratingSanitize(sortOrShuffle(wideRest)), MIXED_BACKFILL_FLOOR - recommendations.length, seen, brandSeen);
               recommendations = [...recommendations, ...takenRest];
             }
           }

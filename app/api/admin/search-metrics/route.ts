@@ -16,16 +16,18 @@ const PRICE_YEN = {
   searchText: 0.035 * YEN_PER_USD,  // ≈ ¥5.25
   nearby:     0.035 * YEN_PER_USD,  // ≈ ¥5.25
   photo:      0.007 * YEN_PER_USD,  // ≈ ¥1.05
+  detail:     0.017 * YEN_PER_USD,  // ≈ ¥2.55 Place Details Pro（★評価取得。従来計上漏れ・監査2026-07-05）
 };
 // 内訳列が無い旧行は google_calls から概算（検索寄りの平均単価）
 const FALLBACK_YEN_PER_CALL = 4;
 const costYenOf = (r: {
   google_calls?: number | null; google_searchtext?: number | null;
-  google_nearby?: number | null; google_photo?: number | null;
+  google_nearby?: number | null; google_photo?: number | null; google_detail?: number | null;
 }): number => {
   const st = r.google_searchtext, nb = r.google_nearby, ph = r.google_photo;
   if (st == null && nb == null && ph == null) return (r.google_calls ?? 0) * FALLBACK_YEN_PER_CALL;
-  return (st ?? 0) * PRICE_YEN.searchText + (nb ?? 0) * PRICE_YEN.nearby + (ph ?? 0) * PRICE_YEN.photo;
+  return (st ?? 0) * PRICE_YEN.searchText + (nb ?? 0) * PRICE_YEN.nearby + (ph ?? 0) * PRICE_YEN.photo
+    + (r.google_detail ?? 0) * PRICE_YEN.detail;
 };
 
 export async function GET(request: Request) {

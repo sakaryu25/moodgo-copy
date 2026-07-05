@@ -81,6 +81,10 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
   };
 
   return (
+    // ⚠ New Arch(Fabric)の透明Modalは「visible=trueの状態で即マウント」だと中身を描画せず
+    //   タッチだけ奪う既知バグがある（ConsentGateで実証・c5adb7c）。このModalは
+    //   「常時マウント＋visible=false始まりのトグル」なので安全。呼び出し側で
+    //   {show && <ReportModal visible … />} のような条件付きマウントに変えないこと。
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
       <View style={s.overlay}>
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={close} />

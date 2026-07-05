@@ -191,6 +191,7 @@ export default function PostScreen() {
       const d = await res.json();
       if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくして再度お試しください'); setSubmitting(false); return; }
       showToast('投稿ありがとう！✨', existingPlaceId ? '投稿しました' : '新スポットとして投稿（確認後に検索にも反映）');
+      setSubmitting(false);  // 成功時もリセット（back後に画面が残った場合の連打二重投稿防止・監査2026-07-05）
       router.back();
     } catch { showToast('投稿に失敗しました', '通信環境を確認して再度お試しください'); setSubmitting(false); }
   };

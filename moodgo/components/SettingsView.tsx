@@ -263,20 +263,35 @@ export default function SettingsView({
       [
         { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
         { text: lang === 'ja' ? '完全に削除' : 'Delete everything', style: 'destructive', onPress: async () => {
+          // App Store 5.1.1(v): 削除の失敗を無音にしない（成功と偽らない）。監査2026-07-05対応。
+          let serverOk = true;
+          let localOk = true;
           try {
             const deviceId = await getDeviceId();
-            await apiFetch('/api/account-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId }) });
-          } catch { /* サーバー削除失敗でもローカルは消す */ }
+            const res = await apiFetch('/api/account-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId }) });
+            serverOk = (await res.json().catch(() => null))?.ok === true;
+          } catch { serverOk = false; }
           try {
             await AsyncStorage.multiRemove([
               NICKNAME_KEY, USER_ICON_KEY, FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
               PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY, 'moodgo-device-id',
             ]);
-          } catch { /* noop */ }
-          Alert.alert(
-            lang === 'ja' ? '削除しました' : 'Deleted',
-            lang === 'ja' ? 'あなたのデータを削除しました。ご利用ありがとうございました。' : 'Your data has been deleted.',
-          );
+          } catch { localOk = false; }
+          if (serverOk && localOk) {
+            Alert.alert(
+              lang === 'ja' ? '削除しました' : 'Deleted',
+              lang === 'ja' ? 'あなたのデータを削除しました。ご利用ありがとうございました。' : 'Your data has been deleted.',
+            );
+          } else {
+            Alert.alert(
+              lang === 'ja' ? '一部削除できませんでした' : 'Partially deleted',
+              lang === 'ja'
+                ? (serverOk
+                    ? '端末内データの一部を消去できませんでした。アプリを再起動して再度お試しください。'
+                    : '通信エラーでサーバー上のデータを削除できませんでした。通信環境を確認して、もう一度お試しください。')
+                : 'Some data could not be deleted. Please check your connection and try again.',
+            );
+          }
           onClose();
         } },
       ]
