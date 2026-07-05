@@ -129,7 +129,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "自分で撮影した、または使用許可のある写真であることの確認が必要です" }, { status: 400 });
     }
     const caption = String(body?.caption ?? "").trim().slice(0, 300);
-    const ng = findNgWord(caption);
+    // 価格帯/おすすめ度/連絡先は独立カラム（captionへの文字列埋め込みは廃止・2026-07-06）
+    const priceChip = body?.priceChip ? String(body.priceChip).trim().slice(0, 20) : null;
+    const priceNote = body?.priceNote ? String(body.priceNote).trim().slice(0, 120) : null;
+    const ratingIn = Number(body?.rating);
+    const rating = Number.isInteger(ratingIn) && ratingIn >= 1 && ratingIn <= 5 ? ratingIn : null;
+    const contact = body?.contact ? String(body.contact).trim().slice(0, 120) : null;
+    // NGワードはサーバーでも二重チェック（スポット名・本文・連絡先）
+    const ng = findNgWord(caption) || findNgWord(placeName) || (contact ? findNgWord(contact) : null);
     if (ng) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
 
     const moodTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
@@ -199,12 +206,20 @@ export async function POST(req: Request) {
       }
     }
 
-    // 本文 insert
-    const { data: post, error: postErr } = await db.from("spot_posts").insert({
+    // 本文 insert（価格/おすすめ度/連絡先は独立カラム。列未適用(spot-posts-extra.sql)なら
+    //   基本カラムのみで自動リトライ＝投稿自体は失敗させない）
+    const baseRow = {
       device_id: deviceId, poster_name: posterName, place_id: effectivePlaceId, place_name: placeName || null,
       caption, mood_tags: moodTags, companion, visibility, group_id: groupId,
       time_of_day: timeOfDay, want_revisit: wantRevisit, matches_photo: matchesPhoto, status,
+    };
+    let ins = await db.from("spot_posts").insert({
+      ...baseRow, price_chip: priceChip, price_note: priceNote, rating, contact,
     }).select("id").single();
+    if (ins.error && /price_chip|price_note|rating|contact|42703|column/i.test(String(ins.error.message ?? "") + String((ins.error as { code?: string }).code ?? ""))) {
+      ins = await db.from("spot_posts").insert(baseRow).select("id").single();
+    }
+    const { data: post, error: postErr } = ins;
     if (postErr) {
       if (isMissingTable(postErr)) return NextResponse.json({ ok: false, tableMissing: true, error: "投稿は準備中です（DB更新待ち）" }, { status: 400 });
       throw postErr;

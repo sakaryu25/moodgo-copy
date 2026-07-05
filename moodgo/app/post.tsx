@@ -35,6 +35,9 @@ const MOOD_TAG_TO_DIVE: Record<string, string> = {
 
 type PlaceHit = { id: string; name: string; address?: string };
 
+// 目安の値段チップ（独立カラムで保存・説明文には埋め込まない）
+const PRICE_CHIPS = ['無料', '〜¥500', '〜¥1,000', '〜¥3,000', '¥3,000〜'];
+
 export default function PostScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ placeId?: string; placeName?: string; address?: string }>();
@@ -57,6 +60,10 @@ export default function PostScreen() {
   const [licenseOk, setLicenseOk] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
+  const [priceNote, setPriceNote] = useState('');   // 値段の自由記入（任意）
+  const [contact, setContact] = useState('');       // 連絡先（任意・掲載特典の連絡用）
+  const [done, setDone] = useState(false);          // 送信後の完了画面
 
   // 既存スポット候補（スポット名を打つと被る既存placeが出る）
   const [results, setResults] = useState<PlaceHit[]>([]);
@@ -159,28 +166,36 @@ export default function PostScreen() {
   }, [moodTags]);
 
   const submit = async () => {
-    // バリデーションはフォームの並び順（名前→気分→本文→権利）に合わせる＝下の項目のエラーが先に出ない
-    if (!isExisting && !spotName.trim()) { showToast('場所の名前を入力してください', '新しいスポット名を入れてね'); return; }
+    // バリデーションはフォームの並び順（名前→紹介文→気分→…→場所）に合わせる＝下の項目のエラーが先に出ない
+    if (!isExisting && !spotName.trim()) { showToast('スポット名を入力してください', '例: 海が見える穴場カフェ'); return; }
+    if (!caption.trim()) { showToast('紹介文を入力してください', 'どんな場所？何が良い？を一言でも'); return; }
     if (moodTags.length === 0) { showToast('気分タグを選んでください', '合う気分を1つ以上タップ'); return; }
-    if (findNgWord(caption) || findNgWord(spotName)) { showToast('不適切な表現があります', '内容を見直してください'); return; }
+    if (findNgWord(caption) || findNgWord(spotName) || findNgWord(contact)) { showToast('不適切な表現があります', '内容を見直してください'); return; }
+    // 新スポットは場所必須（住所 or 現在地のどちらか）。既存スポット選択時は場所確定済み。
+    if (!isExisting && !address.trim() && (lat == null || lng == null)) {
+      showToast('場所を教えてください', '「現在地」タップ or 住所・エリアを入力'); return;
+    }
     if (!licenseOk) { showToast('権利確認が必要です', '「自分で撮影／使用許可あり」にチェック'); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
       const posterName = (await AsyncStorage.getItem('moodgo-group-nickname'))?.trim() || undefined;
-      // おすすめ度を本文末に埋め込み（フィードが【おすすめ度】★Nを拾って★表示する）
-      const descWithRating = [caption.trim(), rating > 0 ? `【おすすめ度】★${rating}` : ''].filter(Boolean).join('\n');
-
       const imgs = images.map(i => (i.base64 ? `data:image/jpeg;base64,${i.base64}` : '')).filter(Boolean);
       // 投稿は全て spot-posts に一本化。新スポット(placeId無し)はAPI側でplacesに仮登録され、admin承認で検索に出る。
+      // ⚠ 価格/おすすめ度は独立フィールドで送る（captionへの【目安価格】【おすすめ度】埋め込みは廃止＝
+      //    検索カードの説明が汚れない・除去処理も不要）。
       const res = await apiFetch('/api/spot-posts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
         body: JSON.stringify({
           action: 'create', deviceId, posterName,
           placeId: existingPlaceId || undefined, placeName: spotName, address,
           lat: lat ?? undefined, lng: lng ?? undefined,
-          caption: descWithRating, moodTags, visibility: 'spot_public_anonymous',
+          caption: caption.trim(), moodTags, visibility: 'spot_public_anonymous',
           canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
+          priceChip: priceChip || undefined,
+          priceNote: priceNote.trim() || undefined,
+          rating: rating > 0 ? rating : undefined,
+          contact: contact.trim() || undefined,
           // 新スポット(穴場)の詳細。既存スポットへの投稿(moodログ)では送らない＝既存placeを上書きしない
           openingHours: !isExisting ? (openingHours.trim() || undefined) : undefined,
           station: !isExisting ? (station.trim() || undefined) : undefined,
@@ -190,9 +205,8 @@ export default function PostScreen() {
       });
       const d = await res.json();
       if (!d?.ok) { showToast('投稿できませんでした', d?.error ?? 'しばらくして再度お試しください'); setSubmitting(false); return; }
-      showToast('投稿ありがとう！✨', existingPlaceId ? '投稿しました' : '新スポットとして投稿（確認後に検索にも反映）');
-      setSubmitting(false);  // 成功時もリセット（back後に画面が残った場合の連打二重投稿防止・監査2026-07-05）
-      router.back();
+      setSubmitting(false);
+      setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast('投稿に失敗しました', '通信環境を確認して再度お試しください'); setSubmitting(false); }
   };
 
@@ -203,11 +217,35 @@ export default function PostScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><ArrowLeft size={22} color="#fff" /></TouchableOpacity>
         <Text style={s.headTitle} numberOfLines={1}>みんなの穴場に投稿</Text>
       </LinearGradient>
+      {done ? (
+        /* ── 完了画面（送信後に切替）── */
+        <View style={s.doneWrap}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.doneCircle}>
+            <Check size={36} color="#fff" strokeWidth={3} />
+          </LinearGradient>
+          <Text style={s.doneTitle}>投稿を受け付けました🎉</Text>
+          <Text style={s.doneSub}>
+            {isExisting
+              ? 'ありがとうございます！あなたの投稿はスポットのページに表示されます。'
+              : 'スタッフが確認後、検索に掲載されます。\n掲載された場合はご連絡します！'}
+          </Text>
+          <TouchableOpacity onPress={() => router.back()} style={s.doneBtnWrap} activeOpacity={0.85}>
+            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.doneBtn}>
+              <Text style={s.doneBtnText}>閉じる</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
 
-          {/* 場所 */}
-          <Text style={s.label}>場所</Text>
+          {/* リード文（招待トーン＋特典予告） */}
+          <View style={s.lead}>
+            <Text style={s.leadText}>あなたが知っている素敵な場所を投稿しよう。{'\n'}掲載された場合は特典をプレゼント予定です🎁</Text>
+          </View>
+
+          {/* ① スポット名（既存スポット検索つき: 打つと同じ場所の候補が出る） */}
+          <Text style={s.label}>スポット名 <Text style={s.req}>*</Text></Text>
           {lockedFromParam ? (
             <View style={s.pickedRow}>
               <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
@@ -221,14 +259,11 @@ export default function PostScreen() {
             </View>
           ) : (
             <>
-              {/* スポット名（打つと被る既存スポットが候補で出る）*/}
               <View style={s.searchWrap}>
                 <Search size={16} color="#A78BCA" strokeWidth={2.2} />
-                <TextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder="スポット名を入力（例: 称名寺市民の森）" placeholderTextColor="#B9ABD2" />
+                <TextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder="例：海が見える穴場カフェ" placeholderTextColor="#B9ABD2" />
                 {searching && <ActivityIndicator size="small" color="#9B6BFF" />}
               </View>
-
-              {/* 既存スポットと名前が被ったら候補表示。タップ＝その場所への口コミ、無ければそのまま新規登録 */}
               {results.length > 0 && (
                 <View style={s.suggestBox}>
                   <Text style={s.suggestHint}>同じ名前のスポットが見つかりました。タップで選ぶと、その場所への投稿になります👇</Text>
@@ -244,57 +279,15 @@ export default function PostScreen() {
                   <Text style={s.suggestNew}>一覧に無ければ、このまま「{spotName.trim()}」を新しいスポットとして登録できます</Text>
                 </View>
               )}
-
-              {/* 住所（新しいスポットとして登録する場合）*/}
-              <View style={s.addrRow}>
-                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder="住所・エリア（任意）" placeholderTextColor="#B9ABD2" />
-                <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>
-                  <MapPin size={15} color="#fff" strokeWidth={2.4} />
-                  <Text style={s.locBtnText}>{locating ? '取得中' : '現在地'}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* 営業時間・最寄駅（新しい穴場スポットの詳細情報・任意）*/}
-              <TextInput style={[s.input, { marginTop: 8 }]} value={openingHours} onChangeText={setOpeningHours} placeholder="営業時間（任意・例: 11:00〜22:00、月曜休）" placeholderTextColor="#B9ABD2" multiline />
-              <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder="最寄駅（任意・例: JR横浜駅 徒歩5分）" placeholderTextColor="#B9ABD2" />
-
-              {/* 期間限定の公開（任意・穴場・カレンダー選択） */}
-              <Text style={s.label}>期間限定の公開（任意）</Text>
-              <View style={s.periodRow}>
-                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('from')} activeOpacity={0.8}>
-                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
-                  <Text style={[s.dateBtnText, !availFrom && s.dateBtnPh]} numberOfLines={1}>{availFrom || '開始日'}</Text>
-                  {availFrom ? <TouchableOpacity onPress={() => setAvailFrom('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
-                </TouchableOpacity>
-                <Text style={s.periodTilde}>〜</Text>
-                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('until')} activeOpacity={0.8}>
-                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
-                  <Text style={[s.dateBtnText, !availUntil && s.dateBtnPh]} numberOfLines={1}>{availUntil || '終了日'}</Text>
-                  {availUntil ? <TouchableOpacity onPress={() => setAvailUntil('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
-                </TouchableOpacity>
-              </View>
-              <Text style={s.note}>※ 期間限定イベント等の穴場に。空欄なら常時公開です。</Text>
             </>
           )}
 
-          {/* 写真 */}
-          <Text style={s.label}>写真（最大3枚）</Text>
-          <View style={s.photoGrid}>
-            {images.map((im, i) => (
-              <View key={i} style={s.thumbWrap}>
-                <Image source={{ uri: im.uri }} style={s.thumb} />
-                <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
-              </View>
-            ))}
-            {images.length < 3 && (
-              <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8}>
-                <Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>追加</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* ② 紹介文（必須） */}
+          <Text style={s.label}>どんな場所？おすすめポイント <Text style={s.req}>*</Text></Text>
+          <TextInput style={[s.input, { minHeight: 96 }]} value={caption} onChangeText={setCaption} placeholder="どんな場所？何が良い？雰囲気やおすすめポイントを自由に" placeholderTextColor="#B9ABD2" multiline maxLength={1000} />
 
-          {/* 気分タグ */}
-          <Text style={s.label}>合う気分（1つ以上）</Text>
+          {/* ③ 気分タグ（必須） */}
+          <Text style={s.label}>合う気分 <Text style={s.req}>*</Text>（1つ以上）</Text>
           <View style={s.chips}>
             {MOODS.map(t => (
               <TouchableOpacity key={t} onPress={() => toggleMood(t)} style={[s.chip, moodTags.includes(t) && s.chipOn]} activeOpacity={0.8}>
@@ -302,8 +295,6 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
-
-          {/* 詳しいジャンル（選んだ気分の深掘りタグ・任意）*/}
           {deepDiveOptions.length > 0 && (
             <>
               <Text style={s.label}>詳しいジャンル（任意・当てはまるものをタップ）</Text>
@@ -321,11 +312,40 @@ export default function PostScreen() {
             </>
           )}
 
-          {/* ひとこと */}
-          <Text style={s.label}>ひとこと（短くても長くてもOK）</Text>
-          <TextInput style={s.input} value={caption} onChangeText={setCaption} placeholder="どんな場所？ どんな気分の日におすすめ？" placeholderTextColor="#B9ABD2" multiline maxLength={1000} />
+          {/* ④ 目安の値段（任意・独立カラム保存＝説明文に埋め込まない） */}
+          <Text style={s.label}>目安の値段（任意）</Text>
+          <Text style={s.hint}>1人あたりの大体の金額</Text>
+          <View style={s.chips}>
+            {PRICE_CHIPS.map(c => (
+              <TouchableOpacity key={c} onPress={() => setPriceChip(priceChip === c ? '' : c)} style={[s.chip, priceChip === c && s.chipOn]} activeOpacity={0.8}>
+                <Text style={[s.chipText, priceChip === c && s.chipTextOn]}>{c}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={priceNote} onChangeText={setPriceNote} placeholder="詳細があれば（例: ランチ800円、ディナー2,000円〜）" placeholderTextColor="#B9ABD2" maxLength={120} />
 
-          {/* おすすめ度 */}
+          {/* ⑤ 掲載期間（任意・新スポットのみ） */}
+          {!isExisting && (
+            <>
+              <Text style={s.label}>公開期間（任意）</Text>
+              <Text style={s.hint}>期間限定スポットの場合に設定。空欄なら常時公開です。</Text>
+              <View style={s.periodRow}>
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('from')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availFrom && s.dateBtnPh]} numberOfLines={1}>{availFrom || '開始日'}</Text>
+                  {availFrom ? <TouchableOpacity onPress={() => setAvailFrom('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
+                <Text style={s.periodTilde}>〜</Text>
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('until')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availUntil && s.dateBtnPh]} numberOfLines={1}>{availUntil || '終了日'}</Text>
+                  {availUntil ? <TouchableOpacity onPress={() => setAvailUntil('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* ⑥ おすすめ度（任意・同じ星をもう一度で解除） */}
           <Text style={s.label}>おすすめ度（任意）</Text>
           <View style={s.starsRow}>
             {[1, 2, 3, 4, 5].map(n => (
@@ -334,6 +354,51 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* ⑦ 場所・住所（新スポットのみ必須: 現在地 or 住所） */}
+          {!isExisting && (
+            <>
+              <Text style={s.label}>場所・住所 <Text style={s.req}>*</Text></Text>
+              <View style={s.addrRow}>
+                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder="住所・エリア名を入力（例: 神奈川県横浜市…）" placeholderTextColor="#B9ABD2" />
+                <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>
+                  {locating ? <ActivityIndicator size="small" color="#fff" /> : <MapPin size={15} color="#fff" strokeWidth={2.4} />}
+                  <Text style={s.locBtnText}>{locating ? '取得中' : '現在地'}</Text>
+                </TouchableOpacity>
+              </View>
+              {lat != null && lng != null && (
+                <Text style={s.gotLoc}>📍 位置を取得しました{address ? `（${address}）` : ''}</Text>
+              )}
+              <TextInput style={[s.input, { marginTop: 8 }]} value={openingHours} onChangeText={setOpeningHours} placeholder="営業時間（任意・例: 11:00〜22:00、月曜休）" placeholderTextColor="#B9ABD2" multiline />
+              <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder="最寄駅（任意・例: JR横浜駅 徒歩5分）" placeholderTextColor="#B9ABD2" />
+            </>
+          )}
+
+          {/* ⑧ 写真（最大3枚・圧縮base64送信） */}
+          <Text style={s.label}>写真（最大3枚）</Text>
+          <Text style={s.hint}>駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！</Text>
+          <View style={s.photoGrid}>
+            {images.map((im, i) => (
+              <View key={i} style={s.thumbWrap}>
+                <Image source={{ uri: im.uri }} style={s.thumb} />
+                <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
+              </View>
+            ))}
+            {images.length < 3 && (
+              <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8}>
+                <Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>追加</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* ⑨ 連絡先（任意・新スポットのみ＝掲載特典の連絡用） */}
+          {!isExisting && (
+            <>
+              <Text style={s.label}>連絡先（任意）</Text>
+              <Text style={s.hint}>掲載された場合に特典をお送りするため、LINEのIDやメールアドレスを教えていただけると助かります。</Text>
+              <TextInput style={[s.input, { minHeight: 48 }]} value={contact} onChangeText={setContact} placeholder="例: @line_id / example@email.com" placeholderTextColor="#B9ABD2" autoCapitalize="none" autoCorrect={false} maxLength={120} />
+            </>
+          )}
 
           {/* 権利確認 */}
           <TouchableOpacity style={s.check} onPress={() => setLicenseOk(v => !v)} activeOpacity={0.8}>
@@ -345,11 +410,12 @@ export default function PostScreen() {
           <TouchableOpacity style={[s.submitWrap, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting} activeOpacity={0.85}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submit}>
               <Send size={17} color="#fff" strokeWidth={2.4} />
-              <Text style={s.submitText}>{submitting ? '投稿中…' : '投稿する'}</Text>
+              <Text style={s.submitText}>{submitting ? '送信中…' : '投稿する'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+      )}
 
       {/* 公開期間のカレンダー（iOS=ツリー内オーバーレイ / Android=ネイティブダイアログ）
           ⚠ New Arch(Fabric)の <Modal transparent> は中身を描画せず透明のままタッチを奪う不具合が
@@ -442,4 +508,18 @@ const s = StyleSheet.create({
   submitWrap: { borderRadius: 16, overflow: 'hidden', marginTop: 22, shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 8 },
   submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 16, paddingVertical: 15 },
   submitText: { color: '#fff', fontSize: 15.5, fontWeight: '800' },
+  // リード文・ヒント・必須マーク・現在地取得済み
+  lead: { backgroundColor: '#F3EEFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#E3D8F5' },
+  leadText: { fontSize: 13, color: '#4A2D7E', fontWeight: '700', lineHeight: 20 },
+  req: { color: '#F56CB3' },
+  hint: { fontSize: 11.5, color: '#9B89BE', marginBottom: 8, lineHeight: 16 },
+  gotLoc: { fontSize: 12, color: '#16A34A', fontWeight: '700', marginTop: 8 },
+  // 完了画面
+  doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
+  doneCircle: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  doneTitle: { fontSize: 20, fontWeight: '800', color: '#1E0753' },
+  doneSub: { fontSize: 13.5, color: '#6B5E85', textAlign: 'center', lineHeight: 21 },
+  doneBtnWrap: { marginTop: 14, alignSelf: 'stretch', borderRadius: 16, overflow: 'hidden' },
+  doneBtn: { paddingVertical: 15, alignItems: 'center', borderRadius: 16 },
+  doneBtnText: { color: '#fff', fontSize: 15.5, fontWeight: '800' },
 });

@@ -83,13 +83,26 @@ export async function GET(request: Request) {
 
     if (isMoodlog) {
       // ── みんなのMoodログ(spot_posts)＝「投稿」ボタンから入る統一投稿 ──
-      const { data: p, error } = await supabase
+      // price_chip等の新カラム(spot-posts-extra.sql)が未適用でも壊れないよう フル列→基本列 でフォールバック
+      let pRow = (await supabase
         .from("spot_posts")
-        .select("id, place_id, place_name, caption, mood_tags, created_at, poster_name, device_id, visibility")
+        .select("id, place_id, place_name, caption, mood_tags, created_at, poster_name, device_id, visibility, price_chip, price_note, rating")
         .eq("id", realId)
-        .single();
-      if (error || !p) throw error ?? new Error("not found");
-      const post = p as Record<string, unknown>;
+        .single()).data as Record<string, unknown> | null;
+      if (!pRow) {
+        const { data: p2, error: e2 } = await supabase
+          .from("spot_posts")
+          .select("id, place_id, place_name, caption, mood_tags, created_at, poster_name, device_id, visibility")
+          .eq("id", realId)
+          .single();
+        if (e2 || !p2) throw e2 ?? new Error("not found");
+        pRow = p2 as Record<string, unknown>;
+      }
+      const post = pRow;
+      // 価格/おすすめ度は独立カラム（captionへの埋め込みは廃止済み・旧投稿の埋め込みはcaptionのまま表示）
+      if (typeof post.price_note === "string" && post.price_note) priceText = post.price_note;
+      else if (typeof post.price_chip === "string" && post.price_chip) priceText = post.price_chip;
+      if (typeof post.rating === "number" && post.rating >= 1 && post.rating <= 5) rating = post.rating;
       if (post.visibility !== "spot_public_anonymous" && typeof post.device_id === "string" && post.device_id) {
         posterName = (post.poster_name as string | null) ?? null;
         posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
