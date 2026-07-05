@@ -384,10 +384,6 @@ export default function ProfileTab() {
             <View style={s.heroRight}>
               <View style={s.nameRow}>
                 <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
-                <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }}
-                  style={s.editMini} activeOpacity={0.8}>
-                  <Text style={s.editMiniText}>編集</Text>
-                </TouchableOpacity>
               </View>
               <View style={s.handleRow}>
                 <Text style={s.handle} numberOfLines={1}>{handleOf(nickname)}</Text>
@@ -539,11 +535,6 @@ const s = StyleSheet.create({
   heroRight: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   nickname: { fontSize: 30, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
-  editMini: {
-    paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999,
-    backgroundColor: '#fff', borderWidth: 1, borderColor: CARD_BORDER,
-  },
-  editMiniText: { fontSize: 12, fontWeight: '700', color: INK },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   handle: { fontSize: 14, fontWeight: '600', color: SUB, flexShrink: 1 },
   onlinePill: {
