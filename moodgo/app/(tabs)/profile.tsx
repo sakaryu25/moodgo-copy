@@ -47,8 +47,10 @@ const PINK  = '#FF63A9';
 const BLUE  = '#5A8DFF';
 const GRAD: [string, string] = [PINK, BLUE];
 const CARD_BORDER = 'rgba(90,90,120,0.08)';
-const R = 28;          // 角丸
-const PAD = 24;        // カード余白・画面左右余白・カード間隔
+const R = 22;            // 角丸
+const SIDE = 20;         // 画面左右余白
+const CARD_PAD = 18;     // カード内余白
+const GAP_Y = 16;        // カード間隔
 const { width: W } = Dimensions.get('window');
 
 type MyPost = {
@@ -190,10 +192,10 @@ export default function ProfileTab() {
 
   const displayName = nickname.trim() || 'MoodGo';
   const GAP = 10;
-  const tileCell   = (W - PAD * 2 - PAD * 2 - GAP * 2) / 3;  // カード内3列
-  const badgeCell  = (W - PAD * 2 - PAD * 2 - GAP) / 2;      // カード内2列
-  const tileCellFull  = (W - PAD * 2 - GAP * 2) / 3;         // サブビュー3列
-  const badgeCellFull = (W - PAD * 2 - GAP) / 2;             // サブビュー2列
+  const tileCell   = (W - SIDE * 2 - CARD_PAD * 2 - GAP * 2) / 3;  // カード内3列
+  const badgeCell  = (W - SIDE * 2 - CARD_PAD * 2 - GAP) / 2;      // カード内2列
+  const tileCellFull  = (W - SIDE * 2 - GAP * 2) / 3;         // サブビュー3列
+  const badgeCellFull = (W - SIDE * 2 - GAP) / 2;             // サブビュー2列
 
   // ── 部品 ────────────────────────────────────────────────────────────────
   const CardHeader = ({ icon, title, onMore }: { icon: React.ReactNode; title: string; onMore?: () => void }) => (
@@ -205,7 +207,7 @@ export default function ProfileTab() {
       {onMore && (
         <TouchableOpacity onPress={onMore} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           accessibilityRole="button" accessibilityLabel={`${title}をすべて見る`}>
-          <ChevronRight size={20} color={SUB} strokeWidth={2.2} />
+          <ChevronRight size={18} color={SUB} strokeWidth={2.2} />
         </TouchableOpacity>
       )}
     </View>
@@ -252,13 +254,13 @@ export default function ProfileTab() {
               <Image source={{ uri: item.photoUrl }} style={s.badgeImg} contentFit="cover" transition={200} />
             ) : (
               <View style={[s.badgeImg, s.badgePh]}>
-                <Award size={26} color={BLUE} strokeWidth={1.8} />
+                <Award size={22} color={BLUE} strokeWidth={1.8} />
               </View>
             )}
           </View>
         </LinearGradient>
         <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
-          <Award size={11} color="#fff" strokeWidth={2.4} />
+          <Award size={10} color="#fff" strokeWidth={2.4} />
         </LinearGradient>
       </View>
       <Text style={s.badgeName} numberOfLines={1}>{item.title}</Text>
@@ -272,7 +274,7 @@ export default function ProfileTab() {
         <Image source={{ uri: item.photoUrl }} style={s.viewedThumb} contentFit="cover" transition={200} />
       ) : (
         <View style={[s.viewedThumb, s.viewedThumbPh]}>
-          <MapPin size={20} color={BLUE} strokeWidth={1.8} />
+          <MapPin size={18} color={BLUE} strokeWidth={1.8} />
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -291,18 +293,18 @@ export default function ProfileTab() {
         <AppBackground />
         <View style={[s.subHeader, { paddingTop: insets.top + 8 }]}>
           <PuniPressable onPress={() => setSubView(null)} style={s.glassBtn}>
-            <ChevronLeft size={22} color={INK} strokeWidth={2.2} />
+            <ChevronLeft size={20} color={INK} strokeWidth={2.2} />
           </PuniPressable>
           <Text style={s.subTitle} numberOfLines={1}>{title}</Text>
-          <View style={{ width: 48 }} />
+          <View style={{ width: 42 }} />
         </View>
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: PAD, paddingTop: 8, paddingBottom: insets.bottom + 110 }}
+          contentContainerStyle={{ paddingHorizontal: SIDE, paddingTop: 8, paddingBottom: insets.bottom + 110 }}
           showsVerticalScrollIndicator={false}
         >
           {subView === 'posts' && (
             posts.length === 0 ? (
-              <Empty icon={<PenLine size={26} color={BLUE} strokeWidth={1.8} />} title="まだ投稿がありません"
+              <Empty icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />} title="まだ投稿がありません"
                 sub="気になったスポットで「投稿」してみよう！" />
             ) : (
               <View style={[s.grid, { gap: GAP }]}>
@@ -312,7 +314,7 @@ export default function ProfileTab() {
           )}
           {subView === 'badges' && (
             badges.length === 0 ? (
-              <Empty icon={<Award size={26} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
+              <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
                 sub="いろいろなスポットを訪れてバッジを集めよう！" />
             ) : (
               <View style={[s.grid, { gap: GAP }]}>
@@ -322,7 +324,7 @@ export default function ProfileTab() {
           )}
           {subView === 'viewed' && (
             viewed.length === 0 ? (
-              <Empty icon={<MapPin size={26} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
+              <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
                 sub="気になるスポットをチェックしてみよう！" />
             ) : (
               <View style={{ gap: 4 }}>
@@ -343,17 +345,17 @@ export default function ProfileTab() {
 
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={{ paddingHorizontal: PAD, paddingTop: insets.top + 8, paddingBottom: insets.bottom + 110 }}
+        contentContainerStyle={{ paddingHorizontal: SIDE, paddingTop: insets.top + 6, paddingBottom: insets.bottom + 110 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
       >
         {/* ── ヘッダー：中央タイトル＋右ギア(Glass 48) ── */}
         <View style={s.headerRow}>
-          <View style={{ width: 48 }} />
+          <View style={{ width: 42 }} />
           <Text style={s.pageTitle}>プロフィール</Text>
           <PuniPressable onPress={() => { setSettingsSection('other'); setShowSettings(true); }}
             style={s.glassBtn}>
-            <SettingsIcon size={21} color={INK} strokeWidth={2} />
+            <SettingsIcon size={19} color={INK} strokeWidth={2} />
           </PuniPressable>
         </View>
 
@@ -368,7 +370,7 @@ export default function ProfileTab() {
                     <Image source={{ uri: iconUrl }} style={s.avatarImg} contentFit="cover" />
                   ) : (
                     <View style={[s.avatarImg, s.avatarPh]}>
-                      <UserRound size={44} color={BLUE} strokeWidth={1.6} />
+                      <UserRound size={34} color={BLUE} strokeWidth={1.6} />
                     </View>
                   )}
                 </View>
@@ -376,7 +378,7 @@ export default function ProfileTab() {
               <PuniPressable onPress={() => { setSettingsSection('profile'); setShowSettings(true); }}
                 style={s.cameraBadge}>
                 <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.cameraBadgeGrad}>
-                  <Camera size={15} color="#fff" strokeWidth={2.2} />
+                  <Camera size={13} color="#fff" strokeWidth={2.2} />
                 </LinearGradient>
               </PuniPressable>
             </View>
@@ -415,7 +417,7 @@ export default function ProfileTab() {
           {/* プロフィールを編集（h60 / r999 / グラデ #FF63A9→#5A8DFF）→ 既存の編集画面へ */}
           <PuniPressable onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} style={s.editBtn}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.editBtnInner}>
-              <PenLine size={18} color="#fff" strokeWidth={2.2} />
+              <PenLine size={16} color="#fff" strokeWidth={2.2} />
               <Text style={s.editBtnText}>プロフィールを編集</Text>
             </LinearGradient>
           </PuniPressable>
@@ -423,19 +425,19 @@ export default function ProfileTab() {
 
         {/* ── ✨ 自分の投稿 ── */}
         <Animated.View style={[s.card, sectionStyle(1)]}>
-          <CardHeader icon={<Sparkles size={17} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
+          <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
             onMore={() => setSubView('posts')} />
           {loading ? (
             <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
           ) : posts.length === 0 ? (
             <Empty
-              icon={<PenLine size={26} color={BLUE} strokeWidth={1.8} />}
+              icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />}
               title="まだ投稿がありません"
               sub="気になったスポットで「投稿」してみよう！"
               action={
                 // 全国みんなの穴場と同じ投稿画面(/post)をそのまま開く（新規画面は作らない）
                 <PuniPressable onPress={() => router.push('/post')} style={s.outlineBtn}>
-                  <Plus size={16} color={BLUE} strokeWidth={2.4} />
+                  <Plus size={15} color={BLUE} strokeWidth={2.4} />
                   <Text style={s.outlineBtnText}>投稿する</Text>
                 </PuniPressable>
               }
@@ -449,10 +451,10 @@ export default function ProfileTab() {
 
         {/* ── 🏅 バッジ（行った！から生成） ── */}
         <Animated.View style={[s.card, sectionStyle(2)]}>
-          <CardHeader icon={<Award size={17} color="#F5A623" strokeWidth={2.2} />} title="バッジ"
+          <CardHeader icon={<Award size={16} color="#F5A623" strokeWidth={2.2} />} title="バッジ"
             onMore={() => setSubView('badges')} />
           {badges.length === 0 ? (
-            <Empty icon={<Award size={26} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
+            <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
               sub="いろいろなスポットを訪れてバッジを集めよう！" />
           ) : (
             <View style={[s.grid, { gap: GAP }]}>
@@ -463,10 +465,10 @@ export default function ProfileTab() {
 
         {/* ── 📍 最近チェックしたスポット ── */}
         <Animated.View style={[s.card, sectionStyle(3)]}>
-          <CardHeader icon={<MapPin size={17} color={BLUE} strokeWidth={2.2} />} title="最近チェックしたスポット"
+          <CardHeader icon={<MapPin size={16} color={BLUE} strokeWidth={2.2} />} title="最近チェックしたスポット"
             onMore={() => setSubView('viewed')} />
           {viewed.length === 0 ? (
-            <Empty icon={<MapPin size={26} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
+            <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
               sub="気になるスポットをチェックしてみよう！" />
           ) : (
             <View style={{ gap: 4 }}>
@@ -501,16 +503,16 @@ export default function ProfileTab() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
-  topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 340 },
+  topFade: { position: 'absolute', top: 0, left: 0, right: 0, height: 300 },
 
   // ヘッダー
   headerRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 12,
   },
-  pageTitle: { fontSize: 22, fontWeight: '800', color: INK, letterSpacing: -0.3 },
+  pageTitle: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.3 },
   glassBtn: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 42, height: 42, borderRadius: 21,
     backgroundColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: CARD_BORDER,
@@ -518,81 +520,81 @@ const s = StyleSheet.create({
   },
 
   // ヒーロー
-  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 20 },
-  avatarBox: { width: 120, height: 120 },
-  avatarRing: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center' },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
+  avatarBox: { width: 96, height: 96 },
+  avatarRing: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   avatarWhite: {
-    width: 112, height: 112, borderRadius: 56, backgroundColor: '#fff',
+    width: 88, height: 88, borderRadius: 44, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarImg: { width: 104, height: 104, borderRadius: 52 },
+  avatarImg: { width: 80, height: 80, borderRadius: 40 },
   avatarPh: { backgroundColor: '#F0EDFF', alignItems: 'center', justifyContent: 'center' },
   cameraBadge: { position: 'absolute', right: 2, bottom: 2 },
   cameraBadgeGrad: {
-    width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#fff',
+    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: '#fff',
   },
   heroRight: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nickname: { fontSize: 30, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
+  nickname: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  handle: { fontSize: 14, fontWeight: '600', color: SUB, flexShrink: 1 },
+  handle: { fontSize: 13, fontWeight: '600', color: SUB, flexShrink: 1 },
   onlinePill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3.5,
     borderWidth: 1, borderColor: CARD_BORDER,
   },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#34C759' },
-  onlineText: { fontSize: 11, fontWeight: '700', color: INK },
+  onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
 
   // 統計
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   statCol: { flex: 1, alignItems: 'center' },
-  statNum: { fontSize: 26, fontWeight: '800', color: INK, letterSpacing: -0.5 },
-  statLabel: { fontSize: 12.5, fontWeight: '600', color: SUB, marginTop: 1 },
-  statDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: 'rgba(90,90,120,0.18)' },
+  statNum: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.5 },
+  statLabel: { fontSize: 11.5, fontWeight: '600', color: SUB, marginTop: 1 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 22, backgroundColor: 'rgba(90,90,120,0.18)' },
 
   // 編集ボタン
   editBtn: {
-    borderRadius: 999, overflow: 'hidden', marginBottom: PAD,
-    shadowColor: PINK, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.22, shadowRadius: 18, elevation: 5,
+    borderRadius: 999, overflow: 'hidden', marginBottom: GAP_Y,
+    shadowColor: PINK, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 14, elevation: 4,
   },
   editBtnInner: {
-    height: 60, borderRadius: 999, flexDirection: 'row', gap: 9,
+    height: 52, borderRadius: 999, flexDirection: 'row', gap: 8,
     alignItems: 'center', justifyContent: 'center',
   },
-  editBtnText: { color: '#fff', fontSize: 16.5, fontWeight: '800', letterSpacing: 0.2 },
+  editBtnText: { color: '#fff', fontSize: 15.5, fontWeight: '800', letterSpacing: 0.2 },
 
   // カード共通（角丸28 / 余白24 / 影 0 8 30 .05 / 枠 rgba(90,90,120,.08)）
   card: {
-    backgroundColor: '#fff', borderRadius: R, padding: PAD, marginBottom: PAD,
+    backgroundColor: '#fff', borderRadius: R, padding: CARD_PAD, marginBottom: GAP_Y,
     borderWidth: 1, borderColor: CARD_BORDER,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 30, elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.05, shadowRadius: 24, elevation: 3,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-  cardTitle: { fontSize: 16.5, fontWeight: '800', color: INK, letterSpacing: -0.2 },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: INK, letterSpacing: -0.2 },
 
-  loadingWrap: { height: 90, alignItems: 'center', justifyContent: 'center' },
+  loadingWrap: { height: 70, alignItems: 'center', justifyContent: 'center' },
 
   // 空状態
-  emptyWrap: { alignItems: 'center', paddingVertical: 26, gap: 8 },
+  emptyWrap: { alignItems: 'center', paddingVertical: 16, gap: 6 },
   emptyIconCircle: {
-    width: 76, height: 76, borderRadius: 38, backgroundColor: '#F0EDFF',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+    width: 60, height: 60, borderRadius: 30, backgroundColor: '#F0EDFF',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 2,
   },
-  emptyTitle: { fontSize: 15.5, fontWeight: '800', color: INK },
-  emptySub: { fontSize: 12.5, fontWeight: '500', color: SUB, textAlign: 'center' },
+  emptyTitle: { fontSize: 14.5, fontWeight: '800', color: INK },
+  emptySub: { fontSize: 12, fontWeight: '500', color: SUB, textAlign: 'center' },
   outlineBtn: {
-    marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: 999, borderWidth: 1.5, borderColor: 'rgba(90,141,255,0.45)',
-    paddingHorizontal: 26, paddingVertical: 13, backgroundColor: '#fff', alignSelf: 'stretch',
+    paddingHorizontal: 24, paddingVertical: 11, backgroundColor: '#fff', alignSelf: 'stretch',
   },
-  outlineBtnText: { fontSize: 14.5, fontWeight: '800', color: BLUE },
+  outlineBtnText: { fontSize: 13.5, fontWeight: '800', color: BLUE },
 
   // 投稿タイル
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  tile: { borderRadius: 16, overflow: 'hidden', backgroundColor: '#EFEDF8', position: 'relative' },
+  tile: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#EFEDF8', position: 'relative' },
   tileImg: { width: '100%', height: '100%' },
   tilePh: { alignItems: 'center', justifyContent: 'center' },
   tileScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%' },
@@ -613,35 +615,35 @@ const s = StyleSheet.create({
 
   // バッジ
   badgeItem: { alignItems: 'center', paddingVertical: 6 },
-  badgeRing: { width: 84, height: 84, marginBottom: 8 },
-  badgeRingGrad: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center' },
+  badgeRing: { width: 70, height: 70, marginBottom: 6 },
+  badgeRingGrad: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center' },
   badgeImgWrap: {
-    width: 78, height: 78, borderRadius: 39, backgroundColor: '#fff',
+    width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center',
   },
-  badgeImg: { width: 72, height: 72, borderRadius: 36 },
+  badgeImg: { width: 58, height: 58, borderRadius: 29 },
   badgePh: { backgroundColor: '#F0EDFF', alignItems: 'center', justifyContent: 'center' },
   badgeMedal: {
-    position: 'absolute', right: 0, bottom: 4, width: 24, height: 24, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#fff',
+    position: 'absolute', right: 0, bottom: 3, width: 21, height: 21, borderRadius: 10.5,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff',
   },
-  badgeName: { fontSize: 13, fontWeight: '800', color: INK, maxWidth: '92%' },
+  badgeName: { fontSize: 12.5, fontWeight: '800', color: INK, maxWidth: '92%' },
   badgeDate: { fontSize: 11, fontWeight: '600', color: SUB, marginTop: 2 },
 
   // 最近チェック
   viewedRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9,
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7,
   },
-  viewedThumb: { width: 54, height: 54, borderRadius: 16, backgroundColor: '#F0EDFF' },
+  viewedThumb: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#F0EDFF' },
   viewedThumbPh: { alignItems: 'center', justifyContent: 'center' },
-  viewedName: { fontSize: 14.5, fontWeight: '800', color: INK },
-  viewedArea: { fontSize: 12, fontWeight: '600', color: SUB, marginTop: 1 },
-  viewedTime: { fontSize: 11.5, fontWeight: '600', color: SUB, marginLeft: 6 },
+  viewedName: { fontSize: 13.5, fontWeight: '800', color: INK },
+  viewedArea: { fontSize: 11.5, fontWeight: '600', color: SUB, marginTop: 1 },
+  viewedTime: { fontSize: 11, fontWeight: '600', color: SUB, marginLeft: 6 },
 
   // サブビュー
   subHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: PAD, paddingBottom: 10,
+    paddingHorizontal: SIDE, paddingBottom: 10,
   },
-  subTitle: { fontSize: 18, fontWeight: '800', color: INK, flexShrink: 1 },
+  subTitle: { fontSize: 17, fontWeight: '800', color: INK, flexShrink: 1 },
 });
