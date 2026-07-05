@@ -34,6 +34,8 @@ const { width: W } = Dimensions.get('window');
 
 // トーク（グループ）のニックネームと同じキーで保存して同期させる
 const NICKNAME_KEY  = 'moodgo-group-nickname';
+// ユーザーID（@ハンドル）のローカルキャッシュ（真実はサーバーの user_handles）
+const HANDLE_KEY    = 'moodgo-user-handle';
 const USER_ICON_KEY = 'moodgo-user-icon';
 
 const AGE_OPTIONS_JA    = ['10代', '20代', '30代', '40代以上'];
@@ -132,6 +134,12 @@ export default function SettingsView({
   const [nameInput, setNameInput] = useState('');
   const [iconUrl, setIconUrl]     = useState('');
   const [iconBusy, setIconBusy]   = useState(false);
+  // ユーザーID（@ハンドル）: 半角英数_のみ3〜20・小文字。一意性はサーバー(user_handles PK)が保証
+  const [handleInput, setHandleInput]   = useState('');
+  const [savedHandle, setSavedHandle]   = useState('');   // 現在確定しているID
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'ok' | 'taken' | 'invalid' | 'same'>('idle');
+  const [handleReason, setHandleReason] = useState('');
+  const handleCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 位置情報の許可状態
   const [locStatus, setLocStatus] = useState<Location.PermissionStatus | null>(null);
   const [locCanAsk, setLocCanAsk] = useState(true);
@@ -149,6 +157,20 @@ export default function SettingsView({
       // 保存済みの名前・アイコンを読み込み
       AsyncStorage.getItem(NICKNAME_KEY).then(v => setNameInput(v ?? '')).catch(() => {});
       AsyncStorage.getItem(USER_ICON_KEY).then(v => setIconUrl(v ?? '')).catch(() => {});
+      // ユーザーID: ローカルキャッシュ→サーバーの順で読込（サーバーが真実）
+      setHandleStatus('idle'); setHandleReason('');
+      AsyncStorage.getItem(HANDLE_KEY).then(v => { if (v) { setHandleInput(v); setSavedHandle(v); } }).catch(() => {});
+      getDeviceId().then(id =>
+        apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get', deviceId: id }),
+        }).then(r => r.json()).then(d => {
+          if (d?.ok && typeof d.handle === 'string' && d.handle) {
+            setHandleInput(d.handle); setSavedHandle(d.handle);
+            AsyncStorage.setItem(HANDLE_KEY, d.handle).catch(() => {});
+          }
+        }),
+      ).catch(() => {});
       // 開くたびに最新の許可状態をチェック
       Location.getForegroundPermissionsAsync()
         .then(p => { setLocStatus(p.status); setLocCanAsk(p.canAskAgain); })
@@ -224,7 +246,31 @@ export default function SettingsView({
     } catch { /* noop */ }
   };
 
-  const handleSave = () => {
+  // ── ユーザーID: 入力整形（小文字英数_のみ）＋500msデバウンスで空きチェック ──
+  const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
+  const onChangeHandle = (raw: string) => {
+    const v = raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);
+    setHandleInput(v);
+    if (handleCheckTimer.current) clearTimeout(handleCheckTimer.current);
+    if (!v) { setHandleStatus('idle'); setHandleReason(''); return; }
+    if (v === savedHandle) { setHandleStatus('same'); setHandleReason(''); return; }
+    if (!HANDLE_RE.test(v)) { setHandleStatus('invalid'); setHandleReason('3〜20文字・半角英数と_のみ'); return; }
+    setHandleStatus('checking'); setHandleReason('');
+    handleCheckTimer.current = setTimeout(async () => {
+      try {
+        const id = await getDeviceId();
+        const res = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'check', handle: v, deviceId: id }),
+        });
+        const d = await res.json();
+        if (d?.ok && d.available) { setHandleStatus('ok'); setHandleReason(''); }
+        else { setHandleStatus('taken'); setHandleReason(d?.reason ?? d?.error ?? 'このIDはすでに使われています'); }
+      } catch { setHandleStatus('idle'); }
+    }, 500);
+  };
+
+  const handleSave = async () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
     // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
     const name = nameInput.trim().slice(0, 20);
@@ -236,6 +282,35 @@ export default function SettingsView({
           body: JSON.stringify({ action: 'set_nickname', deviceId: id, nickname: name }),
         }))
         .catch(() => {});
+    }
+    // ユーザーIDの確定（変更がある時だけ）。一意性はサーバー(user_handles PK)が最終保証＝
+    // 同時に同じIDを取ろうとしても片方は必ず「使われています」で失敗する。
+    const h = handleInput.trim();
+    if (h && h !== savedHandle) {
+      if (!HANDLE_RE.test(h)) {
+        Alert.alert('IDを確認してください', '3〜20文字・半角英数と_のみで入力してください');
+        return;
+      }
+      try {
+        const id = await getDeviceId();
+        const res = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'claim', deviceId: id, handle: h }),
+        });
+        const d = await res.json();
+        if (!d?.ok) {
+          setHandleStatus(d?.taken ? 'taken' : 'invalid');
+          setHandleReason(d?.error ?? 'このIDは使用できません');
+          Alert.alert('IDを保存できませんでした', d?.error ?? 'このIDはすでに使われています');
+          return;  // ID失敗時は✓を出さない（他項目は保存済み）
+        }
+        setSavedHandle(h);
+        setHandleStatus('same'); setHandleReason('');
+        AsyncStorage.setItem(HANDLE_KEY, h).catch(() => {});
+      } catch {
+        Alert.alert('通信エラー', 'IDを保存できませんでした。時間をおいて再度お試しください');
+        return;
+      }
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
@@ -274,7 +349,7 @@ export default function SettingsView({
           try {
             await AsyncStorage.multiRemove([
               NICKNAME_KEY, USER_ICON_KEY, FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
-              PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY, 'moodgo-device-id',
+              PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY, HANDLE_KEY, 'moodgo-device-id',
             ]);
           } catch { localOk = false; }
           if (serverOk && localOk) {
@@ -420,6 +495,37 @@ export default function SettingsView({
               />
               <Text style={s.nameHint}>
                 {lang === 'ja' ? 'トーク（グループ）で表示される名前です' : 'Shown in group talks'}
+              </Text>
+
+              {/* ユーザーID（@ハンドル・全ユーザーで一意） */}
+              <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? 'ユーザーID' : 'User ID'}</Text>
+              <View style={s.handleRow}>
+                <Text style={s.handleAt}>@</Text>
+                <TextInput
+                  value={handleInput}
+                  onChangeText={onChangeHandle}
+                  placeholder={lang === 'ja' ? '例: ryuki_25' : 'e.g. ryuki_25'}
+                  placeholderTextColor="#C4B5FD"
+                  style={s.handleInput}
+                  maxLength={20}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="ascii-capable"
+                />
+                {handleStatus === 'checking' && <ActivityIndicator size="small" color={PURPLE} />}
+                {handleStatus === 'ok'   && <Check size={18} color="#22C55E" strokeWidth={2.6} />}
+                {(handleStatus === 'taken' || handleStatus === 'invalid') && (
+                  <Text style={s.handleNg}>✕</Text>
+                )}
+              </View>
+              <Text style={[
+                s.nameHint,
+                handleStatus === 'ok' && { color: '#16A34A' },
+                (handleStatus === 'taken' || handleStatus === 'invalid') && { color: '#DC2626' },
+              ]}>
+                {handleStatus === 'ok' ? (lang === 'ja' ? 'このIDは利用できます' : 'Available')
+                  : (handleStatus === 'taken' || handleStatus === 'invalid') ? (handleReason || (lang === 'ja' ? 'このIDはすでに使われています' : 'Already taken'))
+                  : (lang === 'ja' ? 'あなただけのID。3〜20文字・半角英数と_（他の人と同じIDは使えません）' : '3-20 chars, a-z 0-9 _ (must be unique)')}
               </Text>
 
               {/* 年代 */}
@@ -725,6 +831,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, fontSize: 14, fontWeight: '600', color: '#1E0753',
   },
   nameHint: { fontSize: 10, color: '#A78BFA', marginTop: 6 },
+  // ユーザーID入力（@固定プレフィックス＋状態アイコン）
+  handleRow: {
+    height: 48, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FAFAFF', borderWidth: 1.5, borderColor: '#DDD6FE', paddingHorizontal: 14,
+  },
+  handleAt: { fontSize: 15, fontWeight: '800', color: '#A78BFA' },
+  handleInput: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1E0753', paddingVertical: 0 },
+  handleNg: { fontSize: 15, fontWeight: '900', color: '#DC2626' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
   chip: {

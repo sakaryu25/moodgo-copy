@@ -38,6 +38,7 @@ import {
 // SettingsView / GroupsView と同じキー（同期のため）
 const NICKNAME_KEY  = 'moodgo-group-nickname';
 const USER_ICON_KEY = 'moodgo-user-icon';
+const HANDLE_KEY    = 'moodgo-user-handle';   // ユーザーID(@ハンドル)のローカルキャッシュ
 
 // ── デザイントークン（完成系指定）────────────────────────────────────────────
 const BG    = '#F7F7FA';
@@ -87,11 +88,6 @@ function prefOf(addr?: string): string {
   const m = (addr ?? '').match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
   return m ? m[1].replace(/[都府県]$/, '') : '';
 }
-// ニックネーム→@handle（英数のみ抽出・無ければ moodgo）
-function handleOf(nickname: string): string {
-  const ascii = (nickname.match(/[A-Za-z0-9_]+/g) ?? []).join('').toLowerCase();
-  return `@${ascii || 'moodgo'}`;
-}
 // スポット記録→詳細画面へ（既存 /place を利用）
 function openSpot(x: SpotLogItem) {
   const rec: Recommendation = {
@@ -108,6 +104,7 @@ export default function ProfileTab() {
   const settings = useSettings();
 
   const [nickname, setNickname] = useState('');
+  const [userHandle, setUserHandle] = useState('');   // ユーザーID(@)。未設定なら空
   const [iconUrl,  setIconUrl]  = useState('');
   const [posts,    setPosts]    = useState<MyPost[]>([]);
   const [badges,   setBadges]   = useState<SpotLogItem[]>([]);
@@ -138,12 +135,14 @@ export default function ProfileTab() {
 
   // 名前・アイコンを読み直す（設定で変更後の反映用）
   const loadProfile = useCallback(async () => {
-    const [nick, icon] = await Promise.all([
+    const [nick, icon, hnd] = await Promise.all([
       AsyncStorage.getItem(NICKNAME_KEY).catch(() => null),
       AsyncStorage.getItem(USER_ICON_KEY).catch(() => null),
+      AsyncStorage.getItem(HANDLE_KEY).catch(() => null),
     ]);
     setNickname(nick ?? '');
     setIconUrl(icon ?? '');
+    setUserHandle(hnd ?? '');
   }, []);
 
   // 自分の投稿を取得
@@ -388,7 +387,13 @@ export default function ProfileTab() {
                 <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
               </View>
               <View style={s.handleRow}>
-                <Text style={s.handle} numberOfLines={1}>{handleOf(nickname)}</Text>
+                {userHandle ? (
+                  <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
+                ) : (
+                  <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
+                    <Text style={s.handle} numberOfLines={1}>IDを設定 ›</Text>
+                  </TouchableOpacity>
+                )}
                 <View style={s.onlinePill}>
                   <View style={s.onlineDot} />
                   <Text style={s.onlineText}>オンライン</Text>

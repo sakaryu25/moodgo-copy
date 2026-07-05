@@ -1,0 +1,121 @@
+// ─── /api/user-handle ────────────────────────────────────────────────────────
+// ユーザーID（@ハンドル）の 取得 / 空きチェック / 取得(claim)・変更。
+//   一意性は user_handles.handle 主キー（DB）で保証＝同じIDは他人が絶対に取れない。
+//   形式: 半角英数と _ のみ・3〜20文字・小文字統一。予約語とNGワードは拒否。
+//   deviceId はベアラ資格情報のため POST body のみ（クエリ不可）・レスポンスに生値を返さない。
+//   POST {action:'get',   deviceId}          → {ok, handle|null}
+//   POST {action:'check', handle}            → {ok, available, reason?}   ※誰でも可（漏洩情報なし）
+//   POST {action:'claim', deviceId, handle}  → {ok} | {ok:false, error, taken?}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { findNgWord } from "@/lib/ngwords";
+
+const HANDLE_RE = /^[a-z0-9_]{3,20}$/;
+// なりすまし/紛らわしいIDを防ぐ予約語
+const RESERVED = new Set([
+  "moodgo", "admin", "administrator", "official", "support", "system",
+  "moderator", "mod", "staff", "help", "info", "root", "null", "undefined", "anonymous",
+]);
+
+function normalize(raw: unknown): string {
+  return String(raw ?? "").trim().toLowerCase().replace(/^@+/, "");
+}
+function validate(handle: string): string | null {
+  if (!HANDLE_RE.test(handle)) return "IDは半角英数と_のみ・3〜20文字です";
+  if (RESERVED.has(handle)) return "このIDは使用できません";
+  if (findNgWord(handle)) return "このIDは使用できません";
+  return null;
+}
+function isMissingTable(e: { code?: string; message?: string } | null): boolean {
+  return !!e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist/i.test(e.message ?? ""));
+}
+const TABLE_MISSING_MSG = "ID機能の準備中です（supabase/user-handles.sql 未適用）";
+
+export async function POST(req: Request) {
+  if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  const db = supabase;
+  if (!rateLimit(`user-handle:${clientIp(req)}`, 30, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+  }
+  const body = await req.json().catch(() => null);
+  const action = String(body?.action ?? "");
+
+  try {
+    // ── 自分のIDを取得 ─────────────────────────────────────────────────────
+    if (action === "get") {
+      const deviceId = String(body?.deviceId ?? "").trim();
+      if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId必須" }, { status: 400 });
+      const { data, error } = await db.from("user_handles").select("handle").eq("device_id", deviceId).maybeSingle();
+      if (error) {
+        if (isMissingTable(error)) return NextResponse.json({ ok: true, handle: null, tableMissing: true });
+        throw error;
+      }
+      return NextResponse.json({ ok: true, handle: (data?.handle as string | undefined) ?? null });
+    }
+
+    // ── 空きチェック（入力中のリアルタイム判定用）───────────────────────────
+    if (action === "check") {
+      const handle = normalize(body?.handle);
+      const bad = validate(handle);
+      if (bad) return NextResponse.json({ ok: true, available: false, reason: bad });
+      const { data, error } = await db.from("user_handles").select("device_id").eq("handle", handle).maybeSingle();
+      if (error) {
+        if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true, error: TABLE_MISSING_MSG });
+        throw error;
+      }
+      // 自分が既に持っているIDなら「利用可能(=そのまま)」扱い
+      const deviceId = String(body?.deviceId ?? "").trim();
+      const mine = !!deviceId && data?.device_id === deviceId;
+      return NextResponse.json({ ok: true, available: !data || mine, reason: data && !mine ? "このIDはすでに使われています" : undefined });
+    }
+
+    // ── 取得/変更（一意性はDBのunique制約が最終保証・レースも23505で弾く）────
+    if (action === "claim") {
+      const deviceId = String(body?.deviceId ?? "").trim();
+      const handle = normalize(body?.handle);
+      if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId必須" }, { status: 400 });
+      const bad = validate(handle);
+      if (bad) return NextResponse.json({ ok: false, error: bad });
+
+      // 既存の自分の行
+      const { data: own, error: ownErr } = await db.from("user_handles").select("handle").eq("device_id", deviceId).maybeSingle();
+      if (ownErr) {
+        if (isMissingTable(ownErr)) return NextResponse.json({ ok: false, tableMissing: true, error: TABLE_MISSING_MSG });
+        throw ownErr;
+      }
+      if (own?.handle === handle) return NextResponse.json({ ok: true, handle });  // 変更なし
+
+      if (own) {
+        // 変更: 自分の行のhandleを更新（他人が同handle保持ならPK違反23505で失敗＝奪えない）
+        const { error } = await db.from("user_handles")
+          .update({ handle, updated_at: new Date().toISOString() })
+          .eq("device_id", deviceId);
+        if (error) {
+          if ((error as { code?: string }).code === "23505") {
+            return NextResponse.json({ ok: false, taken: true, error: "このIDはすでに使われています" });
+          }
+          throw error;
+        }
+      } else {
+        // 新規: insert（同handleが同時に来てもPKが片方を23505で弾く）
+        const { error } = await db.from("user_handles").insert({ handle, device_id: deviceId });
+        if (error) {
+          if ((error as { code?: string }).code === "23505") {
+            return NextResponse.json({ ok: false, taken: true, error: "このIDはすでに使われています" });
+          }
+          throw error;
+        }
+      }
+      return NextResponse.json({ ok: true, handle });
+    }
+
+    return NextResponse.json({ ok: false, error: "不正なaction" }, { status: 400 });
+  } catch (e) {
+    console.error("[user-handle]", e);
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}

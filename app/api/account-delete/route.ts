@@ -37,7 +37,7 @@ async function persistentDailyLimit(key: string, max: number): Promise<boolean> 
 const TABLES_BY_DEVICE = [
   "suggestions", "spot_posts", "spot_post_reactions", "spot_ratings",
   "spot_engagement", "mood_group_members", "mood_group_posts", "mood_group_reactions",
-  "reports", "contacts", "client_errors",
+  "reports", "contacts", "client_errors", "user_handles",
 ];
 
 export async function POST(req: Request) {
