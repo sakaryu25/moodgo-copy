@@ -6,9 +6,9 @@ import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
 import CoveragePanel from "./_components/CoveragePanel";
 import ReviewQueuePanel from "./_components/ReviewQueuePanel";
 // サブ管理ページを取り込み、タブとして1ページに集約（各ページは localStorage の moodgo-admin-secret で自動認証）
-import MetricsAdmin from "./metrics/page";
-import MoodLogAdmin from "./mood-logs/page";
-import BlogPostsAdmin from "./blog-posts/page";
+import MetricsAdmin from "./metrics/MetricsAdmin";
+import MoodLogAdmin from "./mood-logs/MoodLogAdmin";
+import BlogPostsAdmin from "./blog-posts/BlogPostsAdmin";
 import ServerErrorsAdmin from "./server-errors/page";
 
 // admin secret はクライアントにハードコードしない。ログイン入力→サーバ検証→localStorageで保持(adminSecret state)。
