@@ -39,6 +39,7 @@ import MoodLogSection from '@/components/MoodLogSection';
 import SpotRating from '@/components/SpotRating';
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import { sameFav } from '@/lib/favKey';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
@@ -330,7 +331,7 @@ export default function PlaceDetailPage() {
     (async () => {
       if (!place?.title) return;
       const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-      setFaved(faves.some((f) => f.title === place.title));
+      setFaved(faves.some((f) => sameFav(f, place)));  // 同名別スポット混線防止(ID優先判定)
     })();
   }, [place?.title]);
 
@@ -339,8 +340,8 @@ export default function PlaceDetailPage() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
     let next: FavoriteItem[];
-    if (faves.some((f) => f.title === rec.title)) {
-      next = faves.filter((f) => f.title !== rec.title);
+    if (faves.some((f) => sameFav(f, rec))) {
+      next = faves.filter((f) => !sameFav(f, rec));
       setFaved(false);
     } else {
       next = [{
@@ -350,6 +351,7 @@ export default function PlaceDetailPage() {
         placeId: rec.placeId, address: rec.address, rating: rec.rating ?? null,
         stationText: rec.stationText, distanceText: rec.distanceText,
         priceLevel: rec.priceLevel, kind: 'place',
+        supabaseId: rec.supabaseId,  // 同一判定用(sameFav)
       }, ...faves];
       setFaved(true);
     }

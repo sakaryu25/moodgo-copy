@@ -20,6 +20,7 @@ import {
 } from 'lucide-react-native';
 import PuniPressable from './PuniPressable';
 import type { Recommendation, FavoriteItem } from '@/types/app';
+import { sameFav } from '@/lib/favKey';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
 
@@ -293,7 +294,7 @@ export default function ResultsView(props: Props) {
   React.useEffect(() => { setVisibleCount(PAGE_SIZE); }, [resultSort, openNowOnly, unseenOnly]);
 
   const insets = useSafeAreaInsets();
-  const isFav = (title: string) => favorites.some((f) => f.title === title);
+  const isFav = (rec: Recommendation) => favorites.some((f) => sameFav(f, rec));  // 同名別スポット混線防止
 
   const facilityList: PlaceResponse[] | null =
     driveFacilities ?? focusFacilities ?? sportsFacilities ?? travelFacilities ??
@@ -592,7 +593,7 @@ export default function ResultsView(props: Props) {
           <PlaceCard
             key={`${item.title}-${i}`}
             item={item}
-            isFavorited={isFav(item.title)}
+            isFavorited={isFav(item)}
             onToggleFavorite={() => onToggleFavorite(item)}
             onBlock={() => Alert.alert(
               lang === 'ja' ? 'このスポットを非表示にしますか？' : 'Hide this spot?',

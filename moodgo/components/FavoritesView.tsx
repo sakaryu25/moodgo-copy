@@ -37,7 +37,7 @@ type Props = {
   favorites: FavoriteItem[];
   favoriteSort: 'newest' | 'title';
   onSetFavoriteSort: (v: 'newest' | 'title') => void;
-  onRemoveFavorite: (title: string) => void;
+  onRemoveFavorite: (item: FavoriteItem) => void;  // 同名別スポット誤削除防止でitem渡し(sameFav判定)
   onPressCard?: (item: FavoriteItem) => void;
   lang?: 'ja' | 'en';
   resetKey?: number;
@@ -229,7 +229,7 @@ export default function FavoritesView({
                   <Text style={s.groupBtnText}>{t.talk}</Text>
                 </PuniPressable>
                 <PuniPressable
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item.title); }}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item); }}
                   haptic={false}
                   style={s.deleteBtn}
                   containerStyle={{ flex: 1 }}

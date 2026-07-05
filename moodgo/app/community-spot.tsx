@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import type { FavoriteItem } from '@/types/app';
 
@@ -84,7 +85,7 @@ export default function CommunitySpotScreen() {
         if (d.ok) {
           setSpot(d.spot);
           const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-          setFaved(faves.some((f) => f.title === (d.spot.placeName || d.spot.userTitle)));
+          setFaved(faves.some((f) => sameFav(f, { title: d.spot.placeName || d.spot.userTitle, placeId: d.spot.placeId })));
         }
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
@@ -95,8 +96,9 @@ export default function CommunitySpotScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
     const title = spot.placeName || spot.userTitle;
+    const target = { title, placeId: spot.placeId };  // sameFav: ID優先の同一判定
     let next: FavoriteItem[];
-    if (faves.some((f) => f.title === title)) { next = faves.filter((f) => f.title !== title); setFaved(false); }
+    if (faves.some((f) => sameFav(f, target))) { next = faves.filter((f) => !sameFav(f, target)); setFaved(false); }
     else {
       next = [{ title, area: spot.prefecture, vibe: '', photoUrl: spot.imageUrls[0] ?? '', mapUrl: spot.googleMapsUri,
         createdAt: new Date().toISOString(), placeId: spot.placeId, address: spot.address, rating: spot.googleRating,

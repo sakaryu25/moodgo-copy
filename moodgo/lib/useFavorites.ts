@@ -4,6 +4,7 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { FAVORITES_KEY, loadJSON, saveJSON } from '@/lib/storage';
+import { sameFav } from '@/lib/favKey';
 import type { FavoriteItem } from '@/types/app';
 
 export function useFavorites() {
@@ -21,9 +22,10 @@ export function useFavorites() {
     }, [])
   );
 
-  const removeFavorite = useCallback((title: string) => {
+  // #監査CRITICAL: title一致だと同名別スポットが道連れ削除されるため sameFav(ID優先)で判定
+  const removeFavorite = useCallback((item: FavoriteItem) => {
     setFavorites((prev) => {
-      const next = prev.filter((f) => f.title !== title);
+      const next = prev.filter((f) => !sameFav(f, item));
       saveJSON(FAVORITES_KEY, next);
       return next;
     });

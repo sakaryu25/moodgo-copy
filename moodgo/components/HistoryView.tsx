@@ -22,6 +22,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
+import { sameFav } from '@/lib/favKey';
 import PlaceCard from './PlaceCard';
 import { fetchUserPhotoMaps, userPhotosFor, mergeUserPhotos, type UserPhotoMaps } from '@/lib/userPhotos';
 import ReportModal from './ReportModal';
@@ -211,12 +212,11 @@ function formatFullDate(dateStr: string | undefined, lang: 'ja' | 'en'): string 
 
 // ── 詳細ビューのサブコンポーネント ────────────────────────────────────────────
 function DetailView({
-  item, t, lang, isFav, favorites, onToggleFavorite, onResearch, insets, onBack, onPressDetail,
+  item, t, lang, favorites, onToggleFavorite, onResearch, insets, onBack, onPressDetail,
 }: {
   item: HistoryItem;
   t: TStrings;
   lang: 'ja' | 'en';
-  isFav: (title: string) => boolean;
   favorites: FavoriteItem[];
   onToggleFavorite?: (rec: Recommendation) => void;
   onResearch?: (item: HistoryItem) => void;
@@ -363,7 +363,7 @@ function DetailView({
               key={`${rec.title}-${i}`}
               // 心霊は保存済みのGoogle写真を使わず、利用者投稿/プレースホルダーにする
               item={recShinrei ? { ...rec, photoUrl: undefined, photoUrls: undefined } : enriched}
-              isFavorited={(favorites ?? []).some((f) => f.title === rec.title)}
+              isFavorited={(favorites ?? []).some((f) => sameFav(f, rec))}
               onToggleFavorite={() => onToggleFavorite?.(rec)}
               lang={lang}
               isVisited={visitedSet.has(rec.title)}
@@ -404,7 +404,6 @@ export default function HistoryView({
   favorites, onToggleFavorite, onResearch, onPressDetail, lang = 'ja', resetKey,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const isFav = (title: string) => favorites.some((f) => f.title === title);
   const t = T[lang];
   const scrollRef = useRef<ScrollView>(null);
 
@@ -531,7 +530,6 @@ export default function HistoryView({
           item={selectedHistoryItem}
           t={t}
           lang={lang}
-          isFav={isFav}
           favorites={favorites}
           onToggleFavorite={onToggleFavorite}
           onResearch={onResearch}

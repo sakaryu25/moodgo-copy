@@ -41,6 +41,7 @@ import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { useTabReset } from '@/lib/useTabReset';
+import { sameFav } from '@/lib/favKey';
 import { getABVariant, getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 // 設定まわりの共有state（言語/プロフィール/非表示）。設定UIをプロフィールタブへ移したためストア化。
@@ -867,9 +868,10 @@ export default function Home() {
   // ─── Toggle favorite ──────────────────────────────────────────────────────
 
   const toggleFavorite = (rec: Recommendation) => {
-    const exists = favorites.find(f => f.title === rec.title);
+    // sameFav: supabaseId/placeId優先の同一判定（title一致だと同名別スポットが道連れになる）
+    const exists = favorites.find(f => sameFav(f, rec));
     if (exists) {
-      setFavorites(prev => prev.filter(f => f.title !== rec.title));
+      setFavorites(prev => prev.filter(f => !sameFav(f, rec)));
     } else {
       sendEngagement(rec.title, 'favorite');  // ② 学習ループ: お気に入り=強いシグナル
       setFavorites(prev => [{
