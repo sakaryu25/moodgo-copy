@@ -21,6 +21,7 @@ import {
 import PuniPressable from './PuniPressable';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import { sameFav } from '@/lib/favKey';
+import { addVisitedLog } from '@/lib/spotLog';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
 
@@ -753,6 +754,15 @@ export default function ResultsView(props: Props) {
               <TouchableOpacity
                 onPress={() => {
                   setVisitedTitles((prev) => [...prev, visitingSpot.title]);
+                  // プロフィールのバッジ用に永続記録（達成日=初回のみ・端末ローカル）
+                  addVisitedLog({
+                    title: visitingSpot.title,
+                    photoUrl: visitingSpot.photoUrl ?? visitingSpot.photoUrls?.[0],
+                    address: visitingSpot.address,
+                    placeId: visitingSpot.placeId,
+                    supabaseId: visitingSpot.supabaseId,
+                    tags: visitingSpot.tags,
+                  });
                   if (visitingRating > 0) onSubmitVisitedFeedback?.(visitingSpot.title, visitingRating);
                   setVisitingSpot(null); setVisitingRating(0);
                 }}

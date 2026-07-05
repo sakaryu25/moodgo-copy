@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import { sameFav } from '@/lib/favKey';
+import { addVisitedLog } from '@/lib/spotLog';
 import PlaceCard from './PlaceCard';
 import { fetchUserPhotoMaps, userPhotosFor, mergeUserPhotos, type UserPhotoMaps } from '@/lib/userPhotos';
 import ReportModal from './ReportModal';
@@ -367,7 +368,14 @@ function DetailView({
               onToggleFavorite={() => onToggleFavorite?.(rec)}
               lang={lang}
               isVisited={visitedSet.has(rec.title)}
-              onMarkVisited={() => setVisitedSet(prev => new Set([...prev, rec.title]))}
+              onMarkVisited={() => {
+                setVisitedSet(prev => new Set([...prev, rec.title]));
+                // プロフィールのバッジ用に永続記録（初回のみ）
+                addVisitedLog({
+                  title: rec.title, photoUrl: rec.photoUrl ?? rec.photoUrls?.[0],
+                  address: rec.address, placeId: rec.placeId, supabaseId: rec.supabaseId, tags: rec.tags,
+                });
+              }}
               onReport={() => setReportRec(rec)}
               onPressDetail={onPressDetail
                 ? () => onPressDetail(recShinrei

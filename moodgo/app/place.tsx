@@ -40,6 +40,7 @@ import SpotRating from '@/components/SpotRating';
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
+import { addViewedLog } from '@/lib/spotLog';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
@@ -334,6 +335,15 @@ export default function PlaceDetailPage() {
       setFaved(faves.some((f) => sameFav(f, place)));  // 同名別スポット混線防止(ID優先判定)
     })();
   }, [place?.title]);
+
+  // プロフィール「最近チェックしたスポット」用の閲覧記録（端末ローカル・最新が先頭）
+  useEffect(() => {
+    if (!rec?.title) return;
+    addViewedLog({
+      title: rec.title, photoUrl: rec.photoUrl ?? rec.photoUrls?.[0],
+      address: rec.address, placeId: rec.placeId, supabaseId: rec.supabaseId, tags: rec.tags,
+    });
+  }, [rec?.title]);
 
   const toggleFav = async () => {
     if (!rec) return;
