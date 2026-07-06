@@ -465,13 +465,17 @@ export default function PlaceCard({
         ) : (
           // 写真なし: 投稿を促す招待プレースホルダー（「最初の1枚」＝写真追加の入口。帯は残し下部グラデだけ消す）
           <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
-            <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />
-            <Text style={s.phInviteTitle}>最初の1枚を追加しませんか？</Text>
-            <Text style={s.phInviteSub}>あなたの写真がみんなの参考に📸</Text>
-            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.genrePhBtn}>
-              {uploading
-                ? <ActivityIndicator color={BRAND} size="small" />
-                : <><Camera size={14} color={BRAND} strokeWidth={2.2} /><Text style={s.genrePhBtnText}>写真を追加</Text></>}
+            {(() => { const p = genrePlaceholder(item.tags); return p
+              ? <Text style={s.phGenreEmoji}>{p.emoji}</Text>
+              : <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />; })()}
+            <Text style={s.phInviteTitle}>一番乗りで1枚どうぞ</Text>
+            <Text style={s.phInviteSub}>あなたの写真が、この場所の顔になります📸</Text>
+            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
+                {uploading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         )}
@@ -785,6 +789,11 @@ const s = StyleSheet.create({
   genrePhSub: { color: 'rgba(120,90,74,0.7)', fontSize: 11, fontWeight: '600', marginTop: 2 },
   genrePhBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, backgroundColor: 'rgba(255,255,255,0.8)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   genrePhBtnText: { color: BRAND, fontSize: 12, fontWeight: '700' },
+  // 「一番乗り」招待枠: ジャンル絵文字＋ブランドグラデCTA（詳細画面とトーンを統一）
+  phGenreEmoji: { fontSize: 34, marginBottom: 2 },
+  phInviteBtn: { marginTop: 10, borderRadius: 999, overflow: 'hidden' },
+  phInviteBtnGrad: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7 },
+  phInviteBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   spookyAskTitle: { color: 'rgba(220,210,255,0.92)', fontSize: 14, fontWeight: '800', marginTop: 12 },
   spookyAskSub: { color: 'rgba(190,175,235,0.7)', fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
   spookyAddBtn: {

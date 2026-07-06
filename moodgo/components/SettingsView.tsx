@@ -6,7 +6,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { Camera, Check, ChevronRight, EyeOff, FileText, Globe, Mail, MapPin, Navigation, ShieldCheck, Trash2, UserRound } from 'lucide-react-native';
+import { Camera, Check, ChevronRight, EyeOff, FileText, Globe, Lock, Mail, MapPin, Navigation, ShieldCheck, Trash2, UserRound } from 'lucide-react-native';
 import { router, type Href } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -139,6 +139,7 @@ export default function SettingsView({
   const [savedHandle, setSavedHandle]   = useState('');   // 現在確定しているID
   const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'ok' | 'taken' | 'invalid' | 'same'>('idle');
   const [handleReason, setHandleReason] = useState('');
+  const [handleLockDays, setHandleLockDays] = useState(0);   // >0 = 変更後14日ロック中の残り日数（入力不可）
   const handleCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 位置情報の許可状態
   const [locStatus, setLocStatus] = useState<Location.PermissionStatus | null>(null);
@@ -169,6 +170,7 @@ export default function SettingsView({
             setHandleInput(d.handle); setSavedHandle(d.handle);
             AsyncStorage.setItem(HANDLE_KEY, d.handle).catch(() => {});
           }
+          if (d?.ok && typeof d.daysLeft === 'number') setHandleLockDays(d.daysLeft);   // 変更ロックの残り日数
         }),
       ).catch(() => {});
       // 開くたびに最新の許可状態をチェック
@@ -270,7 +272,8 @@ export default function SettingsView({
     }, 500);
   };
 
-  const handleSave = async () => {
+  // 保存本体。ID変更の確認は handleSave（ラッパー）で先に行う。
+  const doSave = async () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
     // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
     const name = nameInput.trim().slice(0, 20);
@@ -299,6 +302,13 @@ export default function SettingsView({
         });
         const d = await res.json();
         if (!d?.ok) {
+          if (d?.locked) {
+            // 14日ロック中: 入力欄を無効化し残り日数を表示
+            if (typeof d.daysLeft === 'number') setHandleLockDays(d.daysLeft);
+            setHandleInput(savedHandle);   // 入力を確定IDへ戻す
+            Alert.alert('IDは変更できません', d?.error ?? 'ID変更後14日間は再変更できません');
+            return;
+          }
           setHandleStatus(d?.taken ? 'taken' : 'invalid');
           setHandleReason(d?.error ?? 'このIDは使用できません');
           Alert.alert('IDを保存できませんでした', d?.error ?? 'このIDはすでに使われています');
@@ -306,6 +316,7 @@ export default function SettingsView({
         }
         setSavedHandle(h);
         setHandleStatus('same'); setHandleReason('');
+        if (typeof d.daysLeft === 'number') setHandleLockDays(d.daysLeft);   // 変更成功なら14日ロック開始
         AsyncStorage.setItem(HANDLE_KEY, h).catch(() => {});
       } catch {
         Alert.alert('通信エラー', 'IDを保存できませんでした。時間をおいて再度お試しください');
@@ -314,6 +325,26 @@ export default function SettingsView({
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
+  };
+
+  // 保存の入口: ID「変更」（初回設定ではない）のときは2週間ロックの確認を挟む
+  const handleSave = () => {
+    const h = handleInput.trim();
+    const isHandleChange = !!h && h !== savedHandle && !!savedHandle;
+    if (isHandleChange) {
+      Alert.alert(
+        lang === 'ja' ? 'IDを変更しますか？' : 'Change your ID?',
+        lang === 'ja'
+          ? `@${savedHandle} → @${h}\n\n⚠️ 一度変更すると14日間（2週間）は再変更できません。`
+          : `@${savedHandle} → @${h}\n\n⚠️ After changing, you can't change it again for 14 days.`,
+        [
+          { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+          { text: lang === 'ja' ? '変更する' : 'Change', style: 'destructive', onPress: () => { void doSave(); } },
+        ],
+      );
+      return;
+    }
+    void doSave();
   };
 
   const handleClearHistory = () => {
@@ -499,7 +530,7 @@ export default function SettingsView({
 
               {/* ユーザーID（@ハンドル・全ユーザーで一意） */}
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? 'ユーザーID' : 'User ID'}</Text>
-              <View style={s.handleRow}>
+              <View style={[s.handleRow, handleLockDays > 0 && s.handleRowLocked]}>
                 <Text style={s.handleAt}>@</Text>
                 <TextInput
                   value={handleInput}
@@ -511,22 +542,41 @@ export default function SettingsView({
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="ascii-capable"
+                  editable={handleLockDays === 0}   // 変更後14日はロック
                 />
-                {handleStatus === 'checking' && <ActivityIndicator size="small" color={PURPLE} />}
-                {handleStatus === 'ok'   && <Check size={18} color="#22C55E" strokeWidth={2.6} />}
-                {(handleStatus === 'taken' || handleStatus === 'invalid') && (
+                {handleLockDays > 0 && <Lock size={15} color="#A78BFA" strokeWidth={2.2} />}
+                {handleLockDays === 0 && handleStatus === 'checking' && <ActivityIndicator size="small" color={PURPLE} />}
+                {handleLockDays === 0 && handleStatus === 'ok'   && <Check size={18} color="#22C55E" strokeWidth={2.6} />}
+                {handleLockDays === 0 && (handleStatus === 'taken' || handleStatus === 'invalid') && (
                   <Text style={s.handleNg}>✕</Text>
                 )}
               </View>
-              <Text style={[
-                s.nameHint,
-                handleStatus === 'ok' && { color: '#16A34A' },
-                (handleStatus === 'taken' || handleStatus === 'invalid') && { color: '#DC2626' },
-              ]}>
-                {handleStatus === 'ok' ? (lang === 'ja' ? 'このIDは利用できます' : 'Available')
-                  : (handleStatus === 'taken' || handleStatus === 'invalid') ? (handleReason || (lang === 'ja' ? 'このIDはすでに使われています' : 'Already taken'))
-                  : (lang === 'ja' ? 'あなただけのID。3〜20文字・半角英数と_（他の人と同じIDは使えません）' : '3-20 chars, a-z 0-9 _ (must be unique)')}
-              </Text>
+              {handleLockDays > 0 ? (
+                // ロック中: 残り日数を表示
+                <Text style={[s.nameHint, { color: '#7C3AED', fontWeight: '700' }]}>
+                  {lang === 'ja'
+                    ? `🔒 IDは変更後14日間ロックされます。あと${handleLockDays}日で再変更できます`
+                    : `🔒 Locked for 14 days after a change. ${handleLockDays} day(s) left`}
+                </Text>
+              ) : (
+                <>
+                  <Text style={[
+                    s.nameHint,
+                    handleStatus === 'ok' && { color: '#16A34A' },
+                    (handleStatus === 'taken' || handleStatus === 'invalid') && { color: '#DC2626' },
+                  ]}>
+                    {handleStatus === 'ok' ? (lang === 'ja' ? 'このIDは利用できます' : 'Available')
+                      : (handleStatus === 'taken' || handleStatus === 'invalid') ? (handleReason || (lang === 'ja' ? 'このIDはすでに使われています' : 'Already taken'))
+                      : (lang === 'ja' ? 'あなただけのID。3〜20文字・半角英数と_（他の人と同じIDは使えません）' : '3-20 chars, a-z 0-9 _ (must be unique)')}
+                  </Text>
+                  {/* 既にIDを持つ人には「変更すると2週間ロック」を控えめに常時表示 */}
+                  {!!savedHandle && (
+                    <Text style={s.handleLockWarn}>
+                      {lang === 'ja' ? '⚠️ IDは一度変更すると2週間（14日）は再変更できません' : '⚠️ Once changed, you can\'t change it again for 14 days'}
+                    </Text>
+                  )}
+                </>
+              )}
 
               {/* 年代 */}
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '年代' : 'Age group'}</Text>
@@ -836,9 +886,11 @@ const s = StyleSheet.create({
     height: 48, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#FAFAFF', borderWidth: 1.5, borderColor: '#DDD6FE', paddingHorizontal: 14,
   },
+  handleRowLocked: { backgroundColor: '#F3F0FA', borderColor: '#E5DEF7' },   // 変更ロック中は淡くグレーアウト
   handleAt: { fontSize: 15, fontWeight: '800', color: '#A78BFA' },
   handleInput: { flex: 1, fontSize: 14, fontWeight: '600', color: '#1E0753', paddingVertical: 0 },
   handleNg: { fontSize: 15, fontWeight: '900', color: '#DC2626' },
+  handleLockWarn: { fontSize: 10.5, color: '#B0A0D8', marginTop: 4, fontWeight: '600' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
   chip: {

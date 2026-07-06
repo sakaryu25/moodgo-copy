@@ -41,6 +41,7 @@ import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { addViewedLog } from '@/lib/spotLog';
+import { genrePlaceholder } from '@/lib/genrePlaceholder';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
@@ -392,6 +393,8 @@ export default function PlaceDetailPage() {
   const photos = userPhotos.length >= 3
     ? userPhotos
     : [...new Set([...userPhotos, ...basePhotos])];
+  // 通常スポットの写真ゼロ時の招待枠用: タグ→ジャンル絵文字/淡グラデ（null=汎用）
+  const ph = genrePlaceholder(rec?.tags);
   // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
   const showContribute = isSpooky && photos.length > 0;
   const heroPageCount = photos.length + (showContribute ? 1 : 0);
@@ -442,6 +445,10 @@ export default function PlaceDetailPage() {
       if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
       addSpotPhoto(rec.supabaseId, rec.title, data.url);  // 共有ストアへ→一覧にも即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // 一番乗り（写真ゼロだった場所）への投稿だけ、達成感を言語化して次の投稿動機に
+      if (userPhotos.length === 0 && !isSpooky) {
+        Alert.alert('ありがとうございます！', 'この場所の一番乗りです。あなたの写真がサムネに使われます 📸');
+      }
     } catch (e) {
       Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
     } finally { setUploadingPhoto(false); }
@@ -720,8 +727,26 @@ export default function PlaceDetailPage() {
               </TouchableOpacity>
             </LinearGradient>
           ) : (
-            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroPlaceholder}>
-              <Navigation size={56} color="rgba(255,255,255,0.55)" strokeWidth={1.2} />
+            // 通常スポット・写真ゼロ: 明るい「一番乗り」招待枠（心霊の暗テンプレとは別系統）
+            <LinearGradient
+              colors={ph ? ph.colors : ['#F7F2FF', '#EDE4FF']}
+              start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
+              style={s.heroPlaceholder}
+            >
+              <Text style={s.heroGenreEmoji}>{ph ? ph.emoji : '📷'}</Text>
+              <View style={s.heroFirstPill}>
+                <Camera size={12} color="#7C3AED" strokeWidth={2.4} />
+                <Text style={s.heroFirstPillText}>まだ写真がありません</Text>
+              </View>
+              <Text style={s.heroInviteTitle}>あなたが「最初の1枚」の主に</Text>
+              <Text style={s.heroInviteSub}>ここを探す次の人の、いちばんの手がかりになります</Text>
+              <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.85} style={s.heroInviteBtnWrap}>
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroInviteBtn}>
+                  {uploadingPhoto
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <><Camera size={16} color="#fff" strokeWidth={2.4} /><Text style={s.heroInviteBtnText}>一番乗りで写真を追加</Text></>}
+                </LinearGradient>
+              </TouchableOpacity>
             </LinearGradient>
           )}
 
@@ -1054,6 +1079,15 @@ const s = StyleSheet.create({
   // ヒーロー
   heroWrap: { position: 'relative', height: 300 },
   heroPlaceholder: { width: '100%', height: 300, alignItems: 'center', justifyContent: 'center' },
+  // 通常スポットの「一番乗り」招待枠
+  heroGenreEmoji:    { fontSize: 52, marginBottom: 4, opacity: 0.92 },
+  heroFirstPill:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.82)', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20, marginTop: 2 },
+  heroFirstPillText: { color: '#7C3AED', fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
+  heroInviteTitle:   { color: '#1E1548', fontSize: 17, fontWeight: '800', marginTop: 12, letterSpacing: 0.2 },
+  heroInviteSub:     { color: '#8B88A6', fontSize: 12.5, fontWeight: '600', marginTop: 5, textAlign: 'center', paddingHorizontal: 34, lineHeight: 18 },
+  heroInviteBtnWrap: { marginTop: 16, borderRadius: 24, overflow: 'hidden', shadowColor: '#7A5CFF', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+  heroInviteBtn:     { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 20, paddingVertical: 11 },
+  heroInviteBtnText: { color: '#fff', fontSize: 14.5, fontWeight: '800', letterSpacing: 0.3 },
   heroSpookyTitle: { color: 'rgba(225,215,255,0.95)', fontSize: 16, fontWeight: '800', marginTop: 14 },
   heroSpookySub: { color: 'rgba(195,180,240,0.72)', fontSize: 13, marginTop: 5, textAlign: 'center', paddingHorizontal: 30 },
   heroSpookyBtn: {

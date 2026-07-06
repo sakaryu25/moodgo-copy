@@ -36,6 +36,16 @@ function isMissingTable(e: { code?: string; message?: string } | null): boolean 
 }
 const TABLE_MISSING_MSG = "ID機能の準備中です（supabase/user-handles.sql 未適用）";
 
+// ID変更のクールダウン（変更後この日数は再変更不可）
+const LOCK_DAYS = 14;
+// locked_until から「まだロック中か・残り日数・ロック期限」を導出（列が無ければ非ロック扱い）
+function lockInfo(lockedUntil: unknown): { locked: boolean; until: string | null; daysLeft: number } {
+  if (typeof lockedUntil !== "string" || !lockedUntil) return { locked: false, until: null, daysLeft: 0 };
+  const t = Date.parse(lockedUntil);
+  if (!Number.isFinite(t) || t <= Date.now()) return { locked: false, until: null, daysLeft: 0 };
+  return { locked: true, until: lockedUntil, daysLeft: Math.ceil((t - Date.now()) / 86_400_000) };
+}
+
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const db = supabase;
@@ -46,16 +56,23 @@ export async function POST(req: Request) {
   const action = String(body?.action ?? "");
 
   try {
-    // ── 自分のIDを取得 ─────────────────────────────────────────────────────
+    // ── 自分のIDを取得（ロック状態も返す）─────────────────────────────────────
     if (action === "get") {
       const deviceId = String(body?.deviceId ?? "").trim();
       if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId必須" }, { status: 400 });
-      const { data, error } = await db.from("user_handles").select("handle").eq("device_id", deviceId).maybeSingle();
+      // locked_until 列が無い環境でも動くよう "*" で取得
+      const { data, error } = await db.from("user_handles").select("*").eq("device_id", deviceId).maybeSingle();
       if (error) {
         if (isMissingTable(error)) return NextResponse.json({ ok: true, handle: null, tableMissing: true });
         throw error;
       }
-      return NextResponse.json({ ok: true, handle: (data?.handle as string | undefined) ?? null });
+      const lock = lockInfo(data?.locked_until);
+      return NextResponse.json({
+        ok: true,
+        handle: (data?.handle as string | undefined) ?? null,
+        lockedUntil: lock.until,   // ISO or null
+        daysLeft: lock.daysLeft,   // ロック中の残り日数（切り上げ）・非ロックは0
+      });
     }
 
     // ── 空きチェック（入力中のリアルタイム判定用）───────────────────────────
@@ -103,8 +120,8 @@ export async function POST(req: Request) {
       const bad = validate(handle);
       if (bad) return NextResponse.json({ ok: false, error: bad });
 
-      // 既存の自分の行
-      const { data: own, error: ownErr } = await db.from("user_handles").select("handle").eq("device_id", deviceId).maybeSingle();
+      // 既存の自分の行（locked_until 列が無くても "*" なら安全に取れる）
+      const { data: own, error: ownErr } = await db.from("user_handles").select("*").eq("device_id", deviceId).maybeSingle();
       if (ownErr) {
         if (isMissingTable(ownErr)) return NextResponse.json({ ok: false, tableMissing: true, error: TABLE_MISSING_MSG });
         throw ownErr;
@@ -112,18 +129,34 @@ export async function POST(req: Request) {
       if (own?.handle === handle) return NextResponse.json({ ok: true, handle });  // 変更なし
 
       if (own) {
-        // 変更: 自分の行のhandleを更新（他人が同handle保持ならPK違反23505で失敗＝奪えない）
-        const { error } = await db.from("user_handles")
-          .update({ handle, updated_at: new Date().toISOString() })
+        // ── 2週間ロック: 前回の変更から14日以内は再変更を拒否 ──
+        const lock = lockInfo(own.locked_until);
+        if (lock.locked) {
+          return NextResponse.json({
+            ok: false, locked: true, lockedUntil: lock.until, daysLeft: lock.daysLeft,
+            error: `IDは変更後14日間は再変更できません（あと${lock.daysLeft}日）`,
+          });
+        }
+        // 変更: handle更新＋次の変更可能時刻を14日後にセット（他人が同handle保持ならPK違反23505で失敗＝奪えない）
+        const nextLock = new Date(Date.now() + LOCK_DAYS * 86_400_000).toISOString();
+        const now = new Date().toISOString();
+        let { error } = await db.from("user_handles")
+          .update({ handle, updated_at: now, locked_until: nextLock })
           .eq("device_id", deviceId);
+        // locked_until 列が未適用の環境: その列を外して再試行（ロックは効かないが変更は成功）
+        if (error && (error as { code?: string }).code === "42703") {
+          ({ error } = await db.from("user_handles").update({ handle, updated_at: now }).eq("device_id", deviceId));
+        }
         if (error) {
           if ((error as { code?: string }).code === "23505") {
             return NextResponse.json({ ok: false, taken: true, error: "このIDはすでに使われています" });
           }
           throw error;
         }
+        // 変更成功: 次に変更できるのは14日後
+        return NextResponse.json({ ok: true, handle, lockedUntil: nextLock, daysLeft: LOCK_DAYS });
       } else {
-        // 新規: insert（同handleが同時に来てもPKが片方を23505で弾く）
+        // 新規（初回設定はロック対象外＝すぐ直せる）: insert（同handle同時取得はPKが片方を23505で弾く）
         const { error } = await db.from("user_handles").insert({ handle, device_id: deviceId });
         if (error) {
           if ((error as { code?: string }).code === "23505") {
@@ -131,8 +164,8 @@ export async function POST(req: Request) {
           }
           throw error;
         }
+        return NextResponse.json({ ok: true, handle });
       }
-      return NextResponse.json({ ok: true, handle });
     }
 
     return NextResponse.json({ ok: false, error: "不正なaction" }, { status: 400 });

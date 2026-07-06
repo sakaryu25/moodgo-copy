@@ -12,5 +12,11 @@ create table if not exists user_handles (
   updated_at timestamptz not null default now()
 );
 
+-- ID変更の2週間ロック（2026-07-06追加）:
+--   handle を変更したら14日間は再変更不可。次に変更できる時刻を保持する。
+--   null = まだ一度も変更していない（初回設定はロック対象外＝いつでも変更可）。
+--   ※コード側は列が無くてもフォールバック動作するが、この列があるとロックが有効になる。
+alter table user_handles add column if not exists locked_until timestamptz;
+
 -- クライアントは匿名キーを持たずAPI(service_role)経由のみ。防御層としてRLS有効化。
 alter table user_handles enable row level security;
