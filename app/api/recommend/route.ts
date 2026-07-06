@@ -13,6 +13,7 @@ import { logServerError, scheduleServerError } from "@/lib/server-log";
 import { applyAiRanking } from "@/lib/ai-ranking";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { fetchSimilarStats } from "@/lib/feedback-stats";
+import { pickGsiResult } from "@/lib/gsi-geocode";
 import { mergedPlacePhotos } from "@/lib/place-photos";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
@@ -6288,18 +6289,8 @@ async function handleRecommend(request: Request) {
 
     const body = await request.json().catch(() => null);
     const answers = (body?.answers || {}) as Answers;
-    // ── 「時間潰し」を実績ある実気分へリマップ（要望4）──────────────────────────
-    //   時間潰し専用パスは未整備で福島スポット等の遠方混入バグがあった（sbQualified枯渇→
-    //   Google補足発火→距離フィルタのMIN_KEEPフォールバックで遠方温存）。同行者に応じた
-    //   実気分(まったり/わいわい/集中=渋谷を正しく返すと本番実証済み)へリマップし、実績ある
-    //   パイプラインに載せる。#時間潰し投稿は下の needsJikanFetch で距離内の追加ソースとして合流。
+    // 「時間潰し」は下の専用パス（#時間潰し優先5件＋全タグからランダム補充）で処理する。
     const wasJikanMood = answers.mood === "時間潰し" || answers.mood === "時間潰したい";
-    if (wasJikanMood) {
-      const c = answers.companion ?? "";
-      answers.mood = (c.includes("友達") || c.includes("家族") || c.includes("大人数")) ? "わいわい"
-        : c.includes("一人") ? "集中"
-        : "まったり";   // 恋人・その他
-    }
     const pastFeedback = (body?.pastFeedback || []) as FeedbackItem[];
     const seenPlaces = (body?.seenPlaces || []) as string[];
     const showUnseenOnly = body?.showUnseenOnly === true;
@@ -6333,22 +6324,8 @@ async function handleRecommend(request: Request) {
             { cache: "no-store", signal: AbortSignal.timeout(4000) },
           );
           const gsi = await gsiRes.json().catch(() => null);
-          // ⚠ GSIは結果を有名度順に返さない: 「渋谷」の先頭は福島県猪苗代町渋谷・「東京」は札幌市東区・
-          //   「横浜」は青森県横浜町…と、同名の地方集落が先頭に来る（東京都渋谷区は3番目）。
-          //   [0]を採ると全国の主要地名が誤座標になる致命バグ。→ クエリが行政区画(区/市/都道府県)
-          //   そのものを指す結果を優先して選ぶ。行政区画一致が無ければ loc=null のまま Google(有名度順)へ。
-          const pickGsi = (
-            arr: Array<{ properties?: { title?: string }; geometry?: { coordinates?: number[] } }> | null,
-            q: string,
-          ) => {
-            if (!Array.isArray(arr) || arr.length === 0) return null;
-            for (const suf of ["区", "市", "都", "道", "府", "県", "町", "村"]) {
-              const hit = arr.find((r) => (r?.properties?.title ?? "").endsWith(q + suf));
-              if (Array.isArray(hit?.geometry?.coordinates)) return hit;
-            }
-            return null;  // 行政区画一致なし → Google(prominence)に委ねる
-          };
-          const best = pickGsi(gsi, answers.area.trim());
+          // GSIは有名度順でない（「渋谷」の先頭=福島県猪苗代町渋谷・本番実測）。行政区画優先で選ぶ（lib/gsi-geocode.ts）
+          const best = pickGsiResult(gsi, answers.area.trim());
           const coord = best?.geometry?.coordinates;  // [lng, lat]
           if (Array.isArray(coord) && typeof coord[1] === "number") {
             loc = { lat: coord[1], lng: coord[0] };
@@ -6476,6 +6453,93 @@ async function handleRecommend(request: Request) {
       ? 0
       : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
+    // ─── 時間潰し 専用パス（2026-07-07仕様確定）──────────────────────────────
+    //   仕様: ①#時間潰し付きスポット(利用者投稿・審査合格)を最優先で近い順に5件
+    //         ②残り枠は「全ての#」から距離ロジック内(radiusKm)の最寄りプールをランダムに補充し計15件
+    //   巨大パイプラインの気分純度フィルタ(AI場違い判定等)は②のランダム混成と相性が悪いため、
+    //   自由ワード検索と同様の早期リターンで独立実装する（GPS/エリア座標がある時のみ）。
+    if (wasJikanMood && typeof answers.originLat === "number" && typeof answers.originLng === "number") {
+      try {
+        const { spatialSearch } = await import("@/lib/spatial-search");
+        const jLat = answers.originLat, jLng = answers.originLng;
+        const [jikanHits, poolHits] = await Promise.all([
+          spatialSearch({ mustTags: ["#時間潰し"], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm: 0, transport: answers.transport, limit: 20, googleApiKey: apiKey }),
+          spatialSearch({ mustTags: [], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm: 0, transport: answers.transport, limit: 60, googleApiKey: apiKey }),
+        ]);
+        // グローバルブロック済みは除外（管理者が検索から外した場所）
+        const jBlocked = new Set<string>();
+        if (supabase) {
+          try {
+            const { data } = await supabase.from("globally_blocked_places").select("spot_name");
+            for (const b of (data ?? []) as Array<{ spot_name: string }>) jBlocked.add(b.spot_name);
+          } catch { /* ブロック表未作成でも続行 */ }
+        }
+        const jSeen = new Set(showUnseenOnly ? seenPlaces : []);
+        const jOk = (pl: { name: string }) => !jBlocked.has(pl.name) && !jSeen.has(pl.name);
+        type JRow = (typeof jikanHits)[number];
+        const jUsed = new Set<string>();
+        // ① #時間潰し 最優先: 近い順に最大5件
+        const jikanTop = jikanHits.filter(jOk)
+          .sort((a, b) => (a.distanceM ?? 9e9) - (b.distanceM ?? 9e9)).slice(0, 5);
+        jikanTop.forEach(pl => jUsed.add(pl.name));
+        // ② 残り: 全タグの距離内プール(最寄り60件)からランダムに補充
+        const jRest = poolHits.filter(pl => jOk(pl) && !jUsed.has(pl.name));
+        for (let i = jRest.length - 1; i > 0; i--) {
+          const k = Math.floor(Math.random() * (i + 1));
+          [jRest[i], jRest[k]] = [jRest[k], jRest[i]];
+        }
+        const jTake = jRest.slice(0, Math.max(0, 15 - jikanTop.length));
+        const toJikanRec = (r: JRow, isJikan: boolean) => {
+          const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
+          const supabaseUUID = r.id?.startsWith("sb-") ? r.id.replace(/^sb-/, "") : undefined;
+          return {
+            title: r.name,
+            address: r.address,
+            photoUrl: wrapWithPhotoProxy(r.imageUrl || ""),
+            photoUrls: (r.photoUrls ?? []).map(wrapWithPhotoProxy),
+            rating: r.rating ?? null,
+            userRatingCount: r.reviewCount ?? null,
+            openNow: r.openNow ?? undefined,
+            openStatusBadge: r.openNow === true ? "営業中" : (r.openNow === false ? "営業時間外" : undefined),
+            openingHoursText: r.openingHours ?? undefined,
+            mapUrl: r.googleMapsUrl,
+            googleMapsUrl: r.googleMapsUrl,
+            reason: sanitizeReasonText(r.description),
+            aiReason: undefined,
+            features: isJikan ? ["#時間潰し"] : [],
+            distanceText: r.distanceInfo,
+            distanceKm: typeof r.distanceM === "number" ? r.distanceM / 1000 : undefined,
+            distanceM: r.distanceM,
+            lat: typeof r.lat === "number" ? r.lat : undefined,
+            lng: typeof r.lng === "number" ? r.lng : undefined,
+            durationText: "",
+            stationText: r.stationInfo || "",
+            vibe: "", budget: "", time: "",
+            priceLevel: r.priceLevel ?? undefined,
+            placeId: googlePlaceId,
+            supabaseId: supabaseUUID,
+            source: "admin",
+            isUserSpot: false, hasUserPhotos: false, userPhotoCount: 0,
+            routesByMode: undefined,
+            tags: [] as string[],
+          };
+        };
+        const jikanRecs = [...jikanTop.map(r => toJikanRec(r, true)), ...jTake.map(r => toJikanRec(r, false))];
+        await applyUserPhotos(jikanRecs as unknown as UserPhotoRec[]);
+        return json({
+          recommendations: jikanRecs,
+          source: "supabase-jikan",
+          searchId,
+          usedAI: false,
+          widenedSearch: false,
+          warning: jikanRecs.length === 0
+            ? "近くにスポットが見つかりませんでした。距離を広げてお試しください。" : "",
+        });
+      } catch (err) {
+        console.error("[recommend] 時間潰し専用パス失敗 → 通常フローへ:", err);
+      }
+    }
+
     // ─── Supabase-first メインフロー ───────────────────────────────────────────
     // placesテーブルを主軸に検索し、Google Placesで補足検索
     // GPS使用時はクイズの距離感（radiusKm）を優先使用 + 遠端バイアスで近すぎる場所を後回し
@@ -6565,10 +6629,6 @@ async function handleRecommend(request: Request) {
       //   有名公園(代々木公園/砧公園等)が候補から漏れる。wikidata著名公園に付与した #名所公園 を
       //   別枠で取得して合流し、有名公園の取りこぼし→Google補完誘発を防ぐ。
       const needsProminenceFetch = realDrillTags.includes("#大型公園");
-      // 気分「時間潰し」: リマップ後の実気分(在庫)に加え、#時間潰し 付き投稿を別枠で合流させる
-      //   追加ソース方式（ユーザー選択）。距離は同じradiusで絞る＝距離ロジックにそのまま乗る。
-      //   ※ answers.mood はリマップ済みなので、元が時間潰しだった wasJikanMood フラグで判定する。
-      const needsJikanFetch = wasJikanMood;
 
       const hasLocation = !!(answers.originLat && answers.originLng);
       const isFoodMood = answers.mood === "お腹すいた";
@@ -6634,24 +6694,6 @@ async function handleRecommend(request: Request) {
         } catch { /* 著名公園取得失敗は通常候補で続行 */ }
       }
 
-      // ── 時間潰し: #時間潰し 付きスポット(利用者投稿)を別枠で合流（追加ソース方式）──────────
-      //   借りタグ検索(上)＝既存の時間潰し系在庫、これに #時間潰し 投稿を加えて距離内で表示。
-      if (hasLocation && needsJikanFetch) {
-        try {
-          const jikanHits = await spatialSearch({
-            mustTags: ["#時間潰し"], fallbackTags: [],
-            lat: answers.originLat ?? 0, lng: answers.originLng ?? 0,
-            radiusKm: sbRadiusKm, minRadiusKm: sbMinRadiusKm,
-            transport: answers.transport, limit: 20, googleApiKey: apiKey,
-          });
-          const have = new Set(sbResults.map(r => r.name));
-          for (const t of jikanHits) {
-            if (have.has(t.name)) continue;
-            if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
-            sbResults.push(t); have.add(t.name);
-          }
-        } catch { /* #時間潰し取得失敗は借りタグ候補で続行 */ }
-      }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、

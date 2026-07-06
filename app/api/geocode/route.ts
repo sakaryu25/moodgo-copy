@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
  * GET /api/geocode?area=渋谷駅
  */
 import { NextResponse } from "next/server";
+import { pickGsiResult } from "@/lib/gsi-geocode";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -27,7 +28,9 @@ export async function GET(request: Request) {
         { cache: "no-store", signal: AbortSignal.timeout(4000) },
       );
       const gsi = await gsiRes.json().catch(() => null);
-      const coord = gsi?.[0]?.geometry?.coordinates;
+      // GSIは有名度順でない（「渋谷」の先頭=福島県猪苗代町渋谷・本番実測）。行政区画優先で選ぶ（lib/gsi-geocode.ts）
+      const best = pickGsiResult(gsi, area);
+      const coord = best?.geometry?.coordinates;
       if (Array.isArray(coord) && typeof coord[1] === "number") {
         return NextResponse.json({ ok: true, lat: coord[1], lng: coord[0], source: "gsi" });
       }
