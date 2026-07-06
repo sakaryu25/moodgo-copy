@@ -6288,6 +6288,18 @@ async function handleRecommend(request: Request) {
 
     const body = await request.json().catch(() => null);
     const answers = (body?.answers || {}) as Answers;
+    // ── 「時間潰し」を実績ある実気分へリマップ（要望4）──────────────────────────
+    //   時間潰し専用パスは未整備で福島スポット等の遠方混入バグがあった（sbQualified枯渇→
+    //   Google補足発火→距離フィルタのMIN_KEEPフォールバックで遠方温存）。同行者に応じた
+    //   実気分(まったり/わいわい/集中=渋谷を正しく返すと本番実証済み)へリマップし、実績ある
+    //   パイプラインに載せる。#時間潰し投稿は下の needsJikanFetch で距離内の追加ソースとして合流。
+    const wasJikanMood = answers.mood === "時間潰し" || answers.mood === "時間潰したい";
+    if (wasJikanMood) {
+      const c = answers.companion ?? "";
+      answers.mood = (c.includes("友達") || c.includes("家族") || c.includes("大人数")) ? "わいわい"
+        : c.includes("一人") ? "集中"
+        : "まったり";   // 恋人・その他
+    }
     const pastFeedback = (body?.pastFeedback || []) as FeedbackItem[];
     const seenPlaces = (body?.seenPlaces || []) as string[];
     const showUnseenOnly = body?.showUnseenOnly === true;
@@ -6537,9 +6549,10 @@ async function handleRecommend(request: Request) {
       //   有名公園(代々木公園/砧公園等)が候補から漏れる。wikidata著名公園に付与した #名所公園 を
       //   別枠で取得して合流し、有名公園の取りこぼし→Google補完誘発を防ぐ。
       const needsProminenceFetch = realDrillTags.includes("#大型公園");
-      // 気分「時間潰し」: 借りタグ(#まったり等=既存在庫)に加え、#時間潰し 付き投稿を別枠で合流させる
+      // 気分「時間潰し」: リマップ後の実気分(在庫)に加え、#時間潰し 付き投稿を別枠で合流させる
       //   追加ソース方式（ユーザー選択）。距離は同じradiusで絞る＝距離ロジックにそのまま乗る。
-      const needsJikanFetch = answers.mood === "時間潰し" || answers.mood === "時間潰したい";
+      //   ※ answers.mood はリマップ済みなので、元が時間潰しだった wasJikanMood フラグで判定する。
+      const needsJikanFetch = wasJikanMood;
 
       const hasLocation = !!(answers.originLat && answers.originLng);
       const isFoodMood = answers.mood === "お腹すいた";
