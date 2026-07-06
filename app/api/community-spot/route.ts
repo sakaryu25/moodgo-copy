@@ -54,10 +54,16 @@ export async function GET(request: Request) {
   if (!idParam) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
 
-  const isMoodlog = idParam.startsWith("ml-");
+  let isMoodlog = idParam.startsWith("ml-");
   const realId = isMoodlog ? idParam.slice(3) : idParam;
 
   try {
+    // 救済: 過去のお気に入りは spot_post を "ml-" 無しの生UUIDで保存していた（クライアント修正済み）。
+    //   生UUIDが spot_posts に存在すれば moodlog として扱い、suggestions誤引きの「見つかりません」を防ぐ。
+    if (!isMoodlog && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(realId)) {
+      const { data: probe } = await supabase.from("spot_posts").select("id").eq("id", realId).maybeSingle();
+      if (probe) isMoodlog = true;
+    }
     // ── 基本フィールド（穴場 / Moodログ で出所が違うが、以降は共通処理）──
     let respId = realId;
     let userTitle = "";

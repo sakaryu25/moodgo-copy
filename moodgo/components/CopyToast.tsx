@@ -51,13 +51,14 @@ export default function CopyToast() {
 const s = StyleSheet.create({
   wrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 9999 },
   pill: {
+    // ホーム画面と同系の明るい配色（白カード＋紫アクセント）。旧=暗い紫(心霊風)を廃止。
     flexDirection: 'row', alignItems: 'center', gap: 10, maxWidth: '88%',
     paddingVertical: 11, paddingLeft: 11, paddingRight: 18, borderRadius: 999,
-    backgroundColor: 'rgba(28,16,46,0.97)',
-    borderWidth: 1, borderColor: 'rgba(167,139,250,0.5)',
-    shadowColor: '#7C3AED', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(124,58,237,0.16)',
+    shadowColor: '#7C3AED', shadowOpacity: 0.22, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8,
   },
   iconWrap: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
-  sub: { color: 'rgba(214,200,250,0.88)', fontSize: 12, fontWeight: '600', marginTop: 1 },
+  title: { color: '#1E1548', fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+  sub: { color: '#8B88A6', fontSize: 12, fontWeight: '600', marginTop: 1 },
 });

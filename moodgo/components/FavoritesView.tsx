@@ -196,7 +196,7 @@ export default function FavoritesView({
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
             <FavoriteCardImage item={item} maps={upMaps} />
             <View style={s.cardBody}>
-              <Text style={s.cardTitle} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
+              <Text style={s.cardTitle} numberOfLines={2} onPress={() => handlePress(item)} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
               {item.area ? (
                 <View style={s.areaRow}>
                   <MapPin size={11} color="#9CA3AF" strokeWidth={2} />

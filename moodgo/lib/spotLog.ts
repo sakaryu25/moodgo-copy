@@ -19,6 +19,16 @@ export type SpotLogItem = {
 export const VISITED_LOG_KEY = 'moodgo-visited-log';
 export const VIEWED_LOG_KEY  = 'moodgo-viewed-spots';
 const CAP = 200;
+const VIEWED_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 最近チェックは1週間で自動消去（バッジ=visitedは永続）
+
+// 1週間より古い閲覧記録を除外（visited=達成バッジには適用しない）
+function pruneViewed(list: SpotLogItem[]): SpotLogItem[] {
+  const cutoff = Date.now() - VIEWED_TTL_MS;
+  return list.filter((e) => {
+    const t = new Date(e.at).getTime();
+    return isFinite(t) && t >= cutoff;
+  });
+}
 
 // 同一スポット判定（お気に入りのsameFavと同思想: ID優先→title互換）
 function keyOf(x: Pick<SpotLogItem, 'title' | 'placeId' | 'supabaseId'>): string {
@@ -34,7 +44,15 @@ async function loadLog(key: string): Promise<SpotLogItem[]> {
 }
 
 export function loadVisitedLog(): Promise<SpotLogItem[]> { return loadLog(VISITED_LOG_KEY); }
-export function loadViewedLog(): Promise<SpotLogItem[]>  { return loadLog(VIEWED_LOG_KEY); }
+// 読み込み時に1週間超を除去。実データも掃除して古い記録が溜まり続けないようにする。
+export async function loadViewedLog(): Promise<SpotLogItem[]> {
+  const list = await loadLog(VIEWED_LOG_KEY);
+  const fresh = pruneViewed(list);
+  if (fresh.length !== list.length) {
+    try { await AsyncStorage.setItem(VIEWED_LOG_KEY, JSON.stringify(fresh)); } catch { /* noop */ }
+  }
+  return fresh;
+}
 
 /** 行った！バッジ: 既に達成済みなら日付を上書きしない（達成日は初回を保持） */
 export async function addVisitedLog(item: Omit<SpotLogItem, 'at'>): Promise<void> {
@@ -51,7 +69,7 @@ export async function addVisitedLog(item: Omit<SpotLogItem, 'at'>): Promise<void
 export async function addViewedLog(item: Omit<SpotLogItem, 'at'>): Promise<void> {
   try {
     if (!item.title) return;
-    const list = await loadLog(VIEWED_LOG_KEY);
+    const list = pruneViewed(await loadLog(VIEWED_LOG_KEY));   // 書き込み時にも1週間超を掃除
     const next = [
       { ...item, at: new Date().toISOString() },
       ...list.filter((e) => keyOf(e) !== keyOf(item)),

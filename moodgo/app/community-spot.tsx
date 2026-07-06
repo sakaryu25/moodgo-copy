@@ -104,7 +104,7 @@ export default function CommunitySpotScreen() {
     else {
       next = [{ title, area: spot.prefecture, vibe: '', photoUrl: spot.imageUrls[0] ?? '', mapUrl: spot.googleMapsUri,
         createdAt: new Date().toISOString(), placeId: spot.placeId, address: spot.address, rating: spot.googleRating,
-        kind: 'post', spotId: spot.id }, ...faves];
+        kind: 'post', spotId: id || spot.id }, ...faves];
       setFaved(true);
     }
     await saveJSON(FAVORITES_KEY, next);
