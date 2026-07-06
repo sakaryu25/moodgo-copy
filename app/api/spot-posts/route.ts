@@ -139,7 +139,11 @@ export async function POST(req: Request) {
     const ng = findNgWord(caption) || findNgWord(placeName) || (contact ? findNgWord(contact) : null);
     if (ng) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
 
-    const moodTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
+    const rawMoodTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
+    // 全投稿にマスト付与する共通タグ（クライアントが送らなくても必ず付く＝直POSTでも抜けない）。
+    //   #穴場スポット=みんなの穴場の母集団 / #時間潰し=気分「時間潰し」検索の追加ソース。重複は排除。
+    const MANDATORY_TAGS = ["#穴場スポット", "#時間潰し"];
+    const moodTags = Array.from(new Set([...rawMoodTags, ...MANDATORY_TAGS]));
     const companion = body?.companion ? String(body.companion).slice(0, 20) : null;
     const posterName = body?.posterName ? String(body.posterName).trim().slice(0, 20) : null;
     let visibility = String(body?.visibility ?? "spot_public_anonymous");
@@ -194,7 +198,7 @@ export async function POST(req: Request) {
     let effectivePlaceId = placeId;
     if (!placeId && placeName) {
       const { data: place } = await db.from("places").insert({
-        name: placeName, address: newAddress || "日本", tags: [...moodTags, "#穴場スポット"],
+        name: placeName, address: newAddress || "日本", tags: moodTags,
         area: null, nearest_station: newStation, source_type: "user", is_active: false,
         lat: newLat, lng: newLng, open_hours: newOpenHours,
       }).select("id").single();

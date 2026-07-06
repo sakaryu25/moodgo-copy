@@ -6537,6 +6537,9 @@ async function handleRecommend(request: Request) {
       //   有名公園(代々木公園/砧公園等)が候補から漏れる。wikidata著名公園に付与した #名所公園 を
       //   別枠で取得して合流し、有名公園の取りこぼし→Google補完誘発を防ぐ。
       const needsProminenceFetch = realDrillTags.includes("#大型公園");
+      // 気分「時間潰し」: 借りタグ(#まったり等=既存在庫)に加え、#時間潰し 付き投稿を別枠で合流させる
+      //   追加ソース方式（ユーザー選択）。距離は同じradiusで絞る＝距離ロジックにそのまま乗る。
+      const needsJikanFetch = answers.mood === "時間潰し" || answers.mood === "時間潰したい";
 
       const hasLocation = !!(answers.originLat && answers.originLng);
       const isFoodMood = answers.mood === "お腹すいた";
@@ -6600,6 +6603,25 @@ async function handleRecommend(request: Request) {
             sbResults.push(t); have.add(t.name);
           }
         } catch { /* 著名公園取得失敗は通常候補で続行 */ }
+      }
+
+      // ── 時間潰し: #時間潰し 付きスポット(利用者投稿)を別枠で合流（追加ソース方式）──────────
+      //   借りタグ検索(上)＝既存の時間潰し系在庫、これに #時間潰し 投稿を加えて距離内で表示。
+      if (hasLocation && needsJikanFetch) {
+        try {
+          const jikanHits = await spatialSearch({
+            mustTags: ["#時間潰し"], fallbackTags: [],
+            lat: answers.originLat ?? 0, lng: answers.originLng ?? 0,
+            radiusKm: sbRadiusKm, minRadiusKm: sbMinRadiusKm,
+            transport: answers.transport, limit: 20, googleApiKey: apiKey,
+          });
+          const have = new Set(sbResults.map(r => r.name));
+          for (const t of jikanHits) {
+            if (have.has(t.name)) continue;
+            if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+            sbResults.push(t); have.add(t.name);
+          }
+        } catch { /* #時間潰し取得失敗は借りタグ候補で続行 */ }
       }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────

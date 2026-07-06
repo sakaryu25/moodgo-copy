@@ -56,6 +56,15 @@ export const TAG_CATEGORIES: TagCategory[] = [
       "#スリル味わいたい",
     ],
   },
+  {
+    // 全投稿に自動付与する共通タグ。adminの#追加欄（タグピッカー）にも表示され、承認時に付け外し可能。
+    label: "共通タグ（全投稿に自動付与）",
+    key: "common",
+    tags: [
+      "#穴場スポット",
+      "#時間潰し",
+    ],
+  },
 
   // ── #お腹すいた 深掘り ────────────────────────────────────────────────────
   {
@@ -216,6 +225,7 @@ export const MOOD_SHORT_KEY_TO_TAG: Record<string, string> = {
   "お腹すいた":   "#お腹すいた",
   "ショッピング": "#ショッピング",
   "スリル":       "#スリル味わいたい",
+  "時間潰し":     "#時間潰し",
 };
 
 export const MOOD_TAG_MAP: Record<string, string> = {
@@ -229,6 +239,7 @@ export const MOOD_TAG_MAP: Record<string, string> = {
   "#遠くに行きたい":     "遠くに行きたい",
   "#ショッピング":       "ショッピング",
   "#スリル味わいたい":   "スリル",
+  "#時間潰し":           "時間潰し",
 };
 
 export const MOOD_TAGS = TAG_CATEGORIES.find((c) => c.key === "mood")!.tags;
@@ -322,6 +333,9 @@ export function extractUserTagsFromAnswers(answers: {
       else if (c.includes("家族"))    addUniq(mustTags, "#わいわい楽しみたい");
       else if (c.includes("一人"))    addUniq(mustTags, "#集中したい");
       else                            addUniq(mustTags, "#まったりしたい");
+      // 追加ソース方式: 借りタグ(上=既存の時間潰し系スポット在庫)は維持しつつ、#時間潰し 付き投稿も
+      //   候補に加える。recommend が別枠fetch(needsJikanFetch)で #時間潰し スポットを合流＋加点する。
+      addUniq(niceToHaveTags, "#時間潰し");
     } else {
       // 短縮キー → タグ（まず短縮キーで試す、次に完全名で試す）
       const moodTag = MOOD_SHORT_KEY_TO_TAG[answers.mood]

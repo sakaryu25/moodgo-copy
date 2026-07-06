@@ -43,6 +43,12 @@ export const TAG_CATEGORIES: TagCategory[] = [
     ],
   },
   {
+    // 全投稿に自動付与する共通タグ（バックエンドと整合）。
+    label: "共通タグ（全投稿に自動付与）",
+    key: "common",
+    tags: ["#穴場スポット", "#時間潰し"],
+  },
+  {
     label: "景観・環境",
     key: "scenery",
     tags: ["#自然の中", "#海_川_湖_水辺", "#山_森_緑", "#季節の花々", "#街一望_パノラマ", "#360度_木々", "#都市_都会", "#観光地_名所"],
@@ -122,6 +128,7 @@ export const MOOD_TAG_MAP: Record<string, string> = {
   "#集中したい":         "集中したい",
   "#体を動かしたい":     "体を動かしたい",
   "#遠くに行きたい":     "遠くに行きたい",
+  "#時間潰し":           "時間潰し",
 };
 
 export const MOOD_TAGS = TAG_CATEGORIES.find((c) => c.key === "mood")!.tags;

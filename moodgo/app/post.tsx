@@ -295,6 +295,8 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {/* 全投稿に自動で付く共通タグ（サーバーが必ず付与）。透明性のため明示。 */}
+          <Text style={s.autoTagHint}>🏷 この投稿には <Text style={s.autoTagStrong}>#穴場スポット</Text> と <Text style={s.autoTagStrong}>#時間潰し</Text> が自動で付きます</Text>
           {deepDiveOptions.length > 0 && (
             <>
               <Text style={s.label}>詳しいジャンル（任意・当てはまるものをタップ）</Text>
@@ -513,6 +515,8 @@ const s = StyleSheet.create({
   leadText: { fontSize: 13, color: '#4A2D7E', fontWeight: '700', lineHeight: 20 },
   req: { color: '#F56CB3' },
   hint: { fontSize: 11.5, color: '#9B89BE', marginBottom: 8, lineHeight: 16 },
+  autoTagHint: { fontSize: 11.5, color: '#7A5CFF', marginTop: 8, lineHeight: 16, fontWeight: '600' },
+  autoTagStrong: { fontWeight: '800', color: '#7C3AED' },
   gotLoc: { fontSize: 12, color: '#16A34A', fontWeight: '700', marginTop: 8 },
   // 完了画面
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
