@@ -36,6 +36,11 @@ function isMissingTable(e: { code?: string; message?: string } | null): boolean 
 }
 const TABLE_MISSING_MSG = "ID機能の準備中です（supabase/user-handles.sql 未適用）";
 
+// locked_until 列が未適用（マイグレーション前）かの判定。PostgREST=PGRST204 / 生PG=42703 / メッセージ照合。
+function isMissingColumn(e: { code?: string; message?: string } | null): boolean {
+  return !!e && ((e.code === "PGRST204" || e.code === "42703") || /locked_until|column/i.test(e.message ?? ""));
+}
+
 // ID変更のクールダウン（変更後この日数は再変更不可）
 const LOCK_DAYS = 14;
 // locked_until から「まだロック中か・残り日数・ロック期限」を導出（列が無ければ非ロック扱い）
@@ -143,8 +148,9 @@ export async function POST(req: Request) {
         let { error } = await db.from("user_handles")
           .update({ handle, updated_at: now, locked_until: nextLock })
           .eq("device_id", deviceId);
-        // locked_until 列が未適用の環境: その列を外して再試行（ロックは効かないが変更は成功）
-        if (error && (error as { code?: string }).code === "42703") {
+        // locked_until 列が未適用の環境: その列を外して再試行（ロックは効かないが変更は成功）。
+        //   PostgRESTは未知列の更新に PGRST204、生Postgresは 42703 を返す（両方＋メッセージで判定）。
+        if (error && isMissingColumn(error)) {
           ({ error } = await db.from("user_handles").update({ handle, updated_at: now }).eq("device_id", deviceId));
         }
         if (error) {
@@ -171,6 +177,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "不正なaction" }, { status: 400 });
   } catch (e) {
     console.error("[user-handle]", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    // PostgRESTのエラーは {code,message,...} オブジェクト＝String()だと "[object Object]" になるので message を優先
+    const msg = e instanceof Error ? e.message
+      : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message)
+      : String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
