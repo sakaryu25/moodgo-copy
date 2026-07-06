@@ -622,41 +622,148 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
 
 
 
+type PendingSpot = { id: string; name: string; address: string; tags: string[]; nearest_station?: string | null; description?: string | null; caption?: string | null; lat?: number | null; lng?: number | null; created_at: string };
+type PendingDraft = { tags: string[]; address: string; station: string; lat: string; lng: string };
+
 function PendingSpotsPanel({ secret }: { secret: string }) {
-  const [places, setPlaces] = useState<Array<{ id: string; name: string; address: string; tags: string[]; created_at: string }>>([]);
+  const [places, setPlaces] = useState<PendingSpot[]>([]);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  // 承認前の調整用ドラフト（タグ/住所/座標/最寄駅）。キー=place id
+  const [draft, setDraft] = useState<Record<string, PendingDraft>>({});
+  const [geoBusy, setGeoBusy] = useState<string | null>(null);
+
   const load = async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/pending-spots?secret=${encodeURIComponent(secret)}`);
       const d = await res.json();
-      setPlaces(d?.places ?? []);
+      const list: PendingSpot[] = d?.places ?? [];
+      setPlaces(list);
+      const init: Record<string, PendingDraft> = {};
+      for (const p of list) {
+        init[p.id] = {
+          tags: Array.isArray(p.tags) ? [...p.tags] : [],
+          address: p.address ?? "",
+          station: p.nearest_station ?? "",
+          lat: p.lat != null ? String(p.lat) : "",
+          lng: p.lng != null ? String(p.lng) : "",
+        };
+      }
+      setDraft(init);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const act = async (id: string, action: "approve" | "reject") => {
-    await fetch("/api/admin/pending-spots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, id, action }) }).catch(() => {});
-    setPlaces(prev => prev.filter(p => p.id !== id));
+
+  const setD = (id: string, patch: Partial<PendingDraft>) =>
+    setDraft(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  const toggleTag = (id: string, tag: string) => {
+    const cur = draft[id]?.tags ?? [];
+    setD(id, { tags: cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag] });
   };
+  const geocode = async (id: string) => {
+    const q = (draft[id]?.address ?? "").trim();
+    if (!q) return;
+    setGeoBusy(id);
+    try {
+      const res = await fetch(`/api/geocode?area=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      if (d?.ok && typeof d.lat === "number" && typeof d.lng === "number") setD(id, { lat: String(d.lat), lng: String(d.lng) });
+    } catch { /* 手入力にフォールバック */ } finally { setGeoBusy(null); }
+  };
+
+  const act = async (id: string, action: "approve" | "reject") => {
+    setBusy(id);
+    const d = draft[id];
+    const payload: Record<string, unknown> = { secret, id, action };
+    if (action === "approve" && d) {
+      payload.tags = d.tags;
+      if (d.address.trim()) payload.address = d.address.trim();
+      payload.nearest_station = d.station.trim();
+      const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) { payload.lat = lat; payload.lng = lng; }
+    }
+    try {
+      const res = await fetch("/api/admin/pending-spots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const r = await res.json();
+      if (!r?.ok) { alert(r?.error ?? "失敗しました"); setBusy(null); return; }
+      setPlaces(prev => prev.filter(p => p.id !== id));   // optimistic: 成功したら一覧から即除去
+    } catch { alert("通信エラー"); } finally { setBusy(null); }
+  };
+
+  const commonTags = TAG_CATEGORIES.find(c => c.key === "common")?.tags ?? ["#穴場スポット", "#時間潰し"];
+  const inputStyle: React.CSSProperties = { border: "1px solid #DDD6FE", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E" }}>🆕 ユーザー投稿の新スポット承認（{places.length}件）</h2>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E" }}>🆕 ユーザー投稿の新スポット審査（{places.length}件）</h2>
         <button onClick={load} style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer" }}>{loading ? "読込中…" : "更新"}</button>
       </div>
-      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>統一投稿で新スポットが投稿されると、ここに承認待ちで溜まります。承認すると検索結果に出るようになります。</p>
+      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>統一投稿で新スポットが投稿されると承認待ちで溜まります。<b>タグ・住所・座標を調整</b>してから「承認→検索に出す」を押すと、その内容で検索に反映されます（付けたタグの気分で検索に出ます）。</p>
       {!loading && places.length === 0 && <p style={{ color: "#9CA3AF" }}>承認待ちの新スポットはありません。</p>}
-      {places.map(p => (
-        <div key={p.id} style={{ border: "1px solid #EEE", borderRadius: 10, padding: 12, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, color: "#1A0A2E" }}>{p.name}</div>
-            <div style={{ fontSize: 12, color: "#888" }}>{p.address}</div>
-            <div style={{ fontSize: 11, color: "#7C3AED", marginTop: 3 }}>{(p.tags ?? []).join(" ")}</div>
+      {places.map(p => {
+        const d = draft[p.id] ?? { tags: [], address: "", station: "", lat: "", lng: "" };
+        const hasCoords = !!(parseFloat(d.lat) && parseFloat(d.lng));
+        const extraTags = d.tags.filter(t => !commonTags.includes(t) && !MOOD_TAGS.includes(t));
+        return (
+          <div key={p.id} style={{ border: "1px solid #E5E0F5", borderRadius: 12, padding: 14, marginBottom: 14, background: "#FCFBFF" }}>
+            <div style={{ fontWeight: 800, color: "#1A0A2E", fontSize: 15 }}>{p.name}</div>
+            {p.caption ? <div style={{ fontSize: 12.5, color: "#555", marginTop: 4, whiteSpace: "pre-wrap", background: "#F5F3FF", borderRadius: 8, padding: "8px 10px" }}>💬 {p.caption}</div> : null}
+
+            <div style={{ marginTop: 10, fontSize: 11.5, fontWeight: 700, color: "#7C3AED" }}>タグ（この気分で検索に出ます）</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {[...commonTags, ...MOOD_TAGS].map(t => {
+                const on = d.tags.includes(t);
+                return (
+                  <button key={t} onClick={() => toggleTag(p.id, t)} style={{ border: on ? "0" : "1px solid #DDD6FE", background: on ? "#7C3AED" : "#fff", color: on ? "#fff" : "#7C3AED", borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t}</button>
+                );
+              })}
+            </div>
+            {extraTags.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {extraTags.map(t => (
+                  <button key={t} onClick={() => toggleTag(p.id, t)} style={{ border: "1px solid #E5E7EB", background: "#F3F4F6", color: "#374151", borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t} ✕</button>
+                ))}
+              </div>
+            )}
+            <select onChange={e => { if (e.target.value) { toggleTag(p.id, e.target.value); e.target.value = ""; } }} style={{ ...inputStyle, marginTop: 8, maxWidth: 320 }} defaultValue="">
+              <option value="">＋ 詳しいタグを追加…</option>
+              {TAG_CATEGORIES.filter(c => c.key !== "mood" && c.key !== "common").map(cat => (
+                <optgroup key={cat.key} label={cat.label}>
+                  {cat.tags.filter(t => !d.tags.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}
+                </optgroup>
+              ))}
+            </select>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 3 }}>住所</div>
+                <input value={d.address} onChange={e => setD(p.id, { address: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 3 }}>最寄駅（任意）</div>
+                <input value={d.station} onChange={e => setD(p.id, { station: e.target.value })} style={inputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 3 }}>緯度</div>
+                <input value={d.lat} onChange={e => setD(p.id, { lat: e.target.value })} style={inputStyle} placeholder="35.68…" />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 3 }}>経度</div>
+                <input value={d.lng} onChange={e => setD(p.id, { lng: e.target.value })} style={inputStyle} placeholder="139.76…" />
+              </div>
+            </div>
+            <button onClick={() => geocode(p.id)} disabled={geoBusy === p.id} style={{ marginTop: 8, background: "#EDE9FE", color: "#7C3AED", border: 0, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{geoBusy === p.id ? "取得中…" : "📍 住所から座標取得"}</button>
+            {!hasCoords && <span style={{ fontSize: 11, color: "#DC2626", marginLeft: 10 }}>⚠ 座標が無いと距離検索に出ません</span>}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button onClick={() => act(p.id, "approve")} disabled={busy === p.id || d.tags.length === 0} style={{ background: d.tags.length === 0 ? "#9CA3AF" : "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 800, cursor: d.tags.length === 0 ? "not-allowed" : "pointer" }}>{busy === p.id ? "処理中…" : "承認→検索に出す"}</button>
+              <button onClick={() => act(p.id, "reject")} disabled={busy === p.id} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>却下</button>
+            </div>
           </div>
-          <button onClick={() => act(p.id, "approve")} style={{ background: "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>承認→検索に出す</button>
-          <button onClick={() => act(p.id, "reject")} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "9px 12px", fontWeight: 700, cursor: "pointer" }}>却下</button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -6581,19 +6688,21 @@ export default function AdminPage() {
                             </button>
                             <button
                               onClick={async () => {
-                                if (!window.confirm(`「${r.place_name}」を本当に削除しますか？この操作は取り消せません。`)) return;
+                                if (!window.confirm(`「${r.place_name}」を検索結果からブロックしますか？（グローバルブロック＝以後どの検索にも出なくなります。「不適切報告」タブで解除可能）`)) return;
                                 try {
-                                  const res = await fetch("/api/admin/search-places", {
-                                    method: "GET",
+                                  const res = await fetch("/api/admin/block-place", {
+                                    method: "POST",
                                     headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ secret: adminSecret, spot_name: r.place_name, reason: "気分フィードバックで不適合率が高い" }),
                                   });
-                                  // 削除はタグ修正ページに誘導（直接削除APIは別途実装）
-                                  alert("削除は「登録済みスポット検索」タブから場所名で検索して行ってください。");
-                                } catch { alert("エラーが発生しました"); }
+                                  const data = await res.json();
+                                  if (data.ok) alert(`「${r.place_name}」を検索から除外しました。`);
+                                  else alert(`失敗: ${data.error ?? "不明なエラー"}`);
+                                } catch { alert("通信エラーが発生しました"); }
                               }}
                               style={{ padding: "8px 14px", borderRadius: "999px", border: "none", background: "#ef4444", color: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
                             >
-                              🗑 削除
+                              🚫 検索から除外
                             </button>
                           </div>
                         </div>
