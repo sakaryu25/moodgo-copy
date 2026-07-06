@@ -10,8 +10,10 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Users, Wallet } from 'lucide-react-native';
+import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Search, Users, Wallet, X } from 'lucide-react-native';
 import { router } from 'expo-router';
+import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
 import PuniPressable from './PuniPressable';
@@ -70,6 +72,54 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const [q, setQ] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
   const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
+  // ── ヘッダー内コントロール（人気/近く・@ID検索）: 見栄え改善でグラデ帯へ移設 ──
+  const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locLoading, setLocLoading] = useState(false);
+  const [uq, setUq] = useState('');
+  const [uUsers, setUUsers] = useState<Array<{ handle: string; posterId: string; icon: string }>>([]);
+  const [uActive, setUActive] = useState<{ handle: string } | null>(null);
+  const uTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 近く順: 端末の現在地を遅延取得（近くタップ時のみ）
+  const selectNear = async () => {
+    if (coords) { setSortMode('near'); return; }
+    setLocLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setSortMode('near');
+      }
+    } catch { /* 位置取得失敗時は人気順のまま */ } finally { setLocLoading(false); }
+  };
+
+  // @ID検索（400msデバウンス・入力し直しで絞り込み解除）
+  const onChangeUq = (raw: string) => {
+    setUq(raw);
+    if (uActive) setUActive(null);
+    if (uTimer.current) clearTimeout(uTimer.current);
+    const qn = raw.trim().toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
+    if (qn.length < 2) { setUUsers([]); return; }
+    uTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'search', query: qn }),
+        });
+        const d = await res.json();
+        setUUsers(Array.isArray(d?.users) ? d.users : []);
+      } catch { /* noop */ }
+    }, 400);
+  };
+  const selectUser = (u: { handle: string }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setUActive({ handle: u.handle });
+    setUUsers([]);
+    setUq(`@${u.handle}`);
+  };
+  const clearUser = () => { setUActive(null); setUq(''); setUUsers([]); };
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -89,8 +139,9 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   useEffect(() => {
     if (resetKey === undefined) return;
     setMode('list'); setMoodFilter(''); setQ(''); setDetail(null);
+    setSortMode('popular'); clearUser();
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-  }, [resetKey]);
+  }, [resetKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const openDetail = async (id: string) => {
     setLoading(true);
@@ -109,14 +160,56 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       {/* グラデ帯ヘッダー（タブ見出し）*/}
-      <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 14, minHeight: insets.top + HERO_BAND_H }]}>
+      <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 12, minHeight: insets.top + HERO_BAND_H }]}>
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
-        <Text style={s.heroTitle}>全国みんなの穴場</Text>
-        <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
+        {/* タイトル行: 右側に 人気/近く（お気に入りのソートピルと同じ設計言語）*/}
+        <View style={s.heroTopRow}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={s.heroTitle}>全国みんなの穴場</Text>
+            <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
+          </View>
+          <View style={s.heroToggleRow}>
+            <TouchableOpacity onPress={() => setSortMode('popular')} style={[s.hToggleBtn, sortMode === 'popular' && s.hToggleBtnOn]} activeOpacity={0.8}>
+              <Text style={[s.hToggleText, sortMode === 'popular' && s.hToggleTextOn]}>人気</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={selectNear} style={[s.hToggleBtn, sortMode === 'near' && s.hToggleBtnOn]} activeOpacity={0.8}>
+              <Text style={[s.hToggleText, sortMode === 'near' && s.hToggleTextOn]}>{locLoading ? '取得中…' : '近く'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {/* @ID検索バー（帯の中・白ボックス）*/}
+        <View style={s.heroSearchBox}>
+          <Search size={15} color="#8B88A6" strokeWidth={2.2} />
+          <TextInput
+            value={uq}
+            onChangeText={onChangeUq}
+            placeholder="@ユーザーIDで検索"
+            placeholderTextColor="#B9B6CC"
+            style={s.heroSearchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {(uq.length > 0 || uActive) && (
+            <TouchableOpacity onPress={clearUser} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <X size={15} color="#8B88A6" strokeWidth={2.4} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {/* 候補ユーザーのチップ（入力中のみ・帯が下に伸びる）*/}
+        {uUsers.length > 0 && !uActive && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.heroChipRow} keyboardShouldPersistTaps="handled">
+            {uUsers.map((u) => (
+              <TouchableOpacity key={u.handle} onPress={() => selectUser(u)} style={s.heroChip} activeOpacity={0.8}>
+                <Image source={{ uri: u.icon }} style={s.heroChipIcon} contentFit="cover" />
+                <Text style={s.heroChipText}>@{u.handle}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </LinearGradient>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
-        <CommunityFeed full resetKey={resetKey} />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
@@ -434,10 +527,35 @@ const s = StyleSheet.create({
   csPosterHandle: { fontSize: 11.5, fontWeight: '600', color: '#8B88A6', marginTop: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 6 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
-  // 帯高はお気に入り基準で統一(HERO_BAND_H)・テキストは下端寄せ
+  // 帯高はお気に入り基準で統一(HERO_BAND_H=139: 12+タイトル57+10+検索40+20)・下端寄せ
   hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end' },
-  heroTitle: { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
-  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  // 人気/近く ピル（お気に入りのソートピルと同じ見た目）
+  heroToggleRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
+  hToggleBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  hToggleBtnOn: { backgroundColor: 'rgba(255,255,255,0.35)', borderColor: 'rgba(255,255,255,0.5)' },
+  hToggleText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
+  hToggleTextOn: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  // @ID検索バー（帯の中の白ボックス）
+  heroSearchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, height: 40, marginTop: 10,
+    shadowColor: '#7A5CFF', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 3,
+  },
+  heroSearchInput: { flex: 1, fontSize: 13.5, fontWeight: '600', color: '#1E1548', paddingVertical: 0 },
+  heroChipRow: { gap: 8, paddingRight: 8, marginTop: 10 },
+  heroChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fff', borderRadius: 999, paddingLeft: 4, paddingRight: 12, paddingVertical: 4,
+  },
+  heroChipIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0EDFF' },
+  heroChipText: { fontSize: 12.5, fontWeight: '800', color: '#5A8DFF' },
   heroDeco1: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(255,255,255,0.10)', top: -60, right: -40 },
   heroDeco2: { position: 'absolute', width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.07)', bottom: -30, left: -10 },
   searchWrap: { paddingHorizontal: 16, paddingTop: 12 },

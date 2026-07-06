@@ -12,16 +12,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
   Activity, Car, ChevronDown, Cloud, Leaf, Map, MapPin,
-  MoreHorizontal, Plane, Search, ShoppingBag, Sparkles, Star, UtensilsCrossed, X,
+  MoreHorizontal, Plane, ShoppingBag, Sparkles, Star, UtensilsCrossed,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -214,7 +212,16 @@ function KindBadge({ kind }: { kind?: string }) {
 // ─── Dummy data (API が空の場合のフォールバック) ──────────────────────────────
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CommunityFeed({ full, resetKey }: { full?: boolean; resetKey?: number }) {
+// fullモード(みんなタブ)ではソート/現在地/@ID絞り込みを親(BlogView)のグラデヘッダーが
+// 持つため、propsで受け取る（非fullのホーム埋め込みは従来どおり内部stateで完結）。
+type CommunityFeedProps = {
+  full?: boolean;
+  sortMode?: 'popular' | 'near';
+  coords?: { lat: number; lng: number } | null;
+  posterHandle?: string | null;
+};
+
+export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle }: CommunityFeedProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
@@ -222,49 +229,26 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [gridW, setGridW] = useState(0);
-  // ── @IDユーザー検索（fullモード=みんなタブのみ表示）──
-  const [uq, setUq] = useState('');
-  const [uUsers, setUUsers] = useState<Array<{ handle: string; posterId: string; icon: string }>>([]);
-  const [uActive, setUActive] = useState<{ handle: string } | null>(null);
+  // ── @ID絞り込み（fullモード: 検索UIは親ヘッダー・ここはposterHandleを受けて取得のみ）──
   const [uItems, setUItems] = useState<FeedItem[]>([]);
   const [uLoading, setULoading] = useState(false);
-  const uTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
 
-  const onChangeUq = (raw: string) => {
-    setUq(raw);
-    if (uActive) { setUActive(null); setUItems([]); }   // 入力し直したら絞り込み解除
-    if (uTimer.current) clearTimeout(uTimer.current);
-    const qn = raw.trim().toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
-    if (qn.length < 2) { setUUsers([]); return; }
-    uTimer.current = setTimeout(async () => {
-      try {
-        const res = await apiFetch('/api/user-handle', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'search', query: qn }),
-        });
-        const d = await res.json();
-        if (isMounted.current) setUUsers(Array.isArray(d?.users) ? d.users : []);
-      } catch { /* noop */ }
-    }, 400);
-  };
-  const selectUser = async (u: { handle: string }) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setUActive({ handle: u.handle });
-    setUUsers([]);
-    setUq(`@${u.handle}`);
+  useEffect(() => {
+    if (!full) return;
+    if (!posterHandle) { setUItems([]); setULoading(false); return; }
+    let cancelled = false;
     setULoading(true);
-    try {
-      const res = await apiFetch(`/api/community-feed?limit=60&posterHandle=${encodeURIComponent(u.handle)}`);
-      const d = await res.json();
-      if (isMounted.current) setUItems(Array.isArray(d?.items) ? d.items : []);
-    } catch { if (isMounted.current) setUItems([]); }
-    finally { if (isMounted.current) setULoading(false); }
-  };
-  const clearUser = () => { setUActive(null); setUItems([]); setUq(''); setUUsers([]); };
-
-  // 下部バー再タップ(親のresetKey): @IDユーザー絞り込み・検索入力を解除して振り出しへ
-  useEffect(() => { if (resetKey !== undefined) clearUser(); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/community-feed?limit=60&posterHandle=${encodeURIComponent(posterHandle)}`);
+        const d = await res.json();
+        if (!cancelled && isMounted.current) setUItems(Array.isArray(d?.items) ? d.items : []);
+      } catch { if (!cancelled && isMounted.current) setUItems([]); }
+      finally { if (!cancelled && isMounted.current) setULoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [full, posterHandle]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -322,20 +306,22 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
   // 人気スコア: moodログ=いいね数 / 穴場=★おすすめ度（お互いの強みで統一）
   const popScore = (it: FeedItem) => (it.likes != null ? it.likes : userRating(it.description));
 
-  // トグルで並べ替え → 8件に絞る
+  // トグルで並べ替え → 8件に絞る（fullは親ヘッダーのソート/現在地を優先）
+  const effSort = full ? (propSort ?? 'popular') : sortMode;
+  const effCoords = full ? (propCoords ?? null) : coords;
   const sorted = useMemo(() => {
     const arr = [...visibleItems];
-    if (sortMode === 'near' && coords) {
+    if (effSort === 'near' && effCoords) {
       arr.sort((a, b) => {
-        const da = a.lat != null && a.lng != null ? distM(coords.lat, coords.lng, a.lat, a.lng) : Infinity;
-        const db = b.lat != null && b.lng != null ? distM(coords.lat, coords.lng, b.lat, b.lng) : Infinity;
+        const da = a.lat != null && a.lng != null ? distM(effCoords.lat, effCoords.lng, a.lat, a.lng) : Infinity;
+        const db = b.lat != null && b.lng != null ? distM(effCoords.lat, effCoords.lng, b.lat, b.lng) : Infinity;
         return da - db;
       });
     } else {
       arr.sort((a, b) => popScore(b) - popScore(a));
     }
     return full ? arr : arr.slice(0, 8);
-  }, [visibleItems, sortMode, coords, full]);
+  }, [visibleItems, effSort, effCoords, full]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // インスタExplore風グリッド。3列の小タイルに、一定間隔で2x2の大タイルを挟む。
   const GAP = 3;
@@ -362,9 +348,9 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
 
   return (
     <View style={s.section}>
-      {/* ── セクションヘッダー ── */}
+      {/* ── セクションヘッダー（fullはソート/検索を親のグラデヘッダーへ移設済み）── */}
+      {!full && (
       <View style={s.sectionHeader}>
-        {full ? <View /> : (
         <View>
           <Text style={s.sectionSub}>COMMUNITY PICKS</Text>
           <View style={s.titleRow}>
@@ -372,7 +358,6 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
             <Map size={16} color={PURPLE} strokeWidth={2.2} />
           </View>
         </View>
-        )}
         <View style={s.toggleRow}>
           <TouchableOpacity onPress={() => setSortMode('popular')} style={[s.toggleBtn, sortMode === 'popular' && s.toggleBtnOn]} activeOpacity={0.8}>
             <Text style={[s.toggleText, sortMode === 'popular' && s.toggleTextOn]}>人気</Text>
@@ -382,43 +367,13 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
-      {/* ── @IDユーザー検索（みんなタブのみ）── */}
-      {full && (
-        <View style={s.uSearchWrap}>
-          <View style={s.uSearchBox}>
-            <Search size={15} color="#8B88A6" strokeWidth={2.2} />
-            <TextInput
-              value={uq}
-              onChangeText={onChangeUq}
-              placeholder="@ユーザーIDで検索"
-              placeholderTextColor="#B9B6CC"
-              style={s.uSearchInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {(uq.length > 0 || uActive) && (
-              <TouchableOpacity onPress={clearUser} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={15} color="#8B88A6" strokeWidth={2.4} />
-              </TouchableOpacity>
-            )}
-          </View>
-          {uUsers.length > 0 && !uActive && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.uChipRow} keyboardShouldPersistTaps="handled">
-              {uUsers.map((u) => (
-                <TouchableOpacity key={u.handle} onPress={() => selectUser(u)} style={s.uChip} activeOpacity={0.8}>
-                  <Image source={{ uri: u.icon }} style={s.uChipIcon} contentFit="cover" />
-                  <Text style={s.uChipText}>@{u.handle}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-          {uActive && (
-            <View style={s.uBanner}>
-              <Text style={s.uBannerText}>@{uActive.handle} さんの投稿</Text>
-              <Text style={s.uBannerCount}>{uItems.length}件</Text>
-            </View>
-          )}
+      {/* ── @ID絞り込み中バナー（みんなタブのみ）── */}
+      {full && posterHandle && (
+        <View style={s.uBanner}>
+          <Text style={s.uBannerText}>@{posterHandle} さんの投稿</Text>
+          <Text style={s.uBannerCount}>{uItems.length}件</Text>
         </View>
       )}
 
@@ -434,7 +389,7 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
         <View onLayout={(e) => setGridW(e.nativeEvent.layout.width)} style={s.grid}>
           {CELL > 0 && (() => {
             // ユーザー絞り込み中はその人の公開投稿だけ（ブロック済みは除外）
-            const feed = uActive ? uItems.filter(it => !it.poster_id || !blockedUsers.includes(it.poster_id)) : sorted;
+            const feed = (full && posterHandle) ? uItems.filter(it => !it.poster_id || !blockedUsers.includes(it.poster_id)) : sorted;
             const rows: React.ReactNode[] = [];
             let i = 0, unit = 0;
             while (i < feed.length) {
@@ -462,9 +417,9 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
       )}
 
       {/* 空状態（API空/失敗時。捏造投稿は出さない＝App Store審査対策） */}
-      {!loading && !uLoading && (uActive ? uItems.length === 0 : visibleItems.length === 0) && (
+      {!loading && !uLoading && ((full && posterHandle) ? uItems.length === 0 : visibleItems.length === 0) && (
         <View style={s.loadingWrap}>
-          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>{uActive ? 'このユーザーの公開投稿はまだありません' : 'まだ投稿がありません'}</Text>
+          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>{(full && posterHandle) ? 'このユーザーの公開投稿はまだありません' : 'まだ投稿がありません'}</Text>
         </View>
       )}
 
@@ -493,25 +448,10 @@ export default function CommunityFeed({ full, resetKey }: { full?: boolean; rese
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   // ── @IDユーザー検索 ──
-  uSearchWrap: { marginBottom: 10, gap: 8 },
-  uSearchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, height: 42,
-    borderWidth: 1, borderColor: 'rgba(90,90,120,0.08)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 1,
-  },
-  uSearchInput: { flex: 1, fontSize: 13.5, fontWeight: '600', color: '#1E1548', paddingVertical: 0 },
-  uChipRow: { gap: 8, paddingRight: 8 },
-  uChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#fff', borderRadius: 999, paddingLeft: 4, paddingRight: 12, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'rgba(90,90,120,0.08)',
-  },
-  uChipIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#F0EDFF' },
-  uChipText: { fontSize: 12.5, fontWeight: '800', color: '#5A8DFF' },
   uBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: '#F4F1FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8,
+    marginBottom: 10,
   },
   uBannerText: { fontSize: 12.5, fontWeight: '800', color: '#7A5CFF' },
   uBannerCount: { fontSize: 11.5, fontWeight: '700', color: '#8B88A6' },
