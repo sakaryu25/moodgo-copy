@@ -768,14 +768,7 @@ function RegionPrefSelectView({ region, onSelectPref }: {
         </>
       )}
 
-      {/* ヘッダー */}
-      <View style={s.areaIntro}>
-        <View style={s.areaBadge}>
-          <Text style={s.areaBadgeText}>{region}</Text>
-        </View>
-        <Text style={s.areaTitle}>都道府県を選ぶ</Text>
-        <Text style={s.areaSubtitle}>気になるエリアをタップ</Text>
-      </View>
+      {/* 見出し(地方バッジ/都道府県を選ぶ/説明)はグラデヘッダー内へ移設済み */}
 
       {overlay ? (
         // ── 地図オーバーレイ配置 ──
@@ -920,12 +913,7 @@ type AreaSelectViewProps = { onSelectRegion: (tab: Tab) => void };
 function AreaSelectView({ onSelectRegion }: AreaSelectViewProps) {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F6FF' }}>
-      <View style={s.areaIntro}>
-        <View style={s.areaBadge}><Text style={s.areaBadgeText}>日本全国の特集</Text></View>
-        <Text style={s.areaTitle}>どこへ行く？</Text>
-        <Text style={s.areaSubtitle}>地図のエリアをタップして、その地方の特集をめくる</Text>
-      </View>
-
+      {/* 導入(バッジ/どこへ行く？/説明)はグラデヘッダー内へ移設済み。白エリアは地図に全振り */}
       {/* 地図画像 + 重ね置きボタン（残りスペースをすべて使う） */}
       <JapanMapWithButtons onSelectRegion={onSelectRegion} />
     </View>
@@ -1491,21 +1479,41 @@ export default function FeatureScreen() {
         <View style={s.decoCircle2} pointerEvents="none" />
         <View style={s.headerContent}>
           {showBack ? (
-            <TouchableOpacity
-              style={s.backBtn}
-              activeOpacity={0.72}
-              onPress={handleBack}
-            >
-              <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
-              <Text style={s.backText}>特集</Text>
-            </TouchableOpacity>
+            <>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <TouchableOpacity
+                  style={s.backBtn}
+                  activeOpacity={0.72}
+                  onPress={handleBack}
+                >
+                  <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+                  <Text style={s.backText}>特集</Text>
+                </TouchableOpacity>
+                {stage === "pref-select" && (
+                  <Text style={s.headerStageTitle}>都道府県を選ぶ</Text>
+                )}
+              </View>
+              {stage === "pref-select" && (
+                <View style={s.headerBadge}><Text style={s.headerBadgeText}>{selectedRegion}</Text></View>
+              )}
+            </>
           ) : (
-            <View>
-              <Text style={s.headerTitle}>特集</Text>
-              <Text style={s.headerSub}>どこへ行く？</Text>
-            </View>
+            <>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={s.headerTitle}>特集</Text>
+                <Text style={s.headerSub}>どこへ行く？</Text>
+              </View>
+              <View style={s.headerBadge}><Text style={s.headerBadgeText}>日本全国の特集</Text></View>
+            </>
           )}
         </View>
+        {/* 説明文は行の外＝全幅で1行に（右バッジの圧迫で折り返さないように）*/}
+        {stage === "map" && (
+          <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
+        )}
+        {stage === "pref-select" && (
+          <Text style={s.headerCaption}>気になるエリアをタップ</Text>
+        )}
       </LinearGradient>
 
       {/* ── メインコンテンツ（トランジション中はズーム＆フェード） ── */}
@@ -1655,6 +1663,23 @@ const s = StyleSheet.create({
     color: "rgba(255,255,255,0.85)",
     fontWeight: '500',
   },
+  headerStageTitle: {
+    fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginTop: 8,
+  },
+  headerCaption: {
+    fontSize: 11.5,
+    color: "rgba(255,255,255,0.7)",
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  // 「日本全国の特集」バッジ（お気に入り/みんなのピルと同じ白半透明の設計言語）
+  headerBadge: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 2,
+  },
+  headerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1716,39 +1741,6 @@ const s = StyleSheet.create({
 
   // ── AreaSelectView ──
   areaScroll: { paddingBottom: 48 },
-  areaIntro: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 2,
-  },
-  areaBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FFF0EA",
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: "#FFD9C8",
-  },
-  areaBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: C.accent,
-    letterSpacing: 0.2,
-  },
-  areaTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: C.text,
-    letterSpacing: -0.7,
-    marginBottom: 2,
-  },
-  areaSubtitle: {
-    fontSize: 12,
-    color: C.subText,
-    lineHeight: 17,
-  },
 
   // ── Japan Map ──
   mapOuter: {
