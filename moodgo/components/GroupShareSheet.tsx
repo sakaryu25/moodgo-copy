@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PuniPressable from '@/components/PuniPressable';
 import { getDeviceId } from '@/lib/abtest';
+import { suppressResultsOverlay } from '@/lib/overlayNav';
 import {
   fetchMyGroups, postSpotToGroup, registerGroupSharePresenter,
   type ShareableSpot, type ShareTargetGroup,
@@ -42,6 +43,7 @@ export default function GroupShareSheet() {
   // shareSpotToGroup() からの呼び出しを受けてシートを開く
   useEffect(() => {
     registerGroupSharePresenter((sp) => {
+      suppressResultsOverlay(true);   // 検索結果Modalを退避してシートを前面に出す
       setSpot(sp); setSelected(new Set()); setGroups([]); setLoading(true); setSending(false);
       y.setValue(SHEET_H);
       Animated.spring(y, {
@@ -58,7 +60,7 @@ export default function GroupShareSheet() {
 
   const close = () => {
     Animated.timing(y, { toValue: SHEET_H, duration: 180, useNativeDriver: true })
-      .start(() => setSpot(null));
+      .start(() => { setSpot(null); suppressResultsOverlay(false); });  // シートを閉じたら結果Modalを再表示
   };
 
   const toggle = (gid: string) =>

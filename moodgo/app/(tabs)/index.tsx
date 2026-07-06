@@ -27,6 +27,7 @@ function SlideUp({ children }: { children: React.ReactNode }) {
 }
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { registerResultsOverlaySuppressor } from '@/lib/overlayNav';
 import type { OnsenCategory, PlaceResponse } from '@/types/onsen';
 import type { NatureSubGenre, NatureDistancePref } from '@/types/nature';
 import type { CafeSubCategory, CafeDetail, CafeDistancePref } from '@/types/cafe';
@@ -101,6 +102,9 @@ export default function Home() {
   // ── Navigation ───────────────────────────────────────────────────────────
   const [started,    setStarted]    = useState(false);
   const [step,       setStep]       = useState(1);
+  // 結果Modalは全画面RN Modal＝内部からのrouter.push(/place)やGroupShareSheetをネイティブに
+  // 覆い隠す。遷移/シート表示中だけModalを退避(visible=false)して前面を譲る（lib/overlayNav）。
+  const [navAway, setNavAway] = useState(false);
   // NativeTabs移行: 保存/みんな/つぶやき/特集 は独立タブルートに分離。
   //   このホームルートは home と history(ボタンで開くサブ画面) のみを切替える。
   const [homeView,   setHomeView]   = useState<'home' | 'history'>('home');
@@ -239,8 +243,16 @@ export default function Home() {
   // 別ルート(詳細ページ/プロフィールタブ)での変更をホームに再同期する。
   // → 穴場詳細でいいねした投稿が戻った瞬間お気に入りに反映され、
   //   プロフィールタブの設定「履歴をクリア」もホームに戻れば反映される。
+  // GroupShareSheet等の外部トリガーから結果Modalの退避を制御できるよう setter を登録
+  useEffect(() => {
+    registerResultsOverlaySuppressor(setNavAway);
+    return () => registerResultsOverlaySuppressor(null);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
+      // /place 等から戻ってフォーカス復帰したら結果Modalを再表示（退避解除）
+      setNavAway(false);
       if (!profileLoaded) return;
       (async () => {
         const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
@@ -907,6 +919,7 @@ export default function Home() {
       companion: selectedCompanion || undefined,
       subCategory: deepDiveL2 || deepDiveL1 || undefined,
     });
+    setNavAway(true);       // 結果Modalを退避してから遷移（Modalの裏に隠れるのを防ぐ）
     router.push('/place');
   };
 
@@ -1237,9 +1250,10 @@ export default function Home() {
         {onboardingNode}
       </Modal>
 
-      {/* クイズ/結果: フルスクリーンModalで没入表示（ネイティブタブバーを隠す）*/}
+      {/* クイズ/結果: フルスクリーンModalで没入表示（ネイティブタブバーを隠す）。
+          navAway中は退避してrouter.push(/place)やGroupShareSheetに前面を譲る（戻ると再表示）*/}
       <Modal
-        visible={started}
+        visible={started && !navAway}
         animationType="slide"
         presentationStyle="fullScreen"
         onRequestClose={resetQuiz}
