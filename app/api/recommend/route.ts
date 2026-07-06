@@ -6333,7 +6333,23 @@ async function handleRecommend(request: Request) {
             { cache: "no-store", signal: AbortSignal.timeout(4000) },
           );
           const gsi = await gsiRes.json().catch(() => null);
-          const coord = gsi?.[0]?.geometry?.coordinates;  // [lng, lat]
+          // ⚠ GSIは結果を有名度順に返さない: 「渋谷」の先頭は福島県猪苗代町渋谷・「東京」は札幌市東区・
+          //   「横浜」は青森県横浜町…と、同名の地方集落が先頭に来る（東京都渋谷区は3番目）。
+          //   [0]を採ると全国の主要地名が誤座標になる致命バグ。→ クエリが行政区画(区/市/都道府県)
+          //   そのものを指す結果を優先して選ぶ。行政区画一致が無ければ loc=null のまま Google(有名度順)へ。
+          const pickGsi = (
+            arr: Array<{ properties?: { title?: string }; geometry?: { coordinates?: number[] } }> | null,
+            q: string,
+          ) => {
+            if (!Array.isArray(arr) || arr.length === 0) return null;
+            for (const suf of ["区", "市", "都", "道", "府", "県", "町", "村"]) {
+              const hit = arr.find((r) => (r?.properties?.title ?? "").endsWith(q + suf));
+              if (Array.isArray(hit?.geometry?.coordinates)) return hit;
+            }
+            return null;  // 行政区画一致なし → Google(prominence)に委ねる
+          };
+          const best = pickGsi(gsi, answers.area.trim());
+          const coord = best?.geometry?.coordinates;  // [lng, lat]
           if (Array.isArray(coord) && typeof coord[1] === "number") {
             loc = { lat: coord[1], lng: coord[0] };
           }
