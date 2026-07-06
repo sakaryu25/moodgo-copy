@@ -22,6 +22,7 @@ import { apiFetch } from '@/lib/api';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import MoodLogSection from '@/components/MoodLogSection';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -352,6 +353,9 @@ export default function CommunitySpotScreen() {
               ))}
             </View>
           )}
+
+          {/* ── みんなのMoodログ（同じ場所への他の投稿。place.tsxと同じ体験を投稿詳細でも必ず出す）── */}
+          <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address} />
         </View>
       </ScrollView>
 
