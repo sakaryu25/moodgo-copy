@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
+import MyPostsGlassCard from '@/components/MyPostsGlassCard';
 import PuniPressable from '@/components/PuniPressable';
 import SettingsView from '@/components/SettingsView';
 import { useTabReset } from '@/lib/useTabReset';
@@ -428,29 +429,35 @@ export default function ProfileTab() {
           </PuniPressable>
         </Animated.View>
 
-        {/* ── ✨ 自分の投稿 ── */}
-        <Animated.View style={[s.card, sectionStyle(1)]}>
-          <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
-            onMore={() => setSubView('posts')} />
-          {loading ? (
-            <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
-          ) : posts.length === 0 ? (
-            <Empty
-              icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />}
-              title="まだ投稿がありません"
-              sub="気になったスポットで「投稿」してみよう！"
-              action={
-                // 全国みんなの穴場と同じ投稿画面(/post)をそのまま開く（新規画面は作らない）
-                <PuniPressable onPress={() => router.push('/post')} style={s.outlineBtn}>
-                  <Plus size={15} color={BLUE} strokeWidth={2.4} />
-                  <Text style={s.outlineBtnText}>投稿する</Text>
-                </PuniPressable>
-              }
-            />
-          ) : (
-            <View style={[s.grid, { gap: GAP }]}>
-              {posts.slice(0, 6).map((p) => <PostTile key={p.id} item={p} size={tileCell} />)}
+        {/* ── ✨ 自分の投稿（投稿あり=Glassmorphismカード / ロード中・0件=既存デザイン）── */}
+        <Animated.View style={sectionStyle(1)}>
+          {loading || posts.length === 0 ? (
+            <View style={s.card}>
+              <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
+                onMore={() => setSubView('posts')} />
+              {loading ? (
+                <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
+              ) : (
+                <Empty
+                  icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />}
+                  title="まだ投稿がありません"
+                  sub="気になったスポットで「投稿」してみよう！"
+                  action={
+                    // 全国みんなの穴場と同じ投稿画面(/post)をそのまま開く（新規画面は作らない）
+                    <PuniPressable onPress={() => router.push('/post')} style={s.outlineBtn}>
+                      <Plus size={15} color={BLUE} strokeWidth={2.4} />
+                      <Text style={s.outlineBtnText}>投稿する</Text>
+                    </PuniPressable>
+                  }
+                />
+              )}
             </View>
+          ) : (
+            <MyPostsGlassCard
+              posts={posts}
+              onMore={() => setSubView('posts')}
+              onPressPost={(p) => openPost(p as MyPost)}
+            />
           )}
         </Animated.View>
 
