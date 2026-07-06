@@ -4,7 +4,7 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Dimensions, Linking, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
@@ -69,6 +69,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const [moodFilter, setMoodFilter] = useState<string>('');
   const [q, setQ] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
+  const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -83,8 +84,13 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
     } catch { setItems([]); } finally { setLoading(false); }
   }, [moodFilter, q]);
 
-  useEffect(() => { if (mode === 'list') loadList(); }, [mode, moodFilter]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setMode('list'); }, [resetKey]);
+  useEffect(() => { if (mode === 'list') loadList(); }, [mode, moodFilter, resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 下部バー再タップ: 詳細/投稿フォームを閉じ、気分・キーワード絞り込みも解除して振り出しの一覧へ
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    setMode('list'); setMoodFilter(''); setQ(''); setDetail(null);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [resetKey]);
 
   const openDetail = async (id: string) => {
     setLoading(true);
@@ -109,8 +115,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         <Text style={s.heroTitle}>全国みんなの穴場</Text>
         <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
       </LinearGradient>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
-        <CommunityFeed full />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
+        <CommunityFeed full resetKey={resetKey} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>

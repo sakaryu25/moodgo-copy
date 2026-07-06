@@ -1400,18 +1400,26 @@ export default function FeatureScreen() {
     };
     const unsub = nav.addListener?.("tabPress", () => {
       if (nav.isFocused?.()) {           // 既に特集タブが前面=再タップのみリセット
+        // 雲ダイブ演出の途中でも即座に日本地図へ。進行中トランジションの
+        // ステージ差替(apply)を世代番号で無効化し、リセットが上書きされる競合を防ぐ
+        resetSeqRef.current += 1;
+        t.stopAnimation();
+        t.setValue(0);
+        busyRef.current = false;
+        setBusy(false);
         setStage("map");
         setSelectedRegion("全国");
         setSelectedTab("全国");
       }
     });
     return () => { if (typeof unsub === "function") unsub(); };
-  }, [navigation]);
+  }, [navigation]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
   // t: 0=通常表示 → 1=トランジション完了（中間 0.5 で雲が画面を覆い、裏でステージ差替）
   const t = useRef(new Animated.Value(0)).current;
   const busyRef = useRef(false);
+  const resetSeqRef = useRef(0);   // タブ再タップリセットの世代番号（進行中applyの無効化に使う）
   const [busy, setBusy] = useState(false);
 
   // apply（ステージ差替）を雲が画面を覆う中間点で実行する
@@ -1420,11 +1428,12 @@ export default function FeatureScreen() {
     busyRef.current = true;
     setBusy(true);
     t.setValue(0);
+    const seq = resetSeqRef.current;   // 開始時の世代。リセットが入ったら以降のapply/後片付けは行わない
     let swapped = false;
     const id = t.addListener(({ value }) => {
       if (!swapped && value >= 0.5) {
         swapped = true;
-        apply();
+        if (resetSeqRef.current === seq) apply();
       }
     });
     Animated.timing(t, {
@@ -1434,6 +1443,7 @@ export default function FeatureScreen() {
       useNativeDriver: true,
     }).start(() => {
       t.removeListener(id);
+      if (resetSeqRef.current !== seq) return;   // リセット済み: 後片付けはリセット側で完了
       if (!swapped) apply();
       t.setValue(0);
       busyRef.current = false;

@@ -105,8 +105,9 @@ export default function Home() {
   //   このホームルートは home と history(ボタンで開くサブ画面) のみを切替える。
   const [homeView,   setHomeView]   = useState<'home' | 'history'>('home');
   const [historyResetKey, setHistoryResetKey] = useState(0);
-  // #14: ホームタブを再タップ → 履歴サブ画面を閉じてホーム(START)へ戻す（振り出し）
-  useTabReset(() => { setHomeView('home'); setHistoryResetKey(k => k + 1); });
+  // #14: ホームタブを再タップ → クイズ/検索結果/履歴サブ画面を全部閉じてSTART画面へ（振り出し）
+  //   resetQuiz が started/step/回答/結果/homeView('home') まで一括で戻す（検索自体は履歴に残る）
+  useTabReset(() => { resetQuiz(); setHistoryResetKey(k => k + 1); });
 
   // ── Quiz state ───────────────────────────────────────────────────────────
   const [selectedMood,       setSelectedMood]       = useState('');

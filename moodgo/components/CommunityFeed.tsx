@@ -214,7 +214,7 @@ function KindBadge({ kind }: { kind?: string }) {
 // ─── Dummy data (API が空の場合のフォールバック) ──────────────────────────────
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CommunityFeed({ full }: { full?: boolean }) {
+export default function CommunityFeed({ full, resetKey }: { full?: boolean; resetKey?: number }) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
@@ -262,6 +262,9 @@ export default function CommunityFeed({ full }: { full?: boolean }) {
     finally { if (isMounted.current) setULoading(false); }
   };
   const clearUser = () => { setUActive(null); setUItems([]); setUq(''); setUUsers([]); };
+
+  // 下部バー再タップ(親のresetKey): @IDユーザー絞り込み・検索入力を解除して振り出しへ
+  useEffect(() => { if (resetKey !== undefined) clearUser(); }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     isMounted.current = true;

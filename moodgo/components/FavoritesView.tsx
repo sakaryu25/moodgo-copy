@@ -125,6 +125,7 @@ export default function FavoritesView({
   const insets = useSafeAreaInsets();
   const t = T[lang];
   const pagerRef = useRef<ScrollView>(null);
+  const listRefs = useRef<Array<ScrollView | null>>([]);  // 場所/投稿 各リスト（再タップで先頭へ）
   const [tab, setTab] = useState(0);   // 0=場所, 1=投稿
   // 開いた時点の利用者投稿写真をDBから取得（保存済みGoogle写真より優先表示）
   const [upMaps, setUpMaps] = useState<UserPhotoMaps>({ byId: {}, byName: {} });
@@ -140,6 +141,7 @@ export default function FavoritesView({
     if (resetKey === undefined) return;
     setTab(0);
     pagerRef.current?.scrollTo({ x: 0, animated: false });
+    listRefs.current.forEach((r) => r?.scrollTo({ y: 0, animated: false }));  // 各リストも先頭へ
   }, [resetKey]);
 
   // 並び替え + 種別で分割
@@ -172,8 +174,9 @@ export default function FavoritesView({
     }
   };
 
-  const renderList = (list: FavoriteItem[], emptyTitle: string, emptySub: string) => (
+  const renderList = (list: FavoriteItem[], emptyTitle: string, emptySub: string, idx: number) => (
     <ScrollView
+      ref={(r) => { listRefs.current[idx] = r; }}
       style={{ width: SCREEN_W }}
       contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 90 }]}
       showsVerticalScrollIndicator={false}
@@ -291,8 +294,8 @@ export default function FavoritesView({
         onMomentumScrollEnd={onPagerScroll}
         style={{ flex: 1 }}
       >
-        {renderList(placeFavs, t.emptyPlace, t.emptySub)}
-        {renderList(postFavs, t.emptyPost, t.emptyPostSub)}
+        {renderList(placeFavs, t.emptyPlace, t.emptySub, 0)}
+        {renderList(postFavs, t.emptyPost, t.emptyPostSub, 1)}
       </ScrollView>
     </View>
   );
