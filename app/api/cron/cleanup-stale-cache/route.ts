@@ -78,9 +78,25 @@ export async function GET(req: NextRequest) {
     console.error("[cron/cleanup-stale-cache] open_hours 掃除エラー", e);
   }
 
+  // ── api_cache: 期限切れ行の物理削除 ──
+  //   読み側(ltCacheGetMany等)は expires_at>now でフィルタするだけで削除はどこにも無く、
+  //   キー世代交代で二度と読まれない行が無限に溜まる（2026-07-06監査: 期限切れ617行滞留）。
+  let cacheCleared = 0;
+  try {
+    const { data, error } = await supabase
+      .from("api_cache")
+      .delete()
+      .lt("expires_at", startedAt)
+      .select("cache_key");
+    if (error) throw error;
+    cacheCleared = data?.length ?? 0;
+  } catch (e) {
+    console.error("[cron/cleanup-stale-cache] api_cache 掃除エラー", e);
+  }
+
   const finishedAt = new Date().toISOString();
   console.log(
-    `[cron/cleanup-stale-cache] 完了: rating=${ratingCleared}, open_hours=${hoursCleared}`,
+    `[cron/cleanup-stale-cache] 完了: rating=${ratingCleared}, open_hours=${hoursCleared}, api_cache=${cacheCleared}`,
   );
 
   return NextResponse.json({
@@ -91,5 +107,6 @@ export async function GET(req: NextRequest) {
     cutoff,
     ratingCleared,
     hoursCleared,
+    cacheCleared,
   });
 }

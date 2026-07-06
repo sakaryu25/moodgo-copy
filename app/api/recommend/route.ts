@@ -12,6 +12,8 @@ import { distanceKmFor, formatDistText } from "@/lib/distance";
 import { logServerError, scheduleServerError } from "@/lib/server-log";
 import { applyAiRanking } from "@/lib/ai-ranking";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { fetchSimilarStats } from "@/lib/feedback-stats";
+import { mergedPlacePhotos } from "@/lib/place-photos";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -832,18 +834,16 @@ async function fetchGlobalStats(answers: Answers): Promise<{
 }> {
   const empty = { context: "", engagedPlaces: new Set<string>(), goodVisitedPlaces: new Set<string>(), badVisitedPlaces: new Set<string>() };
   try {
-    const params = new URLSearchParams();
-    if (answers.mood) params.set("mood", answers.mood);
-    if (answers.age) params.set("age", answers.age);
-    if (answers.gender) params.set("gender", answers.gender);
-    if (answers.companion) params.set("companion", answers.companion);
-    if (answers.atmosphere) params.set("atmosphere", answers.atmosphere);
-
-    const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
-    const res = await fetch(`${base}/api/feedback?${params.toString()}`, { cache: "no-store" });
-    if (!res.ok) return empty;
-    const data = await res.json();
-    if (!data.ok) return empty;
+    // 内製化(2026-07-06): 旧実装は自分自身へ HTTP fetch(/api/feedback) → feedback全行フルスキャン
+    // ＋使わない統計まで毎回計算していた。lib/feedback-stats が必要分だけ直接読み・10分キャッシュ。
+    if (!supabase) return empty;
+    const data = await fetchSimilarStats(supabase, {
+      mood: answers.mood || undefined,
+      age: answers.age || undefined,
+      gender: answers.gender || undefined,
+      companion: answers.companion || undefined,
+      atmosphere: answers.atmosphere || undefined,
+    });
 
     const lines: string[] = [];
     const engagedPlaces = new Set<string>();
@@ -8022,7 +8022,7 @@ async function handleRecommend(request: Request) {
               const spRecs = sponsored.map((s) => {
                 const km = (typeof s.lat === "number" && typeof s.lng === "number")
                   ? haversineMeters(answers.originLat!, answers.originLng!, s.lat, s.lng) / 1000 : undefined;
-                const imgs = (s.image_urls && s.image_urls.length > 0 ? s.image_urls : (s.photo_url ? [s.photo_url] : [])).map(wrapWithPhotoProxy);
+                const imgs = mergedPlacePhotos(s).map(wrapWithPhotoProxy);
                 return {
                   title: s.name, address: s.address ?? "",
                   photoUrl: imgs[0] ?? "", photoUrls: imgs,

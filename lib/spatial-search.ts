@@ -10,6 +10,7 @@ import { calcRadiusKm } from "@/lib/calc-radius";
 import { formatDistText, haversineMeters } from "@/lib/distance";
 import type { PlaceResponse } from "@/types/onsen";
 import { searchPlacesByTags } from "@/lib/supabase-places";
+import { mergedPlacePhotos } from "@/lib/place-photos";
 import { scheduleBackgroundVitalityCheck } from "@/lib/place-vitality-check";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,14 +139,14 @@ export function nearbyRowToPlaceResponse(
     name:         row.name,
     category:     categoryTag.replace(/^#/, ""),
     description:  row.description ?? `${row.name}のスポット情報`,
-    imageUrl:     (row.image_urls && row.image_urls.length > 0 ? row.image_urls[0] : row.photo_url) ?? "",
+    imageUrl:     mergedPlacePhotos(row)[0] ?? "",
     rating:       typeof row.rating === "number" ? row.rating : null,        // place-ratings.sql 適用後に反映
     reviewCount:  typeof row.rating_count === "number" ? row.rating_count : null,
     address:      row.address ?? "",
     distanceM:    row.distance_m,                                  // 精密距離[m]を保持（距離の単一ソース）
     distanceInfo: formatDistText((row.distance_m ?? 0) / 1000, transport),
-    // 保存済みの複数写真があればそれを、無ければ単発photo_url（SQL未実行でも安全）
-    photoUrls:    (row.image_urls && row.image_urls.length > 0) ? row.image_urls : (row.photo_url ? [row.photo_url] : []),
+    // 写真2列(旧photo_url/新image_urls)の統合は lib/place-photos に一元化
+    photoUrls:    mergedPlacePhotos(row),
     openNow:      null,
     openingHours: row.open_hours ?? null,
     priceLevel:   null,
