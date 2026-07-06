@@ -6,8 +6,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Dimensions, Linking, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, Dimensions, Linking,
+  type NativeScrollEvent, type NativeSyntheticEvent,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Search, Users, Wallet, X } from 'lucide-react-native';
@@ -74,6 +75,15 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
   // ── ヘッダー内コントロール（人気/近く・@ID検索）: 見栄え改善でグラデ帯へ移設 ──
   const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');
+  // 無限スクロール: 末尾接近でキーを増やして CommunityFeed に次ページ取得を促す
+  const [loadMoreKey, setLoadMoreKey] = useState(0);
+  const nearEndRef = useRef(false);
+  const onFeedScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const near = contentOffset.y + layoutMeasurement.height >= contentSize.height - 600;
+    if (near && !nearEndRef.current) { nearEndRef.current = true; setLoadMoreKey((k) => k + 1); }
+    else if (!near && nearEndRef.current) { nearEndRef.current = false; }
+  };
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [uq, setUq] = useState('');
@@ -208,8 +218,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           </ScrollView>
         )}
       </LinearGradient>
-      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} />
+      <ScrollView ref={scrollRef} style={{ backgroundColor: '#F7F7F7' }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
+        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} loadMoreKey={loadMoreKey} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>

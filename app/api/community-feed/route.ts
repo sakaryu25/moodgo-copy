@@ -52,16 +52,20 @@ export async function GET(request: Request) {
         posterDeviceId = await deviceByHandle(supabase, posterHandle);
         if (!posterDeviceId) return NextResponse.json({ ok: true, items: [] });  // 存在しないID
       }
-      let q = supabase
-        .from("spot_posts")
-        .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, like_count, helpful_count")
-        .eq("status", "approved");
-      q = posterDeviceId
-        ? q.eq("device_id", posterDeviceId).eq("visibility", "public")   // 匿名投稿は本人特定になるため除外
-        : q.in("visibility", ["spot_public_anonymous", "public"]);
-      const { data: posts } = await q
-        .order("created_at", { ascending: false }).range(offset, offset + limit - 1);
-      const plist = (posts ?? []) as Array<Record<string, unknown>>;
+      // price_chip/rating は spot-posts-extra.sql 未適用だと列が無い → まずフル、42703なら基本列で再試行
+      const BASE_COLS = "id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, like_count, helpful_count";
+      const buildQ = (cols: string) => {
+        let qq = supabase!.from("spot_posts").select(cols).eq("status", "approved");
+        qq = posterDeviceId
+          ? qq.eq("device_id", posterDeviceId).eq("visibility", "public")
+          : qq.in("visibility", ["spot_public_anonymous", "public"]);
+        return qq.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      };
+      let { data: posts, error: postsErr } = await buildQ(`${BASE_COLS}, price_chip, rating`);
+      if (postsErr && (postsErr as { code?: string }).code === "42703") {
+        ({ data: posts } = await buildQ(BASE_COLS));
+      }
+      const plist = (posts ?? []) as unknown as Array<Record<string, unknown>>;
       if (plist.length > 0) {
         const postIds = plist.map(p => String(p.id));
         const placeIds = [...new Set(plist.map(p => p.place_id).filter(Boolean).map(String))];
@@ -116,6 +120,8 @@ export async function GET(request: Request) {
             lat: (coordByPlace.get(String(p.place_id)) || coordByName.get(String(p.place_name)))?.lat ?? null,
             lng: (coordByPlace.get(String(p.place_id)) || coordByName.get(String(p.place_name)))?.lng ?? null,
             likes: (Number(p.like_count) || 0) + (Number(p.helpful_count) || 0),
+            price_chip: (p.price_chip as string | null) ?? null,   // 目安価格（カード表示用・独立カラム）
+            rating: typeof p.rating === "number" ? p.rating : null, // おすすめ度（★・独立カラム）
             created_at: p.created_at,
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
             poster_handle: anon ? null : (handleMap.get(String(p.device_id ?? "")) ?? null),
@@ -127,8 +133,61 @@ export async function GET(request: Request) {
       }
     } catch { /* spot_posts未作成は穴場のみ表示 */ }
 
-    // moodログ(spot_posts=moodログ＋新スポット投稿)のみを新着順で返す。穴場(suggestions)/ブログ(blog)の合流は停止済み。
-    const merged = [...moodItems]
+    // ── 穴場投稿(suggestions・承認済み)も合流（2026-07-07復元）────────────────────
+    //   「全国みんなの穴場」の母集団は穴場投稿。moodログ(spot_posts)と同じカード形に整形して混ぜる。
+    //   ユーザー絞り込み(@ID)時は spot_posts のみ対象なので suggestions は足さない。
+    let suggestionItems: Array<Record<string, unknown>> = [];
+    if (!posterHandle) {
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const toPref = (addr: unknown): string => {
+          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
+          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+          return m ? m[1].replace(/[都道府県]$/, "") : "";
+        };
+        const { data: sugs } = await supabase
+          .from("suggestions")
+          .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, poster_name, device_id, available_from, available_until")
+          .eq("status", "approved")
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+        const slist = (sugs ?? []) as unknown as Array<Record<string, unknown>>;
+        // 公開期間外(期間限定)は除外（null=常時公開）
+        const inPeriod = (s: Record<string, unknown>) => {
+          const f = s.available_from as string | null, u = s.available_until as string | null;
+          return (!f || f <= today) && (!u || u >= today);
+        };
+        const sHandleMap = await handlesByDevice(supabase, slist.map(s => String(s.device_id ?? "")));
+        suggestionItems = slist.filter(inPeriod).map(s => {
+          const rawImgs = (s.image_urls ?? []) as string[];
+          const imgs = Array.isArray(rawImgs) ? rawImgs.filter(u => typeof u === "string" && !isLegacyPhotoUrl(u)) : [];
+          const dev = typeof s.device_id === "string" ? s.device_id : "";
+          return {
+            id: String(s.id), kind: "suggestion",
+            place_id: null, place_name: String(s.google_place_name ?? s.spot_name ?? ""),
+            spot_name: String(s.spot_name ?? s.google_place_name ?? ""),
+            prefecture: toPref(s.address),
+            description: (s.description as string | null) ?? "", address: (s.address as string | null) ?? null,
+            image_urls: imgs,
+            auto_tags: (s.auto_tags as string[] | null) ?? [],
+            lat: typeof s.lat === "number" ? s.lat : null,
+            lng: typeof s.lng === "number" ? s.lng : null,
+            likes: undefined,
+            price_chip: null, rating: null,
+            created_at: s.created_at,
+            poster_name: (s.poster_name as string | null) ?? null,
+            poster_handle: dev ? (sHandleMap.get(dev) ?? null) : null,
+            poster_icon: dev ? iconFor(dev) : null,
+            poster_id: dev ? deviceHash(dev) : null,
+          };
+        });
+      } catch { /* suggestions取得失敗はmoodログのみで続行 */ }
+    }
+
+    // moodログ＋穴場投稿を新着順で合流して返す（idで重複排除）。
+    const seen = new Set<string>();
+    const merged = [...moodItems, ...suggestionItems]
+      .filter(it => { const k = String(it.id); if (seen.has(k)) return false; seen.add(k); return true; })
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
