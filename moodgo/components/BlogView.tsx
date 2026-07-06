@@ -213,7 +213,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
-        <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.fabInner}>
+        {/* ヘッダー帯と同じブランド3色グラデでアプリ全体の色に統一（旧ローズ→オレンジを廃止）*/}
+        <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.fabInner}>
           {LIQUID_GLASS && (
             <GlassView glassEffectStyle="clear" isInteractive style={[StyleSheet.absoluteFill, { borderRadius: 30 }]} />
           )}
@@ -575,7 +576,7 @@ const s = StyleSheet.create({
   tileCountText: { color: '#fff', fontSize: 12, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   empty: { textAlign: 'center', color: COLORS.textMuted, marginTop: 60, paddingHorizontal: 30, lineHeight: 22 },
   fab: { position: 'absolute', right: 18, bottom: 100 },
-  fabInner: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 30, shadowColor: COLORS.shadowRose, shadowOpacity: 1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  fabInner: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 30, shadowColor: '#7A5CFF', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   fabText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   backBtn: { padding: 14 }, backText: { color: COLORS.primary, fontWeight: '700', fontSize: 15 },
   dTitle: { fontSize: 21, fontWeight: '800', color: COLORS.text },
