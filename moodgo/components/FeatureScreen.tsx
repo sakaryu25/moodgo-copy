@@ -35,9 +35,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
 import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
-import { useRouter, useNavigation } from "expo-router";
+import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { HERO_BAND_H } from "@/lib/headerBand";
+import { useTabReset } from "@/lib/useTabReset";
 
 // ── 地図画像（assets/images）。アプリ全体で事前読み込みして遅延表示を防ぐ ──────
 const JAPAN_MAP = require("../assets/images/japan-map.png");
@@ -1390,30 +1391,19 @@ export default function FeatureScreen() {
   }, []);
 
   // 下部タブの「特集」を再タップ(=既に特集にいる時に押す)したら振り出し(日本地図)に戻す。
-  //   他タブから特集に切り替えた時は前の場所を保持(リセットしない)＝isFocused()でreタップだけ判定。
-  //   NativeTabsは@react-navigationベースなので tabPress を購読。型にtabPress/isFocusedが無いためcastで購読。
-  const navigation = useNavigation();
-  useEffect(() => {
-    const nav = navigation as unknown as {
-      addListener?: (e: string, cb: () => void) => (() => void) | undefined;
-      isFocused?: () => boolean;
-    };
-    const unsub = nav.addListener?.("tabPress", () => {
-      if (nav.isFocused?.()) {           // 既に特集タブが前面=再タップのみリセット
-        // 雲ダイブ演出の途中でも即座に日本地図へ。進行中トランジションの
-        // ステージ差替(apply)を世代番号で無効化し、リセットが上書きされる競合を防ぐ
-        resetSeqRef.current += 1;
-        t.stopAnimation();
-        t.setValue(0);
-        busyRef.current = false;
-        setBusy(false);
-        setStage("map");
-        setSelectedRegion("全国");
-        setSelectedTab("全国");
-      }
-    });
-    return () => { if (typeof unsub === "function") unsub(); };
-  }, [navigation]);  // eslint-disable-line react-hooks/exhaustive-deps
+  //   他タブから特集に切り替えた時は前の場所を保持(リセットしない)＝useTabResetが再タップだけ判定。
+  useTabReset(() => {
+    // 雲ダイブ演出の途中でも即座に日本地図へ。進行中トランジションの
+    // ステージ差替(apply)を世代番号で無効化し、リセットが上書きされる競合を防ぐ
+    resetSeqRef.current += 1;
+    t.stopAnimation();
+    t.setValue(0);
+    busyRef.current = false;
+    setBusy(false);
+    setStage("map");
+    setSelectedRegion("全国");
+    setSelectedTab("全国");
+  });
 
   // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
   // t: 0=通常表示 → 1=トランジション完了（中間 0.5 で雲が画面を覆い、裏でステージ差替）
