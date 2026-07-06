@@ -8,14 +8,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import CardBody from './CardBody';
 import type { Post } from './postTypes';
 
-// 縦長すぎる写真はカードが縦に伸びて巨大化するので下限を上げて抑える。
-const MIN_ASPECT = 0.86;  // これ未満（＝縦長）は 0.86 に丸める
-const MAX_ASPECT = 1.5;   // 横長すぎも抑える
+// 縦長写真はカードが縦に伸びて巨大化するので「幅より縦長にはしない」= 最小1.0(正方形)に丸める。
+// スマホ実写(3:4など縦長)でもカードは正方形どまりになり、横長写真だけ自然に横widen。
+const MIN_ASPECT = 1.0;   // これ未満（＝縦長）は正方形に丸める
+const MAX_ASPECT = 1.6;   // 横長すぎも抑える
 
 export default function ImageCard({
   post, onMenu, onImageAspect,
 }: { post: Post; onMenu: () => void; onImageAspect?: (id: string, aspect: number) => void }) {
-  const [aspect, setAspect] = useState(1.1);
+  const [aspect, setAspect] = useState(1.2);
   const loc = post.prefecture ? `${post.prefecture} / ${post.title}` : post.title;
   return (
     <View>

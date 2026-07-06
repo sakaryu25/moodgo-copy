@@ -46,7 +46,7 @@ export default function PostGrid({
     const a: Post[] = [], b: Post[] = [];
     let ha = 0, hb = 0;
     for (const p of posts) {
-      const est = estHeight(p, cardW, aspects[p.id] ?? 1.2);
+      const est = estHeight(p, cardW, aspects[p.id] ?? 1.2);  // 未読込は正方形寄りで概算
       if (ha <= hb) { a.push(p); ha += est + ROW_GAP; }
       else { b.push(p); hb += est + ROW_GAP; }
     }
