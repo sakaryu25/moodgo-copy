@@ -1477,42 +1477,33 @@ export default function FeatureScreen() {
       >
         <View style={s.decoCircle1} pointerEvents="none" />
         <View style={s.decoCircle2} pointerEvents="none" />
-        <View style={s.headerContent}>
-          {showBack ? (
-            <>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <TouchableOpacity
-                  style={s.backBtn}
-                  activeOpacity={0.72}
-                  onPress={handleBack}
-                >
-                  <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
-                  <Text style={s.backText}>特集</Text>
-                </TouchableOpacity>
-                {stage === "pref-select" && (
-                  <Text style={s.headerStageTitle}>都道府県を選ぶ</Text>
-                )}
-              </View>
-              {stage === "pref-select" && (
-                <View style={s.headerBadge}><Text style={s.headerBadgeText}>{selectedRegion}</Text></View>
-              )}
-            </>
-          ) : (
-            <>
-              <Text style={[s.headerTitle, { flex: 1, paddingRight: 8 }]}>特集</Text>
-              <View style={s.headerBadge}><Text style={s.headerBadgeText}>日本全国の特集</Text></View>
-            </>
-          )}
-        </View>
-        {/* サブ見出し/説明文は行の外＝全幅（右バッジの圧迫で折り返さない・バッジはタイトル行に整列）*/}
+        {/* 3段スタック: eyebrow(罫線+小ラベル) → ヒーロータイトル → 1行キャプション（審査パネル採用案）*/}
         {stage === "map" && (
           <>
-            <Text style={s.headerSub}>どこへ行く？</Text>
+            <View style={s.eyebrowRow}>
+              <View style={s.eyebrowRule} />
+              <Text style={s.eyebrowText}>特集・日本全国</Text>
+            </View>
+            <Text style={s.bandTitle}>どこへ行く？</Text>
             <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
           </>
         )}
         {stage === "pref-select" && (
-          <Text style={s.headerCaption}>気になるエリアをタップ</Text>
+          <>
+            <TouchableOpacity style={s.backBtn} activeOpacity={0.72} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 16 }}>
+              <ChevronLeft size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.5} />
+              <Text style={s.backTextSm}>特集</Text>
+            </TouchableOpacity>
+            {/* 選んだ地方名が主役（タップの結果が画面に反映される）*/}
+            <Text style={[s.bandTitle, { marginTop: 4 }]}>{selectedRegion}</Text>
+            <Text style={s.headerCaption}>気になる都道府県をタップ</Text>
+          </>
+        )}
+        {stage === "content" && (
+          <TouchableOpacity style={s.backBtn} activeOpacity={0.72} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 16 }}>
+            <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+            <Text style={s.backText}>特集</Text>
+          </TouchableOpacity>
         )}
       </LinearGradient>
 
@@ -1570,16 +1561,6 @@ export default function FeatureScreen() {
 const cs = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#FAF7FF" },
   header: { paddingHorizontal: 22, paddingBottom: 8 },
-  headerTitle: { fontSize: 26, fontWeight: "900", color: "#1A0A2E", letterSpacing: -0.5 },
-  headerSub: { fontSize: 12, color: "#9B6BFF", fontWeight: "700", letterSpacing: 1, marginTop: 2 },
-
-  center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingBottom: 40 },
-
-  badgeWrap: { alignItems: "center", justifyContent: "center", marginBottom: 26 },
-  glow: {
-    position: "absolute", width: 150, height: 150, borderRadius: 75,
-    backgroundColor: "rgba(155,107,255,0.30)",
-  },
   badge: {
     width: 104, height: 104, borderRadius: 34,
     alignItems: "center", justifyContent: "center",
@@ -1646,44 +1627,22 @@ const s = StyleSheet.create({
     borderRadius: 45,
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  headerSub: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
-    fontWeight: '500',
-  },
-  headerStageTitle: {
-    fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5, marginTop: 8,
-  },
   headerCaption: {
-    fontSize: 11.5,
-    color: "rgba(255,255,255,0.7)",
-    fontWeight: '500',
-    marginTop: 4,
+    fontSize: 12.5, fontWeight: '500', color: 'rgba(255,255,255,0.78)',
+    letterSpacing: 0.2, lineHeight: 17, marginTop: 6,
   },
-  // 「日本全国の特集」バッジ（お気に入り/みんなのピルと同じ白半透明の設計言語）
-  headerBadge: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-    marginBottom: 2,
-  },
-  headerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  // eyebrow(前置きラベル): 白ミニ罫線＋トラッキングの効いた小文字（雑誌の柱の作法）
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  eyebrowRule: { width: 18, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' },
+  eyebrowText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: 3, lineHeight: 14 },
+  // ヒーロータイトル: かな主体なので負トラッキング禁止（+0.5でおおらかに）
+  bandTitle: { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: 0.5, lineHeight: 36, marginTop: 6 },
+  backTextSm: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.9)', letterSpacing: 0.5 },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    alignSelf: 'flex-start',
   },
   backText: {
     fontSize: 16,
