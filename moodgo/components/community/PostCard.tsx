@@ -8,13 +8,12 @@ import TextCard from './TextCard';
 import type { Post } from './postTypes';
 
 export default function PostCard({
-  post, index = 0, onPress, onMenu, onImageAspect,
+  post, index = 0, onPress, onMenu,
 }: {
   post: Post;
   index?: number;
   onPress: () => void;
   onMenu: () => void;
-  onImageAspect?: (id: string, aspect: number) => void;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
   // 初回 fade-up（下から・0.3s・カードごとに軽くstagger）
@@ -36,7 +35,7 @@ export default function PostCard({
     <Animated.View style={{ opacity: enter, transform: [{ translateY }, { scale }] }}>
       <Pressable onPress={handlePress} onPressIn={pressIn} onPressOut={pressOut} onLongPress={onMenu} style={s.card}>
         {post.image
-          ? <ImageCard post={post} onMenu={onMenu} onImageAspect={onImageAspect} />
+          ? <ImageCard post={post} onMenu={onMenu} />
           : <TextCard post={post} onMenu={onMenu} />}
       </Pressable>
     </Animated.View>
