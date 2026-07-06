@@ -1499,17 +1499,17 @@ export default function FeatureScreen() {
             </>
           ) : (
             <>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={s.headerTitle}>特集</Text>
-                <Text style={s.headerSub}>どこへ行く？</Text>
-              </View>
+              <Text style={[s.headerTitle, { flex: 1, paddingRight: 8 }]}>特集</Text>
               <View style={s.headerBadge}><Text style={s.headerBadgeText}>日本全国の特集</Text></View>
             </>
           )}
         </View>
-        {/* 説明文は行の外＝全幅で1行に（右バッジの圧迫で折り返さないように）*/}
+        {/* サブ見出し/説明文は行の外＝全幅（右バッジの圧迫で折り返さない・バッジはタイトル行に整列）*/}
         {stage === "map" && (
-          <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
+          <>
+            <Text style={s.headerSub}>どこへ行く？</Text>
+            <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
+          </>
         )}
         {stage === "pref-select" && (
           <Text style={s.headerCaption}>気になるエリアをタップ</Text>
