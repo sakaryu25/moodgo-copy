@@ -43,5 +43,9 @@ const s = StyleSheet.create({
     position: 'absolute', right: 9, bottom: 8,
     flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '88%',
   },
-  locText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: -0.1, flexShrink: 1 },
+  locText: {
+    color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: -0.1, flexShrink: 1,
+    // 明るい写真でもスクリム頼みにせず読めるように（BlogViewのタイルラベルと同処理）
+    textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
 });

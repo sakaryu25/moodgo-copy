@@ -24,6 +24,10 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 60);
   const offset = Number(searchParams.get("offset") ?? "0");
+  // カーソルページング（created_at < cursor）。2ソース合流のoffset方式は
+  // ページ境界で投稿が恒久欠落するバグがあるため、クライアントは2ページ目以降 cursor を送る。
+  // offset は旧クライアント互換のため残す（cursor があれば cursor 優先）。
+  const cursor = (searchParams.get("cursor") ?? "").trim() || null;
   // @IDでのユーザー絞り込み（プロフィール検索）。匿名投稿の帰属バレ防止のため public のみ返す。
   const posterHandle = (searchParams.get("posterHandle") ?? "").trim().toLowerCase().replace(/^@+/, "");
 
@@ -45,6 +49,14 @@ export async function GET(request: Request) {
     //   承認済み・公開(spot_public_anonymous/public)の投稿を同じカード形に整形して混ぜる。
     //   タップ時は場所詳細(/place)を開くため kind='moodlog'＋place_id を付ける。未作成でも安全。
     let moodItems: Array<Record<string, unknown>> = [];
+    // ページング補助: 各ソースの生取得件数(hasMore判定)と最古created_at(全滅フィルタ時のカーソル前進用)
+    let rawMoodCount = 0;
+    let rawSugCount = 0;
+    let oldestFetched: string | null = null;
+    const trackOldest = (list: Array<Record<string, unknown>>) => {
+      const tail = list[list.length - 1]?.created_at;
+      if (tail && (!oldestFetched || String(tail) < oldestFetched)) oldestFetched = String(tail);
+    };
     try {
       // ユーザー絞り込み時: handle→device_id をサーバー内で解決（生IDは外に出さない）
       let posterDeviceId: string | null = null;
@@ -59,13 +71,17 @@ export async function GET(request: Request) {
         qq = posterDeviceId
           ? qq.eq("device_id", posterDeviceId).eq("visibility", "public")
           : qq.in("visibility", ["spot_public_anonymous", "public"]);
-        return qq.order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+        if (cursor) qq = qq.lt("created_at", cursor);
+        const ordered = qq.order("created_at", { ascending: false });
+        return cursor ? ordered.limit(limit) : ordered.range(offset, offset + limit - 1);
       };
       let { data: posts, error: postsErr } = await buildQ(`${BASE_COLS}, price_chip, rating`);
       if (postsErr && (postsErr as { code?: string }).code === "42703") {
         ({ data: posts } = await buildQ(BASE_COLS));
       }
       const plist = (posts ?? []) as unknown as Array<Record<string, unknown>>;
+      rawMoodCount = plist.length;
+      trackOldest(plist);
       if (plist.length > 0) {
         const postIds = plist.map(p => String(p.id));
         const placeIds = [...new Set(plist.map(p => p.place_id).filter(Boolean).map(String))];
@@ -145,13 +161,16 @@ export async function GET(request: Request) {
           const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
           return m ? m[1].replace(/[都道府県]$/, "") : "";
         };
-        const { data: sugs } = await supabase
+        let sq = supabase
           .from("suggestions")
           .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, poster_name, device_id, available_from, available_until")
-          .eq("status", "approved")
-          .order("created_at", { ascending: false })
-          .range(offset, offset + limit - 1);
+          .eq("status", "approved");
+        if (cursor) sq = sq.lt("created_at", cursor);
+        const sOrdered = sq.order("created_at", { ascending: false });
+        const { data: sugs } = await (cursor ? sOrdered.limit(limit) : sOrdered.range(offset, offset + limit - 1));
         const slist = (sugs ?? []) as unknown as Array<Record<string, unknown>>;
+        rawSugCount = slist.length;
+        trackOldest(slist);
         // 公開期間外(期間限定)は除外（null=常時公開）
         const inPeriod = (s: Record<string, unknown>) => {
           const f = s.available_from as string | null, u = s.available_until as string | null;
@@ -191,7 +210,15 @@ export async function GET(request: Request) {
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
-    return NextResponse.json({ ok: true, items: merged });
+    // 次ページ用カーソル: 返した最後の created_at。sliceで溢れた分はそれより古いので
+    // 次ページ(created_at < nextCursor)で必ず再取得される=欠落しない。
+    // 全件が期間フィルタ等で落ちた場合は生取得の最古まで前進させ、無限に同じ窓を読まない。
+    const lastItem = merged[merged.length - 1];
+    const nextCursor = (lastItem?.created_at ? String(lastItem.created_at) : null) ?? oldestFetched;
+    // どちらかのソースがlimit件まるごと返した=まだ先がある可能性が高い
+    const hasMore = rawMoodCount >= limit || rawSugCount >= limit;
+
+    return NextResponse.json({ ok: true, items: merged, nextCursor, hasMore });
   } catch (e) {
     console.error("[community-feed]", e);
     return NextResponse.json({ ok: false, items: [], error: String(e) });

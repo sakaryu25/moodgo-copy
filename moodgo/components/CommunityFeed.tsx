@@ -8,7 +8,7 @@
  */
 import { router } from 'expo-router';
 import { ChevronDown, Map } from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiFetch } from '@/lib/api';
@@ -57,6 +57,7 @@ type CommunityFeedProps = {
 export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, loadMoreKey }: CommunityFeedProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
@@ -65,6 +66,9 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   const [uLoading, setULoading] = useState(false);
   const isMounted = useRef(true);
   const offsetRef = useRef(0);
+  // カーソルページング: サーバーの nextCursor(最後のcreated_at)。offset方式は2ソース合流で
+  // 投稿が欠落するため、2ページ目以降は cursor を送る（旧サーバー互換で offset も併送）。
+  const cursorRef = useRef<string | null>(null);
 
   // @ID絞り込み（full: 検索UIは親ヘッダー・ここは取得のみ）
   useEffect(() => {
@@ -83,26 +87,33 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     return () => { cancelled = true; };
   }, [full, posterHandle]);
 
-  // 初回ロード
+  // 初回ロード（再試行ボタンからも呼ぶ）。エラーは空状態と区別して loadError に立てる。
+  const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const blocked = await loadJSON<string[]>(BLOCKED_USERS_KEY, []);
+      if (isMounted.current) setBlockedUsers(blocked);
+      const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=0`);
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error('community-feed error');
+      if (isMounted.current) {
+        const fetched: FeedItem[] = data?.items ?? [];
+        setItems(fetched);
+        offsetRef.current = fetched.length;
+        cursorRef.current = data?.nextCursor
+          ?? (fetched.length ? String(fetched[fetched.length - 1]?.created_at ?? '') || null : null);
+        setHasMore(data?.hasMore ?? fetched.length >= PAGE);
+      }
+    } catch { if (isMounted.current) { setItems([]); setLoadError(true); } }
+    finally { if (isMounted.current) setLoading(false); }
+  }, []);
+
   useEffect(() => {
     isMounted.current = true;
-    (async () => {
-      try {
-        const blocked = await loadJSON<string[]>(BLOCKED_USERS_KEY, []);
-        if (isMounted.current) setBlockedUsers(blocked);
-        const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=0`);
-        const data = await res.json();
-        if (isMounted.current) {
-          const fetched: FeedItem[] = data?.items ?? [];
-          setItems(fetched);
-          offsetRef.current = fetched.length;
-          setHasMore(fetched.length >= PAGE);
-        }
-      } catch { if (isMounted.current) setItems([]); }
-      finally { if (isMounted.current) setLoading(false); }
-    })();
+    loadInitial();
     return () => { isMounted.current = false; };
-  }, []);
+  }, [loadInitial]);
 
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）
   useEffect(() => {
@@ -112,7 +123,8 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     setLoadingMore(true);
     (async () => {
       try {
-        const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=${offsetRef.current}`);
+        const cursorQ = cursorRef.current ? `&cursor=${encodeURIComponent(cursorRef.current)}` : '';
+        const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=${offsetRef.current}${cursorQ}`);
         const data = await res.json();
         const more: FeedItem[] = data?.items ?? [];
         if (!cancelled && isMounted.current) {
@@ -122,9 +134,11 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
             offsetRef.current += more.length;
             return [...prev, ...add];
           });
-          setHasMore(more.length >= PAGE);
+          cursorRef.current = data?.nextCursor
+            ?? (more.length ? String(more[more.length - 1]?.created_at ?? '') || null : cursorRef.current);
+          setHasMore(data?.hasMore ?? more.length >= PAGE);
         }
-      } catch { /* noop */ }
+      } catch { /* 追加読み込み失敗は次の末尾スクロールで自然に再試行される */ }
       finally { if (!cancelled && isMounted.current) setLoadingMore(false); }
     })();
     return () => { cancelled = true; };
@@ -142,7 +156,12 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     });
   };
 
-  const visibleItems = items.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id));
+  // メモ化: 毎renderで新配列を返すと posts useMemo→PostGridのmasonry計算→parsePost(正規表現)が
+  // 全カード分再実行されるため、items/blockedUsers が変わった時だけ再計算する。
+  const visibleItems = useMemo(
+    () => items.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id)),
+    [items, blockedUsers],
+  );
 
   // 並び順: 非full=新着順(created_at desc)・最大8。full=親ヘッダーのsort(人気/近く)。
   const effSort = full ? (propSort ?? 'popular') : 'new';
@@ -171,7 +190,10 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   );
 
   const gridPosts = full && posterHandle ? uPosts : posts;
-  const showEmpty = !loading && !uLoading && ((full && posterHandle) ? uItems.length === 0 : visibleItems.length === 0);
+  // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
+  const showError = !loading && !uLoading && loadError && !(full && posterHandle);
+  const showEmpty = !loading && !uLoading && !showError
+    && ((full && posterHandle) ? uItems.length === 0 : visibleItems.length === 0);
 
   return (
     <View style={s.section}>
@@ -218,6 +240,16 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         <View style={s.loadingWrap}><ActivityIndicator color={PURPLE} size="small" /></View>
       )}
 
+      {/* 取得失敗（空状態とは区別し、再試行導線を出す）*/}
+      {showError && (
+        <View style={s.loadingWrap}>
+          <Text style={{ color: '#9CA3AF', fontSize: 13, marginBottom: 12 }}>読み込めませんでした</Text>
+          <TouchableOpacity style={s.retryBtn} activeOpacity={0.7} onPress={loadInitial}>
+            <Text style={s.retryText}>再試行</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {showEmpty && (
         <View style={s.loadingWrap}>
           <Text style={{ color: '#9CA3AF', fontSize: 13 }}>
@@ -260,6 +292,11 @@ const s = StyleSheet.create({
   uBannerText: { fontSize: 12.5, fontWeight: '800', color: '#7A5CFF' },
   uBannerCount: { fontSize: 11.5, fontWeight: '700', color: '#8B88A6' },
   loadingWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 28 },
+  retryBtn: {
+    paddingHorizontal: 22, paddingVertical: 9, borderRadius: 999,
+    backgroundColor: 'rgba(155,107,255,0.1)',
+  },
+  retryText: { fontSize: 13, fontWeight: '800', color: PURPLE },
   moreBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     marginTop: 18, marginBottom: 4, paddingVertical: 12,
