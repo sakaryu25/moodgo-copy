@@ -11,7 +11,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark, ChevronLeft, Heart, MapPin, MessageCircle, Search, Users, Wallet, X } from 'lucide-react-native';
+import { Bookmark, Check, ChevronLeft, Flag, Heart, MapPin, MessageCircle, Search, Users, Wallet, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -394,8 +394,9 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           ) : null}
 
           {/* 通報 */}
-          <TouchableOpacity onPress={() => Alert.alert('この投稿を通報しますか？', '不適切な内容として運営に報告します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '通報する', style: 'destructive', onPress: report }])} disabled={reported} style={{ marginTop: 18, alignSelf: 'center' }}>
-            <Text style={s.reportText}>{reported ? '通報しました' : '⚠ この投稿を通報'}</Text>
+          <TouchableOpacity onPress={() => Alert.alert('この投稿を通報しますか？', '不適切な内容として運営に報告します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '通報する', style: 'destructive', onPress: report }])} disabled={reported} style={{ marginTop: 18, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            {!reported && <Flag size={13} color="#B0AAB8" strokeWidth={2} />}
+            <Text style={s.reportText}>{reported ? '通報しました' : 'この投稿を通報'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -508,7 +509,7 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
       <Field label="本文" value={body} onChange={setBody} placeholder="どんな場所か、行った感想など" multiline />
 
       <TouchableOpacity onPress={() => setLicense(!license)} style={s.checkRow}>
-        <View style={[s.checkbox, license && s.checkboxOn]}>{license && <Text style={{ color: '#fff', fontWeight: '800' }}>✓</Text>}</View>
+        <View style={[s.checkbox, license && s.checkboxOn]}>{license && <Check size={13} color="#fff" strokeWidth={3} />}</View>
         <Text style={s.checkText}>自分で撮影した、または使用許可のある写真です（Google画像/マップ/他サイトの転載ではありません）</Text>
       </TouchableOpacity>
 

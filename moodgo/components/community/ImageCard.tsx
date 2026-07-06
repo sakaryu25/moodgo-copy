@@ -1,38 +1,62 @@
-// 画像ありカード: 上に写真（上角のみ丸め・object-fit cover・自然な高さ）＋下に本文。
+// 画像ありカード: 上に写真＋下に本文。写真の右下に「都道府県 / スポット名」を重ねる。
+//   縦長写真がカードを占有しすぎないよう、アスペクト比は 0.86〜1.5 にクランプする。
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MapPin } from 'lucide-react-native';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import CardBody from './CardBody';
 import type { Post } from './postTypes';
+
+// 縦長すぎる写真はカードが縦に伸びて巨大化するので下限を上げて抑える。
+const MIN_ASPECT = 0.86;  // これ未満（＝縦長）は 0.86 に丸める
+const MAX_ASPECT = 1.5;   // 横長すぎも抑える
 
 export default function ImageCard({
   post, onMenu, onImageAspect,
 }: { post: Post; onMenu: () => void; onImageAspect?: (id: string, aspect: number) => void }) {
-  // 縦横比は読み込み時に確定。初期は 4:5(=0.8) 寄りの縦長で見栄えよく（Pinterest風）
-  const [aspect, setAspect] = useState(1.2);
+  const [aspect, setAspect] = useState(1.1);
+  const loc = post.prefecture ? `${post.prefecture} / ${post.title}` : post.title;
   return (
     <View>
-      <Image
-        source={{ uri: post.image! }}
-        style={[s.img, { aspectRatio: aspect }]}
-        contentFit="cover"
-        transition={220}
-        onLoad={(e) => {
-          const w = e.source?.width, h = e.source?.height;
-          if (w && h) {
-            // 極端な縦長/横長はカードが崩れるので 0.62〜1.9 にクランプ
-            const a = Math.min(1.9, Math.max(0.62, w / h));
-            setAspect(a);
-            onImageAspect?.(post.id, a);
-          }
-        }}
-      />
-      <CardBody post={post} onMenu={onMenu} />
+      <View>
+        <Image
+          source={{ uri: post.image! }}
+          style={[s.img, { aspectRatio: aspect }]}
+          contentFit="cover"
+          transition={220}
+          onLoad={(e) => {
+            const w = e.source?.width, h = e.source?.height;
+            if (w && h) {
+              const a = Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, w / h));
+              setAspect(a);
+              onImageAspect?.(post.id, a);
+            }
+          }}
+        />
+        {/* 右下の場所ラベル（読みやすさのため下部に薄いスクリム）*/}
+        <LinearGradient
+          colors={['transparent', 'rgba(12,8,22,0.5)']}
+          style={s.scrim}
+          pointerEvents="none"
+        />
+        <View style={s.locWrap} pointerEvents="none">
+          <MapPin size={10} color="#FFFFFF" strokeWidth={2.4} />
+          <Text style={s.locText} numberOfLines={1}>{loc}</Text>
+        </View>
+      </View>
+      {/* タイトルは写真上に出したので本文側では省略 */}
+      <CardBody post={post} onMenu={onMenu} showTitleFirst={false} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  // 上角はカード側 overflow:hidden + radius24 で丸まる
   img: { width: '100%', backgroundColor: '#ECEAF2' },
+  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52 },
+  locWrap: {
+    position: 'absolute', right: 9, bottom: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '88%',
+  },
+  locText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700', letterSpacing: -0.1, flexShrink: 1 },
 });

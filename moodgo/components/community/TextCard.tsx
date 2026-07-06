@@ -10,11 +10,11 @@ export default function TextCard({ post, onMenu }: { post: Post; onMenu: () => v
     <View style={s.wrap}>
       <View style={s.head}>
         <View style={[s.iconBox, { backgroundColor: bg }]}>
-          <Icon size={22} color={color} strokeWidth={2} />
+          <Icon size={19} color={color} strokeWidth={2} />
         </View>
         {!!post.prefecture && (
           <View style={s.prefRow}>
-            <MapPin size={11} color="#9B96A6" strokeWidth={2.2} />
+            <MapPin size={10} color="#9B96A6" strokeWidth={2.2} />
             <Text style={s.pref}>{post.prefecture}</Text>
           </View>
         )}
@@ -26,12 +26,12 @@ export default function TextCard({ post, onMenu }: { post: Post; onMenu: () => v
 }
 
 const s = StyleSheet.create({
-  wrap: { paddingTop: 16 },
+  wrap: { paddingTop: 13 },
   head: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
-  iconBox: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  pref: { fontSize: 12, color: '#777', fontWeight: '600' },
+  pref: { fontSize: 11, color: '#777', fontWeight: '600' },
 });

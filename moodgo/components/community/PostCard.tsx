@@ -46,13 +46,13 @@ export default function PostCard({
 const s = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 18,
     overflow: 'hidden',
     // ごく薄い自然なシャドウ
     shadowColor: '#1A1330',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.07,
-    shadowRadius: 14,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 11,
+    elevation: 2,
   },
 });

@@ -27,7 +27,7 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
       <View style={s.right}>
         <Text style={s.time}>{relativeTime(post.createdAt)}</Text>
         <TouchableOpacity onPress={onMenu} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
-          <MoreHorizontal size={17} color="#B7B3C2" strokeWidth={2} />
+          <MoreHorizontal size={15} color="#B7B3C2" strokeWidth={2} />
         </TouchableOpacity>
       </View>
     </View>
@@ -35,12 +35,12 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
 }
 
 const s = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
-  avatar: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarImg: { width: 24, height: 24 },
-  avatarInit: { fontSize: 11, fontWeight: '800', color: '#6B6480' },
-  name: { fontSize: 12.5, fontWeight: '700', color: '#555', flexShrink: 1 },
-  right: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  time: { fontSize: 11.5, color: '#9B96A6', fontWeight: '500' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  avatar: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: 20, height: 20 },
+  avatarInit: { fontSize: 10, fontWeight: '800', color: '#6B6480' },
+  name: { fontSize: 11.5, fontWeight: '700', color: '#555', flexShrink: 1 },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  time: { fontSize: 10.5, color: '#9B96A6', fontWeight: '500' },
 });

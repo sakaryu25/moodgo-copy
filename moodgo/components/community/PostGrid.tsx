@@ -6,22 +6,25 @@ import { View } from 'react-native';
 import PostCard from './PostCard';
 import type { Post } from './postTypes';
 
-const COL_GAP = 16;   // 列間
-const ROW_GAP = 16;   // カード間（縦）
+const COL_GAP = 12;   // 列間
+const ROW_GAP = 12;   // カード間（縦）
 
 // カード高さの推定（列割り当て用・ピクセルは概算でよい）
 function estHeight(post: Post, cardW: number, aspect: number): number {
-  let h = 12 + 16;                       // body上下パディング
-  h += 22 * (post.title.length > 12 ? 2 : 1);  // タイトル1〜2行
-  if (post.rating > 0) h += 23;          // 星
-  if (post.description) {
-    const lines = Math.min(4, Math.max(1, Math.ceil(post.description.length / 18)));
-    h += 20 * lines + 12;
+  let h = 10 + 12;                       // body上下パディング
+  if (post.image) {
+    h += cardW / aspect;                 // 画像（縦=幅/アスペクト）※タイトルは写真上なので本文には無し
+  } else {
+    h += 13 + 40;                        // カテゴリアイコン行（paddingTop+iconBox）
+    h += 18 * (post.title.length > 12 ? 2 : 1) + 6;  // タイトル1〜2行
   }
-  if (post.price) h += 28;
-  h += 40;                               // 投稿者行
-  if (post.image) h += cardW / aspect;   // 画像（縦=幅/アスペクト）
-  else h += 46 + 12;                     // カテゴリアイコン行
+  if (post.rating > 0) h += 18;          // 星
+  if (post.description) {
+    const lines = Math.min(3, Math.max(1, Math.ceil(post.description.length / 17)));
+    h += 17.5 * lines + 9;
+  }
+  if (post.price) h += 24;
+  h += 20 + 10;                          // 投稿者行＋marginTop
   return h;
 }
 
