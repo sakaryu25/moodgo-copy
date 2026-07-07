@@ -207,16 +207,6 @@ export default function MyPostsGlassCard({
             </ScrollView>
           )}
 
-          {/* ── もっと見る（丸いガラスボタン 160×48）── */}
-          <View style={s.moreWrap}>
-            <GlassPress onPress={onMore} label="自分の投稿をもっと見る">
-              <GlassSurface intensity={18} tint="rgba(255,255,255,0.18)" style={s.moreBtn}>
-                <View style={s.moreInner}>
-                  <Text style={s.moreText}>もっと見る</Text>
-                </View>
-              </GlassSurface>
-            </GlassPress>
-          </View>
         </View>
       </GlassSurface>
     </View>
@@ -292,12 +282,4 @@ const s = StyleSheet.create({
   },
   thumbMoreText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
 
-  // もっと見る
-  moreWrap: { alignItems: 'center', marginTop: 18 },
-  moreBtn: {
-    width: 160, height: 48, borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)',
-  },
-  moreInner: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  moreText: { fontSize: 14, fontWeight: '800', color: INK, letterSpacing: 0.2 },
 });
