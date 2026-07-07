@@ -62,6 +62,7 @@ export default function MyPostsScreen() {
   const [handle, setHandle] = useState('');
   const [iconUrl, setIconUrl] = useState('');
   const [visitedPrefs, setVisitedPrefs] = useState(0);
+  const [followers, setFollowers] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
 
   const [category, setCategory] = useState<Category>('すべて');
@@ -98,6 +99,14 @@ export default function MyPostsScreen() {
       });
       const data = await res.json();
       if (isMounted.current) setPosts(Array.isArray(data?.items) ? data.items : []);
+      // フォロワー数（user_follows・テーブル未適用は0）
+      try {
+        const f = await apiFetch('/api/user-follows', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'me', deviceId }),
+        }).then((r) => r.json());
+        if (isMounted.current && f?.ok) setFollowers(f.followerCount ?? 0);
+      } catch { /* 0のまま */ }
     } catch { if (isMounted.current) setPosts([]); }
     finally { if (isMounted.current) setLoading(false); }
   }, []);
@@ -165,6 +174,10 @@ export default function MyPostsScreen() {
             prefecture={settings.profilePrefecture ?? ''}
             bio={settings.profileBio}
             showPrefecture={settings.showPrefecture}
+            statPosts={posts.length}
+            statVisited={totalVisited}
+            statLikes={totalLikes}
+            statFollowers={followers}
             onEdit={() => setShowSettings(true)}
           />
 
