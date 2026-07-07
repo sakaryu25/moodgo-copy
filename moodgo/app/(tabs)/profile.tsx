@@ -206,10 +206,12 @@ export default function ProfileTab() {
 
   const displayName = nickname.trim() || 'MoodGo';
   const GAP = 10;
-  const tileCell   = (W - SIDE * 2 - CARD_PAD * 2 - GAP * 2) / 3;  // カード内3列
-  const badgeCell  = (W - SIDE * 2 - CARD_PAD * 2 - GAP) / 2;      // カード内2列
-  const tileCellFull  = (W - SIDE * 2 - GAP * 2) / 3;         // サブビュー3列
-  const badgeCellFull = (W - SIDE * 2 - GAP) / 2;             // サブビュー2列
+  // ⚠ セル幅は「2列＋gap＝内寸ちょうど」だと端数誤差で折り返して縦積みになる。
+  //   floor＋1pxの安全マージンで必ず2列/3列に収まるようにする。
+  const tileCell   = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP * 2) / 3) - 1;  // カード内3列
+  const badgeCell  = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP) / 2) - 1;      // カード内2列
+  const tileCellFull  = Math.floor((W - SIDE * 2 - GAP * 2) / 3) - 1;         // サブビュー3列
+  const badgeCellFull = Math.floor((W - SIDE * 2 - GAP) / 2) - 1;             // サブビュー2列
 
   // ── 部品 ────────────────────────────────────────────────────────────────
   const CardHeader = ({ icon, title, onMore }: { icon: React.ReactNode; title: string; onMore?: () => void }) => (
