@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { Heart, MapPin, MessageCircle, Moon, Navigation, Trash2 } from 'lucide-react-native';
+import { Check, Footprints, Heart, MapPin, MessageCircle, Moon, Navigation } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -22,6 +22,8 @@ import { apiFetch } from '@/lib/api';
 import { useSpotPhotos } from '@/lib/spotPhotos';
 import { fetchUserPhotoMaps, userPhotosFor, type UserPhotoMaps } from '@/lib/userPhotos';
 import { copyPlaceName } from '@/lib/clipboard';
+import { addVisitedLog, loadVisitedLog } from '@/lib/spotLog';
+import { creditVisited, creditVisitedPost } from '@/lib/visitedCredit';
 import PuniPressable from './PuniPressable';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -53,7 +55,8 @@ const T = {
     emptySub: '気に入った場所をハートで保存しよう！',
     map:    'マップ',
     talk:   'トーク',
-    remove: '削除',
+    visited:     '行った！',
+    visitedDone: '行った',
     count:  (n: number) => `${n}件保存中`,
     tabPlace: '場所',
     tabPost:  '投稿',
@@ -70,7 +73,8 @@ const T = {
     emptySub: 'Save places you like with the heart button!',
     map:    'Map',
     talk:   'Talk',
-    remove: 'Remove',
+    visited:     'Been there!',
+    visitedDone: 'Visited',
     count:  (n: number) => `${n} saved`,
     tabPlace: 'Places',
     tabPost:  'Posts',
@@ -174,6 +178,24 @@ export default function FavoritesView({
     }
   };
 
+  // 行った！（検索結果と同じ体験）: ローカル記録(バッジ/訪れた県)＋投稿者へのクレジット。一方向。
+  const [visitedTitles, setVisitedTitles] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    loadVisitedLog().then((list) => setVisitedTitles(new Set(list.map((e) => e.title)))).catch(() => {});
+  }, []);
+  const markVisited = (item: FavoriteItem) => {
+    if (visitedTitles.has(item.title)) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setVisitedTitles((prev) => new Set([...prev, item.title]));
+    addVisitedLog({
+      title: item.title, photoUrl: item.photoUrl ?? item.photoUrls?.[0],
+      address: item.address ?? item.area, placeId: item.placeId, supabaseId: item.supabaseId, tags: item.tags,
+    }).catch(() => {});
+    // 投稿お気に入りはIDで直クレジット、場所は場所解決クレジット
+    if (item.kind === 'post' && item.spotId) creditVisitedPost(item.spotId);
+    else creditVisited({ title: item.title, supabaseId: item.supabaseId, placeId: item.placeId, address: item.address ?? item.area });
+  };
+
   const renderList = (list: FavoriteItem[], emptyTitle: string, emptySub: string, idx: number) => (
     <ScrollView
       ref={(r) => { listRefs.current[idx] = r; }}
@@ -196,7 +218,7 @@ export default function FavoritesView({
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={s.cardAccentBar} />
             <FavoriteCardImage item={item} maps={upMaps} />
             <View style={s.cardBody}>
-              <Text style={s.cardTitle} numberOfLines={2} onPress={() => handlePress(item)} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
+              <Text style={[s.cardTitle, s.cardTitleClear]} numberOfLines={2} onPress={() => handlePress(item)} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
               {item.area ? (
                 <View style={s.areaRow}>
                   <MapPin size={11} color="#9CA3AF" strokeWidth={2} />
@@ -207,21 +229,20 @@ export default function FavoritesView({
                 <View style={s.vibeBadge}><Text style={s.vibeText} numberOfLines={1}>{item.vibe}</Text></View>
               ) : null}
               <View style={s.cardActions}>
-                {item.mapUrl ? (
-                  <PuniPressable
-                    onPress={() => openInGoogleMaps({
-                      query: [item.title, item.area].filter(Boolean).join(' '),
-                      mapsUri: item.mapUrl,
-                    })}
-                    style={s.mapBtn}
-                    containerStyle={{ flex: 1 }}
-                  >
-                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
-                      <MapPin size={12} color="#fff" strokeWidth={2.5} />
-                      <Text style={s.mapBtnText} numberOfLines={1}>{t.map}</Text>
-                    </LinearGradient>
-                  </PuniPressable>
-                ) : null}
+                {/* マップ（場所/投稿 共通・住所や名前だけでも開ける）*/}
+                <PuniPressable
+                  onPress={() => openInGoogleMaps({
+                    query: [item.title, item.address ?? item.area].filter(Boolean).join(' '),
+                    mapsUri: item.mapUrl,
+                  })}
+                  style={s.mapBtn}
+                  containerStyle={{ flex: 1 }}
+                >
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapBtnGrad}>
+                    <MapPin size={12} color="#fff" strokeWidth={2.5} />
+                    <Text style={s.mapBtnText} numberOfLines={1}>{t.map}</Text>
+                  </LinearGradient>
+                </PuniPressable>
                 {/* 仲良しグループのチャットへ共有 */}
                 <PuniPressable
                   onPress={() => shareSpotToGroup({ title: item.title, address: item.area, mapUrl: item.mapUrl })}
@@ -231,17 +252,29 @@ export default function FavoritesView({
                   <MessageCircle size={13} color="#7C3AED" strokeWidth={2} />
                   <Text style={s.groupBtnText}>{t.talk}</Text>
                 </PuniPressable>
+                {/* 行った！（検索結果と共通の体験・押すと投稿者の実績にも加算）*/}
                 <PuniPressable
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item); }}
+                  onPress={() => markVisited(item)}
                   haptic={false}
-                  style={s.deleteBtn}
+                  style={[s.visitedBtn, visitedTitles.has(item.title) && s.visitedBtnDone]}
                   containerStyle={{ flex: 1 }}
                 >
-                  <Trash2 size={13} color="#F43F5E" strokeWidth={2} />
-                  <Text style={s.deleteBtnText}>{t.remove}</Text>
+                  {visitedTitles.has(item.title) ? (
+                    <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={s.visitedBtnText}>{t.visitedDone}</Text></>
+                  ) : (
+                    <><Footprints size={13} color="#10B981" strokeWidth={2.2} /><Text style={s.visitedBtnText}>{t.visited}</Text></>
+                  )}
                 </PuniPressable>
               </View>
             </View>
+            {/* 右上のハート＝お気に入り解除（保存済みの証＋タップで外す）*/}
+            <TouchableOpacity
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item); }}
+              style={s.heartRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button" accessibilityLabel={`${item.title}をお気に入りから外す`}
+            >
+              <Heart size={17} color="#F472B6" fill="#F472B6" strokeWidth={0} />
+            </TouchableOpacity>
           </TouchableOpacity>
         ))
       )}
@@ -377,6 +410,8 @@ const s = StyleSheet.create({
   },
   cardImgPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   cardBody:  { flex: 1, paddingVertical: 12, paddingRight: 12, gap: 5 },
+  // タイトルが右上のハートに被らないように（ハート分の逃げ）
+  cardTitleClear: { paddingRight: 26 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827', lineHeight: 21, letterSpacing: -0.2 },
   areaRow:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   cardArea:  { fontSize: 12, color: '#6B7280', flex: 1 },
@@ -406,11 +441,15 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#DDD6FE',
   },
   groupBtnText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
-  deleteBtn: {
+  // 行った！（検索結果カードと同トーン・押済みは薄く）
+  visitedBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: 7, borderRadius: 10,
-    backgroundColor: '#FFF5F6',
-    borderWidth: 1, borderColor: '#FECDD3',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1, borderColor: '#A7F3D0',
   },
-  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#F43F5E' },
+  visitedBtnDone: { backgroundColor: '#F6FEFA', borderColor: '#D1FAE5', opacity: 0.85 },
+  visitedBtnText: { fontSize: 12, fontWeight: '700', color: '#10B981' },
+  // 右上のハート（お気に入り解除）
+  heartRemove: { position: 'absolute', top: 10, right: 12 },
 });

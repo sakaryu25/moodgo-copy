@@ -4,6 +4,19 @@
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
+// 投稿IDが分かっている時の直付与（お気に入りの投稿カード等）。場所解決を挟まず正確。
+export function creditVisitedPost(spotId: string): void {
+  (async () => {
+    try {
+      const deviceId = await getDeviceId();
+      await apiFetch('/api/spot-like', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'like', rtype: 'visited', targetId: spotId, deviceId }),
+      });
+    } catch { /* noop */ }
+  })();
+}
+
 export function creditVisited(rec: {
   title: string;
   supabaseId?: string;
