@@ -2,14 +2,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 /**
  * 行った！クレジット（2026-07-07）
- * POST /api/place-visited { deviceId, placeName, supabaseId?, placeId?, address? }
+ * POST /api/place-visited { deviceId, placeName, supabaseId?, placeId?, address?, action? }
  *
- * 検索結果/履歴カードの「行った！」ボタンから呼ばれる。
+ * 検索結果/履歴/お気に入りの「行った！」ボタンから呼ばれる。
  * その場所に紐づく承認済み投稿（spot_posts / suggestions）を見つけ、
- * spot_post_reactions(rtype='visited') を付与する＝投稿者の「行った！された回数」が増える。
+ * spot_post_reactions(rtype='visited') を付与/解除する＝投稿者の「行った！された回数」が増減する。
+ *   - action: 'credit'(デフォルト) | 'uncredit'（ボタン再タップでの解除）
  *   - 二重付与は unique(post_id, device_id, rtype) で防止（同じ人が何度押しても1回）
  *   - suggestions の名前一致は同名別地の誤クレジット防止のため都道府県が分かる時は一致必須
- *   - 一方向（取り消しなし）= 既存「行った！」UXと同じ
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
@@ -30,6 +30,7 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "JSONが不正です" }, { status: 400 }); }
 
   const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
+  const action = body?.action === "uncredit" ? "uncredit" : "credit";
   const placeName = String(body?.placeName ?? "").trim().slice(0, 200);
   const supabaseId = String(body?.supabaseId ?? "").trim();
   const placeId = String(body?.placeId ?? "").trim();
@@ -73,9 +74,22 @@ export async function POST(req: Request) {
       } catch { /* スキップ */ }
     }
 
-    // ── visited リアクション付与（unique重複は成功扱い）──
+    const targets = Array.from(ids).slice(0, MAX_CREDIT);
+
+    // ── 解除: 自分が付けた visited リアクションを外す ──
+    if (action === "uncredit") {
+      let removed = 0;
+      if (targets.length > 0) {
+        const { data: del } = await db.from("spot_post_reactions")
+          .delete().eq("device_id", deviceId).eq("rtype", "visited").in("post_id", targets).select("id");
+        removed = Array.isArray(del) ? del.length : 0;
+      }
+      return NextResponse.json({ ok: true, matched: ids.size, removed });
+    }
+
+    // ── 付与（unique重複は成功扱い）──
     let credited = 0;
-    for (const postId of Array.from(ids).slice(0, MAX_CREDIT)) {
+    for (const postId of targets) {
       const { error } = await db.from("spot_post_reactions")
         .insert({ post_id: postId, device_id: deviceId, rtype: "visited" });
       if (!error) credited++;

@@ -4,14 +4,14 @@
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
-// 投稿IDが分かっている時の直付与（お気に入りの投稿カード等）。場所解決を挟まず正確。
-export function creditVisitedPost(spotId: string): void {
+// 投稿IDが分かっている時の直付与/解除（お気に入りの投稿カード等）。場所解決を挟まず正確。
+export function creditVisitedPost(spotId: string, on: boolean = true): void {
   (async () => {
     try {
       const deviceId = await getDeviceId();
       await apiFetch('/api/spot-like', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'like', rtype: 'visited', targetId: spotId, deviceId }),
+        body: JSON.stringify({ action: on ? 'like' : 'unlike', rtype: 'visited', targetId: spotId, deviceId }),
       });
     } catch { /* noop */ }
   })();
@@ -22,7 +22,7 @@ export function creditVisited(rec: {
   supabaseId?: string;
   placeId?: string;
   address?: string;
-}): void {
+}, on: boolean = true): void {
   (async () => {
     try {
       const deviceId = await getDeviceId();
@@ -30,6 +30,7 @@ export function creditVisited(rec: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           deviceId,
+          action: on ? 'credit' : 'uncredit',
           placeName: rec.title,
           supabaseId: rec.supabaseId || undefined,
           placeId: rec.placeId || undefined,

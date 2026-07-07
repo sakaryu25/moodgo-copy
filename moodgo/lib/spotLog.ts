@@ -65,6 +65,17 @@ export async function addVisitedLog(item: Omit<SpotLogItem, 'at'>): Promise<void
   } catch { /* 記録失敗は無害（バッジが増えないだけ） */ }
 }
 
+/** 行った！の解除: 同一スポット判定(keyOf=ID優先→title互換)で記録を外す（バッジ/訪れた県も減る） */
+export async function removeVisitedLog(item: Pick<SpotLogItem, 'title' | 'placeId' | 'supabaseId'>): Promise<void> {
+  try {
+    const list = await loadLog(VISITED_LOG_KEY);
+    const next = list.filter((e) => keyOf(e) !== keyOf(item));
+    if (next.length !== list.length) {
+      await AsyncStorage.setItem(VISITED_LOG_KEY, JSON.stringify(next));
+    }
+  } catch { /* noop */ }
+}
+
 /** 最近チェック: 同一スポットは先頭へ移動（最終閲覧日時で更新） */
 export async function addViewedLog(item: Omit<SpotLogItem, 'at'>): Promise<void> {
   try {

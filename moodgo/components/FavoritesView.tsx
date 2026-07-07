@@ -22,7 +22,7 @@ import { apiFetch } from '@/lib/api';
 import { useSpotPhotos } from '@/lib/spotPhotos';
 import { fetchUserPhotoMaps, userPhotosFor, type UserPhotoMaps } from '@/lib/userPhotos';
 import { copyPlaceName } from '@/lib/clipboard';
-import { addVisitedLog, loadVisitedLog } from '@/lib/spotLog';
+import { addVisitedLog, loadVisitedLog, removeVisitedLog } from '@/lib/spotLog';
 import { creditVisited, creditVisitedPost } from '@/lib/visitedCredit';
 import PuniPressable from './PuniPressable';
 
@@ -178,22 +178,30 @@ export default function FavoritesView({
     }
   };
 
-  // 行った！（検索結果と同じ体験）: ローカル記録(バッジ/訪れた県)＋投稿者へのクレジット。一方向。
+  // 行った！のトグル: ローカル記録(バッジ/訪れた県)＋投稿者へのクレジットを付与/解除。
   const [visitedTitles, setVisitedTitles] = useState<Set<string>>(new Set());
   useEffect(() => {
     loadVisitedLog().then((list) => setVisitedTitles(new Set(list.map((e) => e.title)))).catch(() => {});
   }, []);
   const markVisited = (item: FavoriteItem) => {
-    if (visitedTitles.has(item.title)) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setVisitedTitles((prev) => new Set([...prev, item.title]));
-    addVisitedLog({
-      title: item.title, photoUrl: item.photoUrl ?? item.photoUrls?.[0],
-      address: item.address ?? item.area, placeId: item.placeId, supabaseId: item.supabaseId, tags: item.tags,
-    }).catch(() => {});
-    // 投稿お気に入りはIDで直クレジット、場所は場所解決クレジット
-    if (item.kind === 'post' && item.spotId) creditVisitedPost(item.spotId);
-    else creditVisited({ title: item.title, supabaseId: item.supabaseId, placeId: item.placeId, address: item.address ?? item.area });
+    const on = !visitedTitles.has(item.title);
+    Haptics.impactAsync(on ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    setVisitedTitles((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(item.title); else next.delete(item.title);
+      return next;
+    });
+    if (on) {
+      addVisitedLog({
+        title: item.title, photoUrl: item.photoUrl ?? item.photoUrls?.[0],
+        address: item.address ?? item.area, placeId: item.placeId, supabaseId: item.supabaseId, tags: item.tags,
+      }).catch(() => {});
+    } else {
+      removeVisitedLog({ title: item.title, placeId: item.placeId, supabaseId: item.supabaseId }).catch(() => {});
+    }
+    // 投稿お気に入りはIDで直クレジット、場所は場所解決クレジット（onに応じて付与/解除）
+    if (item.kind === 'post' && item.spotId) creditVisitedPost(item.spotId, on);
+    else creditVisited({ title: item.title, supabaseId: item.supabaseId, placeId: item.placeId, address: item.address ?? item.area }, on);
   };
 
   const renderList = (list: FavoriteItem[], emptyTitle: string, emptySub: string, idx: number) => (
