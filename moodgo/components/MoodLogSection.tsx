@@ -159,7 +159,7 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
 
       {!loading && posts.length === 0 && (
         <TouchableOpacity onPress={goPost} activeOpacity={0.8} style={s.empty}>
-          <Text style={s.emptyText}>まだMoodログがありません。{'\n'}この場所の最初のMoodログを投稿しませんか？📸</Text>
+          <Text style={s.emptyText}>まだMoodログがありません。{'\n'}この場所の最初のMoodログを投稿しませんか？</Text>
         </TouchableOpacity>
       )}
 
