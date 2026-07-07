@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import AppBackground, { APP_BG } from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
@@ -182,7 +183,30 @@ export default function PostScreen() {
     try {
       const deviceId = await getDeviceId();
       const posterName = (await AsyncStorage.getItem('moodgo-group-nickname'))?.trim() || undefined;
-      const imgs = images.map(i => (i.base64 ? `data:image/jpeg;base64,${i.base64}` : '')).filter(Boolean);
+      // 画像はクライアントで縮小してから送る:
+      //   メイン=幅1440px(アップロード/表示とも軽量) ・ サムネ=幅400px(フィード表示用・_thumb規約で保存)
+      const prepared = await Promise.all(images.map(async (img) => {
+        try {
+          const main = await ImageManipulator.manipulateAsync(
+            img.uri, [{ resize: { width: 1440 } }],
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+          );
+          const thumb = await ImageManipulator.manipulateAsync(
+            img.uri, [{ resize: { width: 400 } }],
+            { compress: 0.55, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+          );
+          return {
+            main: main.base64 ? `data:image/jpeg;base64,${main.base64}` : '',
+            thumb: thumb.base64 ? `data:image/jpeg;base64,${thumb.base64}` : '',
+          };
+        } catch {
+          // 縮小失敗時は従来どおり元のbase64を送る（サムネ無し）
+          return { main: img.base64 ? `data:image/jpeg;base64,${img.base64}` : '', thumb: '' };
+        }
+      }));
+      const valid = prepared.filter(p2 => p2.main);
+      const imgs = valid.map(p2 => p2.main);
+      const thumbImgs = valid.map(p2 => p2.thumb);
       // 投稿は全て spot-posts に一本化。新スポット(placeId無し)はAPI側でplacesに仮登録され、admin承認で検索に出る。
       // ⚠ 価格/おすすめ度は独立フィールドで送る（captionへの【目安価格】【おすすめ度】埋め込みは廃止＝
       //    検索カードの説明が汚れない・除去処理も不要）。
@@ -194,7 +218,7 @@ export default function PostScreen() {
           lat: lat ?? undefined, lng: lng ?? undefined,
           // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
           caption: caption.trim(), moodTags, visibility: anonymous ? 'spot_public_anonymous' : 'public',
-          canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
+          canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs, thumbImages: thumbImgs,
           priceChip: priceChip || undefined,
           priceNote: priceNote.trim() || undefined,
           rating: rating > 0 ? rating : undefined,

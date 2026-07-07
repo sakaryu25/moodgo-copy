@@ -72,6 +72,26 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   // カーソルページング: サーバーの nextCursor(最後のcreated_at)。offset方式は2ソース合流で
   // 投稿が欠落するため、2ページ目以降は cursor を送る（旧サーバー互換で offset も併送）。
   const cursorRef = useRef<string | null>(null);
+  // 次ページの先読み: 表示直後に裏で次カーソル分を取得して保持 → 末尾到達時は即appendで待ち時間ゼロ
+  type Page = { items: FeedItem[]; nextCursor: string | null; hasMore: boolean };
+  const prefetchRef = useRef<Page | null>(null);
+  const prefetchNext = useCallback(async () => {
+    if (!full || posterHandle || prefetchRef.current) return;
+    try {
+      const cursorQ = cursorRef.current ? `&cursor=${encodeURIComponent(cursorRef.current)}` : '';
+      const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=${offsetRef.current}${cursorQ}`);
+      const data = await res.json();
+      if (data?.ok !== false && isMounted.current) {
+        const items: FeedItem[] = data?.items ?? [];
+        prefetchRef.current = {
+          items,
+          nextCursor: data?.nextCursor
+            ?? (items.length ? String(items[items.length - 1]?.created_at ?? '') || null : cursorRef.current),
+          hasMore: data?.hasMore ?? items.length >= PAGE,
+        };
+      }
+    } catch { /* 先読み失敗は無害（末尾で通常フェッチされる） */ }
+  }, [full, posterHandle]);
 
   // キーワード検索（full: サーバー側でスポット名/本文の部分一致）
   const kw = (searchQuery ?? '').trim();
@@ -140,13 +160,17 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
           ?? (fetched.length ? String(fetched[fetched.length - 1]?.created_at ?? '') || null : null);
         setHasMore(data?.hasMore ?? fetched.length >= PAGE);
         saveJSON(FEED_CACHE_KEY, fetched.slice(0, PAGE));
+        // 次ページを裏で先読み（末尾到達時に待ち時間ゼロでappend）
+        prefetchRef.current = null;
+        if (data?.hasMore ?? fetched.length >= PAGE) prefetchNext();
       }
     } catch {
       // キャッシュを出せている時は静かに前回結果のまま（エラーで置き換えない）
       if (isMounted.current && !hadCache) { setItems([]); setLoadError(true); }
     }
     finally { if (isMounted.current) setLoading(false); }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefetchNext]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -158,6 +182,21 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   useEffect(() => {
     if (!full || loadMoreKey === undefined || loadMoreKey === 0) return;
     if (loadingMore || !hasMore || posterHandle || kw) return;
+    // 先読み済みなら即append（体感ゼロ待ち）→ 次の先読みを開始
+    const pre = prefetchRef.current;
+    if (pre) {
+      prefetchRef.current = null;
+      setItems((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const add = pre.items.filter((m) => !seen.has(m.id));
+        offsetRef.current += pre.items.length;
+        return [...prev, ...add];
+      });
+      cursorRef.current = pre.nextCursor;
+      setHasMore(pre.hasMore);
+      if (pre.hasMore) prefetchNext();
+      return;
+    }
     let cancelled = false;
     setLoadingMore(true);
     (async () => {
@@ -175,7 +214,9 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
           });
           cursorRef.current = data?.nextCursor
             ?? (more.length ? String(more[more.length - 1]?.created_at ?? '') || null : cursorRef.current);
-          setHasMore(data?.hasMore ?? more.length >= PAGE);
+          const nextHasMore = data?.hasMore ?? more.length >= PAGE;
+          setHasMore(nextHasMore);
+          if (nextHasMore) prefetchNext();   // 続きも先読みしておく
         }
       } catch { /* 追加読み込み失敗は次の末尾スクロールで自然に再試行される */ }
       finally { if (!cancelled && isMounted.current) setLoadingMore(false); }

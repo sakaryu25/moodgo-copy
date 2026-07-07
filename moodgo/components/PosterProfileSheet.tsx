@@ -17,6 +17,7 @@ import {
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ThumbImage from '@/components/ThumbImage';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -194,7 +195,7 @@ export default function PosterProfileSheet({
                     style={[s.tile, { width: cell, height: cell }]}
                     accessibilityRole="button" accessibilityLabel={`${p.spot_name}の投稿を開く`}>
                     {p.image ? (
-                      <Image source={{ uri: p.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} />
+                      <ThumbImage uri={p.image} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} />
                     ) : (
                       <LinearGradient colors={['#EDE9FF', '#E3ECFF']} style={[StyleSheet.absoluteFill, s.tilePh]}>
                         <MapPin size={Math.round(cell * 0.22)} color={BLUE} strokeWidth={1.6} />

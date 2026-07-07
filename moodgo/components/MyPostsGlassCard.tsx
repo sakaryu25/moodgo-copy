@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronRight, Heart, MapPin, Sparkles } from 'lucide-react-native';
+import ThumbImage from './ThumbImage';
 import React, { useRef } from 'react';
 import {
   Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View,
@@ -188,7 +189,7 @@ export default function MyPostsGlassCard({
                     <View style={s.thumbRing}>
                       <View style={s.thumb}>
                         {img ? (
-                          <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                          <ThumbImage uri={img} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
                         ) : (
                           <LinearGradient colors={['#EDE9FF', '#E3ECFF']} style={[StyleSheet.absoluteFill, s.heroPh]}>
                             <MapPin size={20} color={BLUE} strokeWidth={1.6} />

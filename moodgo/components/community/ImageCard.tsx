@@ -1,10 +1,10 @@
 // 画像ありカード: 上に写真＋下に本文。写真の右下に「都道府県 / スポット名」を重ねる。
 //   写真は縦長・横長を問わず正方形(1:1)に統一（cover切り抜き）。
 //   縦長が巨大化せず、横長も小さくならず、全カードの画像高さが揃う＋読込時のレイアウト飛びも無い。
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MapPin } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
+import ThumbImage from '../ThumbImage';
 import CardBody from './CardBody';
 import type { Post } from './postTypes';
 
@@ -13,8 +13,8 @@ export default function ImageCard({ post, onMenu }: { post: Post; onMenu: () => 
   return (
     <View>
       <View>
-        <Image
-          source={{ uri: post.image! }}
+        <ThumbImage
+          uri={post.image!}
           style={s.img}
           contentFit="cover"
           transition={220}

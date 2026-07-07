@@ -168,6 +168,8 @@ export async function POST(req: Request) {
     const newAvailUntil = dateOrNull(body?.availableUntil);
 
     const images: string[] = Array.isArray(body?.images) ? body.images.filter((s: unknown) => typeof s === "string").slice(0, 3) : [];
+    // フィード用サムネイル（クライアントが400px縮小して送る・任意・imagesと同順）
+    const thumbImages: string[] = Array.isArray(body?.thumbImages) ? body.thumbImages.slice(0, 3).map(String) : [];
     for (const img of images) {
       if (img.length > 4_000_000) return NextResponse.json({ ok: false, error: "画像が大きすぎます" }, { status: 400 });
       if (!isValidImageBase64(img)) return NextResponse.json({ ok: false, error: "画像の形式が不正です" }, { status: 400 });
@@ -189,6 +191,14 @@ export async function POST(req: Request) {
         const payload = img.includes(",") ? img.slice(img.indexOf(",") + 1) : img;
         const { error: upErr } = await db.storage.from(BUCKET).upload(path, Buffer.from(payload, "base64"), { contentType: "image/jpeg", upsert: true });
         if (upErr) return null;
+        // フィード用サムネイル: 同名+_thumb.jpg 規約（表示側がURL置換で導出・失敗しても投稿は成功）
+        const th = thumbImages[i];
+        if (th && isValidImageBase64(th)) {
+          const thPayload = th.includes(",") ? th.slice(th.indexOf(",") + 1) : th;
+          await db.storage.from(BUCKET)
+            .upload(path.replace(/\.jpg$/, "_thumb.jpg"), Buffer.from(thPayload, "base64"), { contentType: "image/jpeg", upsert: true })
+            .then(() => {}, () => {});
+        }
         const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path);
         return { url: `${pub.publicUrl}?v=${Buffer.from(path).length}`, path };
       }))).filter(Boolean) as { url: string; path: string }[];

@@ -1,12 +1,12 @@
 // 投稿カード: 画像を大きく魅せる（画像のみ＋下部スクリム）。
 //   左上=都道府県タグ / 左下=スポット名＋♥いいね・行った！人数。
 //   角丸24・自然な影・押下scale0.98(0.15s)・初回fade-up(0.3s)。
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Footprints, Heart, MapPin } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import ThumbImage from '../ThumbImage';
 import { MP, aspectOf, type MyPost } from './types';
 
 function statusLabel(status?: string | null): string | null {
@@ -44,7 +44,7 @@ export default function MyPostCard({
       >
         <View style={[s.imgWrap, { aspectRatio: aspectOf(post.id) }]}>
           {img ? (
-            <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={220} />
+            <ThumbImage uri={img} style={StyleSheet.absoluteFill} contentFit="cover" transition={220} />
           ) : (
             <LinearGradient colors={['#EDE9FF', '#E3ECFF']} style={[StyleSheet.absoluteFill, s.ph]}>
               <MapPin size={30} color={MP.MAIN} strokeWidth={1.6} />
