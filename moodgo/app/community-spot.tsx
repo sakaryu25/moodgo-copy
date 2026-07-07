@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, UserRound, Wallet,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -25,7 +25,6 @@ import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import MoodLogSection from '@/components/MoodLogSection';
 import PosterProfileSheet from '@/components/PosterProfileSheet';
-import { addVisitedLog } from '@/lib/spotLog';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -90,10 +89,6 @@ export default function CommunitySpotScreen() {
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  // 行った！（閲覧者が押す・投稿者の「行った！された回数」に加算）
-  const [visitedOn, setVisitedOn] = useState(false);
-  const [visitedCount, setVisitedCount] = useState(0);
-  const [visitedBusy, setVisitedBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -103,10 +98,9 @@ export default function CommunitySpotScreen() {
         if (d.ok) {
           setSpot(d.spot);
           if (typeof d.spot.likeCount === 'number') setLikeCount(d.spot.likeCount);
-          if (typeof d.spot.visitedCount === 'number') setVisitedCount(d.spot.visitedCount);
           const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
           setFaved(faves.some((f) => sameFav(f, { title: d.spot.placeName || d.spot.userTitle, placeId: d.spot.placeId })));
-          // 自分がいいね/行った済みか（失敗しても未押下扱いで続行・statusは両方まとめて返る）
+          // 自分がいいね済みか（失敗しても未押下扱いで続行）
           try {
             const deviceId = await getDeviceId();
             const likeTarget = d.spot.kind === 'moodlog' ? `ml-${d.spot.id}` : d.spot.id;
@@ -117,8 +111,6 @@ export default function CommunitySpotScreen() {
             if (st?.ok) {
               setLiked(!!st.liked);
               if (typeof st.count === 'number') setLikeCount(st.count);
-              setVisitedOn(!!st.visited);
-              if (typeof st.visitedCount === 'number') setVisitedCount(st.visitedCount);
             }
           } catch { /* noop */ }
         }
@@ -167,39 +159,6 @@ export default function CommunitySpotScreen() {
     }
     setFaved(on);
     if (next) await saveJSON(FAVORITES_KEY, next);
-  };
-
-  // 行った！（閲覧者が押す→投稿者の実績に加算。押した本人のローカル記録にも追加=バッジ/訪れた県）
-  const onVisitedPress = async () => {
-    if (!spot || visitedBusy) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = !visitedOn;
-    setVisitedOn(next);
-    setVisitedCount((c) => Math.max(0, c + (next ? 1 : -1)));
-    setVisitedBusy(true);
-    if (next) {
-      // 既存の行った！記録（プロフィールのバッジ・訪れた都道府県の源泉）
-      addVisitedLog({
-        title: spot.placeName || spot.userTitle,
-        photoUrl: spot.imageUrls[0] ?? '',
-        area: spot.prefecture,
-        address: spot.address,
-        placeId: spot.placeId,
-      }).catch(() => {});
-    }
-    try {
-      const deviceId = await getDeviceId();
-      const likeTarget = spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id;
-      const d = await apiFetch('/api/spot-like', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: next ? 'like' : 'unlike', rtype: 'visited', targetId: likeTarget, deviceId }),
-      }).then((r) => r.json());
-      if (!d?.ok) throw new Error('visited失敗');
-      if (typeof d.count === 'number') setVisitedCount(d.count);
-    } catch {
-      setVisitedOn(!next);
-      setVisitedCount((c) => Math.max(0, c + (next ? -1 : 1)));
-    } finally { setVisitedBusy(false); }
   };
 
   const onPhotoScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -471,13 +430,6 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
-      {/* 行った！（いいねの上）: 閲覧者が押す→投稿者の「行った！された回数」に加算 */}
-      <TouchableOpacity onPress={onVisitedPress} style={[s.visitedFab, visitedOn && s.visitedFabOn, { bottom: insets.bottom + 18 + 66 + 12 }]} activeOpacity={0.85}
-        accessibilityRole="button" accessibilityLabel={visitedOn ? '行った！を取り消す' : 'この場所に行った！'}>
-        <Footprints size={20} color={visitedOn ? '#fff' : PURPLE} strokeWidth={2.3} />
-        <Text style={[s.visitedFabCount, visitedOn && { color: '#fff' }]}>{visitedCount}</Text>
-      </TouchableOpacity>
-
       {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存 */}
       <TouchableOpacity onPress={onHeartPress} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
         accessibilityRole="button" accessibilityLabel={(liked || faved) ? 'いいねを取り消す' : 'この投稿にいいね'}>
@@ -699,13 +651,4 @@ const s = StyleSheet.create({
     shadowColor: PINK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
   },
   favFabCount: { fontSize: 12, fontWeight: '800', color: PINK, marginTop: 1 },
-  // 行った！FAB（いいねの上・押下で紫塗り）
-  visitedFab: {
-    position: 'absolute', right: 18, width: 58, height: 66, borderRadius: 29,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingTop: 2,
-    borderWidth: 2, borderColor: '#EDE6FD',
-    shadowColor: PURPLE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 6,
-  },
-  visitedFabOn: { backgroundColor: PURPLE, borderColor: PURPLE },
-  visitedFabCount: { fontSize: 12, fontWeight: '800', color: PURPLE, marginTop: 1 },
 });

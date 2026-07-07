@@ -24,6 +24,7 @@ import PuniPressable from './PuniPressable';
 import type { HistoryItem, FavoriteItem, Recommendation } from '@/types/app';
 import { sameFav } from '@/lib/favKey';
 import { addVisitedLog } from '@/lib/spotLog';
+import { creditVisited } from '@/lib/visitedCredit';
 import PlaceCard from './PlaceCard';
 import { fetchUserPhotoMaps, userPhotosFor, mergeUserPhotos, type UserPhotoMaps } from '@/lib/userPhotos';
 import ReportModal from './ReportModal';
@@ -382,6 +383,8 @@ function DetailView({
                   title: rec.title, photoUrl: rec.photoUrl ?? rec.photoUrls?.[0],
                   address: rec.address, placeId: rec.placeId, supabaseId: rec.supabaseId, tags: rec.tags,
                 });
+                // この場所に投稿があれば投稿者の「行った！された回数」に加算（fire-and-forget）
+                creditVisited(rec);
               }}
               onReport={() => setReportRec(rec)}
               onPressDetail={onPressDetail

@@ -22,6 +22,7 @@ import PuniPressable from './PuniPressable';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import { sameFav } from '@/lib/favKey';
 import { addVisitedLog } from '@/lib/spotLog';
+import { creditVisited } from '@/lib/visitedCredit';
 import type { PlaceResponse } from '@/types/onsen';
 import PlaceCard from './PlaceCard';
 
@@ -763,6 +764,8 @@ export default function ResultsView(props: Props) {
                     supabaseId: visitingSpot.supabaseId,
                     tags: visitingSpot.tags,
                   });
+                  // この場所に投稿があれば投稿者の「行った！された回数」に加算（fire-and-forget）
+                  creditVisited(visitingSpot);
                   if (visitingRating > 0) onSubmitVisitedFeedback?.(visitingSpot.title, visitingRating);
                   setVisitingSpot(null); setVisitingRating(0);
                 }}
