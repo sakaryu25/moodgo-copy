@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, Wallet,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,10 +19,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import MoodLogSection from '@/components/MoodLogSection';
+import PosterProfileSheet from '@/components/PosterProfileSheet';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -46,6 +48,9 @@ type Spot = {
   lat?: number; lng?: number; placeId?: string;
   availableFrom?: string | null; availableUntil?: string | null;  // 公開期間（期間限定投稿）
   posterName?: string | null; posterHandle?: string | null; posterIcon?: string | null;  // 投稿者（匿名はnull）
+  posterId?: string | null;   // 投稿者の公開ハッシュ（プロフィール/フォロー用）
+  kind?: string;              // 'moodlog' | 'suggestion'（いいねtargetId構築用）
+  likeCount?: number;         // 投稿へのいいね数
 };
 
 // "2026-04-15" → "2026/4/15"。null/未設定はnull。
@@ -78,6 +83,11 @@ export default function CommunitySpotScreen() {
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoW, setPhotoW] = useState(0);
   const [faved, setFaved] = useState(false);
+  // 投稿へのいいね＋投稿者プロフィールシート
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [likeBusy, setLikeBusy] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -86,12 +96,46 @@ export default function CommunitySpotScreen() {
         const d = await res.json();
         if (d.ok) {
           setSpot(d.spot);
+          if (typeof d.spot.likeCount === 'number') setLikeCount(d.spot.likeCount);
           const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
           setFaved(faves.some((f) => sameFav(f, { title: d.spot.placeName || d.spot.userTitle, placeId: d.spot.placeId })));
+          // 自分がいいね済みか（失敗しても未いいね扱いで続行）
+          try {
+            const deviceId = await getDeviceId();
+            const likeTarget = d.spot.kind === 'moodlog' ? `ml-${d.spot.id}` : d.spot.id;
+            const st = await apiFetch('/api/spot-like', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'status', targetId: likeTarget, deviceId }),
+            }).then((r) => r.json());
+            if (st?.ok) { setLiked(!!st.liked); if (typeof st.count === 'number') setLikeCount(st.count); }
+          } catch { /* noop */ }
         }
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
   }, [id]);
+
+  // 投稿へのいいね（楽観更新・失敗時ロールバック）
+  const toggleLike = async () => {
+    if (!spot || likeBusy) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
+    setLikeBusy(true);
+    try {
+      const deviceId = await getDeviceId();
+      const likeTarget = spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id;
+      const d = await apiFetch('/api/spot-like', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: next ? 'like' : 'unlike', targetId: likeTarget, deviceId }),
+      }).then((r) => r.json());
+      if (!d?.ok) throw new Error('like失敗');
+      if (typeof d.count === 'number') setLikeCount(d.count);
+    } catch {
+      setLiked(!next);
+      setLikeCount((c) => Math.max(0, c + (next ? -1 : 1)));
+    } finally { setLikeBusy(false); }
+  };
 
   const toggleFav = async () => {
     if (!spot) return;
@@ -229,6 +273,46 @@ export default function CommunitySpotScreen() {
             </View>
           ) : null}
 
+          {/* ── 投稿者カード（タップでプロフィール）＋投稿へのいいね ── */}
+          <View style={s.posterCard}>
+            {spot.posterId ? (
+              <TouchableOpacity onPress={() => setProfileOpen(true)} activeOpacity={0.75} style={s.posterMain}
+                accessibilityRole="button" accessibilityLabel={`${spot.posterName?.trim() || 'MoodGoユーザー'}のプロフィールを見る`}>
+                {spot.posterIcon ? (
+                  <Image source={{ uri: spot.posterIcon }} style={s.posterCardAvatar} contentFit="cover" />
+                ) : (
+                  <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
+                    <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
+                  </View>
+                )}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.posterKicker}>投稿者</Text>
+                  <View style={s.posterNameRow}>
+                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || 'MoodGoユーザー'}</Text>
+                    {spot.posterHandle ? <Text style={s.posterHandle} numberOfLines={1}>@{spot.posterHandle}</Text> : null}
+                  </View>
+                </View>
+                <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
+              </TouchableOpacity>
+            ) : (
+              <View style={s.posterMain}>
+                <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
+                  <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.posterKicker}>投稿者</Text>
+                  <Text style={s.posterName}>匿名の投稿</Text>
+                </View>
+              </View>
+            )}
+            {/* 投稿へのいいね */}
+            <TouchableOpacity onPress={toggleLike} activeOpacity={0.8} style={[s.likePill, liked && s.likePillOn]}
+              accessibilityRole="button" accessibilityLabel={liked ? 'いいねを取り消す' : 'この投稿にいいね'}>
+              <Heart size={15} color={liked ? '#fff' : PINK} fill={liked ? '#fff' : 'transparent'} strokeWidth={2.4} />
+              <Text style={[s.likePillText, liked && s.likePillTextOn]}>{likeCount}</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
           {(spot.availableFrom || spot.availableUntil) ? (
             <View style={s.periodCard}>
@@ -245,21 +329,7 @@ export default function CommunitySpotScreen() {
           {/* ── 大目玉: 利用者コメント＋投稿者のおすすめ度 ── */}
           {(spot.description || spot.rating > 0) ? (
             <View style={s.commentCard}>
-              {(spot.posterName || spot.posterHandle) ? (
-                <View style={s.posterRow}>
-                  {spot.posterIcon ? (
-                    <Image source={{ uri: spot.posterIcon }} style={s.posterAvatar} contentFit="cover" />
-                  ) : (
-                    <View style={[s.posterAvatar, s.posterAvatarPh]}>
-                      <Text style={s.posterAvatarInitial}>{(spot.posterName?.trim().charAt(0) || 'M').toUpperCase()}</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || 'MoodGoユーザー'}</Text>
-                    {spot.posterHandle ? <Text style={s.posterHandle} numberOfLines={1}>@{spot.posterHandle}</Text> : null}
-                  </View>
-                </View>
-              ) : null}
+              {/* 投稿者表示は上の投稿者カードに移設（重複を避ける） */}
               {spot.description ? (
                 <>
                   <View style={s.commentLabelRow}>
@@ -359,10 +429,20 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
-      {/* いいね（右下フローティング）*/}
+      {/* お気に入り（右下フローティング）*/}
       <TouchableOpacity onPress={toggleFav} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
         <Heart size={24} color={PINK} fill={faved ? PINK : 'transparent'} strokeWidth={2.4} />
       </TouchableOpacity>
+
+      {/* 投稿者プロフィール（⚠常時マウント＋visibleトグル: Fabric透明Modal対策）*/}
+      <PosterProfileSheet
+        visible={profileOpen}
+        posterId={spot.posterId ?? null}
+        fallbackName={spot.posterName}
+        fallbackHandle={spot.posterHandle}
+        fallbackIcon={spot.posterIcon}
+        onClose={() => setProfileOpen(false)}
+      />
     </View>
   );
 }
@@ -486,12 +566,27 @@ const s = StyleSheet.create({
   commentLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   commentLabel: { fontSize: 12.5, fontWeight: '900', color: PURPLE },
   commentText: { fontSize: 14, color: '#2D2240', lineHeight: 22, fontWeight: '500' },
-  posterRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 10 },
-  posterAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0EDFF' },
+  // 投稿者カード（タップでプロフィール・右にいいねピル）
+  posterCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2,
+  },
+  posterMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  posterCardAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0EDFF' },
   posterAvatarPh: { alignItems: 'center', justifyContent: 'center' },
-  posterAvatarInitial: { fontSize: 14, fontWeight: '800', color: '#7A5CFF' },
-  posterName: { fontSize: 13, fontWeight: '800', color: '#1E1548' },
-  posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', marginTop: 0.5 },
+  posterKicker: { fontSize: 10, fontWeight: '800', color: '#B7A9E0', letterSpacing: 0.8, marginBottom: 1 },
+  posterNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  posterName: { fontSize: 13.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
+  posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', flexShrink: 1 },
+  likePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
+    backgroundColor: '#FDF2F8', borderWidth: 1.5, borderColor: '#FBCFE8',
+  },
+  likePillOn: { backgroundColor: PINK, borderColor: PINK },
+  likePillText: { fontSize: 13, fontWeight: '800', color: PINK },
+  likePillTextOn: { color: '#fff' },
   posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
   posterRateTop: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },

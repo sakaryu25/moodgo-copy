@@ -169,24 +169,38 @@ export default function ProfileTab() {
     setViewed(w);
   }, []);
 
+  // フォロワー/フォロー中（user_follows・テーブル未適用は0）
+  const [follows, setFollows] = useState({ followers: 0, following: 0 });
+  const loadFollows = useCallback(async () => {
+    try {
+      const deviceId = await getDeviceId();
+      const d = await apiFetch('/api/user-follows', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'me', deviceId }),
+      }).then((r) => r.json());
+      if (d?.ok) setFollows({ followers: d.followerCount ?? 0, following: d.followingCount ?? 0 });
+    } catch { /* 0のまま */ }
+  }, []);
+
   // タブにフォーカスするたびに最新化（設定変更・投稿・行った！・閲覧の反映）
   useFocusEffect(
     useCallback(() => {
       hydrateSettings();
       loadProfile();
       loadLogs();
+      loadFollows();
       playEntrance();
       (async () => {
         setLoading(true);
         await loadPosts();
         setLoading(false);
       })();
-    }, [loadProfile, loadPosts, loadLogs, playEntrance]),
+    }, [loadProfile, loadPosts, loadLogs, loadFollows, playEntrance]),
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadProfile(), loadPosts(), loadLogs()]);
+    await Promise.all([loadProfile(), loadPosts(), loadLogs(), loadFollows()]);
     setRefreshing(false);
   };
 
@@ -408,12 +422,12 @@ export default function ProfileTab() {
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
-                  <Text style={s.statNum}>0</Text>
+                  <Text style={s.statNum}>{follows.followers}</Text>
                   <Text style={s.statLabel}>フォロワー</Text>
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
-                  <Text style={s.statNum}>0</Text>
+                  <Text style={s.statNum}>{follows.following}</Text>
                   <Text style={s.statLabel}>フォロー中</Text>
                 </View>
               </View>

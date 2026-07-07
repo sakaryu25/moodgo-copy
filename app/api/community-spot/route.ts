@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { iconPathFor } from "@/lib/device-hash";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 import { handlesByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
@@ -86,6 +86,7 @@ export async function GET(request: Request) {
     let posterName: string | null = null;
     let posterHandle: string | null = null;
     let posterIcon: string | null = null;
+    let posterId: string | null = null;   // 公開ハッシュ（プロフィール/フォロー用・生device_idは返さない）
 
     if (isMoodlog) {
       // ── みんなのMoodログ(spot_posts)＝「投稿」ボタンから入る統一投稿 ──
@@ -114,6 +115,7 @@ export async function GET(request: Request) {
         posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
         const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
         posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+        posterId = deviceHash(post.device_id);
       }
       respId = String(post.id);
       userTitle = String(post.place_name ?? "").trim();
@@ -171,6 +173,7 @@ export async function GET(request: Request) {
         posterHandle = (await handlesByDevice(supabase, [dev])).get(dev) ?? null;
         const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
         posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+        posterId = deviceHash(dev);
       }
       respId = String(s.id);
       userTitle = (s.spot_name ?? "").trim();
@@ -327,10 +330,20 @@ export async function GET(request: Request) {
       } catch { /* 無視 */ }
     }
 
+    // いいね数（穴場/Moodログ共通で spot_post_reactions を数える。テーブル未適用は0）
+    let likeCount = 0;
+    try {
+      const { count, error: lcErr } = await supabase.from("spot_post_reactions")
+        .select("id", { count: "exact", head: true }).eq("post_id", realId).eq("rtype", "like");
+      if (!lcErr) likeCount = count ?? 0;
+    } catch { /* 0のまま */ }
+
     return NextResponse.json({
       ok: true,
       spot: {
         id: respId,
+        kind: isMoodlog ? "moodlog" : "suggestion",   // いいね/プロフィールのtargetId構築用
+        likeCount,
         userTitle,            // 利用者が書いたスポット名
         placeName,            // 場所名（Google名 or 同じ）
         description,          // 利用者が書いた説明 / caption（大目玉）
@@ -359,6 +372,7 @@ export async function GET(request: Request) {
         posterName,           // 投稿者（匿名投稿はnull・生device_idは返さない）
         posterHandle,         // 投稿者の@ID（未設定はnull）
         posterIcon,           // 投稿者アイコン（ハッシュ名URL）
+        posterId,             // 投稿者の公開ハッシュ（プロフィール/フォロー用・匿名はnull）
       },
     });
   } catch (e) {
