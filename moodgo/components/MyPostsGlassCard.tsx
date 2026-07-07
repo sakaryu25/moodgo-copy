@@ -116,8 +116,15 @@ export default function MyPostsGlassCard({
             </Pressable>
           </View>
 
-          {/* ── メイン: 最新投稿のヒーロー ── */}
+          {/* ── メイン: 最新投稿のヒーロー（背後に写真色のガラスグロー）── */}
           <GlassPress onPress={() => onPressPost(hero)} label={`${hero.spot_name}の投稿を開く`}>
+            {/* 写真自身をぼかして背後に敷く＝写真の色がにじむ「ガラスの影」（iOSアルバム風） */}
+            {heroImg && (
+              <Image
+                source={{ uri: heroImg }} blurRadius={28} contentFit="cover"
+                style={s.heroGlow} pointerEvents="none"
+              />
+            )}
             <View style={s.hero}>
               {heroImg ? (
                 <Image source={{ uri: heroImg }} style={StyleSheet.absoluteFill} contentFit="cover" transition={220} />
@@ -137,9 +144,16 @@ export default function MyPostsGlassCard({
               {/* 左下: スポット名 / 都道府県・日付 */}
               <View style={s.heroInfo} pointerEvents="none">
                 <Text style={s.heroName} numberOfLines={1}>{hero.spot_name}</Text>
-                <Text style={s.heroMeta} numberOfLines={1}>
-                  {hero.prefecture ? `${hero.prefecture}　` : ''}{fmtDate(hero.created_at)}
-                </Text>
+                <View style={s.heroMetaRow}>
+                  {!!hero.prefecture && (
+                    <>
+                      <MapPin size={11} color="rgba(255,255,255,0.92)" strokeWidth={2.4} />
+                      <Text style={s.heroMeta} numberOfLines={1}>{hero.prefecture}</Text>
+                      <View style={s.metaDot} />
+                    </>
+                  )}
+                  <Text style={s.heroMeta} numberOfLines={1}>{fmtDate(hero.created_at)}</Text>
+                </View>
               </View>
 
               {/* 右下: いいねのガラスカプセル */}
@@ -154,24 +168,38 @@ export default function MyPostsGlassCard({
             </View>
           </GlassPress>
 
-          {/* ── サムネイル横スクロール（80×80・角丸18・間14）── */}
+          {/* ── サムネイル横スクロール（80×80・白リング・末尾に「+N」）── */}
           {thumbs.length > 0 && (
             <ScrollView
               horizontal showsHorizontalScrollIndicator={false}
               style={s.thumbScroll} contentContainerStyle={s.thumbRow}
             >
-              {thumbs.map((p) => {
+              {thumbs.map((p, i) => {
                 const img = p.image_urls?.[0] ?? null;
+                // 6件目以降がある時は最後のサムネに「+N」を重ね、タップで全件へ
+                const extra = posts.length - 1 - thumbs.length;
+                const isMore = extra > 0 && i === thumbs.length - 1;
                 return (
-                  <GlassPress key={p.id} onPress={() => onPressPost(p)} label={`${p.spot_name}の投稿を開く`}>
-                    <View style={s.thumb}>
-                      {img ? (
-                        <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
-                      ) : (
-                        <LinearGradient colors={['#EDE9FF', '#E3ECFF']} style={[StyleSheet.absoluteFill, s.heroPh]}>
-                          <MapPin size={20} color={BLUE} strokeWidth={1.6} />
-                        </LinearGradient>
-                      )}
+                  <GlassPress
+                    key={p.id}
+                    onPress={() => (isMore ? onMore() : onPressPost(p))}
+                    label={isMore ? `残り${extra}件の投稿を見る` : `${p.spot_name}の投稿を開く`}
+                  >
+                    <View style={s.thumbRing}>
+                      <View style={s.thumb}>
+                        {img ? (
+                          <Image source={{ uri: img }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+                        ) : (
+                          <LinearGradient colors={['#EDE9FF', '#E3ECFF']} style={[StyleSheet.absoluteFill, s.heroPh]}>
+                            <MapPin size={20} color={BLUE} strokeWidth={1.6} />
+                          </LinearGradient>
+                        )}
+                        {isMore && (
+                          <View style={s.thumbMore}>
+                            <Text style={s.thumbMoreText}>+{extra}</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   </GlassPress>
                 );
@@ -216,7 +244,11 @@ const s = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   count: { fontSize: 12.5, fontWeight: '700', color: SUB },
 
-  // ヒーロー
+  // ヒーロー（heroGlow=写真をぼかした「ガラスの影」を背後に敷く）
+  heroGlow: {
+    position: 'absolute', left: 10, right: 10, top: 12, bottom: -8,
+    borderRadius: 26, opacity: 0.55,
+  },
   hero: { height: 220, borderRadius: 24, overflow: 'hidden', backgroundColor: '#EFEDF8' },
   heroPh: { alignItems: 'center', justifyContent: 'center' },
   heroScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 110 },
@@ -225,8 +257,10 @@ const s = StyleSheet.create({
     color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: -0.2,
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
   },
+  heroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.7)', marginHorizontal: 2 },
   heroMeta: {
-    color: 'rgba(255,255,255,0.92)', fontSize: 11.5, fontWeight: '600', marginTop: 3,
+    color: 'rgba(255,255,255,0.92)', fontSize: 11.5, fontWeight: '600',
     textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   statusChip: {
@@ -244,10 +278,19 @@ const s = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.25)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
 
-  // サムネイル
-  thumbScroll: { marginTop: 14, marginHorizontal: -24 },   // カード端までスクロール領域を広げる
-  thumbRow: { gap: 14, paddingHorizontal: 24 },
+  // サムネイル（白リング＋薄影で写真を「浮かせる」）
+  thumbScroll: { marginTop: 16, marginHorizontal: -24 },   // カード端までスクロール領域を広げる
+  thumbRow: { gap: 14, paddingHorizontal: 24, paddingBottom: 2 },
+  thumbRing: {
+    borderRadius: 20, padding: 2, backgroundColor: 'rgba(255,255,255,0.9)',
+    shadowColor: '#1E1548', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 7, elevation: 2,
+  },
   thumb: { width: 80, height: 80, borderRadius: 18, overflow: 'hidden', backgroundColor: '#EFEDF8' },
+  thumbMore: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30,21,72,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  thumbMoreText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
 
   // もっと見る
   moreWrap: { alignItems: 'center', marginTop: 18 },

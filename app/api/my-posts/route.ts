@@ -212,6 +212,30 @@ async function handle(deviceId: string, limit: number) {
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
+    // ── いいね数を統一いいね(spot_post_reactions rtype='like'=/api/spot-likeと同じ真実)で上書き ──
+    //   穴場(suggestions)もMoodログも「みんなが押したいいね」の実数になる。blog(bp-)は従来値を維持。
+    try {
+      const likeIds = items
+        .filter((it) => it.kind === "suggestion" || it.kind === "moodlog")
+        .map((it) => String(it.id).replace(/^ml-/, ""));
+      if (likeIds.length > 0) {
+        const { data: rx, error: rxErr } = await supabase
+          .from("spot_post_reactions").select("post_id").eq("rtype", "like").in("post_id", likeIds);
+        if (!rxErr) {
+          const likeBy = new Map<string, number>();
+          for (const r of (rx ?? []) as Array<{ post_id?: string }>) {
+            const k = String(r.post_id);
+            likeBy.set(k, (likeBy.get(k) ?? 0) + 1);
+          }
+          for (const it of items) {
+            if (it.kind === "suggestion" || it.kind === "moodlog") {
+              it.likes = likeBy.get(String(it.id).replace(/^ml-/, "")) ?? 0;
+            }
+          }
+        }
+      }
+    } catch { /* reactionsテーブル未適用は従来値のまま */ }
+
     return NextResponse.json({ ok: true, items });
   } catch (e) {
     console.error("[my-posts]", e);
