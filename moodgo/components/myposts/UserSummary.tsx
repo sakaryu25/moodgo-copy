@@ -47,6 +47,7 @@ export default function UserSummary({
             <Text style={s.editText}>プロフィール編集</Text>
           </TouchableOpacity>
         </View>
+        {!!handle && <Text style={s.handle} numberOfLines={1}>@{handle}</Text>}
         <Text style={[s.bio, !hasBio && s.bioEmpty]} numberOfLines={1}>
           {hasBio ? bio!.trim() : '一言メッセージはまだありません'}
         </Text>
@@ -98,7 +99,8 @@ const s = StyleSheet.create({
   },
   editText: { fontSize: 11.5, fontWeight: '700', color: MP.INK },
 
-  bio: { fontSize: 13, fontWeight: '500', color: '#555', marginTop: 6 },
+  handle: { fontSize: 12.5, fontWeight: '600', color: MP.SUB, marginTop: 3 },
+  bio: { fontSize: 13, fontWeight: '500', color: '#555', marginTop: 5 },
   bioEmpty: { color: '#B0ACBC' },   // 未設定は薄く「まだありません」
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   loc: { fontSize: 12, fontWeight: '600', color: '#555' },
