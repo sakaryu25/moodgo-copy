@@ -37,7 +37,7 @@ export default function MyPostsHeader({
 
 const s = StyleSheet.create({
   wrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, overflow: 'hidden' },
-  blurTint: { backgroundColor: 'rgba(247,247,247,0.72)' },
+  blurTint: { backgroundColor: 'rgba(243,241,239,0.72)' },   // APP_BG(ホーム地色)に合わせる
   hairline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.12)' },
   bar: {
     height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

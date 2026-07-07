@@ -218,7 +218,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           </ScrollView>
         )}
       </LinearGradient>
-      <ScrollView ref={scrollRef} style={{ backgroundColor: '#F7F7F7' }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
+      {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
         <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} loadMoreKey={loadMoreKey} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}

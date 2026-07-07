@@ -14,6 +14,7 @@ import {
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppBackground from '@/components/AppBackground';
 import SettingsView from '@/components/SettingsView';
 import CategoryTabs from '@/components/myposts/CategoryTabs';
 import LoadingSkeleton from '@/components/myposts/LoadingSkeleton';
@@ -159,6 +160,8 @@ export default function MyPostsScreen() {
 
   return (
     <View style={s.root}>
+      {/* ホームと同じM透かし背景（各カードは白なのでそのまま映える） */}
+      <AppBackground />
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
@@ -260,7 +263,7 @@ export default function MyPostsScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: MP.BG },
+  root: { flex: 1, backgroundColor: 'transparent' },   // 背景はAppBackground(ホームのM透かし)
   gridWrap: { paddingHorizontal: MP.SIDE, marginTop: 14 },
   endText: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: MP.SUB, marginTop: 20 },
   emptyWrap: { alignItems: 'center', paddingVertical: 44, gap: 8 },
