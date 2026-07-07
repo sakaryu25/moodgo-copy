@@ -209,7 +209,7 @@ export default function ProfileTab() {
   // ⚠ セル幅は「2列＋gap＝内寸ちょうど」だと端数誤差で折り返して縦積みになる。
   //   floor＋1pxの安全マージンで必ず2列/3列に収まるようにする。
   const tileCell   = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP * 2) / 3) - 1;  // カード内3列
-  const badgeCell  = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP) / 2) - 1;      // カード内2列
+  const badgeCell  = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP * 3) / 4) - 1;  // カード内4列×1行（全件は「＞」）
   const tileCellFull  = Math.floor((W - SIDE * 2 - GAP * 2) / 3) - 1;         // サブビュー3列
   const badgeCellFull = Math.floor((W - SIDE * 2 - GAP) / 2) - 1;             // サブビュー2列
 
@@ -261,28 +261,35 @@ export default function ProfileTab() {
     );
   };
 
-  const BadgeItem = ({ item, size }: { item: SpotLogItem; size: number }) => (
-    <TouchableOpacity onPress={() => openSpot(item)} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}>
-      <View style={s.badgeRing}>
-        <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeRingGrad}>
-          <View style={s.badgeImgWrap}>
-            {item.photoUrl ? (
-              <Image source={{ uri: item.photoUrl }} style={s.badgeImg} contentFit="cover" transition={200} />
-            ) : (
-              <View style={[s.badgeImg, s.badgePh]}>
-                <Award size={22} color={BLUE} strokeWidth={1.8} />
-              </View>
-            )}
-          </View>
-        </LinearGradient>
-        <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
-          <Award size={10} color="#fff" strokeWidth={2.4} />
-        </LinearGradient>
-      </View>
-      <Text style={s.badgeName} numberOfLines={1}>{item.title}</Text>
-      <Text style={s.badgeDate}>{new Date(item.at).getMonth() + 1}/{new Date(item.at).getDate()} 達成</Text>
-    </TouchableOpacity>
-  );
+  const BadgeItem = ({ item, size }: { item: SpotLogItem; size: number }) => {
+    // 4列表示でもセル幅に円が収まるよう、リング径をセル幅に追従（上限70）
+    const ring = Math.min(70, size - 4);
+    const wrapD = ring - 6;
+    const imgD = ring - 12;
+    return (
+      <TouchableOpacity onPress={() => openSpot(item)} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}>
+        <View style={[s.badgeRing, { width: ring, height: ring }]}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={[s.badgeRingGrad, { width: ring, height: ring, borderRadius: ring / 2 }]}>
+            <View style={[s.badgeImgWrap, { width: wrapD, height: wrapD, borderRadius: wrapD / 2 }]}>
+              {item.photoUrl ? (
+                <Image source={{ uri: item.photoUrl }} style={[s.badgeImg, { width: imgD, height: imgD, borderRadius: imgD / 2 }]} contentFit="cover" transition={200} />
+              ) : (
+                <View style={[s.badgeImg, s.badgePh, { width: imgD, height: imgD, borderRadius: imgD / 2 }]}>
+                  <Award size={20} color={BLUE} strokeWidth={1.8} />
+                </View>
+              )}
+            </View>
+          </LinearGradient>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
+            <Award size={10} color="#fff" strokeWidth={2.4} />
+          </LinearGradient>
+        </View>
+        <Text style={s.badgeName} numberOfLines={1}>{item.title}</Text>
+        <Text style={s.badgeDate}>{new Date(item.at).getMonth() + 1}/{new Date(item.at).getDate()} 達成</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const ViewedRow = ({ item }: { item: SpotLogItem }) => (
     <TouchableOpacity onPress={() => openSpot(item)} activeOpacity={0.8} style={s.viewedRow}>
