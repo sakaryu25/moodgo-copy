@@ -21,7 +21,9 @@ const SCAN_LIMIT = 600;   // 各ソースの走査上限（現状データ量に
 const POSTS_MAX = 30;     // 返す投稿の上限
 
 function isMissingTable(e: unknown): boolean {
-  return String((e as { code?: string } | null)?.code ?? "") === "42P01";
+  const code = String((e as { code?: string } | null)?.code ?? "");
+  // 42P01=PostgreSQL / PGRST205,204=PostgRESTスキーマキャッシュ（spot-postsと同判定）
+  return code === "42P01" || code === "PGRST205" || code === "PGRST204";
 }
 function isLegacyPhotoUrl(url: string): boolean {
   return url.includes("maps.googleapis.com/maps/api/place/photo");
@@ -134,6 +136,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[user-profile]", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = (e as { message?: string } | null)?.message ?? String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

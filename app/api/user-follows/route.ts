@@ -19,7 +19,9 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 const HASH_RE = /^[0-9a-f]{16}$/;
 
 function isMissingTable(e: unknown): boolean {
-  return String((e as { code?: string } | null)?.code ?? "") === "42P01";
+  const code = String((e as { code?: string } | null)?.code ?? "");
+  // 42P01=PostgreSQL / PGRST205,204=PostgRESTスキーマキャッシュ（spot-postsと同判定）
+  return code === "42P01" || code === "PGRST205" || code === "PGRST204";
 }
 
 async function counts(db: NonNullable<typeof supabase>, hash: string): Promise<{ followers: number; following: number }> {
@@ -96,6 +98,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "actionが不正です" }, { status: 400 });
   } catch (e) {
     console.error("[user-follows]", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = (e as { message?: string } | null)?.message ?? String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

@@ -20,7 +20,9 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isMissingTable(e: unknown): boolean {
-  return String((e as { code?: string } | null)?.code ?? "") === "42P01";
+  const code = String((e as { code?: string } | null)?.code ?? "");
+  // 42P01=PostgreSQL / PGRST205,204=PostgRESTスキーマキャッシュ（spot-postsと同判定）
+  return code === "42P01" || code === "PGRST205" || code === "PGRST204";
 }
 
 export async function POST(req: Request) {
@@ -90,6 +92,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, liked: action === "like", count: count ?? 0 });
   } catch (e) {
     console.error("[spot-like]", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = (e as { message?: string } | null)?.message ?? String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
