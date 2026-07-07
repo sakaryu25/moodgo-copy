@@ -7,7 +7,7 @@
 //   訪れた都道府県は既存の行った！ローカル記録(lib/spotLog visited)から算出。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
-import { PenLine, Plus } from 'lucide-react-native';
+import { MapPin, PenLine, Plus } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Easing, NativeScrollEvent, NativeSyntheticEvent,
@@ -21,7 +21,6 @@ import LoadingSkeleton from '@/components/myposts/LoadingSkeleton';
 import MyPostGrid from '@/components/myposts/MyPostGrid';
 import MyPostsHeader from '@/components/myposts/MyPostsHeader';
 import SortBar from '@/components/myposts/SortBar';
-import StatsRow from '@/components/myposts/StatsRow';
 import UserSummary from '@/components/myposts/UserSummary';
 import {
   MP, matchCategory, sortPosts, type Category, type MyPost, type SortKey,
@@ -184,8 +183,12 @@ export default function MyPostsScreen() {
             onEdit={() => setShowSettings(true)}
           />
 
-          {/* 統計 */}
-          <StatsRow posts={posts.length} likes={totalLikes} visited={totalVisited} prefs={visitedPrefs} />
+          {/* 訪れた都道府県（ヘッダーの数字行と重複しない情報だけをスリムに）*/}
+          <View style={s.prefCard}>
+            <View style={s.prefIcon}><MapPin size={15} color="#34B27D" strokeWidth={2.2} /></View>
+            <Text style={s.prefLabel}>訪れた都道府県</Text>
+            <Text style={s.prefValue}>{visitedPrefs}<Text style={s.prefUnit}> 県</Text></Text>
+          </View>
 
           {/* カテゴリ */}
           <View style={{ marginTop: 18 }}>
@@ -264,6 +267,20 @@ export default function MyPostsScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },   // 背景はAppBackground(ホームのM透かし)
+  // 訪れた都道府県（スリム1行カード）
+  prefCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: MP.SIDE, marginTop: 16,
+    backgroundColor: MP.CARD, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12,
+    shadowColor: '#111', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
+  },
+  prefIcon: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: '#E5F5EE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  prefLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: MP.INK },
+  prefValue: { fontSize: 17, fontWeight: '800', color: MP.INK, letterSpacing: -0.3 },
+  prefUnit: { fontSize: 11, fontWeight: '600', color: MP.SUB },
   gridWrap: { paddingHorizontal: MP.SIDE, marginTop: 14 },
   endText: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: MP.SUB, marginTop: 20 },
   emptyWrap: { alignItems: 'center', paddingVertical: 44, gap: 8 },
