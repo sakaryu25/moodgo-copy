@@ -58,6 +58,8 @@ export default function PostScreen() {
   const [showPicker, setShowPicker] = useState<null | 'from' | 'until'>(null);  // 公開期間のカレンダー
   const [tempDate, setTempDate] = useState(new Date());
   const [licenseOk, setLicenseOk] = useState(false);
+  // 公開範囲: false=名前を出して公開(デフォルト・プロフィール/フォロー対象) / true=匿名で公開
+  const [anonymous, setAnonymous] = useState(false);
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
@@ -190,7 +192,8 @@ export default function PostScreen() {
           action: 'create', deviceId, posterName,
           placeId: existingPlaceId || undefined, placeName: spotName, address,
           lat: lat ?? undefined, lng: lng ?? undefined,
-          caption: caption.trim(), moodTags, visibility: 'spot_public_anonymous',
+          // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
+          caption: caption.trim(), moodTags, visibility: anonymous ? 'spot_public_anonymous' : 'public',
           canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs,
           priceChip: priceChip || undefined,
           priceNote: priceNote.trim() || undefined,
@@ -402,6 +405,28 @@ export default function PostScreen() {
             </>
           )}
 
+          {/* 公開範囲: 名前を出す(デフォルト) / 匿名 */}
+          <Text style={s.label}>公開のしかた</Text>
+          <View style={s.visRow}>
+            <TouchableOpacity
+              style={[s.visChip, !anonymous && s.visChipOn]} activeOpacity={0.8}
+              onPress={() => setAnonymous(false)}
+              accessibilityRole="button" accessibilityLabel="名前を出して公開する">
+              <Text style={[s.visChipText, !anonymous && s.visChipTextOn]}>名前を出して公開</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.visChip, anonymous && s.visChipOn]} activeOpacity={0.8}
+              onPress={() => setAnonymous(true)}
+              accessibilityRole="button" accessibilityLabel="匿名で公開する">
+              <Text style={[s.visChipText, anonymous && s.visChipTextOn]}>匿名で公開</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={s.note}>
+            {anonymous
+              ? '投稿者名は表示されず、あなたのプロフィールにも表示されません。'
+              : 'ニックネームと@IDが投稿に表示され、プロフィールの投稿一覧に載ります。'}
+          </Text>
+
           {/* 権利確認 */}
           <TouchableOpacity style={s.check} onPress={() => setLicenseOk(v => !v)} activeOpacity={0.8}>
             <View style={[s.box, licenseOk && s.boxOn]}>{licenseOk && <Check size={14} color="#fff" strokeWidth={3} />}</View>
@@ -502,6 +527,16 @@ const s = StyleSheet.create({
   pickerCancelText: { fontSize: 14, fontWeight: '800', color: '#9B89BE' },
   pickerOk: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#7C3AED', alignItems: 'center' },
   pickerOkText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  // 公開のしかた（名前を出す/匿名）
+  visRow: { flexDirection: 'row', gap: 10 },
+  visChip: {
+    flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 14,
+    backgroundColor: '#fff', borderWidth: 1.5, borderColor: 'rgba(155,107,255,0.22)',
+  },
+  visChipOn: { backgroundColor: '#F1EBFF', borderColor: '#9B6BFF' },
+  visChipText: { fontSize: 13, fontWeight: '700', color: '#8B88A6' },
+  visChipTextOn: { color: '#6D28D9', fontWeight: '800' },
+
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18 },
   box: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#C9B6FF', alignItems: 'center', justifyContent: 'center' },
   boxOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
