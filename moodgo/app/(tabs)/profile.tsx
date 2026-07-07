@@ -12,7 +12,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import {
-  Award, Camera, ChevronLeft, ChevronRight, MapPin, PenLine, Plus,
+  Award, Bell, Camera, ChevronLeft, ChevronRight, MapPin, PenLine, Plus,
   Settings as SettingsIcon, Sparkles, UserRound,
 } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
@@ -30,6 +30,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
 import { loadViewedLog, loadVisitedLog, relativeTime, type SpotLogItem } from '@/lib/spotLog';
+import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import type { Recommendation } from '@/types/app';
 import {
@@ -175,6 +176,8 @@ export default function ProfileTab() {
     setViewed(w);
   }, []);
 
+  // 通知の未読ドット（フォーカス毎に軽くチェック）
+  const [notifUnread, setNotifUnread] = useState(false);
   // フォロワー/フォロー中（user_follows・テーブル未適用は0）
   const [follows, setFollows] = useState({ followers: 0, following: 0 });
   const loadFollows = useCallback(async () => {
@@ -195,6 +198,7 @@ export default function ProfileTab() {
       loadProfile();
       loadLogs();
       loadFollows();
+      hasUnread().then(setNotifUnread).catch(() => {});
       playEntrance();
       (async () => {
         setLoading(true);
@@ -378,9 +382,12 @@ export default function ProfileTab() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
       >
-        {/* ── ヘッダー：中央タイトル＋右ギア(Glass 48) ── */}
+        {/* ── ヘッダー：左ベル(通知)＋中央タイトル＋右ギア ── */}
         <View style={s.headerRow}>
-          <View style={{ width: 42 }} />
+          <PuniPressable onPress={() => { setNotifUnread(false); router.push('/notifications'); }} style={s.glassBtn}>
+            <Bell size={18} color={INK} strokeWidth={2} />
+            {notifUnread && <View style={s.notifDot} />}
+          </PuniPressable>
           <Text style={s.pageTitle}>プロフィール</Text>
           <PuniPressable onPress={() => { setSettingsSection('other'); setShowSettings(true); }}
             style={s.glassBtn}>
@@ -563,6 +570,11 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: CARD_BORDER,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
+  },
+
+  notifDot: {
+    position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: 4,
+    backgroundColor: '#F06292', borderWidth: 1.5, borderColor: '#fff',
   },
 
   // ヒーロー

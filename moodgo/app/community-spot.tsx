@@ -23,6 +23,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
 import type { FavoriteItem } from '@/types/app';
 
@@ -180,7 +181,10 @@ export default function CommunitySpotScreen() {
   };
   const onShare = () => {
     if (!spot) return;
-    Share.share({ message: `${spot.placeName || spot.userTitle}\n${spot.address}\n${spot.googleMapsUri}` });
+    // OGP付き共有ページ(/s/[id])のリンクを送る＝LINE/X等で写真付きカードが展開される
+    const shareId = spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id;
+    const url = `https://moodgo-qvmk.vercel.app/s/${shareId}`;
+    Share.share({ message: `${spot.placeName || spot.userTitle} | MoodGo\n${url}` });
   };
 
   if (loading) {
@@ -424,6 +428,9 @@ export default function CommunitySpotScreen() {
               ))}
             </View>
           )}
+
+          {/* ── コメント（この投稿への会話・1階層）── */}
+          <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
 
           {/* ── みんなのMoodログ（同じ場所への他の投稿。place.tsxと同じ体験を投稿詳細でも必ず出す）── */}
           <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address} />
