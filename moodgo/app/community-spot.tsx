@@ -114,14 +114,16 @@ export default function CommunitySpotScreen() {
     })();
   }, [id]);
 
-  // 投稿へのいいね（楽観更新・失敗時ロールバック）
-  const toggleLike = async () => {
+  // 右下ハート＝いいね（サーバーカウント）＋お気に入り保存を1タップで。
+  //   楽観更新・失敗時はいいねのみロールバック（お気に入りはローカルなので成功扱い）。
+  const onHeartPress = async () => {
     if (!spot || likeBusy) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = !liked;
+    const next = !(liked || faved);
     setLiked(next);
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
     setLikeBusy(true);
+    setFavTo(next).catch(() => {});
     try {
       const deviceId = await getDeviceId();
       const likeTarget = spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id;
@@ -137,21 +139,22 @@ export default function CommunitySpotScreen() {
     } finally { setLikeBusy(false); }
   };
 
-  const toggleFav = async () => {
+  // お気に入り保存/解除（ローカル）を目標状態に合わせる
+  const setFavTo = async (on: boolean) => {
     if (!spot) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
     const title = spot.placeName || spot.userTitle;
     const target = { title, placeId: spot.placeId };  // sameFav: ID優先の同一判定
-    let next: FavoriteItem[];
-    if (faves.some((f) => sameFav(f, target))) { next = faves.filter((f) => !sameFav(f, target)); setFaved(false); }
-    else {
+    const has = faves.some((f) => sameFav(f, target));
+    let next: FavoriteItem[] | null = null;
+    if (!on && has) next = faves.filter((f) => !sameFav(f, target));
+    if (on && !has) {
       next = [{ title, area: spot.prefecture, vibe: '', photoUrl: spot.imageUrls[0] ?? '', mapUrl: spot.googleMapsUri,
         createdAt: new Date().toISOString(), placeId: spot.placeId, address: spot.address, rating: spot.googleRating,
         kind: 'post', spotId: id || spot.id }, ...faves];
-      setFaved(true);
     }
-    await saveJSON(FAVORITES_KEY, next);
+    setFaved(on);
+    if (next) await saveJSON(FAVORITES_KEY, next);
   };
 
   const onPhotoScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -305,12 +308,6 @@ export default function CommunitySpotScreen() {
                 </View>
               </View>
             )}
-            {/* 投稿へのいいね */}
-            <TouchableOpacity onPress={toggleLike} activeOpacity={0.8} style={[s.likePill, liked && s.likePillOn]}
-              accessibilityRole="button" accessibilityLabel={liked ? 'いいねを取り消す' : 'この投稿にいいね'}>
-              <Heart size={15} color={liked ? '#fff' : PINK} fill={liked ? '#fff' : 'transparent'} strokeWidth={2.4} />
-              <Text style={[s.likePillText, liked && s.likePillTextOn]}>{likeCount}</Text>
-            </TouchableOpacity>
           </View>
 
           {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
@@ -429,9 +426,11 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
-      {/* お気に入り（右下フローティング）*/}
-      <TouchableOpacity onPress={toggleFav} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
-        <Heart size={24} color={PINK} fill={faved ? PINK : 'transparent'} strokeWidth={2.4} />
+      {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存 */}
+      <TouchableOpacity onPress={onHeartPress} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityLabel={(liked || faved) ? 'いいねを取り消す' : 'この投稿にいいね'}>
+        <Heart size={22} color={PINK} fill={(liked || faved) ? PINK : 'transparent'} strokeWidth={2.4} />
+        <Text style={s.favFabCount}>{likeCount}</Text>
       </TouchableOpacity>
 
       {/* 投稿者プロフィール（⚠常時マウント＋visibleトグル: Fabric透明Modal対策）*/}
@@ -579,14 +578,6 @@ const s = StyleSheet.create({
   posterNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   posterName: { fontSize: 13.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
   posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', flexShrink: 1 },
-  likePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
-    backgroundColor: '#FDF2F8', borderWidth: 1.5, borderColor: '#FBCFE8',
-  },
-  likePillOn: { backgroundColor: PINK, borderColor: PINK },
-  likePillText: { fontSize: 13, fontWeight: '800', color: PINK },
-  likePillTextOn: { color: '#fff' },
   posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
   posterRateTop: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },
@@ -648,11 +639,12 @@ const s = StyleSheet.create({
   reviewText: { fontSize: 13, color: '#4B5563', lineHeight: 21 },
   reviewMore: { fontSize: 12, color: PURPLE, fontWeight: '700', marginTop: 6 },
 
-  // Fav FAB
+  // いいねFAB（ハート＋みんなのいいね数）
   favFab: {
-    position: 'absolute', right: 18, width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute', right: 18, width: 58, height: 66, borderRadius: 29,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingTop: 2,
     borderWidth: 2, borderColor: '#FCE7F3',
     shadowColor: PINK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
   },
+  favFabCount: { fontSize: 12, fontWeight: '800', color: PINK, marginTop: 1 },
 });
