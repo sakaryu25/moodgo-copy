@@ -64,6 +64,7 @@ type MyPost = {
   image_urls: string[] | null;
   created_at: string;
   status?: string | null;
+  likes?: number;                // もらったいいね（統一リアクション実数）
 };
 
 // community-feed / CommunityFeed と同じ遷移: ブログ=/blog-post、それ以外=/community-spot
@@ -428,7 +429,7 @@ export default function ProfileTab() {
                   <Text style={s.onlineText}>オンライン</Text>
                 </View>
               </View>
-              {/* 統計 3列（縦線区切り） */}
+              {/* 統計 4列（投稿 / 行った=自分が行った！を押した数 / いいね=もらった / フォロワー） */}
               <View style={s.statsRow}>
                 <View style={s.statCol}>
                   <Text style={s.statNum}>{posts.length}</Text>
@@ -436,13 +437,18 @@ export default function ProfileTab() {
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
-                  <Text style={s.statNum}>{follows.followers}</Text>
-                  <Text style={s.statLabel}>フォロワー</Text>
+                  <Text style={s.statNum}>{badges.length}</Text>
+                  <Text style={s.statLabel}>行った</Text>
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
-                  <Text style={s.statNum}>{follows.following}</Text>
-                  <Text style={s.statLabel}>フォロー中</Text>
+                  <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
+                  <Text style={s.statLabel}>いいね</Text>
+                </View>
+                <View style={s.statDivider} />
+                <View style={s.statCol}>
+                  <Text style={s.statNum}>{follows.followers}</Text>
+                  <Text style={s.statLabel}>フォロワー</Text>
                 </View>
               </View>
             </View>

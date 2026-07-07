@@ -5,9 +5,8 @@
 //        → カテゴリ → 並び替え → Masonry(無限スクロール＋スケルトン)。
 //   「保存」の概念は無し。行った！(spot_post_reactions rtype=visited)が中心。
 //   訪れた都道府県は既存の行った！ローカル記録(lib/spotLog visited)から算出。
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
-import { MapPin, PenLine, Plus } from 'lucide-react-native';
+import { PenLine, Plus } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Easing, NativeScrollEvent, NativeSyntheticEvent,
@@ -15,36 +14,22 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
-import SettingsView from '@/components/SettingsView';
 import CategoryTabs from '@/components/myposts/CategoryTabs';
 import LoadingSkeleton from '@/components/myposts/LoadingSkeleton';
 import MyPostGrid from '@/components/myposts/MyPostGrid';
 import MyPostsHeader from '@/components/myposts/MyPostsHeader';
 import SortBar from '@/components/myposts/SortBar';
-import UserSummary from '@/components/myposts/UserSummary';
 import {
   MP, matchCategory, sortPosts, type Category, type MyPost, type SortKey,
 } from '@/components/myposts/types';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
-import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
-import { loadVisitedLog } from '@/lib/spotLog';
-import {
-  useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked,
-} from '@/lib/settingsStore';
+import { loadJSON, saveJSON } from '@/lib/storage';
 
-const NICKNAME_KEY  = 'moodgo-group-nickname';
-const USER_ICON_KEY = 'moodgo-user-icon';
-const HANDLE_KEY    = 'moodgo-user-handle';
 const PAGE = 10;
 // 前回の投稿一覧を端末に保持し、次回は即表示→裏で最新化（体感速度対策・プロフィールと共有）
 const MY_POSTS_CACHE_KEY = 'moodgo-my-posts-cache-v1';
 
-// 住所→都道府県（訪れた県の算出用）
-function prefOf(addr?: string): string {
-  const m = (addr ?? '').match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-  return m ? m[1].replace(/[都道府県]$/, '') : '';
-}
 // community-feed / CommunityFeed と同じ遷移
 function openPost(item: MyPost) {
   if (item.kind === 'blog') {
@@ -56,16 +41,9 @@ function openPost(item: MyPost) {
 
 export default function MyPostsScreen() {
   const insets = useSafeAreaInsets();
-  const settings = useSettings();
 
   const [posts, setPosts] = useState<MyPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nickname, setNickname] = useState('');
-  const [handle, setHandle] = useState('');
-  const [iconUrl, setIconUrl] = useState('');
-  const [visitedPrefs, setVisitedPrefs] = useState(0);
-  const [followers, setFollowers] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
 
   const [category, setCategory] = useState<Category>('すべて');
   const [sortKey, setSortKey] = useState<SortKey>('popular');
@@ -81,20 +59,9 @@ export default function MyPostsScreen() {
   const enter = useRef(new Animated.Value(0)).current;
 
   const loadAll = useCallback(async () => {
-    hydrateSettings();
-    const [nick, icon, hnd, visited, cached] = await Promise.all([
-      AsyncStorage.getItem(NICKNAME_KEY).catch(() => null),
-      AsyncStorage.getItem(USER_ICON_KEY).catch(() => null),
-      AsyncStorage.getItem(HANDLE_KEY).catch(() => null),
-      loadVisitedLog().catch(() => []),
-      loadJSON<MyPost[]>(MY_POSTS_CACHE_KEY, []),
-    ]);
-    if (!isMounted.current) return;
-    setNickname(nick ?? '');
-    setIconUrl(icon ?? '');
-    setHandle(hnd ?? '');
-    setVisitedPrefs(new Set(visited.map((v) => prefOf(v.address) || v.area || '').filter(Boolean)).size);
     // 前回の投稿一覧を即表示（スピナーを出さない）→ 裏で最新を取得して置き換え
+    const cached = await loadJSON<MyPost[]>(MY_POSTS_CACHE_KEY, []);
+    if (!isMounted.current) return;
     if (Array.isArray(cached) && cached.length > 0) { setPosts(cached); setLoading(false); }
     try {
       const deviceId = await getDeviceId();
@@ -107,15 +74,7 @@ export default function MyPostsScreen() {
         setPosts(data.items);
         saveJSON(MY_POSTS_CACHE_KEY, data.items);
       }
-      // フォロワー数（user_follows・テーブル未適用は0）
-      try {
-        const f = await apiFetch('/api/user-follows', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'me', deviceId }),
-        }).then((r) => r.json());
-        if (isMounted.current && f?.ok) setFollowers(f.followerCount ?? 0);
-      } catch { /* 0のまま */ }
-    } catch { if (isMounted.current) setPosts([]); }
+    } catch { if (isMounted.current && cached.length === 0) setPosts([]); }
     finally { if (isMounted.current) setLoading(false); }
   }, []);
 
@@ -128,10 +87,6 @@ export default function MyPostsScreen() {
       return () => { isMounted.current = false; };
     }, [loadAll, enter]),
   );
-
-  // 統計（保存の概念は無い: 投稿 / もらったいいね / 行った！された回数 / 訪れた都道府県）
-  const totalLikes = useMemo(() => posts.reduce((s, p) => s + (p.likes ?? 0), 0), [posts]);
-  const totalVisited = useMemo(() => posts.reduce((s, p) => s + (p.visited ?? 0), 0), [posts]);
 
   // カテゴリ→並び替え→ページング
   const filtered = useMemo(
@@ -176,30 +131,8 @@ export default function MyPostsScreen() {
         scrollEventThrottle={16}
       >
         <Animated.View style={fadeUp}>
-          {/* ユーザー情報 */}
-          <UserSummary
-            name={nickname.trim() || 'MoodGo'}
-            handle={handle}
-            iconUrl={iconUrl}
-            prefecture={settings.profilePrefecture ?? ''}
-            bio={settings.profileBio}
-            showPrefecture={settings.showPrefecture}
-            statPosts={posts.length}
-            statVisited={totalVisited}
-            statLikes={totalLikes}
-            statFollowers={followers}
-            onEdit={() => setShowSettings(true)}
-          />
-
-          {/* 訪れた都道府県（ヘッダーの数字行と重複しない情報だけをスリムに）*/}
-          <View style={s.prefCard}>
-            <View style={s.prefIcon}><MapPin size={15} color="#34B27D" strokeWidth={2.2} /></View>
-            <Text style={s.prefLabel}>訪れた都道府県</Text>
-            <Text style={s.prefValue}>{visitedPrefs}<Text style={s.prefUnit}> 県</Text></Text>
-          </View>
-
           {/* カテゴリ */}
-          <View style={{ marginTop: 18 }}>
+          <View style={{ marginTop: 4 }}>
             <CategoryTabs selected={category} onSelect={(c) => { setCategory(c); resetPaging(); }} />
           </View>
 
@@ -253,42 +186,12 @@ export default function MyPostsScreen() {
         onNew={() => router.push('/post')}
       />
 
-      {/* プロフィール編集（既存SettingsViewをそのまま利用）*/}
-      <SettingsView
-        visible={showSettings}
-        section="profile"
-        onClose={() => { setShowSettings(false); loadAll(); }}
-        lang={settings.lang}
-        onChangeLang={setLang}
-        profileAge={settings.profileAge}
-        profileGender={settings.profileGender}
-        profilePrefecture={settings.profilePrefecture}
-        onSaveProfile={saveProfile}
-        onClearHistory={() => { AsyncStorage.removeItem(HISTORY_KEY).catch(() => {}); }}
-        blockedPlaces={settings.blockedPlaces}
-        onUnblockPlace={unblockPlace}
-        onClearBlocked={clearBlocked}
-      />
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },   // 背景はAppBackground(ホームのM透かし)
-  // 訪れた都道府県（スリム1行カード）
-  prefCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginHorizontal: MP.SIDE, marginTop: 16,
-    backgroundColor: MP.CARD, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12,
-    shadowColor: '#111', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
-  },
-  prefIcon: {
-    width: 30, height: 30, borderRadius: 15, backgroundColor: '#E5F5EE',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  prefLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: MP.INK },
-  prefValue: { fontSize: 17, fontWeight: '800', color: MP.INK, letterSpacing: -0.3 },
-  prefUnit: { fontSize: 11, fontWeight: '600', color: MP.SUB },
   gridWrap: { paddingHorizontal: MP.SIDE, marginTop: 14 },
   endText: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: MP.SUB, marginTop: 20 },
   emptyWrap: { alignItems: 'center', paddingVertical: 44, gap: 8 },
