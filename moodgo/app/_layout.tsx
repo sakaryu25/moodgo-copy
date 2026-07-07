@@ -41,7 +41,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          <Stack screenOptions={{ headerShown: false }} />
+          {/* fullScreenGestureEnabled: 画面のどこからでも右スワイプで前のページへ
+              （iOS標準のエッジのみ→全面に拡張。横スクロールUIはそちらが優先されるので競合しない） */}
+          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }} />
           {/* LINE風「送信先を選択」シート（shareSpotToGroupから全画面で呼べる） */}
           <GroupShareSheet />
           {/* オフライン時のバナー（全画面に重ねる） */}

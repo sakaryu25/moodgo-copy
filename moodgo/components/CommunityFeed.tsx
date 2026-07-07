@@ -51,10 +51,11 @@ type CommunityFeedProps = {
   sortMode?: 'popular' | 'near';
   coords?: { lat: number; lng: number } | null;
   posterHandle?: string | null;
+  searchQuery?: string | null;   // full: スポット名/本文のキーワード検索（@ID絞り込みと排他）
   loadMoreKey?: number;   // full: 親(BlogView)が末尾スクロールで+1して追加読み込みを促す
 };
 
-export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, loadMoreKey }: CommunityFeedProps) {
+export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, loadMoreKey }: CommunityFeedProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -69,6 +70,26 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   // カーソルページング: サーバーの nextCursor(最後のcreated_at)。offset方式は2ソース合流で
   // 投稿が欠落するため、2ページ目以降は cursor を送る（旧サーバー互換で offset も併送）。
   const cursorRef = useRef<string | null>(null);
+
+  // キーワード検索（full: サーバー側でスポット名/本文の部分一致）
+  const kw = (searchQuery ?? '').trim();
+  const [kItems, setKItems] = useState<FeedItem[]>([]);
+  const [kLoading, setKLoading] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    if (!kw) { setKItems([]); setKLoading(false); return; }
+    let cancelled = false;
+    setKLoading(true);
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/community-feed?limit=60&q=${encodeURIComponent(kw)}`);
+        const d = await res.json();
+        if (!cancelled && isMounted.current) setKItems(Array.isArray(d?.items) ? d.items : []);
+      } catch { if (!cancelled && isMounted.current) setKItems([]); }
+      finally { if (!cancelled && isMounted.current) setKLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [full, kw]);
 
   // @ID絞り込み（full: 検索UIは親ヘッダー・ここは取得のみ）
   useEffect(() => {
@@ -118,7 +139,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）
   useEffect(() => {
     if (!full || loadMoreKey === undefined || loadMoreKey === 0) return;
-    if (loadingMore || !hasMore || posterHandle) return;
+    if (loadingMore || !hasMore || posterHandle || kw) return;
     let cancelled = false;
     setLoadingMore(true);
     (async () => {
@@ -188,12 +209,18 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     () => uItems.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id)).map(parsePost),
     [uItems, blockedUsers],
   );
+  // キーワード検索中はその結果
+  const kPosts: Post[] = useMemo(
+    () => kItems.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id)).map(parsePost),
+    [kItems, blockedUsers],
+  );
 
-  const gridPosts = full && posterHandle ? uPosts : posts;
+  const searching = full && !!kw && !posterHandle;
+  const gridPosts = full && posterHandle ? uPosts : searching ? kPosts : posts;
   // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
-  const showError = !loading && !uLoading && loadError && !(full && posterHandle);
-  const showEmpty = !loading && !uLoading && !showError
-    && ((full && posterHandle) ? uItems.length === 0 : visibleItems.length === 0);
+  const showError = !loading && !uLoading && !kLoading && loadError && !(full && posterHandle) && !searching;
+  const showEmpty = !loading && !uLoading && !kLoading && !showError
+    && ((full && posterHandle) ? uItems.length === 0 : searching ? kItems.length === 0 : visibleItems.length === 0);
 
   return (
     <View style={s.section}>
@@ -218,11 +245,19 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         </View>
       )}
 
-      {(loading || uLoading) && (
+      {/* キーワード検索中バナー */}
+      {searching && !kLoading && (
+        <View style={s.uBanner}>
+          <Text style={s.uBannerText} numberOfLines={1}>「{kw}」の検索結果</Text>
+          <Text style={s.uBannerCount}>{kItems.length}件</Text>
+        </View>
+      )}
+
+      {(loading || uLoading || kLoading) && (
         <View style={s.loadingWrap}><ActivityIndicator color={PURPLE} size="small" /></View>
       )}
 
-      {!loading && !uLoading && (
+      {!loading && !uLoading && !kLoading && (
         <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           {width > 0 && gridPosts.length > 0 && (
             <PostGrid
@@ -253,7 +288,8 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
       {showEmpty && (
         <View style={s.loadingWrap}>
           <Text style={{ color: '#9CA3AF', fontSize: 13 }}>
-            {(full && posterHandle) ? 'このユーザーの公開投稿はまだありません' : 'まだ投稿がありません'}
+            {(full && posterHandle) ? 'このユーザーの公開投稿はまだありません'
+              : searching ? `「${kw}」に一致する投稿は見つかりませんでした` : 'まだ投稿がありません'}
           </Text>
         </View>
       )}

@@ -105,31 +105,41 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
     } catch { /* 位置取得失敗時は人気順のまま */ } finally { setLocLoading(false); }
   };
 
-  // @ID検索（400msデバウンス・入力し直しで絞り込み解除）
+  // 検索（400msデバウンス）: 「@〜」=ユーザーID検索 / それ以外=スポット名・本文のキーワード検索
+  const [kw, setKw] = useState('');
   const onChangeUq = (raw: string) => {
     setUq(raw);
     if (uActive) setUActive(null);
     if (uTimer.current) clearTimeout(uTimer.current);
-    const qn = raw.trim().toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
-    if (qn.length < 2) { setUUsers([]); return; }
+    const trimmed = raw.trim();
+    const isAt = trimmed.startsWith('@');
+    const qn = trimmed.toLowerCase().replace(/^@+/, '').replace(/[^a-z0-9_]/g, '');
     uTimer.current = setTimeout(async () => {
-      try {
-        const res = await apiFetch('/api/user-handle', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'search', query: qn }),
-        });
-        const d = await res.json();
-        setUUsers(Array.isArray(d?.users) ? d.users : []);
-      } catch { /* noop */ }
+      // キーワード検索（@始まりは投稿検索しない）
+      setKw(isAt ? '' : trimmed);
+      // ユーザー候補（英数2文字以上の時だけ）
+      if (qn.length >= 2) {
+        try {
+          const res = await apiFetch('/api/user-handle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'search', query: qn }),
+          });
+          const d = await res.json();
+          setUUsers(Array.isArray(d?.users) ? d.users : []);
+        } catch { /* noop */ }
+      } else {
+        setUUsers([]);
+      }
     }, 400);
   };
   const selectUser = (u: { handle: string }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setUActive({ handle: u.handle });
     setUUsers([]);
+    setKw('');
     setUq(`@${u.handle}`);
   };
-  const clearUser = () => { setUActive(null); setUq(''); setUUsers([]); };
+  const clearUser = () => { setUActive(null); setUq(''); setUUsers([]); setKw(''); };
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -194,7 +204,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           <TextInput
             value={uq}
             onChangeText={onChangeUq}
-            placeholder="@ユーザーIDで検索"
+            placeholder="スポット名・@IDで検索"
             placeholderTextColor="#B9B6CC"
             style={s.heroSearchInput}
             autoCapitalize="none"
@@ -220,7 +230,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </LinearGradient>
       {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
-        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} loadMoreKey={loadMoreKey} />
+        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} loadMoreKey={loadMoreKey} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>

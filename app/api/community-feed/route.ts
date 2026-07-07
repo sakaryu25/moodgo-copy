@@ -28,6 +28,8 @@ export async function GET(request: Request) {
   // ページ境界で投稿が恒久欠落するバグがあるため、クライアントは2ページ目以降 cursor を送る。
   // offset は旧クライアント互換のため残す（cursor があれば cursor 優先）。
   const cursor = (searchParams.get("cursor") ?? "").trim() || null;
+  // キーワード検索（スポット名/本文の部分一致）。PostgRESTのor構文に入るため記号は除去。
+  const q = (searchParams.get("q") ?? "").trim().replace(/[,()*%]/g, "").slice(0, 50) || null;
   // @IDでのユーザー絞り込み（プロフィール検索）。匿名投稿の帰属バレ防止のため public のみ返す。
   const posterHandle = (searchParams.get("posterHandle") ?? "").trim().toLowerCase().replace(/^@+/, "");
 
@@ -71,6 +73,7 @@ export async function GET(request: Request) {
         qq = posterDeviceId
           ? qq.eq("device_id", posterDeviceId).eq("visibility", "public")
           : qq.in("visibility", ["spot_public_anonymous", "public"]);
+        if (q) qq = qq.or(`place_name.ilike.*${q}*,caption.ilike.*${q}*`);   // キーワード検索
         if (cursor) qq = qq.lt("created_at", cursor);
         const ordered = qq.order("created_at", { ascending: false });
         return cursor ? ordered.limit(limit) : ordered.range(offset, offset + limit - 1);
@@ -165,6 +168,7 @@ export async function GET(request: Request) {
           .from("suggestions")
           .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, poster_name, device_id, available_from, available_until")
           .eq("status", "approved");
+        if (q) sq = sq.or(`spot_name.ilike.*${q}*,google_place_name.ilike.*${q}*,description.ilike.*${q}*`);   // キーワード検索
         if (cursor) sq = sq.lt("created_at", cursor);
         const sOrdered = sq.order("created_at", { ascending: false });
         const { data: sugs } = await (cursor ? sOrdered.limit(limit) : sOrdered.range(offset, offset + limit - 1));
