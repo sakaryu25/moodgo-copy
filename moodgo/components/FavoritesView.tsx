@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Check, Footprints, Heart, MapPin, MessageCircle, Moon, Navigation } from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   NativeScrollEvent,
@@ -178,6 +178,44 @@ export default function FavoritesView({
     }
   };
 
+  // ── いいね解除は「ページを離れたら確定」（誤タップ対策・Instagram型）──────────
+  //   ハートを外してもカードは残り、再タップで元に戻せる。タブを離れた時にまとめて削除。
+  const favKeyOf = (f: FavoriteItem) => `${f.kind ?? 'place'}|${f.supabaseId ?? f.placeId ?? f.spotId ?? f.title}`;
+  const [pendingRemove, setPendingRemove] = useState<Set<string>>(new Set());
+  const pendingRef = useRef(pendingRemove);
+  pendingRef.current = pendingRemove;
+  const favsRef = useRef(favorites);
+  favsRef.current = favorites;
+
+  const togglePendingRemove = (item: FavoriteItem) => {
+    const k = favKeyOf(item);
+    const willRemove = !pendingRemove.has(k);
+    Haptics.impactAsync(willRemove ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    setPendingRemove((prev) => {
+      const next = new Set(prev);
+      if (willRemove) next.add(k); else next.delete(k);
+      return next;
+    });
+  };
+
+  const commitPendingRemovals = useCallback(() => {
+    const pend = pendingRef.current;
+    if (pend.size === 0) return;
+    for (const f of favsRef.current) {
+      if (pend.has(favKeyOf(f))) onRemoveFavorite(f);   // removeFavoriteは関数型更新=連続呼び出し安全
+    }
+    setPendingRemove(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRemoveFavorite]);
+
+  // タブから離れた時（＋アンマウント保険）に確定
+  useFocusEffect(
+    useCallback(() => {
+      return () => commitPendingRemovals();
+    }, [commitPendingRemovals]),
+  );
+  useEffect(() => () => { commitPendingRemovals(); }, [commitPendingRemovals]);
+
   // 行った！のトグル: ローカル記録(バッジ/訪れた県)＋投稿者へのクレジットを付与/解除。
   const [visitedTitles, setVisitedTitles] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -275,13 +313,21 @@ export default function FavoritesView({
                 </PuniPressable>
               </View>
             </View>
-            {/* 右上のハート＝お気に入り解除（保存済みの証＋タップで外す）*/}
+            {/* 右上のハート＝お気に入り解除。誤タップ対策で即消さず、白抜き表示→ページを離れた時に確定。
+                もう一度タップすれば元に戻る。 */}
             <TouchableOpacity
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onRemoveFavorite(item); }}
+              onPress={() => togglePendingRemove(item)}
               style={s.heartRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button" accessibilityLabel={`${item.title}をお気に入りから外す`}
+              accessibilityRole="button"
+              accessibilityLabel={pendingRemove.has(favKeyOf(item))
+                ? `${item.title}をお気に入りに戻す`
+                : `${item.title}をお気に入りから外す（ページを離れると確定）`}
             >
-              <Heart size={17} color="#F472B6" fill="#F472B6" strokeWidth={0} />
+              {pendingRemove.has(favKeyOf(item)) ? (
+                <Heart size={17} color="#F9A8D4" fill="transparent" strokeWidth={2.2} />
+              ) : (
+                <Heart size={17} color="#F472B6" fill="#F472B6" strokeWidth={0} />
+              )}
             </TouchableOpacity>
           </TouchableOpacity>
         ))
