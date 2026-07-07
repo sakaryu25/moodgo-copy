@@ -30,7 +30,8 @@ export type Post = {
   title: string;
   description: string;      // マーカー除去済みの本文
   prefecture: string;
-  image: string | null;
+  image: string | null;      // 先頭写真（後方互換）
+  images: string[];          // 全写真（フィードカードのスワイプ用・最大3）
   price: string | null;     // 例: 無料 / 〜¥500
   rating: number;           // 0〜5（0=未評価＝星非表示）
   category: { Icon: IconComp; color: string; bg: string };
@@ -77,6 +78,7 @@ export function parsePost(item: FeedLike): Post {
     description: clean,
     prefecture: item.prefecture || '',
     image: item.image_urls?.[0] ?? null,
+    images: (item.image_urls ?? []).filter((u): u is string => typeof u === 'string').slice(0, 3),
     price,
     rating,
     category: categoryStyle(item.auto_tags),

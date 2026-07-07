@@ -6,8 +6,12 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import { MP } from './types';
 
 export default function MyPostsHeader({
-  topInset, scrolled, onBack, onNew,
-}: { topInset: number; scrolled: boolean; onBack: () => void; onNew: () => void }) {
+  topInset, scrolled, onBack, onNew, title = '自分の投稿', showNew = true,
+}: {
+  topInset: number; scrolled: boolean; onBack: () => void; onNew: () => void;
+  title?: string;      // 画面タイトル（/user/[id]では相手の名前）
+  showNew?: boolean;   // ＋新規投稿ボタンの表示（他人のページでは出さない）
+}) {
   return (
     <View style={[s.wrap, { paddingTop: topInset }]}>
       {scrolled && (
@@ -25,11 +29,15 @@ export default function MyPostsHeader({
           accessibilityRole="button" accessibilityLabel="戻る">
           <ChevronLeft size={22} color={MP.INK} strokeWidth={2.4} />
         </TouchableOpacity>
-        <Text style={s.title}>自分の投稿</Text>
-        <TouchableOpacity onPress={onNew} style={s.circleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button" accessibilityLabel="新しく投稿する">
-          <Plus size={20} color={MP.INK} strokeWidth={2.4} />
-        </TouchableOpacity>
+        <Text style={s.title} numberOfLines={1}>{title}</Text>
+        {showNew ? (
+          <TouchableOpacity onPress={onNew} style={s.circleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button" accessibilityLabel="新しく投稿する">
+            <Plus size={20} color={MP.INK} strokeWidth={2.4} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
       </View>
     </View>
   );

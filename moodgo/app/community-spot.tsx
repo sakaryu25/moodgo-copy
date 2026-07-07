@@ -24,7 +24,6 @@ import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import MoodLogSection from '@/components/MoodLogSection';
-import PosterProfileSheet from '@/components/PosterProfileSheet';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -88,7 +87,6 @@ export default function CommunitySpotScreen() {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -283,7 +281,9 @@ export default function CommunitySpotScreen() {
           {/* ── 投稿者カード（タップでプロフィール）＋投稿へのいいね ── */}
           <View style={s.posterCard}>
             {spot.posterId ? (
-              <TouchableOpacity onPress={() => setProfileOpen(true)} activeOpacity={0.75} style={s.posterMain}
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/user/[id]', params: { id: spot.posterId! } })}
+                activeOpacity={0.75} style={s.posterMain}
                 accessibilityRole="button" accessibilityLabel={`${spot.posterName?.trim() || 'MoodGoユーザー'}のプロフィールを見る`}>
                 {spot.posterIcon ? (
                   <Image source={{ uri: spot.posterIcon }} style={s.posterCardAvatar} contentFit="cover" />
@@ -437,15 +437,6 @@ export default function CommunitySpotScreen() {
         <Text style={s.favFabCount}>{likeCount}</Text>
       </TouchableOpacity>
 
-      {/* 投稿者プロフィール（⚠常時マウント＋visibleトグル: Fabric透明Modal対策）*/}
-      <PosterProfileSheet
-        visible={profileOpen}
-        posterId={spot.posterId ?? null}
-        fallbackName={spot.posterName}
-        fallbackHandle={spot.posterHandle}
-        fallbackIcon={spot.posterIcon}
-        onClose={() => setProfileOpen(false)}
-      />
     </View>
   );
 }

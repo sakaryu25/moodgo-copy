@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Location from 'expo-location';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
 import ReportModal from './ReportModal';
 import PostGrid from './community/PostGrid';
@@ -54,10 +55,11 @@ type CommunityFeedProps = {
   coords?: { lat: number; lng: number } | null;
   posterHandle?: string | null;
   searchQuery?: string | null;   // full: スポット名/本文のキーワード検索（@ID絞り込みと排他）
+  feedScope?: 'all' | 'following';   // full: すべて / フォロー中のみ
   loadMoreKey?: number;   // full: 親(BlogView)が末尾スクロールで+1して追加読み込みを促す
 };
 
-export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, loadMoreKey }: CommunityFeedProps) {
+export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, feedScope = 'all', loadMoreKey }: CommunityFeedProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -92,6 +94,33 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
       }
     } catch { /* 先読み失敗は無害（末尾で通常フェッチされる） */ }
   }, [full, posterHandle]);
+
+  // フォロー中フィード（full: フォローしている投稿者の公開投稿のみ）
+  const followingMode = full && feedScope === 'following';
+  const [fItems, setFItems] = useState<FeedItem[]>([]);
+  const [fLoading, setFLoading] = useState(false);
+  const [followingCount, setFollowingCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!followingMode) { setFItems([]); setFLoading(false); return; }
+    let cancelled = false;
+    setFLoading(true);
+    (async () => {
+      try {
+        const deviceId = await getDeviceId();
+        const res = await apiFetch('/api/following-feed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, limit: 60 }),
+        });
+        const d = await res.json();
+        if (!cancelled && isMounted.current) {
+          setFItems(Array.isArray(d?.items) ? d.items : []);
+          setFollowingCount(typeof d?.following === 'number' ? d.following : null);
+        }
+      } catch { if (!cancelled && isMounted.current) setFItems([]); }
+      finally { if (!cancelled && isMounted.current) setFLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [followingMode]);
 
   // キーワード検索（full: サーバー側でスポット名/本文の部分一致）
   const kw = (searchQuery ?? '').trim();
@@ -181,7 +210,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）
   useEffect(() => {
     if (!full || loadMoreKey === undefined || loadMoreKey === 0) return;
-    if (loadingMore || !hasMore || posterHandle || kw) return;
+    if (loadingMore || !hasMore || posterHandle || kw || followingMode) return;
     // 先読み済みなら即append（体感ゼロ待ち）→ 次の先読みを開始
     const pre = prefetchRef.current;
     if (pre) {
@@ -273,13 +302,22 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     () => kItems.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id)).map(parsePost),
     [kItems, blockedUsers],
   );
+  // フォロー中フィード
+  const fPosts: Post[] = useMemo(
+    () => fItems.filter((it) => !it.poster_id || !blockedUsers.includes(it.poster_id)).map(parsePost),
+    [fItems, blockedUsers],
+  );
 
   const searching = full && !!kw && !posterHandle;
-  const gridPosts = full && posterHandle ? uPosts : searching ? kPosts : posts;
+  const gridPosts = full && posterHandle ? uPosts : searching ? kPosts : followingMode ? fPosts : posts;
   // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
-  const showError = !loading && !uLoading && !kLoading && loadError && !(full && posterHandle) && !searching;
-  const showEmpty = !loading && !uLoading && !kLoading && !showError
-    && ((full && posterHandle) ? uItems.length === 0 : searching ? kItems.length === 0 : visibleItems.length === 0);
+  const showError = !loading && !uLoading && !kLoading && !fLoading && loadError
+    && !(full && posterHandle) && !searching && !followingMode;
+  const showEmpty = !loading && !uLoading && !kLoading && !fLoading && !showError
+    && ((full && posterHandle) ? uItems.length === 0
+      : searching ? kItems.length === 0
+      : followingMode ? fItems.length === 0
+      : visibleItems.length === 0);
 
   return (
     <View style={s.section}>
@@ -312,11 +350,11 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         </View>
       )}
 
-      {(loading || uLoading || kLoading) && (
+      {(loading || uLoading || kLoading || fLoading) && (
         <View style={s.loadingWrap}><ActivityIndicator color={PURPLE} size="small" /></View>
       )}
 
-      {!loading && !uLoading && !kLoading && (
+      {!loading && !uLoading && !kLoading && !fLoading && (
         <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           {width > 0 && gridPosts.length > 0 && (
             <PostGrid
@@ -348,7 +386,11 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         <View style={s.loadingWrap}>
           <Text style={{ color: '#9CA3AF', fontSize: 13 }}>
             {(full && posterHandle) ? 'このユーザーの公開投稿はまだありません'
-              : searching ? `「${kw}」に一致する投稿は見つかりませんでした` : 'まだ投稿がありません'}
+              : searching ? `「${kw}」に一致する投稿は見つかりませんでした`
+              : followingMode ? (followingCount === 0
+                ? 'まだ誰もフォローしていません。投稿者をフォローするとここに出ます'
+                : 'フォロー中のユーザーの投稿はまだありません')
+              : 'まだ投稿がありません'}
           </Text>
         </View>
       )}

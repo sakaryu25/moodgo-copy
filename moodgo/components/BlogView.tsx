@@ -75,6 +75,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
   // ── ヘッダー内コントロール（人気/近く・@ID検索）: 見栄え改善でグラデ帯へ移設 ──
   const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');
+  // すべて / フォロー中 の切替（フォロー中=自分がフォローした投稿者の公開投稿のみ）
+  const [feedScope, setFeedScope] = useState<'all' | 'following'>('all');
   // 無限スクロール: 末尾接近でキーを増やして CommunityFeed に次ページ取得を促す
   const [loadMoreKey, setLoadMoreKey] = useState(0);
   const nearEndRef = useRef(false);
@@ -159,7 +161,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   useEffect(() => {
     if (resetKey === undefined) return;
     setMode('list'); setMoodFilter(''); setQ(''); setDetail(null);
-    setSortMode('popular'); clearUser();
+    setSortMode('popular'); setFeedScope('all'); clearUser();
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [resetKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -216,6 +218,19 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
             </TouchableOpacity>
           )}
         </View>
+        {/* すべて / フォロー中 */}
+        <View style={s.scopeRow}>
+          {(['all', 'following'] as const).map((sc) => (
+            <TouchableOpacity key={sc} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFeedScope(sc); }}
+              style={[s.scopeBtn, feedScope === sc && s.scopeBtnOn]} activeOpacity={0.8}
+              accessibilityRole="button" accessibilityState={{ selected: feedScope === sc }}>
+              <Text style={[s.scopeText, feedScope === sc && s.scopeTextOn]}>
+                {sc === 'all' ? 'すべて' : 'フォロー中'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* 候補ユーザーのチップ（入力中のみ・帯が下に伸びる）*/}
         {uUsers.length > 0 && !uActive && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.heroChipRow} keyboardShouldPersistTaps="handled">
@@ -230,7 +245,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </LinearGradient>
       {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
-        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} loadMoreKey={loadMoreKey} />
+        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} feedScope={feedScope} loadMoreKey={loadMoreKey} />
       </ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
@@ -566,6 +581,14 @@ const s = StyleSheet.create({
   hToggleText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
   hToggleTextOn: { fontSize: 12, fontWeight: '700', color: '#fff' },
   // @ID検索バー（帯の中の白ボックス）
+  scopeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  scopeBtn: {
+    paddingHorizontal: 14, paddingVertical: 6.5, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  scopeBtnOn: { backgroundColor: '#fff', borderColor: '#fff' },
+  scopeText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
+  scopeTextOn: { color: '#7C3AED' },
   heroSearchBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 14, height: 40, marginTop: 10,
