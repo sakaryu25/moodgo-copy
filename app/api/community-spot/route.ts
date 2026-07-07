@@ -344,6 +344,8 @@ export async function GET(request: Request) {
       }
     } catch { /* 0のまま */ }
 
+    // エッジキャッシュ: 詳細はGoogle補強が重いので60秒CDNに載せる
+    //   （いいね/行った数の鮮度はクライアントが status POST(非キャッシュ)で上書きするため問題なし）
     return NextResponse.json({
       ok: true,
       spot: {
@@ -381,7 +383,7 @@ export async function GET(request: Request) {
         posterIcon,           // 投稿者アイコン（ハッシュ名URL）
         posterId,             // 投稿者の公開ハッシュ（プロフィール/フォロー用・匿名はnull）
       },
-    });
+    }, { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } });
   } catch (e) {
     console.error("[community-spot]", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

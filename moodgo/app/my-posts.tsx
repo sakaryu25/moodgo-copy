@@ -27,7 +27,7 @@ import {
 } from '@/components/myposts/types';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
-import { HISTORY_KEY } from '@/lib/storage';
+import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
 import { loadVisitedLog } from '@/lib/spotLog';
 import {
   useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked,
@@ -37,6 +37,8 @@ const NICKNAME_KEY  = 'moodgo-group-nickname';
 const USER_ICON_KEY = 'moodgo-user-icon';
 const HANDLE_KEY    = 'moodgo-user-handle';
 const PAGE = 10;
+// 前回の投稿一覧を端末に保持し、次回は即表示→裏で最新化（体感速度対策・プロフィールと共有）
+const MY_POSTS_CACHE_KEY = 'moodgo-my-posts-cache-v1';
 
 // 住所→都道府県（訪れた県の算出用）
 function prefOf(addr?: string): string {
@@ -80,17 +82,20 @@ export default function MyPostsScreen() {
 
   const loadAll = useCallback(async () => {
     hydrateSettings();
-    const [nick, icon, hnd, visited] = await Promise.all([
+    const [nick, icon, hnd, visited, cached] = await Promise.all([
       AsyncStorage.getItem(NICKNAME_KEY).catch(() => null),
       AsyncStorage.getItem(USER_ICON_KEY).catch(() => null),
       AsyncStorage.getItem(HANDLE_KEY).catch(() => null),
       loadVisitedLog().catch(() => []),
+      loadJSON<MyPost[]>(MY_POSTS_CACHE_KEY, []),
     ]);
     if (!isMounted.current) return;
     setNickname(nick ?? '');
     setIconUrl(icon ?? '');
     setHandle(hnd ?? '');
     setVisitedPrefs(new Set(visited.map((v) => prefOf(v.address) || v.area || '').filter(Boolean)).size);
+    // 前回の投稿一覧を即表示（スピナーを出さない）→ 裏で最新を取得して置き換え
+    if (Array.isArray(cached) && cached.length > 0) { setPosts(cached); setLoading(false); }
     try {
       const deviceId = await getDeviceId();
       const res = await apiFetch('/api/my-posts', {
@@ -98,7 +103,10 @@ export default function MyPostsScreen() {
         body: JSON.stringify({ deviceId }),
       });
       const data = await res.json();
-      if (isMounted.current) setPosts(Array.isArray(data?.items) ? data.items : []);
+      if (isMounted.current && Array.isArray(data?.items)) {
+        setPosts(data.items);
+        saveJSON(MY_POSTS_CACHE_KEY, data.items);
+      }
       // フォロワー数（user_follows・テーブル未適用は0）
       try {
         const f = await apiFetch('/api/user-follows', {

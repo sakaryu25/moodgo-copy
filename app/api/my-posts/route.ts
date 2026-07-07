@@ -61,8 +61,8 @@ async function handle(deviceId: string, limit: number) {
   try {
     const out: Array<Record<string, unknown>> = [];
 
-    // ── 穴場投稿(suggestions) ───────────────────────────────────────────────
-    try {
+    // ── 3ソース（穴場/Moodログ/ブログ）を並列取得（従来は直列＝低速DBで3倍遅かった）──
+    const sugP = (async () => { try {
       const { data } = await supabase
         .from("suggestions")
         .select("*")
@@ -90,10 +90,9 @@ async function handle(deviceId: string, limit: number) {
           poster_id: myPosterId,
         });
       }
-    } catch { /* suggestions 未作成でもスキップ */ }
+    } catch { /* suggestions 未作成でもスキップ */ } })();
 
-    // ── Moodログ(spot_posts) ────────────────────────────────────────────────
-    try {
+    const mlP = (async () => { try {
       // price_chip/rating は spot-posts-extra.sql 未適用だと列が無い → フル→基本列フォールバック
       const ML_BASE = "id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, status, like_count, helpful_count";
       const buildMlQ = (cols: string) => supabase!
@@ -111,33 +110,33 @@ async function handle(deviceId: string, limit: number) {
         const placeIds = [...new Set(plist.map((p) => p.place_id).filter(Boolean).map(String))];
         const placeNames = [...new Set(plist.map((p) => p.place_name).filter(Boolean).map(String))];
 
-        // 各投稿の写真（自分の投稿なので moderation は問わず本人には見せる）
+        // 写真・places(id)・places(name) を並列取得（本人写真は moderation を問わず見せる）
+        const [phsRes, plsIdRes, plsNameRes] = await Promise.all([
+          supabase.from("spot_photos").select("post_id, image_url").in("post_id", postIds),
+          placeIds.length > 0
+            ? supabase.from("places").select("id, address, lat, lng").in("id", placeIds)
+            : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+          placeNames.length > 0
+            ? supabase.from("places").select("name, address, lat, lng").in("name", placeNames)
+            : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+        ]);
         const photoByPost = new Map<string, string[]>();
-        const { data: phs } = await supabase.from("spot_photos").select("post_id, image_url").in("post_id", postIds);
-        for (const ph of (phs ?? []) as Array<Record<string, unknown>>) {
+        for (const ph of (phsRes.data ?? []) as Array<Record<string, unknown>>) {
           const k = String(ph.post_id);
           if (!photoByPost.has(k)) photoByPost.set(k, []);
           if (!isLegacyPhotoUrl(String(ph.image_url))) photoByPost.get(k)!.push(String(ph.image_url));
         }
-
-        // 都道府県・座標を place_id / place_name の両方から解決
         const prefByPlace = new Map<string, string>();
         const prefByName = new Map<string, string>();
         const coordByPlace = new Map<string, { lat: number; lng: number }>();
         const coordByName = new Map<string, { lat: number; lng: number }>();
-        if (placeIds.length > 0) {
-          const { data: pls } = await supabase.from("places").select("id, address, lat, lng").in("id", placeIds);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
-            prefByPlace.set(String(pl.id), toPref(pl.address));
-            if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
-          }
+        for (const pl of (plsIdRes.data ?? []) as Array<Record<string, unknown>>) {
+          prefByPlace.set(String(pl.id), toPref(pl.address));
+          if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
-        if (placeNames.length > 0) {
-          const { data: pls } = await supabase.from("places").select("name, address, lat, lng").in("name", placeNames);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
-            prefByName.set(String(pl.name), toPref(pl.address));
-            if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
-          }
+        for (const pl of (plsNameRes.data ?? []) as Array<Record<string, unknown>>) {
+          prefByName.set(String(pl.name), toPref(pl.address));
+          if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
 
         for (const p of plist) {
@@ -166,10 +165,9 @@ async function handle(deviceId: string, limit: number) {
           });
         }
       }
-    } catch { /* spot_posts 未作成でもスキップ */ }
+    } catch { /* spot_posts 未作成でもスキップ */ } })();
 
-    // ── おすすめブログ(blog_posts) ───────────────────────────────────────────
-    try {
+    const blogP = (async () => { try {
       const { data: bposts } = await supabase
         .from("blog_posts")
         .select("id, device_id, poster_name, place_id, place_name, address, area, lat, lng, title, caption, mood_tags, approval_status, like_count, helpful_count, created_at")
@@ -212,7 +210,9 @@ async function handle(deviceId: string, limit: number) {
           });
         }
       }
-    } catch { /* blog_posts 未作成でもスキップ */ }
+    } catch { /* blog_posts 未作成でもスキップ */ } })();
+
+    await Promise.all([sugP, mlP, blogP]);
 
     // 3ソースを新着順にマージして返す
     const items = out

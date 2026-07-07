@@ -19,6 +19,8 @@ import { parsePost, type FeedLike, type Post } from './community/postTypes';
 
 const PURPLE = '#9B6BFF';
 const PAGE = 30;
+// 前回の先頭ページを端末に保持し、次回は即表示→裏で最新化（体感速度対策）
+const FEED_CACHE_KEY = 'moodgo-feed-cache-v1';
 
 type FeedItem = FeedLike & {
   lat?: number | null;
@@ -109,12 +111,24 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   }, [full, posterHandle]);
 
   // 初回ロード（再試行ボタンからも呼ぶ）。エラーは空状態と区別して loadError に立てる。
+  //   前回の先頭ページ(端末キャッシュ)があれば即表示し、裏で最新を取得して置き換える。
   const loadInitial = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
+    let hadCache = false;
     try {
-      const blocked = await loadJSON<string[]>(BLOCKED_USERS_KEY, []);
-      if (isMounted.current) setBlockedUsers(blocked);
+      const [blocked, cached] = await Promise.all([
+        loadJSON<string[]>(BLOCKED_USERS_KEY, []),
+        loadJSON<FeedItem[]>(FEED_CACHE_KEY, []),
+      ]);
+      if (isMounted.current) {
+        setBlockedUsers(blocked);
+        if (Array.isArray(cached) && cached.length > 0) {
+          hadCache = true;
+          setItems(cached);
+          setLoading(false);   // スピナーを出さず前回結果を即表示
+        }
+      }
       const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=0`);
       const data = await res.json();
       if (!res.ok || data?.ok === false) throw new Error('community-feed error');
@@ -125,8 +139,12 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         cursorRef.current = data?.nextCursor
           ?? (fetched.length ? String(fetched[fetched.length - 1]?.created_at ?? '') || null : null);
         setHasMore(data?.hasMore ?? fetched.length >= PAGE);
+        saveJSON(FEED_CACHE_KEY, fetched.slice(0, PAGE));
       }
-    } catch { if (isMounted.current) { setItems([]); setLoadError(true); } }
+    } catch {
+      // キャッシュを出せている時は静かに前回結果のまま（エラーで置き換えない）
+      if (isMounted.current && !hadCache) { setItems([]); setLoadError(true); }
+    }
     finally { if (isMounted.current) setLoading(false); }
   }, []);
 

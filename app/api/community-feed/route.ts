@@ -59,13 +59,16 @@ export async function GET(request: Request) {
       const tail = list[list.length - 1]?.created_at;
       if (tail && (!oldestFetched || String(tail) < oldestFetched)) oldestFetched = String(tail);
     };
-    try {
-      // ユーザー絞り込み時: handle→device_id をサーバー内で解決（生IDは外に出さない）
-      let posterDeviceId: string | null = null;
-      if (posterHandle) {
-        posterDeviceId = await deviceByHandle(supabase, posterHandle);
-        if (!posterDeviceId) return NextResponse.json({ ok: true, items: [] });  // 存在しないID
-      }
+    // ユーザー絞り込み時: handle→device_id をサーバー内で解決（生IDは外に出さない）
+    //   ※並列ブロックの外で解決（ブロック内からGETの応答を返せないため）
+    let posterDeviceId: string | null = null;
+    if (posterHandle) {
+      posterDeviceId = await deviceByHandle(supabase, posterHandle);
+      if (!posterDeviceId) return NextResponse.json({ ok: true, items: [] });  // 存在しないID
+    }
+
+    // ── Moodログ取得（穴場suggestionsと並列実行・コールドDBでの直列待ちを解消）──
+    const moodPromise = (async () => { try {
       // price_chip/rating は spot-posts-extra.sql 未適用だと列が無い → まずフル、42703なら基本列で再試行
       const BASE_COLS = "id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, like_count, helpful_count";
       const buildQ = (cols: string) => {
@@ -88,44 +91,45 @@ export async function GET(request: Request) {
       if (plist.length > 0) {
         const postIds = plist.map(p => String(p.id));
         const placeIds = [...new Set(plist.map(p => p.place_id).filter(Boolean).map(String))];
-        // 各投稿の写真
-        const photoByPost = new Map<string, string[]>();
-        const { data: phs } = await supabase.from("spot_photos").select("post_id, image_url")
-          .in("post_id", postIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected");
-        for (const ph of (phs ?? []) as Array<Record<string, unknown>>) {
-          const k = String(ph.post_id); if (!photoByPost.has(k)) photoByPost.set(k, []);
-          if (!isLegacyPhotoUrl(String(ph.image_url))) photoByPost.get(k)!.push(String(ph.image_url));
-        }
+        const names2 = [...new Set(plist.map(p => p.place_name).filter(Boolean).map(String))];
         // 都道府県(places.address) を id と name の両方で引けるようにする（place_idがgoogle_id/nullでも名前で補完）
         const toPref = (addr: unknown): string => {
           const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
           const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
           return m ? m[1].replace(/[都道府県]$/, "") : "";
         };
+        // 写真・places(id/name)・@ハンドルの4系統を並列取得（従来は直列で最も遅い区間だった）
+        const [phsRes, plsIdRes, plsNameRes, handleMap] = await Promise.all([
+          supabase.from("spot_photos").select("post_id, image_url")
+            .in("post_id", postIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected"),
+          placeIds.length > 0
+            ? supabase.from("places").select("id, address, lat, lng").in("id", placeIds)
+            : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+          names2.length > 0
+            ? supabase.from("places").select("name, address, lat, lng").in("name", names2)
+            : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+          handlesByDevice(
+            supabase,
+            plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? "")),
+          ),
+        ]);
+        const photoByPost = new Map<string, string[]>();
+        for (const ph of (phsRes.data ?? []) as Array<Record<string, unknown>>) {
+          const k = String(ph.post_id); if (!photoByPost.has(k)) photoByPost.set(k, []);
+          if (!isLegacyPhotoUrl(String(ph.image_url))) photoByPost.get(k)!.push(String(ph.image_url));
+        }
         const prefByPlace = new Map<string, string>();
         const prefByName = new Map<string, string>();
         const coordByPlace = new Map<string, { lat: number; lng: number }>();
         const coordByName = new Map<string, { lat: number; lng: number }>();
-        const names2 = [...new Set(plist.map(p => p.place_name).filter(Boolean).map(String))];
-        if (placeIds.length > 0) {
-          const { data: pls } = await supabase.from("places").select("id, address, lat, lng").in("id", placeIds);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
-            prefByPlace.set(String(pl.id), toPref(pl.address));
-            if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
-          }
+        for (const pl of (plsIdRes.data ?? []) as Array<Record<string, unknown>>) {
+          prefByPlace.set(String(pl.id), toPref(pl.address));
+          if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
-        if (names2.length > 0) {
-          const { data: pls } = await supabase.from("places").select("name, address, lat, lng").in("name", names2);
-          for (const pl of (pls ?? []) as Array<Record<string, unknown>>) {
-            prefByName.set(String(pl.name), toPref(pl.address));
-            if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
-          }
+        for (const pl of (plsNameRes.data ?? []) as Array<Record<string, unknown>>) {
+          prefByName.set(String(pl.name), toPref(pl.address));
+          if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
-        // @ハンドル添付（非匿名のみ・テーブル未適用は空Map）
-        const handleMap = await handlesByDevice(
-          supabase,
-          plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? "")),
-        );
         moodItems = plist.map(p => {
           const anon = p.visibility === "spot_public_anonymous";
           return {
@@ -150,13 +154,14 @@ export async function GET(request: Request) {
           };
         });
       }
-    } catch { /* spot_posts未作成は穴場のみ表示 */ }
+    } catch { /* spot_posts未作成は穴場のみ表示 */ } })();
 
-    // ── 穴場投稿(suggestions・承認済み)も合流（2026-07-07復元）────────────────────
+    // ── 穴場投稿(suggestions・承認済み)も合流（2026-07-07復元・Moodログと並列実行）──
     //   「全国みんなの穴場」の母集団は穴場投稿。moodログ(spot_posts)と同じカード形に整形して混ぜる。
     //   ユーザー絞り込み(@ID)時は spot_posts のみ対象なので suggestions は足さない。
     let suggestionItems: Array<Record<string, unknown>> = [];
-    if (!posterHandle) {
+    const sugPromise = (async () => {
+      if (posterHandle) return;
       try {
         const today = new Date().toISOString().slice(0, 10);
         const toPref = (addr: unknown): string => {
@@ -205,7 +210,10 @@ export async function GET(request: Request) {
           };
         });
       } catch { /* suggestions取得失敗はmoodログのみで続行 */ }
-    }
+    })();
+
+    // 2ソースを同時に取得（従来は直列＝コールド/低速DBで所要が倍増していた）
+    await Promise.all([moodPromise, sugPromise]);
 
     // moodログ＋穴場投稿を新着順で合流して返す（idで重複排除）。
     const seen = new Set<string>();
@@ -222,7 +230,12 @@ export async function GET(request: Request) {
     // どちらかのソースがlimit件まるごと返した=まだ先がある可能性が高い
     const hasMore = rawMoodCount >= limit || rawSugCount >= limit;
 
-    return NextResponse.json({ ok: true, items: merged, nextCursor, hasMore });
+    // エッジキャッシュ: 60秒は同一URLをCDNから即返す（コールドDBの遅さを利用者から隠す）。
+    // ホームと一覧が同じ先頭ページを叩くためヒット率が高い。いいね数等の鮮度は60秒で十分。
+    return NextResponse.json(
+      { ok: true, items: merged, nextCursor, hasMore },
+      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } },
+    );
   } catch (e) {
     console.error("[community-feed]", e);
     return NextResponse.json({ ok: false, items: [], error: String(e) });

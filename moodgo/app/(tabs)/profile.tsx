@@ -28,7 +28,7 @@ import SettingsView from '@/components/SettingsView';
 import { useTabReset } from '@/lib/useTabReset';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
-import { HISTORY_KEY } from '@/lib/storage';
+import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
 import { loadViewedLog, loadVisitedLog, relativeTime, type SpotLogItem } from '@/lib/spotLog';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import type { Recommendation } from '@/types/app';
@@ -146,8 +146,12 @@ export default function ProfileTab() {
     setUserHandle(hnd ?? '');
   }, []);
 
-  // 自分の投稿を取得
+  // 自分の投稿を取得（前回結果を即表示→裏で最新化。キャッシュは/my-postsページと共有）
   const loadPosts = useCallback(async () => {
+    try {
+      const cached = await loadJSON<MyPost[]>('moodgo-my-posts-cache-v1', []);
+      if (Array.isArray(cached) && cached.length > 0) { setPosts(cached); setLoading(false); }
+    } catch { /* noop */ }
     try {
       const deviceId = await getDeviceId();
       // deviceIdは資格情報なのでURLクエリに載せずPOST bodyで送る（アクセスログ残留対策）
@@ -156,10 +160,11 @@ export default function ProfileTab() {
         body: JSON.stringify({ deviceId }),
       });
       const data = await res.json();
-      setPosts(Array.isArray(data?.items) ? data.items : []);
-    } catch {
-      setPosts([]);
-    }
+      if (Array.isArray(data?.items)) {
+        setPosts(data.items);
+        saveJSON('moodgo-my-posts-cache-v1', data.items);
+      }
+    } catch { /* 前回表示のまま */ }
   }, []);
 
   // バッジ(行った！)・最近チェック（端末ローカル記録）
