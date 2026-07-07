@@ -74,7 +74,8 @@ export const SORTS: Array<{ key: SortKey; label: string }> = [
 
 export function sortPosts(arr: MyPost[], key: SortKey, asc: boolean): MyPost[] {
   const out = [...arr];
-  const dir = asc ? 1 : -1;
+  // 基本コンパレータは降順(b-a)。asc=trueの時だけ反転する
+  const dir = asc ? -1 : 1;
   switch (key) {
     case 'popular':
       out.sort((a, b) => dir * (((b.likes ?? 0) + (b.visited ?? 0)) - ((a.likes ?? 0) + (a.visited ?? 0))));
