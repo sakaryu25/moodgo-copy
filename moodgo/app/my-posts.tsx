@@ -163,6 +163,8 @@ export default function MyPostsScreen() {
             handle={handle}
             iconUrl={iconUrl}
             prefecture={settings.profilePrefecture ?? ''}
+            bio={settings.profileBio}
+            showPrefecture={settings.showPrefecture}
             onEdit={() => setShowSettings(true)}
           />
 

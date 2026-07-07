@@ -5,8 +5,13 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MP } from './types';
 
 export default function UserSummary({
-  name, handle, iconUrl, prefecture, onEdit,
-}: { name: string; handle: string; iconUrl: string; prefecture: string; onEdit: () => void }) {
+  name, handle, iconUrl, prefecture, bio, showPrefecture = true, onEdit,
+}: {
+  name: string; handle: string; iconUrl: string; prefecture: string;
+  bio?: string;               // 一言メッセージ（プロフィール編集で設定・未設定は定型文）
+  showPrefecture?: boolean;   // 在住地の表示有無（プロフィール編集で設定）
+  onEdit: () => void;
+}) {
   return (
     <View style={s.row}>
       <View style={s.avatarWrap}>
@@ -19,9 +24,9 @@ export default function UserSummary({
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={s.name} numberOfLines={1}>{name}</Text>
         <Text style={s.bio} numberOfLines={1}>
-          {handle ? `@${handle}・` : ''}日本中の穴場スポットを探しています。
+          {handle ? `@${handle}・` : ''}{bio?.trim() || '日本中の穴場スポットを探しています。'}
         </Text>
-        {!!prefecture && (
+        {!!prefecture && showPrefecture && (
           <View style={s.locRow}>
             <MapPin size={11} color={MP.SUB} strokeWidth={2.2} />
             <Text style={s.loc}>{prefecture}在住</Text>

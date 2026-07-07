@@ -11,13 +11,14 @@ import { router, type Href } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Image, Linking, Modal, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  StyleSheet, Switch, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
 } from 'react-native-svg';
 import { getDeviceId } from '@/lib/abtest';
+import { useSettings, saveProfileExtras } from '@/lib/settingsStore';
 import { apiFetch } from '@/lib/api';
 import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
 import AppBackground from './AppBackground';
@@ -128,6 +129,10 @@ export default function SettingsView({
   const [ageInput, setAgeInput]               = useState(profileAge);
   const [genderInput, setGenderInput]         = useState(profileGender);
   const [prefectureInput, setPrefectureInput] = useState(profilePrefecture);
+  // 一言メッセージ＋在住地の表示有無（自分の投稿ページ用・ストア直結）
+  const storeSettings = useSettings();
+  const [bioInput, setBioInput] = useState(storeSettings.profileBio);
+  const [showPrefInput, setShowPrefInput] = useState(storeSettings.showPrefecture);
   const [showPrefPicker, setShowPrefPicker]   = useState(false);
   const [saved, setSaved]                     = useState(false);
   // アイコンと名前
@@ -153,6 +158,8 @@ export default function SettingsView({
       setAgeInput(profileAge);
       setGenderInput(profileGender);
       setPrefectureInput(profilePrefecture);
+      setBioInput(storeSettings.profileBio);
+      setShowPrefInput(storeSettings.showPrefecture);
       setSaved(false);
       setShowPrefPicker(false);
       // 保存済みの名前・アイコンを読み込み
@@ -275,6 +282,7 @@ export default function SettingsView({
   // 保存本体。ID変更の確認は handleSave（ラッパー）で先に行う。
   const doSave = async () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
+    saveProfileExtras(bioInput.trim().slice(0, 40), showPrefInput);
     // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
     const name = nameInput.trim().slice(0, 20);
     AsyncStorage.setItem(NICKNAME_KEY, name).catch(() => {});
@@ -603,6 +611,36 @@ export default function SettingsView({
                 </Text>
                 <ChevronRight size={15} color="#A78BFA" strokeWidth={2} />
               </TouchableOpacity>
+
+              {/* 在住地の表示有無（自分の投稿ページの「◯◯在住」）*/}
+              <View style={s.togglePrefRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.togglePrefLabel}>{lang === 'ja' ? '在住地を表示' : 'Show prefecture'}</Text>
+                  <Text style={s.togglePrefHint}>
+                    {lang === 'ja' ? '自分の投稿ページに「◯◯在住」を表示します' : 'Shows "Lives in ..." on your posts page'}
+                  </Text>
+                </View>
+                <Switch
+                  value={showPrefInput}
+                  onValueChange={setShowPrefInput}
+                  trackColor={{ false: '#E4E0EE', true: '#C4B5FD' }}
+                  thumbColor={showPrefInput ? PURPLE : '#f4f3f4'}
+                />
+              </View>
+
+              {/* 一言メッセージ */}
+              <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '一言メッセージ' : 'Bio'}</Text>
+              <TextInput
+                value={bioInput}
+                onChangeText={setBioInput}
+                placeholder={lang === 'ja' ? '例: 日本中の穴場スポットを探しています。' : 'e.g. Exploring hidden gems across Japan.'}
+                placeholderTextColor="#C4B5FD"
+                style={s.nameInput}
+                maxLength={40}
+              />
+              <Text style={s.nameHint}>
+                {lang === 'ja' ? '自分の投稿ページの名前の下に表示されます（40文字まで）' : 'Shown under your name on the posts page (max 40)'}
+              </Text>
             </View>
 
             {/* 保存ボタン */}
@@ -911,6 +949,12 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   prefBtnText:       { flex: 1, fontSize: 14, color: '#C4B5FD', fontWeight: '500' },
+  togglePrefRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16,
+    paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(155,107,255,0.1)',
+  },
+  togglePrefLabel: { fontSize: 13.5, fontWeight: '700', color: '#3B2A63' },
+  togglePrefHint: { fontSize: 11, color: '#8B7BB8', marginTop: 2 },
   prefBtnTextFilled: { color: '#1E0753', fontWeight: '700' },
 
   saveWrap: {

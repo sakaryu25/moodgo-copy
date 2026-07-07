@@ -21,6 +21,8 @@ export type SettingsState = {
   profileAge: string;
   profileGender: string;
   profilePrefecture: string;
+  profileBio: string;             // 一言メッセージ（自分の投稿ページに表示）
+  showPrefecture: boolean;        // 在住地（都道府県）を表示するか
   blockedPlaces: string[];
 };
 
@@ -30,6 +32,8 @@ let state: SettingsState = {
   profileAge: "",
   profileGender: "",
   profilePrefecture: "",
+  profileBio: "",
+  showPrefecture: true,
   blockedPlaces: [],
 };
 
@@ -56,7 +60,7 @@ export async function hydrateSettings(): Promise<void> {
       AsyncStorage.getItem(PROFILE_KEY),
       AsyncStorage.getItem(BLOCKED_PLACES_KEY),
     ]);
-    let profile: { age?: string; gender?: string; prefecture?: string } = {};
+    let profile: { age?: string; gender?: string; prefecture?: string; bio?: string; showPrefecture?: boolean } = {};
     try { if (profileRaw) profile = JSON.parse(profileRaw); } catch { /* 破損時は空 */ }
     let blocked: string[] = [];
     try { if (blockedRaw) blocked = JSON.parse(blockedRaw); } catch { /* 破損時は空 */ }
@@ -66,6 +70,8 @@ export async function hydrateSettings(): Promise<void> {
       profileAge: profile.age ?? "",
       profileGender: profile.gender ?? "",
       profilePrefecture: profile.prefecture ?? "",
+      profileBio: profile.bio ?? "",
+      showPrefecture: profile.showPrefecture !== false,   // 既定=表示
       blockedPlaces: Array.isArray(blocked) ? blocked : [],
     });
   } catch {
@@ -83,7 +89,19 @@ export function setLang(lang: Lang): void {
 
 export function saveProfile(age: string, gender: string, prefecture: string): void {
   setState({ profileAge: age, profileGender: gender, profilePrefecture: prefecture });
-  AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ age, gender, prefecture })).catch(() => {});
+  // bio/showPrefecture を消さないよう現在値をマージして永続化
+  AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({
+    age, gender, prefecture, bio: state.profileBio, showPrefecture: state.showPrefecture,
+  })).catch(() => {});
+}
+
+// 一言メッセージ＋在住地の表示有無（自分の投稿ページ用）
+export function saveProfileExtras(bio: string, showPrefecture: boolean): void {
+  setState({ profileBio: bio, showPrefecture });
+  AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({
+    age: state.profileAge, gender: state.profileGender, prefecture: state.profilePrefecture,
+    bio, showPrefecture,
+  })).catch(() => {});
 }
 
 function persistBlocked(next: string[]): void {
