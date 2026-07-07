@@ -448,7 +448,7 @@ export default function ProfileTab() {
           {loading || posts.length === 0 ? (
             <View style={s.card}>
               <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
-                onMore={() => setSubView('posts')} />
+                onMore={() => router.push('/my-posts')} />
               {loading ? (
                 <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
               ) : (
@@ -469,7 +469,7 @@ export default function ProfileTab() {
           ) : (
             <MyPostsGlassCard
               posts={posts}
-              onMore={() => setSubView('posts')}
+              onMore={() => router.push('/my-posts')}
               onPressPost={(p) => openPost(p as MyPost)}
             />
           )}

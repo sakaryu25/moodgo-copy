@@ -330,12 +330,18 @@ export async function GET(request: Request) {
       } catch { /* 無視 */ }
     }
 
-    // いいね数（穴場/Moodログ共通で spot_post_reactions を数える。テーブル未適用は0）
+    // いいね/行った！数（穴場/Moodログ共通で spot_post_reactions を数える。テーブル未適用は0）
     let likeCount = 0;
+    let visitedCount = 0;
     try {
-      const { count, error: lcErr } = await supabase.from("spot_post_reactions")
-        .select("id", { count: "exact", head: true }).eq("post_id", realId).eq("rtype", "like");
-      if (!lcErr) likeCount = count ?? 0;
+      const { data: rxRows, error: lcErr } = await supabase.from("spot_post_reactions")
+        .select("rtype").eq("post_id", realId).in("rtype", ["like", "visited"]);
+      if (!lcErr) {
+        for (const r of (rxRows ?? []) as Array<{ rtype?: string }>) {
+          if (r.rtype === "like") likeCount++;
+          else if (r.rtype === "visited") visitedCount++;
+        }
+      }
     } catch { /* 0のまま */ }
 
     return NextResponse.json({
@@ -344,6 +350,7 @@ export async function GET(request: Request) {
         id: respId,
         kind: isMoodlog ? "moodlog" : "suggestion",   // いいね/プロフィールのtargetId構築用
         likeCount,
+        visitedCount,   // 行った！された回数（閲覧者が押した数）
         userTitle,            // 利用者が書いたスポット名
         placeName,            // 場所名（Google名 or 同じ）
         description,          // 利用者が書いた説明 / caption（大目玉）

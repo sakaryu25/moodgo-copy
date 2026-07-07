@@ -94,13 +94,18 @@ async function handle(deviceId: string, limit: number) {
 
     // ── Moodログ(spot_posts) ────────────────────────────────────────────────
     try {
-      const { data: posts } = await supabase
-        .from("spot_posts")
-        .select("id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, status, like_count, helpful_count")
+      // price_chip/rating は spot-posts-extra.sql 未適用だと列が無い → フル→基本列フォールバック
+      const ML_BASE = "id, device_id, poster_name, place_id, place_name, caption, mood_tags, created_at, visibility, status, like_count, helpful_count";
+      const buildMlQ = (cols: string) => supabase!
+        .from("spot_posts").select(cols)
         .eq("device_id", deviceId)
         .order("created_at", { ascending: false })
         .limit(limit);
-      const plist = (posts ?? []) as Array<Record<string, unknown>>;
+      let { data: posts, error: mlErr } = await buildMlQ(`${ML_BASE}, price_chip, rating`);
+      if (mlErr && (mlErr as { code?: string }).code === "42703") {
+        ({ data: posts } = await buildMlQ(ML_BASE));
+      }
+      const plist = (posts ?? []) as unknown as Array<Record<string, unknown>>;
       if (plist.length > 0) {
         const postIds = plist.map((p) => String(p.id));
         const placeIds = [...new Set(plist.map((p) => p.place_id).filter(Boolean).map(String))];
@@ -151,6 +156,8 @@ async function handle(deviceId: string, limit: number) {
             lat: coord?.lat ?? null,
             lng: coord?.lng ?? null,
             likes: (Number(p.like_count) || 0) + (Number(p.helpful_count) || 0),
+            price_chip: (p.price_chip as string | null) ?? null,
+            rating: typeof p.rating === "number" ? p.rating : null,
             created_at: p.created_at,
             status: (p.status as string | null) ?? null,
             poster_name: (p.poster_name as string | null) ?? null,
@@ -212,24 +219,29 @@ async function handle(deviceId: string, limit: number) {
       .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
       .slice(0, limit);
 
-    // ── いいね数を統一いいね(spot_post_reactions rtype='like'=/api/spot-likeと同じ真実)で上書き ──
-    //   穴場(suggestions)もMoodログも「みんなが押したいいね」の実数になる。blog(bp-)は従来値を維持。
+    // ── いいね/行った！数を統一リアクション(spot_post_reactions=/api/spot-likeと同じ真実)で付与 ──
+    //   穴場(suggestions)もMoodログも「みんなが押した数」の実数になる。blog(bp-)のlikesは従来値を維持。
     try {
       const likeIds = items
         .filter((it) => it.kind === "suggestion" || it.kind === "moodlog")
         .map((it) => String(it.id).replace(/^ml-/, ""));
       if (likeIds.length > 0) {
         const { data: rx, error: rxErr } = await supabase
-          .from("spot_post_reactions").select("post_id").eq("rtype", "like").in("post_id", likeIds);
+          .from("spot_post_reactions").select("post_id, rtype")
+          .in("rtype", ["like", "visited"]).in("post_id", likeIds);
         if (!rxErr) {
           const likeBy = new Map<string, number>();
-          for (const r of (rx ?? []) as Array<{ post_id?: string }>) {
+          const visitBy = new Map<string, number>();
+          for (const r of (rx ?? []) as Array<{ post_id?: string; rtype?: string }>) {
             const k = String(r.post_id);
-            likeBy.set(k, (likeBy.get(k) ?? 0) + 1);
+            const m = r.rtype === "visited" ? visitBy : likeBy;
+            m.set(k, (m.get(k) ?? 0) + 1);
           }
           for (const it of items) {
             if (it.kind === "suggestion" || it.kind === "moodlog") {
-              it.likes = likeBy.get(String(it.id).replace(/^ml-/, "")) ?? 0;
+              const k = String(it.id).replace(/^ml-/, "");
+              it.likes = likeBy.get(k) ?? 0;
+              it.visited = visitBy.get(k) ?? 0;   // 行った！された回数（閲覧者が押した数）
             }
           }
         }

@@ -37,21 +37,24 @@ export async function POST(req: Request) {
   const isMoodlog = rawTarget.startsWith("ml-");
   const postId = isMoodlog ? rawTarget.slice(3) : rawTarget;
   if (!UUID_RE.test(postId)) return NextResponse.json({ ok: false, error: "targetIdが不正です" }, { status: 400 });
+  // リアクション種別: like=いいね / visited=行った！（どちらも同じ二重防止unique）
+  const rtype = body?.rtype === "visited" ? "visited" : "like";
 
   try {
     if (action === "status") {
-      let count = 0, liked = false;
+      // 両rtypeの数＋自分の押下状態を1往復で返す
+      let count = 0, visitedCount = 0, liked = false, visited = false;
       try {
-        const { count: c, error } = await db.from("spot_post_reactions")
-          .select("id", { count: "exact", head: true }).eq("post_id", postId).eq("rtype", "like");
-        if (!error) count = c ?? 0;
-        if (deviceId) {
-          const { data } = await db.from("spot_post_reactions").select("id")
-            .match({ post_id: postId, device_id: deviceId, rtype: "like" }).maybeSingle();
-          liked = !!data;
+        const { data: rows, error } = await db.from("spot_post_reactions")
+          .select("rtype, device_id").eq("post_id", postId).in("rtype", ["like", "visited"]);
+        if (!error) {
+          for (const r of (rows ?? []) as Array<{ rtype?: string; device_id?: string }>) {
+            if (r.rtype === "like") { count++; if (deviceId && r.device_id === deviceId) liked = true; }
+            else if (r.rtype === "visited") { visitedCount++; if (deviceId && r.device_id === deviceId) visited = true; }
+          }
         }
       } catch { /* テーブル未適用は 0 / false */ }
-      return NextResponse.json({ ok: true, liked, count });
+      return NextResponse.json({ ok: true, liked, count, visited, visitedCount });
     }
 
     if (action !== "like" && action !== "unlike") {
@@ -63,12 +66,12 @@ export async function POST(req: Request) {
     if (!deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
 
     if (action === "like") {
-      const { error } = await db.from("spot_post_reactions").insert({ post_id: postId, device_id: deviceId, rtype: "like" });
+      const { error } = await db.from("spot_post_reactions").insert({ post_id: postId, device_id: deviceId, rtype });
       if (error) {
         if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
-        // 23505=いいね済み → 成功扱い（カウンタは増やさない）
+        // 23505=リアクション済み → 成功扱い（カウンタは増やさない）
         if (String((error as { code?: string }).code) !== "23505") throw error;
-      } else if (isMoodlog) {
+      } else if (isMoodlog && rtype === "like") {
         // Moodログ既存表示(like_count)との整合。RPC→read+1フォールバック（spot-postsと同じ流儀）
         await db.rpc("increment_spot_post_counter", { p_post: postId, p_col: "like_count" }).then(() => {}, async () => {
           const { data } = await db.from("spot_posts").select("like_count").eq("id", postId).maybeSingle();
@@ -78,9 +81,9 @@ export async function POST(req: Request) {
       }
     } else {
       const { data: del, error } = await db.from("spot_post_reactions")
-        .delete().match({ post_id: postId, device_id: deviceId, rtype: "like" }).select("id");
+        .delete().match({ post_id: postId, device_id: deviceId, rtype }).select("id");
       if (error && isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
-      if (isMoodlog && Array.isArray(del) && del.length > 0) {
+      if (isMoodlog && rtype === "like" && Array.isArray(del) && del.length > 0) {
         const { data } = await db.from("spot_posts").select("like_count").eq("id", postId).maybeSingle();
         const cur = (data as { like_count?: number } | null)?.like_count ?? 0;
         await db.from("spot_posts").update({ like_count: Math.max(0, cur - 1) }).eq("id", postId).then(() => {}, () => {});
@@ -88,8 +91,8 @@ export async function POST(req: Request) {
     }
 
     const { count } = await db.from("spot_post_reactions")
-      .select("id", { count: "exact", head: true }).eq("post_id", postId).eq("rtype", "like");
-    return NextResponse.json({ ok: true, liked: action === "like", count: count ?? 0 });
+      .select("id", { count: "exact", head: true }).eq("post_id", postId).eq("rtype", rtype);
+    return NextResponse.json({ ok: true, liked: action === "like", rtype, count: count ?? 0 });
   } catch (e) {
     console.error("[spot-like]", e);
     const msg = (e as { message?: string } | null)?.message ?? String(e);
