@@ -991,20 +991,22 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── みんなの声（評価・Moodログ・コメントを1つに集約）─── */}
+          {/* ─── みんなの声（評価・コメント・Moodログ）＝コメントを上・Moodログを一番下に ─── */}
           <VoicesSection>
             {/* MoodGo独自の★評価（あなたの評価＋MoodGo平均）*/}
             <View style={{ marginBottom: 6 }}>
               <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
             </View>
-            {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊含む全スポット）*/}
-            <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
             {/* コメント（場所ごと。SupabaseスポットID[UUID]がある場合のみ）*/}
             {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
               <View style={{ marginTop: 14 }}>
                 <CommentsSection targetId={rec.supabaseId} />
               </View>
             ) : null}
+            {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用）＝一番下 */}
+            <View style={{ marginTop: 14 }}>
+              <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
+            </View>
           </VoicesSection>
 
         </View>

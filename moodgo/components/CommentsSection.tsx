@@ -407,9 +407,6 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
           )}
         </>
       )}
-      {ready && items.length > 0 && (
-        <Text style={s.hint}>長押しで翻訳・コピー・通報できます</Text>
-      )}
 
       {/* ── インライン用 長押しメニュー（透明Modal・常時マウント+visibleトグル）── */}
       <Modal transparent visible={inlineMenuVisible} animationType="none" statusBarTranslucent onRequestClose={closeMenu}>

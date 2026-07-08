@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
@@ -26,7 +26,6 @@ import { openInGoogleMaps } from '@/lib/openMaps';
 import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
-import VoicesSection, { type VoiceStat } from '@/components/VoicesSection';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -378,6 +377,28 @@ export default function CommunitySpotScreen() {
             )}
           </View>
 
+          {/* ── みんなの声のバー（いいね/行った!/評価の社会的証明を上部に）── */}
+          <View style={s.voiceBar}>
+            {spot.rating > 0 ? (
+              <>
+                <View style={s.voiceCell}>
+                  <View style={s.voiceValRow}><Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} /><Text style={s.voiceVal}>{spot.rating}.0</Text></View>
+                  <Text style={s.voiceLabel}>評価</Text>
+                </View>
+                <View style={s.voiceDivider} />
+              </>
+            ) : null}
+            <View style={s.voiceCell}>
+              <View style={s.voiceValRow}><Heart size={12} color="#F56CB3" fill="#F56CB3" strokeWidth={0} /><Text style={s.voiceVal}>{likeCount}</Text></View>
+              <Text style={s.voiceLabel}>いいね</Text>
+            </View>
+            <View style={s.voiceDivider} />
+            <View style={s.voiceCell}>
+              <View style={s.voiceValRow}><Footprints size={13} color="#10B981" strokeWidth={2.2} /><Text style={s.voiceVal}>{spot.visitedCount ?? 0}</Text></View>
+              <Text style={s.voiceLabel}>行った！</Text>
+            </View>
+          </View>
+
           {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
           {(spot.availableFrom || spot.availableUntil) ? (
             <View style={s.periodCard}>
@@ -489,18 +510,12 @@ export default function CommunitySpotScreen() {
             </View>
           )}
 
-          {/* ── みんなの声（評価/Moodログ/コメントを1つに集約）── */}
-          <VoicesSection stats={([
-            spot.rating > 0 ? { kind: 'star', value: `${spot.rating}.0`, label: '評価' } : null,
-            { kind: 'heart', value: String(likeCount), label: 'いいね' },
-            { kind: 'foot', value: String(spot.visitedCount ?? 0), label: '行った！' },
-          ].filter(Boolean)) as VoiceStat[]}>
-            {/* みんなのMoodログ（同じ場所への他の投稿）。いま見ている投稿自身は除外 */}
-            <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address}
-              excludePostId={spot.kind === 'moodlog' ? spot.id : undefined} />
-            {/* コメント（この投稿への会話・1階層）*/}
-            <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
-          </VoicesSection>
+          {/* ── コメント（この投稿への会話・1階層）＝Moodログより上 ── */}
+          <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
+
+          {/* ── みんなのMoodログ（同じ場所への他の投稿）＝一番下。いま見ている投稿自身は除外 ── */}
+          <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address}
+            excludePostId={spot.kind === 'moodlog' ? spot.id : undefined} />
         </View>
       </ScrollView>
 
@@ -643,6 +658,17 @@ const s = StyleSheet.create({
   posterMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   posterCardAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F0EDFF' },
   posterAvatarPh: { alignItems: 'center', justifyContent: 'center' },
+  // みんなの声のバー（社会的証明・上部）
+  voiceBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 16, paddingVertical: 13, marginBottom: 14,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 1,
+  },
+  voiceCell: { flex: 1, alignItems: 'center', gap: 3 },
+  voiceValRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  voiceVal: { fontSize: 16, fontWeight: '800', color: '#1A0A2E', letterSpacing: -0.3 },
+  voiceLabel: { fontSize: 10.5, fontWeight: '600', color: '#8B88A6' },
+  voiceDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: 'rgba(0,0,0,0.09)' },
   posterKicker: { fontSize: 10, fontWeight: '800', color: '#B7A9E0', letterSpacing: 0.8, marginBottom: 1 },
   posterNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   posterName: { fontSize: 13.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
