@@ -10,6 +10,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
 
 type Row = { id: string; handle: string | null; icon: string | null };
 
@@ -20,6 +21,8 @@ export default function FollowListScreen() {
   const mode = kind === 'following' ? 'following' : 'followers';
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [suggests, setSuggests] = useState<Row[]>([]);
+  const [followed, setFollowed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -32,8 +35,32 @@ export default function FollowListScreen() {
         if (active) setRows(Array.isArray(d?.items) ? (d.items as Row[]) : []);
       } catch { /* 空表示 */ } finally { if (active) setLoading(false); }
     })();
+    // フォロー中ビューではおすすめユーザーも取得
+    if (mode === 'following') {
+      (async () => {
+        try {
+          const deviceId = await getDeviceId();
+          const d = await apiFetch('/api/user-suggest', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId }),
+          }).then((r) => r.json());
+          if (active) setSuggests(Array.isArray(d?.items) ? (d.items as Row[]) : []);
+        } catch { /* noop */ }
+      })();
+    }
     return () => { active = false; };
   }, [targetId, mode]);
+
+  const doFollow = async (hash: string) => {
+    setFollowed((prev) => new Set(prev).add(hash));   // 楽観的
+    try {
+      const deviceId = await getDeviceId();
+      await apiFetch('/api/user-follows', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'follow', deviceId, targetId: hash }),
+      });
+    } catch { /* 失敗しても表示は据え置き（次回整合）*/ }
+  };
 
   return (
     <View style={s.root}>
@@ -49,24 +76,48 @@ export default function FollowListScreen() {
 
       {loading ? (
         <View style={s.center}><ActivityIndicator color="#9B6BFF" /></View>
-      ) : rows.length === 0 ? (
-        <View style={s.center}>
-          <UserRound size={34} color="#C9BCE6" strokeWidth={1.8} />
-          <Text style={s.empty}>{mode === 'followers' ? 'フォロワーはいません' : 'まだ誰もフォローしていません'}</Text>
-        </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 30, paddingTop: 4 }}>
-          {rows.map((r) => (
-            <Pressable key={r.id} style={s.row} onPress={() => router.push({ pathname: '/user/[id]', params: { id: r.id } })}>
-              {r.icon ? (
-                <Image source={{ uri: r.icon }} style={s.avatar} contentFit="cover" />
-              ) : (
-                <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
-              )}
-              <Text style={s.name} numberOfLines={1}>{r.handle ? `@${r.handle}` : 'MoodGoユーザー'}</Text>
-              <ChevronRight size={18} color="#C9BCE6" strokeWidth={2.4} />
-            </Pressable>
-          ))}
+          {mode === 'following' && suggests.length > 0 && (
+            <View style={{ marginBottom: 18 }}>
+              <Text style={s.sectionTitle}>おすすめのユーザー</Text>
+              {suggests.map((u) => (
+                <View key={u.id} style={s.row}>
+                  {u.icon ? (
+                    <Image source={{ uri: u.icon }} style={s.avatar} contentFit="cover" />
+                  ) : (
+                    <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
+                  )}
+                  <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/user/[id]', params: { id: u.id } })}>
+                    <Text style={s.name} numberOfLines={1}>{u.handle ? `@${u.handle}` : 'MoodGoユーザー'}</Text>
+                  </Pressable>
+                  {followed.has(u.id) ? (
+                    <Text style={s.followedTag}>フォロー中</Text>
+                  ) : (
+                    <Pressable style={s.followBtn} onPress={() => doFollow(u.id)}><Text style={s.followBtnText}>フォロー</Text></Pressable>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+          {rows.length === 0 ? (
+            <View style={s.centerPad}>
+              <UserRound size={34} color="#C9BCE6" strokeWidth={1.8} />
+              <Text style={s.empty}>{mode === 'followers' ? 'フォロワーはいません' : 'まだ誰もフォローしていません'}</Text>
+            </View>
+          ) : (
+            rows.map((r) => (
+              <Pressable key={r.id} style={s.row} onPress={() => router.push({ pathname: '/user/[id]', params: { id: r.id } })}>
+                {r.icon ? (
+                  <Image source={{ uri: r.icon }} style={s.avatar} contentFit="cover" />
+                ) : (
+                  <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
+                )}
+                <Text style={s.name} numberOfLines={1}>{r.handle ? `@${r.handle}` : 'MoodGoユーザー'}</Text>
+                <ChevronRight size={18} color="#C9BCE6" strokeWidth={2.4} />
+              </Pressable>
+            ))
+          )}
         </ScrollView>
       )}
     </View>
@@ -88,4 +139,9 @@ const s = StyleSheet.create({
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#EFE9FB' },
   avatarPh: { alignItems: 'center', justifyContent: 'center' },
   name: { flex: 1, fontSize: 14.5, fontWeight: '800', color: '#1A0A2E' },
+  sectionTitle: { fontSize: 13, fontWeight: '800', color: '#8B88A6', marginBottom: 8, marginLeft: 2 },
+  centerPad: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 50 },
+  followBtn: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#7C3AED' },
+  followBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  followedTag: { fontSize: 12.5, fontWeight: '700', color: '#9B94B4', paddingHorizontal: 8 },
 });
