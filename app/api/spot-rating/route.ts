@@ -14,6 +14,47 @@ function isMissingTable(e: { code?: string } | null): boolean {
   return e?.code === "42P01" || e?.code === "PGRST205" || e?.code === "PGRST204";
 }
 
+// 総合評価の統計を一本化する。★セレクタ(spot_ratings)と投稿者のおすすめ度(spot_posts.rating)を
+// 「同じ場所の1票」として device_id 単位で統合（★を優先し二重カウント防止）し、平均・件数・自分の票を返す。
+async function aggregate(
+  db: NonNullable<typeof supabase>, placeId: string | null, placeName: string, deviceId: string,
+): Promise<{ avg: number | null; count: number; myStars: number }> {
+  const key = placeId || placeName;
+  const { data: rData, error } = await db.from("spot_ratings").select("stars, device_id").eq("place_id", key);
+  if (error && isMissingTable(error)) return { avg: null, count: 0, myStars: 0 };
+  const rRows = (rData ?? []) as Array<{ stars: number; device_id: string }>;
+
+  // 投稿者のおすすめ度も同じ場所の評価として合算（place_id か place_name の一致・承認済み・rating>0）
+  let pRows: Array<{ rating: number; device_id: string }> = [];
+  try {
+    const ors: string[] = [];
+    if (placeId && !/[,()]/.test(placeId)) ors.push(`place_id.eq.${placeId}`);
+    if (placeName && !/[,()]/.test(placeName)) ors.push(`place_name.eq.${placeName}`);
+    if (ors.length) {
+      const { data } = await db.from("spot_posts")
+        .select("rating, device_id").eq("status", "approved").gt("rating", 0).or(ors.join(","));
+      pRows = (data ?? []) as Array<{ rating: number; device_id: string }>;
+    }
+  } catch { /* spot_posts未作成は★のみで集計 */ }
+
+  // device_id ごとに統合。まず投稿おすすめ度、その上に★セレクタを上書き（同一人物の最新意思＝★優先）。
+  const byDevice = new Map<string, number>();
+  for (const p of pRows) { const d = String(p.device_id ?? ""); const v = Number(p.rating); if (d && v >= 1) byDevice.set(d, v); }
+  const anon: number[] = [];
+  for (const r of rRows) {
+    const d = String(r.device_id ?? ""); const v = Number(r.stars);
+    if (!(v >= 1)) continue;
+    if (d) byDevice.set(d, v); else anon.push(v);
+  }
+  const stars = [...byDevice.values(), ...anon];
+  const count = stars.length;
+  const avg = count > 0 ? Math.round((stars.reduce((a, b) => a + b, 0) / count) * 10) / 10 : null;
+  const rSelf = deviceId ? rRows.find(r => r.device_id === deviceId)?.stars : undefined;
+  const pSelf = deviceId ? pRows.find(p => p.device_id === deviceId)?.rating : undefined;
+  const myStars = Number(rSelf ?? pSelf ?? 0) || 0;
+  return { avg, count, myStars };
+}
+
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   if (!rateLimit(`spot-rating:${clientIp(req)}`, 30, 60_000)) {
@@ -37,12 +78,9 @@ export async function POST(req: Request) {
       if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true, error: "評価は準備中です（DB更新待ち）" }, { status: 400 });
       throw error;
     }
-    // 集計を返す
-    const { data: rows } = await supabase.from("spot_ratings").select("stars").eq("place_id", key);
-    const list = (rows ?? []).map(r => Number((r as { stars: number }).stars)).filter(n => n >= 1);
-    const count = list.length;
-    const avg = count > 0 ? Math.round((list.reduce((a, b) => a + b, 0) / count) * 10) / 10 : null;
-    return NextResponse.json({ ok: true, avg, count, myStars: stars });
+    // 集計を返す（★＋投稿おすすめ度を統合）。自分の票は今送信した stars。
+    const agg = await aggregate(supabase, placeId, placeName, deviceId);
+    return NextResponse.json({ ok: true, avg: agg.avg, count: agg.count, myStars: stars });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
@@ -57,13 +95,8 @@ export async function GET(req: Request) {
   const key = placeId || placeName;
   if (!key) return NextResponse.json({ ok: true, avg: null, count: 0, myStars: 0 });
   try {
-    const { data, error } = await supabase.from("spot_ratings").select("stars, device_id").eq("place_id", key);
-    if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, avg: null, count: 0, myStars: 0 }); throw error; }
-    const rows = (data ?? []) as Array<{ stars: number; device_id: string }>;
-    const count = rows.length;
-    const avg = count > 0 ? Math.round((rows.reduce((a, r) => a + Number(r.stars), 0) / count) * 10) / 10 : null;
-    const mine = deviceId ? rows.find(r => r.device_id === deviceId)?.stars ?? 0 : 0;
-    return NextResponse.json({ ok: true, avg, count, myStars: mine });
+    const agg = await aggregate(supabase, placeId ?? null, placeName ?? "", deviceId);
+    return NextResponse.json({ ok: true, ...agg });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
