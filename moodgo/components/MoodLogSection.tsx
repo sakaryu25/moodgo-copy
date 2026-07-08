@@ -30,7 +30,10 @@ function timeAgo(iso?: string): string {
   return `${Math.floor(d / 2592000)}ヶ月前`;
 }
 
-export default function MoodLogSection({ placeId, placeName, address }: { placeId?: string; placeName: string; address?: string }) {
+export default function MoodLogSection(
+  { placeId, placeName, address, excludePostId }:
+  { placeId?: string; placeName: string; address?: string; excludePostId?: string },
+) {
   const [posts, setPosts] = useState<MoodPost[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,9 +46,11 @@ export default function MoodLogSection({ placeId, placeName, address }: { placeI
       if (did) qs.set('deviceId', did);
       const res = await apiFetch(`/api/spot-posts?${qs.toString()}`);
       const d = await res.json();
-      setPosts(Array.isArray(d?.posts) ? d.posts : []);
+      const arr: MoodPost[] = Array.isArray(d?.posts) ? d.posts : [];
+      // いま詳細で見ている投稿自身は「みんなのMoodログ」から除外（同じログが二重に出ない）
+      setPosts(excludePostId ? arr.filter((p) => p.id !== excludePostId) : arr);
     } catch { /* 取得失敗は空 */ } finally { setLoading(false); }
-  }, [placeId, placeName]);
+  }, [placeId, placeName, excludePostId]);
 
   // 画面がフォーカスされるたびに再取得（投稿→戻った直後に新しいMoodログが表示される）
   useFocusEffect(useCallback(() => { load(); }, [load]));
