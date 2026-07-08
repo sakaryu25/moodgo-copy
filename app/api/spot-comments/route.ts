@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice } from "@/lib/user-handles";
+import { handlesByDevice, deviceByHandle } from "@/lib/user-handles";
 import { hiddenHashesFor } from "@/lib/blocks";
 import { sendPushToDevice } from "@/lib/push-send";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -123,6 +123,14 @@ export async function POST(req: Request) {
           if (ownerId && ownerId !== deviceId) await sendPushToDevice(ownerId, { title: "MoodGo", body: "あなたの投稿にコメントがつきました", data: { type: "comment", postId: rawTarget } });
         }
       } catch { /* 通知失敗は無視 */ }
+      // @メンション通知（本文中の @id を解決して各人へ・自分は除く）
+      try {
+        const mentions = [...new Set((text.match(/@([A-Za-z0-9_]{3,20})/g) ?? []).map((m) => m.slice(1).toLowerCase()))].slice(0, 5);
+        for (const h of mentions) {
+          const mdev = await deviceByHandle(db, h);
+          if (mdev && mdev !== deviceId) await sendPushToDevice(mdev, { title: "MoodGo", body: "コメントであなたにメンションしました", data: { type: "mention", postId: rawTarget } });
+        }
+      } catch { /* 無視 */ }
       return NextResponse.json({ ok: true, id: (data as { id?: string })?.id, created_at: (data as { created_at?: string })?.created_at });
     }
 

@@ -58,7 +58,7 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
           <Text style={s.time}>{relativeTime(c.created_at)}</Text>
           {c.mine && <Text style={s.mineTag}>自分</Text>}
         </View>
-        <Text style={s.body}>{c.body}</Text>
+        <Text style={s.body}>{renderBody(c.body)}</Text>
         {trans?.status === 'loading' ? (
           <View style={s.transLoadingRow}>
             <ActivityIndicator size="small" color={PURPLE} />
@@ -152,6 +152,13 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
         </TouchableOpacity>
       </Animated.View>
     </View>
+  );
+}
+
+// 本文中の @id を色付き表示（メンションを見やすく）
+function renderBody(body: string): React.ReactNode[] {
+  return body.split(/(@[A-Za-z0-9_]{3,20})/g).map((p, i) =>
+    /^@[A-Za-z0-9_]{3,20}$/.test(p) ? <Text key={i} style={s.mention}>{p}</Text> : p,
   );
 }
 
@@ -598,6 +605,7 @@ const s = StyleSheet.create({
     backgroundColor: '#F1EBFF', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1,
   },
   body: { fontSize: 13.5, color: '#2D2240', lineHeight: 20, marginTop: 3 },
+  mention: { color: '#7C3AED', fontWeight: '700' },
   hint: { fontSize: 10.5, color: '#B7B3C2', textAlign: 'center', marginTop: 8 },
 
   // 翻訳表示
