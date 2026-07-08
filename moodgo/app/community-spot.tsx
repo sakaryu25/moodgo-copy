@@ -203,6 +203,7 @@ export default function CommunitySpotScreen() {
   };
   const openInstagram = () => {
     if (!spot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const tag = (spot.placeName || spot.userTitle).replace(/\s+/g, '');
     Linking.openURL(`https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`).catch(() => {});
   };
@@ -469,9 +470,11 @@ export default function CommunitySpotScreen() {
             {/* Instagram検索 */}
             <TouchableOpacity onPress={openInstagram} activeOpacity={0.7}
               style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
-              <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
-                <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>
-              </LinearGradient>
+              <View style={s.infoIconWrap}>
+                <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
+                  <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>
+                </LinearGradient>
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>Instagramで検索</Text>
                 <Text style={s.infoSubText}>#{(spot.placeName || spot.userTitle).replace(/\s+/g, '')}</Text>
@@ -705,10 +708,10 @@ const s = StyleSheet.create({
   infoText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, paddingTop: 4 },
   infoLink: { color: '#7C3AED' },
   infoSubText: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
-  igIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  igOuter: { width: 16, height: 16, borderRadius: 5, borderWidth: 1.8, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  igLens: { width: 7, height: 7, borderRadius: 3.5, borderWidth: 1.8, borderColor: '#fff' },
-  igDot: { position: 'absolute', top: 1.5, right: 1.5, width: 2.6, height: 2.6, borderRadius: 1.3, backgroundColor: '#fff' },
+  igIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  igOuter: { width: 18, height: 18, borderRadius: 5, borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  igLens: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: '#fff' },
+  igDot: { position: 'absolute', top: 1, right: 1, width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#fff' },
 
   // Hours card
   hoursCard: {
