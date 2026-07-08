@@ -51,7 +51,7 @@ function openSpot(item: FeedItem) {
 
 type CommunityFeedProps = {
   full?: boolean;
-  sortMode?: 'popular' | 'near';
+  sortMode?: 'popular' | 'near' | 'new';   // new=新着順（人気/近くを解除した状態）
   coords?: { lat: number; lng: number } | null;
   posterHandle?: string | null;
   searchQuery?: string | null;   // full: スポット名/本文のキーワード検索（@ID絞り込みと排他）

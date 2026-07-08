@@ -75,7 +75,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
   // ── ヘッダー内コントロール（人気/近く・@ID検索）: 見栄え改善でグラデ帯へ移設 ──
-  const [sortMode, setSortMode] = useState<'popular' | 'near'>('popular');
+  // 人気/近くは「トグル」: 選択中をもう一度押すと解除され新着順(new)に戻る
+  const [sortMode, setSortMode] = useState<'popular' | 'near' | 'new'>('popular');
   // すべて / フォロー中 の切替（フォロー中=自分がフォローした投稿者の公開投稿のみ）
   const [feedScope, setFeedScope] = useState<'all' | 'following'>('all');
   // 無限スクロール: 末尾接近でキーを増やして CommunityFeed に次ページ取得を促す
@@ -202,10 +203,13 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
             <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
           </View>
           <View style={s.heroToggleRow}>
-            <TouchableOpacity onPress={() => setSortMode('popular')} style={[s.hToggleBtn, sortMode === 'popular' && s.hToggleBtnOn]} activeOpacity={0.8}>
+            {/* 選択中をもう一度押すと解除→新着順に戻る */}
+            <TouchableOpacity onPress={() => setSortMode(sortMode === 'popular' ? 'new' : 'popular')} style={[s.hToggleBtn, sortMode === 'popular' && s.hToggleBtnOn]} activeOpacity={0.8}
+              accessibilityRole="button" accessibilityState={{ selected: sortMode === 'popular' }}>
               <Text style={[s.hToggleText, sortMode === 'popular' && s.hToggleTextOn]}>人気</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={selectNear} style={[s.hToggleBtn, sortMode === 'near' && s.hToggleBtnOn]} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { if (sortMode === 'near') setSortMode('new'); else selectNear(); }} style={[s.hToggleBtn, sortMode === 'near' && s.hToggleBtnOn]} activeOpacity={0.8}
+              accessibilityRole="button" accessibilityState={{ selected: sortMode === 'near' }}>
               <Text style={[s.hToggleText, sortMode === 'near' && s.hToggleTextOn]}>{locLoading ? '取得中…' : '近く'}</Text>
             </TouchableOpacity>
           </View>
