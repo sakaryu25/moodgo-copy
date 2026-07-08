@@ -1,7 +1,7 @@
 // ── components/SpotRating.tsx ─────────────────────────────────────────────────
 // MoodGo独自の星評価（詳細の総合星の下）。星を選ぶ→「送信」で確定→平均(件数)を表示。
 // 一度評価したスポットは端末にキャッシュし、次回以降はGET取得しない（ユーザー要望）。
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,9 +9,11 @@ import { Star, Send } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
-export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void }) {
+export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate, onAvg }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void; onAvg?: (avg: number | null, count: number) => void }) {
   const KEY = placeId || placeName;
   const cacheKey = `moodgo-rating-${KEY}`;
+  // 総合評価(平均)を親(投稿詳細のバー等)へ通知する。inline関数でも load を作り直さないよう ref 経由。
+  const onAvgRef = useRef(onAvg); onAvgRef.current = onAvg;
   const [selected, setSelected] = useState(0);   // タップ中（送信前）
   const [submitted, setSubmitted] = useState(0); // 確定済みの自分の評価
   const [avg, setAvg] = useState<number | null>(null);
@@ -26,6 +28,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
         const c = JSON.parse(cached);
         setSubmitted(c.myStars ?? 0); setSelected(c.myStars ?? 0);
         setAvg(c.avg ?? null); setCount(c.count ?? 0);
+        onAvgRef.current?.(c.avg ?? null, c.count ?? 0);
         return;
       }
       const did = await getDeviceId().catch(() => '');
@@ -38,6 +41,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
       if (d?.ok) {
         setSubmitted(d.myStars ?? 0); setSelected(d.myStars ?? 0);
         setAvg(d.avg ?? null); setCount(d.count ?? 0);
+        onAvgRef.current?.(d.avg ?? null, d.count ?? 0);
         if (d.myStars > 0) await AsyncStorage.setItem(cacheKey, JSON.stringify({ myStars: d.myStars, avg: d.avg, count: d.count })).catch(() => {});
       }
     } catch { /* 取得失敗は未評価表示 */ }
@@ -59,6 +63,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
       const d = await res.json();
       if (d?.ok) {
         setAvg(d.avg ?? null); setCount(d.count ?? 0); setSubmitted(selected);
+        onAvgRef.current?.(d.avg ?? null, d.count ?? 0);
         await AsyncStorage.setItem(cacheKey, JSON.stringify({ myStars: selected, avg: d.avg, count: d.count })).catch(() => {});
         if (wasFirst) onFirstRate?.();
         // 旧「気分に合う/合わない」の学習を★評価へ移管: ★4-5=good / ★1-2=bad を気分別評価に送る。

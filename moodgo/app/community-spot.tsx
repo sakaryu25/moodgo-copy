@@ -91,6 +91,9 @@ export default function CommunitySpotScreen() {
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [isMine, setIsMine] = useState(false);   // 自分の投稿なら編集/削除を出す（moodログのみ）
+  // 総合評価（この場所のみんなの★の平均）。SpotRatingが取得→onAvgで受け取りバーに表示
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [ratingCount, setRatingCount] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -378,20 +381,11 @@ export default function CommunitySpotScreen() {
             )}
           </View>
 
-          {/* ── みんなの声のバー（いいね/行った!/評価の社会的証明を上部に）── */}
+          {/* ── みんなの声のバー（総合評価＝みんなの★平均 / 行った!。いいね数は右下のハートFABのみ）── */}
           <View style={s.voiceBar}>
-            {spot.rating > 0 ? (
-              <>
-                <View style={s.voiceCell}>
-                  <View style={s.voiceValRow}><Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} /><Text style={s.voiceVal}>{spot.rating}.0</Text></View>
-                  <Text style={s.voiceLabel}>評価</Text>
-                </View>
-                <View style={s.voiceDivider} />
-              </>
-            ) : null}
             <View style={s.voiceCell}>
-              <View style={s.voiceValRow}><Heart size={12} color="#F56CB3" fill="#F56CB3" strokeWidth={0} /><Text style={s.voiceVal}>{likeCount}</Text></View>
-              <Text style={s.voiceLabel}>いいね</Text>
+              <View style={s.voiceValRow}><Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} /><Text style={s.voiceVal}>{ratingCount > 0 && avgRating != null ? avgRating.toFixed(1) : '—'}</Text></View>
+              <Text style={s.voiceLabel}>総合評価{ratingCount > 0 ? `（${ratingCount}）` : ''}</Text>
             </View>
             <View style={s.voiceDivider} />
             <View style={s.voiceCell}>
@@ -512,7 +506,8 @@ export default function CommunitySpotScreen() {
 
           {/* ── あなたの評価（検索結果の場所詳細と統一。MoodGo平均＋自分の★）── */}
           <View style={{ marginTop: 4 }}>
-            <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} />
+            <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle}
+              onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
           </View>
 
           {/* ── コメント（この投稿への会話・1階層）＝Moodログより上 ── */}
