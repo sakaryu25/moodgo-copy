@@ -449,23 +449,22 @@ export default function CommunitySpotScreen() {
             </View>
           )}
 
-          {/* ── 情報カード ── */}
+          {/* ── 情報カード（検索結果の場所詳細と同じ意匠: アイコン＋値・行の上罫線で区切り）── */}
           <View style={s.infoCard}>
-            {spot.priceText ? (<><InfoRow Icon={Wallet} label="目安の値段" value={spot.priceText} /><Divider /></>) : null}
-            {spot.address ? (<><InfoRow Icon={MapPin} label="住所" value={spot.address} /><Divider /></>) : null}
-            {spot.stationText ? (<><InfoRow Icon={Train} label="最寄駅" value={spot.stationText} /><Divider /></>) : null}
-            {spot.phone ? (<><InfoRow Icon={Phone} label="電話番号" value={spot.phone} onPress={() => Linking.openURL(`tel:${spot.phone}`)} /><Divider /></>) : null}
-            {spot.website ? (<><InfoRow Icon={Globe} label="ウェブサイト" value={spot.website} link onPress={() => Linking.openURL(spot.website)} /><Divider /></>) : null}
-            {/* Instagram検索（行スタイル）*/}
-            <TouchableOpacity onPress={openInstagram} activeOpacity={0.7}>
-              <View style={s.infoRow}>
-                <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
-                  <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>
-                </LinearGradient>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.infoValue, { color: '#C13584', fontWeight: '800' }]}>Instagramで検索</Text>
-                  <Text style={s.infoLabel}>#{(spot.placeName || spot.userTitle).replace(/\s+/g, '')}</Text>
-                </View>
+            {spot.priceText ? <InfoRow Icon={Wallet} value={spot.priceText} /> : null}
+            {spot.address ? <InfoRow Icon={MapPin} value={spot.address} border={!!spot.priceText} /> : null}
+            {spot.stationText ? <InfoRow Icon={Train} value={spot.stationText} border={!!(spot.priceText || spot.address)} /> : null}
+            {spot.phone ? <InfoRow Icon={Phone} value={spot.phone} link onPress={() => Linking.openURL(`tel:${spot.phone}`)} border={!!(spot.priceText || spot.address || spot.stationText)} /> : null}
+            {spot.website ? <InfoRow Icon={Globe} value={spot.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} link onPress={() => Linking.openURL(spot.website)} border={!!(spot.priceText || spot.address || spot.stationText || spot.phone)} /> : null}
+            {/* Instagram検索 */}
+            <TouchableOpacity onPress={openInstagram} activeOpacity={0.7}
+              style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
+              <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
+                <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>
+              </LinearGradient>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>Instagramで検索</Text>
+                <Text style={s.infoSubText}>#{(spot.placeName || spot.userTitle).replace(/\s+/g, '')}</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -536,8 +535,6 @@ export default function CommunitySpotScreen() {
   );
 }
 
-function Divider() { return <View style={s.divider} />; }
-
 const REVIEW_AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF'];
 function ReviewCard({ review, last }: { review: Review; last?: boolean }) {
   const [expanded, setExpanded] = useState(false);
@@ -572,17 +569,14 @@ function ReviewCard({ review, last }: { review: Review; last?: boolean }) {
   );
 }
 
-function InfoRow({ Icon, label, value, onPress, link }: {
+function InfoRow({ Icon, value, onPress, link, border }: {
   Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-  label: string; value: string; onPress?: () => void; link?: boolean;
+  value: string; onPress?: () => void; link?: boolean; border?: boolean;
 }) {
   const content = (
-    <View style={s.infoRow}>
-      <View style={s.infoIcon}><Icon size={17} color={PURPLE} strokeWidth={2} /></View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.infoLabel}>{label}</Text>
-        <Text style={[s.infoValue, link && { color: BLUE }]}>{value}</Text>
-      </View>
+    <View style={[s.infoRow, border && s.infoRowBorder]}>
+      <View style={s.infoIconWrap}><Icon size={15} color="#C084FC" strokeWidth={2} /></View>
+      <Text style={[s.infoText, link && s.infoLink]} numberOfLines={link ? 1 : undefined}>{value}</Text>
     </View>
   );
   return onPress ? <TouchableOpacity onPress={onPress} activeOpacity={0.7}>{content}</TouchableOpacity> : content;
@@ -694,19 +688,22 @@ const s = StyleSheet.create({
   reviewCount: { fontSize: 12, color: '#9CA3AF', marginTop: 4, fontWeight: '600' },
 
   // Info card
+  // 情報カード（place.tsx と統一: 白カード＋行の上罫線で区切り・アイコン30）
   infoCard: {
-    backgroundColor: '#fff', borderRadius: 18, paddingHorizontal: 16, marginBottom: 14,
-    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 10, elevation: 2,
+    backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 14,
+    borderWidth: 1, borderColor: 'rgba(192,132,252,0.1)',
+    shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
-  infoRow: { flexDirection: 'row', gap: 13, paddingVertical: 14, alignItems: 'center' },
-  infoIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#F3EFFC', alignItems: 'center', justifyContent: 'center' },
-  igIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  igOuter: { width: 18, height: 18, borderRadius: 6, borderWidth: 1.8, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  igLens: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.8, borderColor: '#fff' },
+  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14 },
+  infoRowBorder: { borderTopWidth: 1, borderTopColor: 'rgba(192,132,252,0.08)' },
+  infoIconWrap: { width: 30, height: 30, borderRadius: 9, backgroundColor: 'rgba(192,132,252,0.1)', alignItems: 'center', justifyContent: 'center' },
+  infoText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, paddingTop: 4 },
+  infoLink: { color: '#7C3AED' },
+  infoSubText: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
+  igIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  igOuter: { width: 16, height: 16, borderRadius: 5, borderWidth: 1.8, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  igLens: { width: 7, height: 7, borderRadius: 3.5, borderWidth: 1.8, borderColor: '#fff' },
   igDot: { position: 'absolute', top: 1.5, right: 1.5, width: 2.6, height: 2.6, borderRadius: 1.3, backgroundColor: '#fff' },
-  infoLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '700', marginBottom: 2 },
-  infoValue: { fontSize: 14, color: '#1F2937', lineHeight: 21, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: '#F2EFF7' },
 
   // Hours card
   hoursCard: {
