@@ -30,12 +30,13 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "JSONが不正です" }, { status: 400 }); }
 
   const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
-  const action = body?.action === "uncredit" ? "uncredit" : "credit";
+  const action = body?.action === "uncredit" ? "uncredit" : body?.action === "count" ? "count" : "credit";
   const placeName = String(body?.placeName ?? "").trim().slice(0, 200);
   const supabaseId = String(body?.supabaseId ?? "").trim();
   const placeId = String(body?.placeId ?? "").trim();
   const address = String(body?.address ?? "").trim();
-  if (!deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
+  // count は公開集計（deviceId不要）。credit/uncredit のみ deviceId 必須。
+  if (action !== "count" && !deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
   if (!placeName && !supabaseId) return NextResponse.json({ ok: false, error: "placeName か supabaseId が必要です" }, { status: 400 });
   if (!rateLimit(`place-visited:${clientIp(req)}`, 30, 60_000)) {
     return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
@@ -75,6 +76,17 @@ export async function POST(req: Request) {
     }
 
     const targets = Array.from(ids).slice(0, MAX_CREDIT);
+
+    // ── 集計: この場所の全投稿への「行った!」延べ人数（distinct device）を返す（公開・読み取り）──
+    if (action === "count") {
+      if (targets.length === 0) return NextResponse.json({ ok: true, count: 0 });
+      try {
+        const { data } = await db.from("spot_post_reactions")
+          .select("device_id").eq("rtype", "visited").in("post_id", targets);
+        const distinct = new Set(((data ?? []) as Array<{ device_id?: string }>).map((r) => String(r.device_id ?? "")).filter(Boolean));
+        return NextResponse.json({ ok: true, count: distinct.size });
+      } catch { return NextResponse.json({ ok: true, count: 0 }); }
+    }
 
     // ── 解除: 自分が付けた visited リアクションを外す ──
     if (action === "uncredit") {

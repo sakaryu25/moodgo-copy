@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
-  ArrowLeft, Camera, ChevronDown, ChevronUp, Clock, Globe, Heart,
+  ArrowLeft, Camera, ChevronDown, ChevronUp, Clock, Footprints, Globe, Heart,
   MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -323,6 +323,35 @@ export default function PlaceDetailPage() {
   const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
   const [rec, setRec] = useState<Recommendation | null>(place);
   const [ratingDelta, setRatingDelta] = useState(0);  // 自分が今セッションで新規評価した分(件数を即時+1)
+  // 総合評価バー（投稿詳細と統一）: MoodGo★平均＋この場所の「行った!」延べ人数
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [ratingCount, setRatingCount] = useState(0);
+  const [placeVisited, setPlaceVisited] = useState(0);
+  useEffect(() => {
+    const pid = rec?.supabaseId ?? rec?.placeId;
+    const name = rec?.title;
+    if (!name && !pid) return;
+    let active = true;
+    (async () => {
+      try {
+        const qs = new URLSearchParams();
+        if (pid) qs.set('placeId', String(pid));
+        if (name) qs.set('placeName', name);
+        const d = await apiFetch(`/api/spot-rating?${qs.toString()}`).then((r) => r.json());
+        if (active && d?.ok) { setAvgRating(d.avg ?? null); setRatingCount(d.count ?? 0); }
+      } catch { /* noop */ }
+    })();
+    (async () => {
+      try {
+        const d = await apiFetch('/api/place-visited', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'count', placeName: name, supabaseId: rec?.supabaseId, placeId: rec?.placeId, address: rec?.address }),
+        }).then((r) => r.json());
+        if (active && d?.ok) setPlaceVisited(d.count ?? 0);
+      } catch { /* noop */ }
+    })();
+    return () => { active = false; };
+  }, [rec?.supabaseId, rec?.placeId, rec?.title, rec?.address]);
   const [extra, setExtra] = useState<ExtraDetail>({
     phone: place?.phone ?? null,
     website: place?.website ?? null,
@@ -828,6 +857,28 @@ export default function PlaceDetailPage() {
             ) : null}
           </View>
 
+          {/* ── 総合評価バー（投稿詳細ページと統一: 総合評価 / 行った!）── */}
+          <View style={s.voiceBar}>
+            <View style={s.voiceCell}>
+              <View style={s.voiceValRow}>
+                <Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} />
+                <Text style={s.voiceVal}>{ratingCount > 0 && avgRating != null ? avgRating.toFixed(1) : '—'}</Text>
+              </View>
+              <Text style={s.voiceLabel}>総合評価{ratingCount > 0 ? `（${ratingCount}）` : ''}</Text>
+            </View>
+            <View style={s.voiceDivider} />
+            <View style={s.voiceCell}>
+              <View style={s.voiceValRow}>
+                <Footprints size={13} color="#10B981" strokeWidth={2.2} />
+                <Text style={s.voiceVal}>{placeVisited}</Text>
+              </View>
+              <Text style={s.voiceLabel}>行った！</Text>
+            </View>
+          </View>
+
+          {/* ── あなたの評価（総合評価バー直下＝上部に集約）── */}
+          <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} hideAggregate onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
+
           {/* ── データ読み込み中：スケルトン ── */}
           {!extra.loaded ? (
             <>
@@ -845,20 +896,7 @@ export default function PlaceDetailPage() {
             </TouchableOpacity>
           ) : null}
 
-          {/* 評価バー（データあり時のみ。心霊はGoogle評価を出さない） */}
-          {!isSpooky && extra.loaded && displayRating != null && (
-            <View style={s.ratingBar}>
-              <Text style={s.ratingBig}>{displayRating.toFixed(1)}</Text>
-              <View style={s.ratingMid}>
-                <StarRow rating={displayRating} size={16} />
-                {displayUserRatingCount ? (
-                  <Text style={s.ratingCount}>{displayUserRatingCount.toLocaleString('ja-JP')}件の評価</Text>
-                ) : null}
-              </View>
-            </View>
-          )}
-
-          {/* ★評価セレクタは下の「みんなの声」に集約（口コミ系をまとめる） */}
+          {/* Google評価バーは廃止 → MoodGo総合評価に一本化（上部の総合評価バー参照） */}
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (
@@ -990,11 +1028,7 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── 口コミ（投稿詳細と統一: 評価 → コメント → みんなのMoodログ[一番下]・見出しラッパー無し）─── */}
-          {/* MoodGo独自の★評価（あなたの評価＋MoodGo平均）*/}
-          <View style={{ marginTop: 4 }}>
-            <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
-          </View>
+          {/* ─── 口コミ（投稿詳細と統一: コメント → みんなのMoodログ[一番下]。あなたの評価は上部へ移設済み）─── */}
           {/* コメント（場所ごと。SupabaseスポットID[UUID]がある場合のみ）*/}
           {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
             <View style={{ marginTop: 14 }}>
@@ -1168,7 +1202,19 @@ const s = StyleSheet.create({
   },
   mapPillText: { fontSize: 11, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
 
-  // 評価バー
+  // 総合評価バー（投稿詳細ページと統一）
+  voiceBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 16, paddingVertical: 13,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 1,
+  },
+  voiceCell: { flex: 1, alignItems: 'center', gap: 3 },
+  voiceValRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  voiceVal: { fontSize: 16, fontWeight: '800', color: '#1A0A2E', letterSpacing: -0.3 },
+  voiceLabel: { fontSize: 10.5, fontWeight: '600', color: '#8B88A6' },
+  voiceDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: 'rgba(0,0,0,0.09)' },
+
+  // 評価バー（旧Google評価・未使用）
   ratingBar: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#fff', borderRadius: 14, padding: 14,
