@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
 import { handlesByDevice } from "@/lib/user-handles";
+import { hiddenHashesFor } from "@/lib/blocks";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
 
@@ -52,8 +53,9 @@ export async function POST(req: Request) {
       }
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       const handleMap = await handlesByDevice(db, rows.map(r => String(r.device_id ?? "")));
+      const hidden = await hiddenHashesFor(db, deviceId);   // ブロック/ミュートした相手のコメントを隠す
       const vHour = Math.floor(Date.now() / 3_600_000);
-      const items = rows.map(r => {
+      const items = rows.filter(r => !hidden.has(deviceHash(String(r.device_id ?? "")))).map(r => {
         const dev = String(r.device_id ?? "");
         const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
         return {
