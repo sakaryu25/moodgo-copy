@@ -282,7 +282,15 @@ export default function SettingsView({
   // 保存本体。ID変更の確認は handleSave（ラッパー）で先に行う。
   const doSave = async () => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
-    saveProfileExtras(bioInput.trim().slice(0, 40), showPrefInput);
+    const bio = bioInput.trim().slice(0, 40);
+    saveProfileExtras(bio, showPrefInput);
+    // 一言メッセージをサーバーにも保存（他の人のプロフィール表示にも公開される・失敗しても無視）
+    getDeviceId()
+      .then((id) => apiFetch('/api/user-handle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-bio', deviceId: id, bio }),
+      }))
+      .catch(() => {});
     // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
     const name = nameInput.trim().slice(0, 20);
     AsyncStorage.setItem(NICKNAME_KEY, name).catch(() => {});

@@ -80,6 +80,21 @@ export async function POST(req: Request) {
       });
     }
 
+    // ── 一言メッセージ(bio)を保存（IDを持つ人の user_handles 行に格納）──────────
+    //   bio列/テーブル未適用でも安全にok(saved:false)を返す。プロフィール表示で公開される。
+    if (action === "set-bio") {
+      const deviceId = String(body?.deviceId ?? "").trim();
+      if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId必須" }, { status: 400 });
+      const bio = String(body?.bio ?? "").trim().slice(0, 80);
+      const { data, error } = await db.from("user_handles").update({ bio }).eq("device_id", deviceId).select("device_id");
+      if (error) {
+        if (isMissingTable(error) || (error as { code?: string }).code === "42703") return NextResponse.json({ ok: true, saved: false, tableMissing: true });
+        throw error;
+      }
+      // 行が無い（ID未設定）＝bioの置き場所が無い。localには残るのでok扱い。
+      return NextResponse.json({ ok: true, saved: Array.isArray(data) && data.length > 0 });
+    }
+
     // ── 空きチェック（入力中のリアルタイム判定用）───────────────────────────
     if (action === "check") {
       const handle = normalize(body?.handle);

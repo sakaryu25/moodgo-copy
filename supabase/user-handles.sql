@@ -18,5 +18,9 @@ create table if not exists user_handles (
 --   ※コード側は列が無くてもフォールバック動作するが、この列があるとロックが有効になる。
 alter table user_handles add column if not exists locked_until timestamptz;
 
+-- 一言メッセージ(bio・2026-07-08追加): プロフィールに公開表示する自己紹介（80字以内・API側で検証）。
+--   列が無くてもコードはフォールバックする（bioは保存されず表示されないだけ）。
+alter table user_handles add column if not exists bio text;
+
 -- クライアントは匿名キーを持たずAPI(service_role)経由のみ。防御層としてRLS有効化。
 alter table user_handles enable row level security;

@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Bookmark, ChevronLeft, Footprints, Heart, MapPin, MoreHorizontal, UserRound } from 'lucide-react-native';
+import { Award, ChevronLeft, Footprints, Heart, MapPin, MoreHorizontal, UserRound } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Easing,
@@ -23,6 +23,7 @@ import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
+import { useSettings } from '@/lib/settingsStore';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
@@ -42,12 +43,14 @@ type ProfilePost = {
   id: string; kind: string; spot_name: string; prefecture: string;
   image: string | null; likes?: number; visited?: number; created_at: string;
 };
+type VisitedSpot = { id: string; name: string; image: string | null; at: string | null };
 type Profile = {
   posterId: string;
-  name: string | null; handle: string | null; icon: string | null; isMe?: boolean;
+  name: string | null; handle: string | null; icon: string | null; isMe?: boolean; bio?: string | null;
   postCount: number; likeCount: number; visitedCount: number;
   followerCount: number; followingCount: number; isFollowing: boolean;
   posts: ProfilePost[];
+  visitedSpots?: VisitedSpot[];
 };
 
 // 3,200 / 1.2万 のコンパクト表記（大きな数でも列が崩れない・Kではなく日本語表記で高級感）
@@ -101,6 +104,37 @@ function PostCard({ post, onPress }: { post: ProfilePost; onPress: () => void })
   );
 }
 
+// ── 行ったスポットの勲章バッジ（円形写真＋グラデリング＋メダル＋名前/達成日）──────
+const MEDAL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);   // 2列
+function fmtAchieved(at: string | null): string {
+  if (!at) return '';
+  const m = at.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${Number(m[2])}/${Number(m[3])} 達成` : '達成';
+}
+function MedalBadge({ spot, onPress }: { spot: VisitedSpot; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [s.medal, pressed && { transform: [{ scale: 0.98 }] }]}
+      accessibilityRole="button" accessibilityLabel={`${spot.name}に行った`}>
+      <View style={s.medalRingWrap}>
+        <LinearGradient colors={RING_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.medalRing}>
+          <View style={s.medalWhite}>
+            {spot.image ? (
+              <ThumbImage uri={spot.image} style={s.medalImg} contentFit="cover" transition={200} />
+            ) : (
+              <View style={[s.medalImg, s.medalPh]}><MapPin size={22} color="#B7A7E8" strokeWidth={1.6} /></View>
+            )}
+          </View>
+        </LinearGradient>
+        <LinearGradient colors={RING_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.medalIcon}>
+          <Award size={13} color="#fff" strokeWidth={2.4} />
+        </LinearGradient>
+      </View>
+      <Text style={s.medalName} numberOfLines={1}>{spot.name}</Text>
+      {spot.at ? <Text style={s.medalDate}>{fmtAchieved(spot.at)}</Text> : null}
+    </Pressable>
+  );
+}
+
 export default function UserProfileScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -112,7 +146,8 @@ export default function UserProfileScreen() {
   const [followerCount, setFollowerCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [isMe, setIsMe] = useState(false);
-  const [tab, setTab] = useState<'posts' | 'saved'>('posts');
+  const [tab, setTab] = useState<'posts' | 'visited'>('posts');
+  const localSettings = useSettings();            // 自分のプロフィールなら一言をローカルからも表示
   const [shown, setShown] = useState(PAGE);       // 無限スクロールで表示中の件数
   const [pagingMore, setPagingMore] = useState(false);
   const pagingRef = useRef(false);
@@ -152,7 +187,7 @@ export default function UserProfileScreen() {
   }, [loading, fade]);
 
   // タブ切替（下線を200msでスライド）
-  const switchTab = (t: 'posts' | 'saved') => {
+  const switchTab = (t: 'posts' | 'visited') => {
     if (t === tab) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setTab(t);
@@ -222,8 +257,12 @@ export default function UserProfileScreen() {
   };
 
   const openPost = (p: ProfilePost) => router.push({ pathname: '/community-spot', params: { id: p.id } });
+  const openVisited = (v: VisitedSpot) => router.push({ pathname: '/community-spot', params: { id: v.id } });
   const name = profile?.name?.trim() || 'MoodGoユーザー';
   const tabW = (SCREEN_W - SIDE * 2) / 2;
+  // 一言メッセージ: サーバー(公開)優先。自分のページはローカル設定にもフォールバック。
+  const bioText = (profile?.bio?.trim() || (isMe ? (localSettings.profileBio ?? '').trim() : '') || '');
+  const visitedSpots = profile?.visitedSpots ?? [];
 
   return (
     <View style={s.root}>
@@ -270,6 +309,9 @@ export default function UserProfileScreen() {
             </View>
           </View>
 
+          {/* ── 一言メッセージ ── */}
+          {bioText ? <Text style={s.bio}>{bioText}</Text> : null}
+
           {/* ── 統計 5列（カード無し・背景直載せ）── */}
           <View style={s.statsRow}>
             <Stat num={profile?.postCount ?? 0} label="投稿" />
@@ -296,13 +338,13 @@ export default function UserProfileScreen() {
             </View>
           )}
 
-          {/* ── タブ（投稿 / 保存したスポット）＋200ms下線 ── */}
+          {/* ── タブ（投稿 / 行ったスポット）＋200ms下線 ── */}
           <View style={s.tabs}>
             <Pressable style={s.tab} onPress={() => switchTab('posts')} accessibilityRole="tab" accessibilityState={{ selected: tab === 'posts' }}>
               <Text style={[s.tabText, tab === 'posts' && s.tabTextOn]}>投稿</Text>
             </Pressable>
-            <Pressable style={s.tab} onPress={() => switchTab('saved')} accessibilityRole="tab" accessibilityState={{ selected: tab === 'saved' }}>
-              <Text style={[s.tabText, tab === 'saved' && s.tabTextOn]}>保存したスポット</Text>
+            <Pressable style={s.tab} onPress={() => switchTab('visited')} accessibilityRole="tab" accessibilityState={{ selected: tab === 'visited' }}>
+              <Text style={[s.tabText, tab === 'visited' && s.tabTextOn]}>行ったスポット</Text>
             </Pressable>
             <Animated.View style={[s.underline, {
               width: 28, left: tabW / 2 - 14,
@@ -327,10 +369,17 @@ export default function UserProfileScreen() {
               </>
             )
           ) : (
-            <View style={s.emptyWrap}>
-              <View style={s.emptyIcon}><Bookmark size={20} color={BRAND} strokeWidth={1.8} /></View>
-              <Text style={s.emptyText}>保存したスポットは非公開です</Text>
-            </View>
+            // 行ったスポット＝勲章バッジ（2列×N・少数は中央揃え）
+            visitedSpots.length === 0 ? (
+              <View style={s.emptyWrap}>
+                <View style={s.emptyIcon}><Award size={22} color={BRAND} strokeWidth={1.8} /></View>
+                <Text style={s.emptyText}>まだ行ったスポットがありません</Text>
+              </View>
+            ) : (
+              <View style={s.medalGrid}>
+                {visitedSpots.map((v) => <MedalBadge key={v.id} spot={v} onPress={() => openVisited(v)} />)}
+              </View>
+            )
           )}
         </Animated.ScrollView>
       )}
@@ -403,6 +452,24 @@ const s = StyleSheet.create({
   cardStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
   cardStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   cardStatText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  // 一言メッセージ
+  bio: { fontSize: 14, fontWeight: '500', color: '#3A3348', lineHeight: 21, paddingHorizontal: SIDE, marginTop: 14 },
+
+  // 行ったスポットの勲章バッジ（2列×N・少数は中央揃え）
+  medalGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: GAP, paddingHorizontal: SIDE, marginTop: 18 },
+  medal: { width: MEDAL_W, alignItems: 'center', paddingVertical: 8 },
+  medalRingWrap: { width: 92, height: 92 },
+  medalRing: { width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center' },
+  medalWhite: { width: 82, height: 82, borderRadius: 41, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  medalImg: { width: 74, height: 74, borderRadius: 37 },
+  medalPh: { backgroundColor: '#F0EBFF', alignItems: 'center', justifyContent: 'center' },
+  medalIcon: {
+    position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#fff',
+  },
+  medalName: { fontSize: 12.5, fontWeight: '800', color: INK, marginTop: 9, maxWidth: MEDAL_W - 8, textAlign: 'center' },
+  medalDate: { fontSize: 10.5, fontWeight: '600', color: SUB, marginTop: 2 },
 
   // 空状態
   emptyWrap: { alignItems: 'center', paddingVertical: 70, gap: 12 },

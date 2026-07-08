@@ -122,13 +122,57 @@ export async function POST(req: Request) {
 
     // ── 表示情報（最新の帰属投稿から。無ければ null）──
     const newest = (sugs[0] ?? mls[0]) as Row | undefined;
-    let name: string | null = null, handle: string | null = null, icon: string | null = null;
+    let name: string | null = null, handle: string | null = null, icon: string | null = null, bio: string | null = null;
+    let dev = "";
     if (newest && typeof newest.device_id === "string") {
-      const dev = String(newest.device_id);
+      dev = String(newest.device_id);
       name = (newest.poster_name as string | null) ?? null;
       handle = (await handlesByDevice(db, [dev])).get(dev) ?? null;
       const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
       icon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+      // 一言メッセージ（user_handles.bio・列未適用[42703]は無視）
+      try {
+        const { data: uh } = await db.from("user_handles").select("bio").eq("device_id", dev).maybeSingle();
+        const b = (uh as { bio?: string } | null)?.bio;
+        if (typeof b === "string" && b.trim()) bio = b.trim().slice(0, 80);
+      } catch { /* bio列未適用は無視 */ }
+    }
+
+    // ── 行ったスポット（この人が「行った！」を押した場所＝勲章バッジ用）──
+    //   dev が判る人のみ（ハッシュは一方向のためdev無し=取得不可）。device_idで直引き（索引あり）。
+    const visitedSpots: Array<{ id: string; name: string; image: string | null; at: string | null }> = [];
+    if (dev) {
+      try {
+        const { data: vis } = await db.from("spot_post_reactions")
+          .select("post_id, created_at").eq("device_id", dev).eq("rtype", "visited")
+          .order("created_at", { ascending: false }).limit(60);
+        const vids = [...new Set(((vis ?? []) as Array<{ post_id?: string }>).map((v) => String(v.post_id)).filter(Boolean))];
+        if (vids.length > 0) {
+          const [mlR, sgR, phR] = await Promise.all([
+            db.from("spot_posts").select("id, place_name").in("id", vids),
+            db.from("suggestions").select("id, spot_name, google_place_name, image_urls").in("id", vids),
+            db.from("spot_photos").select("post_id, image_url").in("post_id", vids).neq("moderation_status", "hidden").neq("moderation_status", "rejected"),
+          ]);
+          const nameBy = new Map<string, string>(), imgBy = new Map<string, string>(), atBy = new Map<string, string>();
+          for (const m of (mlR.data ?? []) as Row[]) nameBy.set(String(m.id), String(m.place_name ?? ""));
+          for (const sgv of (sgR.data ?? []) as Row[]) {
+            nameBy.set(String(sgv.id), String(sgv.spot_name ?? sgv.google_place_name ?? ""));
+            const iu = (Array.isArray(sgv.image_urls) ? sgv.image_urls as string[] : []).find((u) => typeof u === "string" && !isLegacyPhotoUrl(u));
+            if (iu) imgBy.set(String(sgv.id), iu);
+          }
+          for (const ph of (phR.data ?? []) as Row[]) {
+            const k = String(ph.post_id), u = String(ph.image_url ?? "");
+            if (u && !isLegacyPhotoUrl(u) && !imgBy.has(k)) imgBy.set(k, u);
+          }
+          for (const v of (vis ?? []) as Array<{ post_id?: string; created_at?: string }>) {
+            const k = String(v.post_id); if (!atBy.has(k)) atBy.set(k, String(v.created_at ?? ""));
+          }
+          for (const vid of vids) {
+            const nm = nameBy.get(vid);
+            if (nm) visitedSpots.push({ id: vid, name: nm, image: imgBy.get(vid) ?? null, at: atBy.get(vid) || null });
+          }
+        }
+      } catch { /* reactions未適用は空 */ }
     }
 
     // ── フォロー数＋閲覧者のフォロー状態（user_follows 未適用は 0 / false）──
@@ -156,12 +200,13 @@ export async function POST(req: Request) {
       ok: true,
       profile: {
         posterId: targetId,
-        name, handle, icon, isMe,
+        name, handle, icon, isMe, bio,
         postCount: posts.length,
         likeCount: likeTotal,        // もらったいいね合計
         visitedCount: visitedTotal,  // 「行った！」された合計
         followerCount, followingCount, isFollowing,
         posts: posts.slice(0, POSTS_MAX),
+        visitedSpots,                // この人が行った場所（勲章バッジ）
       },
     });
   } catch (e) {
