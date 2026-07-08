@@ -10,11 +10,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, MapPin, MessageCircle, Phone, Share2, Star, Train, UserRound, Wallet,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Linking, NativeScrollEvent, NativeSyntheticEvent,
+  ActivityIndicator, Alert, Linking, NativeScrollEvent, NativeSyntheticEvent,
   Share, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
 import type { FavoriteItem } from '@/types/app';
@@ -88,6 +89,7 @@ export default function CommunitySpotScreen() {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
+  const [isMine, setIsMine] = useState(false);   // 自分の投稿なら編集/削除を出す（moodログのみ）
 
   useEffect(() => {
     (async () => {
@@ -112,6 +114,17 @@ export default function CommunitySpotScreen() {
               if (typeof st.count === 'number') setLikeCount(st.count);
             }
           } catch { /* noop */ }
+          // 自分の投稿か判定（moodログのみ・編集/削除ボタンの表示に使う。生device_idはbodyのみ）
+          if (d.spot.kind === 'moodlog') {
+            try {
+              const deviceId = await getDeviceId();
+              const mine = await apiFetch('/api/spot-posts', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'is-mine', postId: d.spot.id, deviceId }),
+              }).then((r) => r.json());
+              if (mine?.ok) setIsMine(!!mine.mine);
+            } catch { /* noop */ }
+          }
         }
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
@@ -187,6 +200,51 @@ export default function CommunitySpotScreen() {
     Share.share({ message: `${spot.placeName || spot.userTitle} | MoodGo\n${url}` });
   };
 
+  // 自分の投稿を編集（/post を編集モードで開く。テキスト項目を更新）
+  const onEdit = () => {
+    if (!spot) return;
+    router.push({ pathname: '/post', params: { editId: spot.id } });
+  };
+  // 自分の投稿を削除（確認 → サーバー削除 → 戻る）
+  const onDelete = () => {
+    if (!spot) return;
+    Alert.alert('投稿を削除しますか？', 'この操作は取り消せません。', [
+      { text: 'キャンセル', style: 'cancel' },
+      {
+        text: '削除する', style: 'destructive',
+        onPress: async () => {
+          try {
+            const deviceId = await getDeviceId();
+            const d = await apiFetch('/api/spot-posts', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'delete', postId: spot.id, deviceId }),
+            }).then((r) => r.json());
+            if (d?.ok) { showToast('投稿を削除しました'); router.back(); }
+            else showToast('削除できませんでした', d?.error ?? '時間をおいてお試しください');
+          } catch { showToast('削除できませんでした', '通信に失敗しました'); }
+        },
+      },
+    ]);
+  };
+  // 右上「…」メニュー: 自分の投稿は 編集/削除/共有、他人は 共有/通報
+  const openMenu = () => {
+    if (!spot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const opts = isMine
+      ? [
+          { text: '投稿を編集', onPress: onEdit },
+          { text: '投稿を削除', style: 'destructive' as const, onPress: onDelete },
+          { text: '共有する', onPress: onShare },
+          { text: 'キャンセル', style: 'cancel' as const },
+        ]
+      : [
+          { text: '共有する', onPress: onShare },
+          { text: '通報する', style: 'destructive' as const, onPress: () => showToast('通報しました', 'ご協力ありがとうございます') },
+          { text: 'キャンセル', style: 'cancel' as const },
+        ];
+    Alert.alert('メニュー', undefined, opts);
+  };
+
   if (loading) {
     return <View style={[s.root, s.center, { paddingTop: insets.top }]}><ActivityIndicator color={PURPLE} size="large" /></View>;
   }
@@ -226,8 +284,9 @@ export default function CommunitySpotScreen() {
           <TouchableOpacity onPress={() => router.back()} style={[s.circleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}>
             <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={onShare} style={[s.circleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}>
-            <Share2 size={18} color="#1A0A2E" strokeWidth={2.4} />
+          <TouchableOpacity onPress={openMenu} style={[s.circleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}
+            accessibilityRole="button" accessibilityLabel="メニュー（共有・編集・削除など）">
+            <MoreHorizontal size={20} color="#1A0A2E" strokeWidth={2.4} />
           </TouchableOpacity>
 
           {/* 写真カウンター */}

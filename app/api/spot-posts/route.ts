@@ -20,6 +20,8 @@ import { findNgWord } from "@/lib/ngwords";
 
 const BUCKET = "spot-photos";
 const REPORT_HIDE_THRESHOLD = 3;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MANDATORY_TAGS = ["#穴場スポット", "#時間潰し"];   // 全投稿にマスト付与（検索の母集団を保つ）
 const VALID_VISIBILITY = new Set(["private", "group", "spot_public_anonymous", "public"]);
 const VALID_RTYPE = new Set(["like", "helpful", "revisit"]);
 let bucketEnsured = false;
@@ -112,6 +114,81 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── 本人の投稿: 判定 / 取得(編集prefill) / 更新 / 削除（device_id一致のみ）──────
+  //   deviceId は資格情報のため body で受け、レスポンスには生値を出さない。
+  if (action === "is-mine" || action === "get-mine" || action === "update" || action === "delete") {
+    if (!rateLimit(`spot-post-own:${clientIp(req)}`, 40, 60_000)) {
+      return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+    }
+    const postId = String(body?.postId ?? "").trim().replace(/^ml-/, "");
+    const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
+    if (!UUID_RE.test(postId) || !deviceId) return NextResponse.json({ ok: false, error: "パラメータが不正です" }, { status: 400 });
+    try {
+      // 所有者確認（生device_idはレスポンスに出さない）
+      const { data: own } = await db.from("spot_posts").select("device_id").eq("id", postId).maybeSingle();
+      if (!own) return NextResponse.json({ ok: true, mine: false, notFound: true });
+      const mine = String((own as { device_id?: string }).device_id ?? "") === deviceId;
+
+      if (action === "is-mine") return NextResponse.json({ ok: true, mine });
+      if (!mine) return NextResponse.json({ ok: false, error: "この投稿を操作する権限がありません" }, { status: 403 });
+
+      // ── 編集フォームのプレフィル用（本人のみ・写真URLも返す）──
+      if (action === "get-mine") {
+        const FULL = "id, place_id, place_name, caption, mood_tags, rating, price_chip, price_note, contact";
+        let { data: p, error } = await db.from("spot_posts").select(FULL).eq("id", postId).maybeSingle();
+        if (error && (error as { code?: string }).code === "42703") {
+          ({ data: p } = await db.from("spot_posts").select("id, place_id, place_name, caption, mood_tags").eq("id", postId).maybeSingle());
+        }
+        const { data: phs } = await db.from("spot_photos").select("image_url").eq("post_id", postId)
+          .neq("moderation_status", "hidden").neq("moderation_status", "rejected");
+        const photos = ((phs ?? []) as Array<{ image_url?: string }>).map((x) => String(x.image_url ?? "")).filter(Boolean);
+        const row = (p ?? {}) as Record<string, unknown>;
+        return NextResponse.json({ ok: true, mine: true, post: {
+          id: postId,
+          placeName: String(row.place_name ?? ""),
+          caption: String(row.caption ?? ""),
+          moodTags: Array.isArray(row.mood_tags) ? row.mood_tags : [],
+          rating: typeof row.rating === "number" ? row.rating : 0,
+          priceChip: (row.price_chip as string | null) ?? "",
+          priceNote: (row.price_note as string | null) ?? "",
+          contact: (row.contact as string | null) ?? "",
+          photos,
+        } });
+      }
+
+      // ── 削除（本人のみ）: 写真・リアクションも巻き取ってから本文を削除 ──
+      if (action === "delete") {
+        await db.from("spot_photos").delete().eq("post_id", postId).then(() => {}, () => {});
+        await db.from("spot_post_reactions").delete().eq("post_id", postId).then(() => {}, () => {});
+        const { error } = await db.from("spot_posts").delete().match({ id: postId, device_id: deviceId });
+        if (error) throw error;
+        return NextResponse.json({ ok: true, deleted: true });
+      }
+
+      // ── 更新（本人のみ・本文/気分タグ/評価/価格/連絡先。NGワード再チェック）──
+      const caption = String(body?.caption ?? "").trim().slice(0, 300);
+      if (findNgWord(caption)) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
+      const rawTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
+      const moodTags = Array.from(new Set([...(rawTags as string[]), ...MANDATORY_TAGS]));
+      const ratingIn = Number(body?.rating);
+      const rating = Number.isInteger(ratingIn) && ratingIn >= 1 && ratingIn <= 5 ? ratingIn : null;
+      const priceChip = body?.priceChip ? String(body.priceChip).trim().slice(0, 20) : null;
+      const priceNote = body?.priceNote ? String(body.priceNote).trim().slice(0, 120) : null;
+      const contact = body?.contact ? String(body.contact).trim().slice(0, 120) : null;
+      const base: Record<string, unknown> = { caption, mood_tags: moodTags };
+      const full = { ...base, rating, price_chip: priceChip, price_note: priceNote, contact };
+      // extra列(spot-posts-extra.sql)未適用時は42703 → 基本列のみで再試行（更新自体は失敗させない）
+      let { error } = await db.from("spot_posts").update(full).match({ id: postId, device_id: deviceId });
+      if (error && /price_chip|price_note|rating|contact|42703|column/i.test(String(error.message ?? "") + String((error as { code?: string }).code ?? ""))) {
+        ({ error } = await db.from("spot_posts").update(base).match({ id: postId, device_id: deviceId }));
+      }
+      if (error) throw error;
+      return NextResponse.json({ ok: true, updated: true });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: String((e as { message?: string })?.message ?? e) }, { status: 500 });
+    }
+  }
+
   // ── create（投稿作成）────────────────────────────────────────────────────────
   if (!rateLimit(`spot-post:${clientIp(req)}`, 6, 60_000)) {
     return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });
@@ -140,9 +217,7 @@ export async function POST(req: Request) {
     if (ng) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
 
     const rawMoodTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
-    // 全投稿にマスト付与する共通タグ（クライアントが送らなくても必ず付く＝直POSTでも抜けない）。
-    //   #穴場スポット=みんなの穴場の母集団 / #時間潰し=気分「時間潰し」検索の追加ソース。重複は排除。
-    const MANDATORY_TAGS = ["#穴場スポット", "#時間潰し"];
+    // 全投稿にマスト付与する共通タグ（モジュール定数 MANDATORY_TAGS。直POSTでも抜けない）。
     const moodTags = Array.from(new Set([...rawMoodTags, ...MANDATORY_TAGS]));
     const companion = body?.companion ? String(body.companion).slice(0, 20) : null;
     const posterName = body?.posterName ? String(body.posterName).trim().slice(0, 20) : null;
