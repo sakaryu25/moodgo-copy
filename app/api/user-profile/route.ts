@@ -75,6 +75,27 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── いいね/行った！数（統一リアクション spot_post_reactions=/api/spot-like と同じ真実）──
+    //   この人の帰属投稿(suggestions/spot_posts)への like/visited を集計。
+    //   likeTotal=もらったいいね合計 / visitedTotal=「行った！」された合計（公開プロフィールの実績）。
+    const reactIds = [...sugs.map(s => String(s.id)), ...mls.map(m => String(m.id))];
+    const likeByPost = new Map<string, number>();
+    const visitByPost = new Map<string, number>();
+    let likeTotal = 0, visitedTotal = 0;
+    if (reactIds.length > 0) {
+      try {
+        const { data: rx, error: rxErr } = await db.from("spot_post_reactions")
+          .select("post_id, rtype").in("rtype", ["like", "visited"]).in("post_id", reactIds);
+        if (!rxErr) {
+          for (const r of (rx ?? []) as Array<{ post_id?: string; rtype?: string }>) {
+            const k = String(r.post_id);
+            if (r.rtype === "visited") { visitByPost.set(k, (visitByPost.get(k) ?? 0) + 1); visitedTotal++; }
+            else { likeByPost.set(k, (likeByPost.get(k) ?? 0) + 1); likeTotal++; }
+          }
+        }
+      } catch { /* reactions 未適用は 0 のまま */ }
+    }
+
     const posts = [
       ...sugs.map(s => {
         const imgs = (Array.isArray(s.image_urls) ? s.image_urls as string[] : []).filter(u => typeof u === "string" && !isLegacyPhotoUrl(u));
@@ -83,6 +104,8 @@ export async function POST(req: Request) {
           spot_name: String(s.spot_name ?? s.google_place_name ?? ""),
           prefecture: toPref(s.address),
           image: imgs[0] ?? null,
+          likes: likeByPost.get(String(s.id)) ?? 0,
+          visited: visitByPost.get(String(s.id)) ?? 0,
           created_at: s.created_at,
         };
       }),
@@ -91,6 +114,8 @@ export async function POST(req: Request) {
         spot_name: String(m.place_name ?? ""),
         prefecture: "",
         image: photoByPost.get(String(m.id)) ?? null,
+        likes: likeByPost.get(String(m.id)) ?? 0,
+        visited: visitByPost.get(String(m.id)) ?? 0,
         created_at: m.created_at,
       })),
     ].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
@@ -124,12 +149,17 @@ export async function POST(req: Request) {
       }
     } catch { /* 未適用は 0 のまま */ }
 
+    // 閲覧者自身のプロフィールか（自分はフォロー不可＝ボタンを出さない）
+    const isMe = !!viewerDeviceId && deviceHash(viewerDeviceId) === targetId;
+
     return NextResponse.json({
       ok: true,
       profile: {
         posterId: targetId,
-        name, handle, icon,
+        name, handle, icon, isMe,
         postCount: posts.length,
+        likeCount: likeTotal,        // もらったいいね合計
+        visitedCount: visitedTotal,  // 「行った！」された合計
         followerCount, followingCount, isFollowing,
         posts: posts.slice(0, POSTS_MAX),
       },

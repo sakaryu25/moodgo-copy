@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
@@ -20,19 +20,38 @@ import { MP, type MyPost } from '@/components/myposts/types';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
+import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 
 type ProfilePost = {
   id: string; kind: string; spot_name: string; prefecture: string;
-  image: string | null; created_at: string;
+  image: string | null; likes?: number; visited?: number; created_at: string;
 };
 type Profile = {
   posterId: string;
-  name: string | null; handle: string | null; icon: string | null;
-  postCount: number; followerCount: number; followingCount: number; isFollowing: boolean;
+  name: string | null; handle: string | null; icon: string | null; isMe?: boolean;
+  postCount: number; likeCount: number; visitedCount: number;
+  followerCount: number; followingCount: number; isFollowing: boolean;
   posts: ProfilePost[];
 };
+
+// 数値を 1.2万 / 3.4千 に丸めて表示（大きな数でも列が崩れない）
+function fmt(n: number): string {
+  if (!n || n < 0) return '0';
+  if (n >= 10000) { const m = n / 10000; return (m >= 10 ? Math.round(m).toString() : m.toFixed(1).replace(/\.0$/, '')) + '万'; }
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + '千';
+  return String(n);
+}
+
+function Stat({ num, label }: { num: number; label: string }) {
+  return (
+    <View style={s.statCol}>
+      <Text style={s.statNum}>{fmt(num)}</Text>
+      <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
 
 export default function UserProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -64,15 +83,8 @@ export default function UserProfileScreen() {
           setProfile(d.profile);
           setFollowing(!!d.profile.isFollowing);
           setFollowerCount(d.profile.followerCount ?? 0);
+          setIsMe(!!d.profile.isMe);   // 自分のページはフォローボタンを出さない（サーバー判定）
         }
-        // 自分のページなら「フォローする」を出さない（自分はフォロー不可）
-        try {
-          const st = await apiFetch('/api/user-follows', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'me', deviceId: viewerDeviceId }),
-          }).then((r) => r.json());
-          void st;
-        } catch { /* noop */ }
       } catch { /* 空表示 */ }
       finally { if (isMounted.current) setLoading(false); }
     })();
@@ -107,11 +119,12 @@ export default function UserProfileScreen() {
     } finally { if (isMounted.current) setBusy(false); }
   }, [posterId, following, busy, isMe]);
 
-  // user-profileのpostsをMasonryグリッド(MyPost形)に変換
+  // user-profileのpostsをMasonryグリッド(MyPost形)に変換（いいね/行った実数もカードへ）
   const gridPosts: MyPost[] = useMemo(() =>
     (profile?.posts ?? []).map((p) => ({
       id: p.id, kind: p.kind, spot_name: p.spot_name, prefecture: p.prefecture,
-      description: null, image_urls: p.image ? [p.image] : null, created_at: p.created_at,
+      description: null, image_urls: p.image ? [p.image] : null,
+      likes: p.likes ?? 0, visited: p.visited ?? 0, created_at: p.created_at,
     })), [profile]);
 
   const openPost = (item: MyPost) => {
@@ -120,47 +133,56 @@ export default function UserProfileScreen() {
 
   const name = profile?.name?.trim() || 'MoodGoユーザー';
 
+  // 下スクロールでナビバーを格納（ナビ高=inset+48固定）
+  const collapse = useCollapsibleHeader({
+    initialHeight: insets.top + 48,
+    listener: (e) => setScrolled(e.nativeEvent.contentOffset.y > 8),
+  });
+
   return (
     <View style={s.root}>
       <AppBackground />
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
-        onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
+        onScroll={collapse.onScroll}
         scrollEventThrottle={16}
       >
         {loading ? (
           <View style={s.center}><ActivityIndicator color={MP.MAIN} size="small" /></View>
         ) : (
           <>
-            {/* ヘッダー: アバター＋名前＋@ID＋統計 */}
+            {/* ── ヒーロー: アバター左 ＋ 名前/@ID（プロフィールタブと同じ横並び配置）── */}
             <View style={s.head}>
-              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarRing}>
-                <View style={s.avatarWhite}>
-                  {profile?.icon ? (
-                    <Image source={{ uri: profile.icon }} style={s.avatar} contentFit="cover" />
-                  ) : (
-                    <View style={[s.avatar, s.avatarPh]}><UserRound size={34} color={MP.MAIN} strokeWidth={1.6} /></View>
-                  )}
+              <View style={s.heroRow}>
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarRing}>
+                  <View style={s.avatarWhite}>
+                    {profile?.icon ? (
+                      <Image source={{ uri: profile.icon }} style={s.avatar} contentFit="cover" />
+                    ) : (
+                      <View style={[s.avatar, s.avatarPh]}><UserRound size={32} color={MP.MAIN} strokeWidth={1.6} /></View>
+                    )}
+                  </View>
+                </LinearGradient>
+                <View style={s.heroRight}>
+                  <Text style={s.name} numberOfLines={1}>{name}</Text>
+                  {profile?.handle
+                    ? <Text style={s.handle} numberOfLines={1}>@{profile.handle}</Text>
+                    : <Text style={s.handleMuted} numberOfLines={1}>@MoodGoユーザー</Text>}
                 </View>
-              </LinearGradient>
-              <Text style={s.name} numberOfLines={1}>{name}</Text>
-              {!!profile?.handle && <Text style={s.handle} numberOfLines={1}>@{profile.handle}</Text>}
+              </View>
+
+              {/* ── 統計 5列: 投稿 / 行った / いいね / フォロワー / フォロー中 ── */}
               <View style={s.statsRow}>
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{profile?.postCount ?? 0}</Text>
-                  <Text style={s.statLabel}>投稿</Text>
-                </View>
+                <Stat num={profile?.postCount ?? 0} label="投稿" />
                 <View style={s.statDivider} />
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{followerCount}</Text>
-                  <Text style={s.statLabel}>フォロワー</Text>
-                </View>
+                <Stat num={profile?.visitedCount ?? 0} label="行った" />
                 <View style={s.statDivider} />
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{profile?.followingCount ?? 0}</Text>
-                  <Text style={s.statLabel}>フォロー中</Text>
-                </View>
+                <Stat num={profile?.likeCount ?? 0} label="いいね" />
+                <View style={s.statDivider} />
+                <Stat num={followerCount} label="フォロワー" />
+                <View style={s.statDivider} />
+                <Stat num={profile?.followingCount ?? 0} label="フォロー中" />
               </View>
 
               {/* フォローボタン（自分のページでは出さない） */}
@@ -188,12 +210,13 @@ export default function UserProfileScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* ナビ（戻る/名前。＋は出さない） */}
       <MyPostsHeader
         topInset={insets.top}
         scrolled={scrolled}
+        translateY={collapse.translateY}
         title={name}
         showNew={false}
         onBack={() => router.back()}
@@ -206,19 +229,28 @@ export default function UserProfileScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
-  head: { alignItems: 'center', paddingHorizontal: MP.SIDE },
-  avatarRing: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
-  avatarWhite: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 84, height: 84, borderRadius: 42 },
+  head: { paddingHorizontal: MP.SIDE },
+  // アバター左＋名前右の横並び（プロフィールタブと同じ配置言語）
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  avatarRing: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
+  avatarWhite: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 72, height: 72, borderRadius: 36 },
   avatarPh: { backgroundColor: '#F0EBFF', alignItems: 'center', justifyContent: 'center' },
-  name: { fontSize: 20, fontWeight: '800', color: MP.INK, marginTop: 10, letterSpacing: -0.4, maxWidth: '86%' },
-  handle: { fontSize: 12.5, fontWeight: '600', color: MP.SUB, marginTop: 2 },
+  heroRight: { flex: 1, minWidth: 0 },
+  name: { fontSize: 22, fontWeight: '800', color: MP.INK, letterSpacing: -0.4 },
+  handle: { fontSize: 13, fontWeight: '600', color: MP.MAIN, marginTop: 3 },
+  handleMuted: { fontSize: 13, fontWeight: '600', color: MP.SUB, marginTop: 3 },
 
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14, alignSelf: 'stretch' },
-  statCol: { flex: 1, alignItems: 'center' },
-  statNum: { fontSize: 18, fontWeight: '800', color: MP.INK, letterSpacing: -0.3 },
-  statLabel: { fontSize: 11, fontWeight: '600', color: MP.SUB, marginTop: 2 },
-  statDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: 'rgba(0,0,0,0.1)' },
+  // 統計 5列（投稿/行った/いいね/フォロワー/フォロー中）
+  statsRow: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 18, alignSelf: 'stretch',
+    backgroundColor: MP.CARD, borderRadius: 18, paddingVertical: 14,
+    shadowColor: '#111', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
+  },
+  statCol: { flex: 1, alignItems: 'center', paddingHorizontal: 2 },
+  statNum: { fontSize: 17, fontWeight: '800', color: MP.INK, letterSpacing: -0.3 },
+  statLabel: { fontSize: 10.5, fontWeight: '600', color: MP.SUB, marginTop: 3 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: 'rgba(0,0,0,0.1)' },
 
   followWrap: { alignSelf: 'stretch', marginTop: 16 },
   followBtn: {
