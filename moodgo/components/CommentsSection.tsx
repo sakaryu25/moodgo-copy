@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  Ban, ChevronDown, Copy, Flag, Languages, MessageSquare, Send, Trash2, UserRound, X,
+  Ban, ChevronDown, Copy, Flag, Heart, Languages, MessageSquare, Send, Trash2, UserRound, X,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -32,22 +32,24 @@ const INLINE_MAX = 4;                          // インラインに出す最大
 type Comment = {
   id: string; body: string; created_at: string;
   handle: string | null; posterId: string; icon: string | null; mine: boolean;
+  parentId?: string | null; likeCount?: number; liked?: boolean;
 };
 type Trans = { status: 'loading' | 'done'; text?: string };
 
 // ── コメント1行（インライン/シート共通）──────────────────────────────────────
-function CommentRow({ c, trans, onLongPress, onPressUser }: {
-  c: Comment; trans?: Trans;
+function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onReply }: {
+  c: Comment; trans?: Trans; isReply?: boolean;
   onLongPress: (c: Comment) => void; onPressUser: (c: Comment) => void;
+  onLike: (c: Comment) => void; onReply: (c: Comment) => void;
 }) {
   return (
-    <TouchableOpacity style={s.row} activeOpacity={0.8} onLongPress={() => onLongPress(c)} delayLongPress={280}>
+    <TouchableOpacity style={[s.row, isReply && s.replyRow]} activeOpacity={0.8} onLongPress={() => onLongPress(c)} delayLongPress={280}>
       <TouchableOpacity onPress={() => onPressUser(c)}
         accessibilityRole="button" accessibilityLabel="コメント者のプロフィールを見る">
         {c.icon ? (
-          <Image source={{ uri: c.icon }} style={s.avatar} contentFit="cover" />
+          <Image source={{ uri: c.icon }} style={[s.avatar, isReply && s.avatarSm]} contentFit="cover" />
         ) : (
-          <View style={[s.avatar, s.avatarPh]}><UserRound size={14} color={PURPLE} strokeWidth={1.8} /></View>
+          <View style={[s.avatar, isReply && s.avatarSm, s.avatarPh]}><UserRound size={isReply ? 12 : 14} color={PURPLE} strokeWidth={1.8} /></View>
         )}
       </TouchableOpacity>
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -71,6 +73,17 @@ function CommentRow({ c, trans, onLongPress, onPressUser }: {
             <Text style={s.body}>{trans.text}</Text>
           </View>
         ) : null}
+        <View style={s.cmtFooter}>
+          <TouchableOpacity onPress={() => onLike(c)} style={s.cmtAction} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+            <Heart size={13} color={c.liked ? '#E5484D' : '#B0A2C8'} fill={c.liked ? '#E5484D' : 'transparent'} strokeWidth={2} />
+            {(c.likeCount ?? 0) > 0 && <Text style={[s.cmtActionText, c.liked && { color: '#E5484D' }]}>{c.likeCount}</Text>}
+          </TouchableOpacity>
+          {!isReply && (
+            <TouchableOpacity onPress={() => onReply(c)} style={s.cmtAction} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+              <Text style={s.cmtActionText}>返信</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -142,6 +155,21 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
   );
 }
 
+// 返信を親の直下に並べる（親=新しい順・返信=古い順）。isReplyでインデント表示。
+function buildThreaded(list: Comment[]): Array<Comment & { isReply?: boolean }> {
+  const tops = list.filter((c) => !c.parentId);
+  const byParent = new Map<string, Comment[]>();
+  for (const c of list) if (c.parentId) { const a = byParent.get(c.parentId) ?? []; a.push(c); byParent.set(c.parentId, a); }
+  const flat: Array<Comment & { isReply?: boolean }> = [];
+  const shown = new Set<string>();
+  for (const t of tops) {
+    flat.push(t); shown.add(t.id);
+    for (const r of (byParent.get(t.id) ?? []).slice().reverse()) { flat.push({ ...r, isReply: true }); shown.add(r.id); }
+  }
+  for (const c of list) if (!shown.has(c.id)) flat.push({ ...c, isReply: true });   // 親が消えた孤児返信の安全網
+  return flat;
+}
+
 export default function CommentsSection({ targetId }: { targetId: string }) {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Comment[]>([]);
@@ -149,6 +177,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [replyTo, setReplyTo] = useState<Comment | null>(null);   // 返信先(親コメント)
   const isMounted = useRef(true);
 
   // 翻訳結果（コメントID→翻訳テキスト。もう一度「原文を表示」で消す）
@@ -238,10 +267,10 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       const deviceId = await getDeviceId();
       const d = await apiFetch('/api/spot-comments', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', targetId, deviceId, body }),
+        body: JSON.stringify({ action: 'create', targetId, deviceId, body, parentId: replyTo?.id ?? undefined }),
       }).then((r) => r.json());
       if (d?.ok) {
-        setText('');
+        setText(''); setReplyTo(null);
         load();   // 追加後に再取得（@handle等をサーバー整形で揃える）
       } else {
         notify('コメントできませんでした', d?.error ?? '時間をおいてお試しください');
@@ -249,6 +278,22 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     } catch { notify('コメントできませんでした', '通信に失敗しました'); }
     finally { if (isMounted.current) setSending(false); }
   };
+
+  // コメントいいね（楽観的更新→サーバー整合）
+  const toggleLike = async (c: Comment) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const nextLiked = !c.liked;
+    setItems((prev) => prev.map((x) => x.id === c.id ? { ...x, liked: nextLiked, likeCount: Math.max(0, (x.likeCount ?? 0) + (nextLiked ? 1 : -1)) } : x));
+    try {
+      const deviceId = await getDeviceId();
+      const d = await apiFetch('/api/spot-comments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'like', commentId: c.id, deviceId }),
+      }).then((r) => r.json());
+      if (d?.ok && isMounted.current) setItems((prev) => prev.map((x) => x.id === c.id ? { ...x, liked: !!d.liked, likeCount: d.count ?? x.likeCount } : x));
+    } catch { /* 失敗時は次のloadで整合 */ }
+  };
+  const startReply = (c: Comment) => { setReplyTo(c); };
 
   // ── 長押しメニュー開閉 ──
   const openMenu = (c: Comment, from: 'inline' | 'sheet') => {
@@ -356,7 +401,8 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     }
   };
 
-  const inlineItems = items.slice(0, INLINE_MAX);
+  const threaded = buildThreaded(items);
+  const inlineItems = threaded.slice(0, INLINE_MAX);
   const actBlock = () => {
     const c = menuFor; closeMenu();
     if (!c || !c.posterId) return;
@@ -380,11 +426,20 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
   };
 
   const inputRow = (inSheet: boolean) => (
-    <View style={[s.inputRow, inSheet && s.inputRowSheet]}>
+    <View>
+      {replyTo ? (
+        <View style={s.replyChip}>
+          <Text style={s.replyChipText} numberOfLines={1}>@{replyTo.handle ?? 'MoodGoユーザー'} に返信</Text>
+          <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="返信をやめる">
+            <X size={13} color="#8B88A6" strokeWidth={2.4} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <View style={[s.inputRow, inSheet && s.inputRowSheet]}>
       <TextInput
         value={text}
         onChangeText={setText}
-        placeholder="コメントを書く…"
+        placeholder={replyTo ? '返信を書く…' : 'コメントを書く…'}
         placeholderTextColor="#B9B6CC"
         style={s.input}
         maxLength={200}
@@ -395,6 +450,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
         accessibilityRole="button" accessibilityLabel="コメントを送信">
         {sending ? <ActivityIndicator size="small" color="#fff" /> : <Send size={15} color="#fff" strokeWidth={2.4} />}
       </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -418,8 +474,9 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       ) : (
         <>
           {inlineItems.map((c) => (
-            <CommentRow key={c.id} c={c} trans={trans[c.id]}
-              onLongPress={(cc) => openMenu(cc, 'inline')} onPressUser={(cc) => goUser(cc, false)} />
+            <CommentRow key={c.id} c={c} trans={trans[c.id]} isReply={c.isReply}
+              onLongPress={(cc) => openMenu(cc, 'inline')} onPressUser={(cc) => goUser(cc, false)}
+              onLike={toggleLike} onReply={startReply} />
           ))}
           {items.length > INLINE_MAX && (
             <TouchableOpacity style={s.moreRow} onPress={openSheet} activeOpacity={0.8}
@@ -465,11 +522,12 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
             </View>
 
             <FlatList
-              data={items}
+              data={threaded}
               keyExtractor={(c) => c.id}
               renderItem={({ item }) => (
-                <CommentRow c={item} trans={trans[item.id]}
-                  onLongPress={(cc) => openMenu(cc, 'sheet')} onPressUser={(cc) => goUser(cc, true)} />
+                <CommentRow c={item} trans={trans[item.id]} isReply={item.isReply}
+                  onLongPress={(cc) => openMenu(cc, 'sheet')} onPressUser={(cc) => goUser(cc, true)}
+                  onLike={toggleLike} onReply={startReply} />
               )}
               contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
               keyboardShouldPersistTaps="handled"
@@ -525,6 +583,13 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: '#F2EFF7' },
   avatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#F0EDFF' },
   avatarPh: { alignItems: 'center', justifyContent: 'center' },
+  avatarSm: { width: 24, height: 24, borderRadius: 12 },
+  replyRow: { paddingLeft: 26, borderTopWidth: 0, paddingVertical: 6 },
+  cmtFooter: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
+  cmtAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  cmtActionText: { fontSize: 12, fontWeight: '700', color: '#8B88A6' },
+  replyChip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: '#F1ECFB', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12, marginBottom: 8 },
+  replyChipText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#7C3AED' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   handle: { fontSize: 12, fontWeight: '800', color: '#4B3B6B', flexShrink: 1 },
   time: { fontSize: 10.5, fontWeight: '500', color: '#9CA3AF' },
