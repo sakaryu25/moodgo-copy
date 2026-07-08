@@ -13,6 +13,10 @@ create table if not exists push_tokens (
 
 create index if not exists idx_push_tokens_device on push_tokens (device_id);
 
+-- 公開ハッシュでの宛先解決用（フォロー通知は相手の生device_idを知らずハッシュしか持たないため）。
+alter table push_tokens add column if not exists device_hash text;
+create index if not exists idx_push_tokens_hash on push_tokens (device_hash);
+
 -- 防御層（書き込みは service_role=API のみ）。
 alter table push_tokens enable row level security;
 

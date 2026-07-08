@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash } from "@/lib/device-hash";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { sendPushToHash } from "@/lib/push-send";
 
 const HASH_RE = /^[0-9a-f]{16}$/;
 
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
           if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
           // 23505=既にフォロー済み → 成功扱い
           if (String((error as { code?: string }).code) !== "23505") throw error;
+        } else {
+          // 新規フォロー時のみ相手へプッシュ（targetId=相手の公開ハッシュ）
+          await sendPushToHash(targetId, { title: "MoodGo", body: "新しいフォロワーがいます", data: { type: "follow" } });
         }
       } else {
         const { error } = await db.from("user_follows").delete()

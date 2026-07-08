@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 //   ⚠ 要 supabase/push-tokens.sql 適用（未適用でも握りつぶし＝アプリは正常動作）。
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { deviceHash } from "@/lib/device-hash";
 import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   try {
     // token をユニークキーに upsert（端末の再インストールで新トークンになっても重複しない）
     await supabase.from("push_tokens").upsert(
-      { token, device_id: deviceId, platform, updated_at: new Date().toISOString() },
+      { token, device_id: deviceId, device_hash: deviceHash(deviceId), platform, updated_at: new Date().toISOString() },
       { onConflict: "token" },
     );
     return NextResponse.json({ ok: true });

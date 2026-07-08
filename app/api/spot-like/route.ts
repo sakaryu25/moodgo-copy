@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { sendPushToDevice } from "@/lib/push-send";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -71,13 +72,25 @@ export async function POST(req: Request) {
         if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true }, { status: 400 });
         // 23505=リアクション済み → 成功扱い（カウンタは増やさない）
         if (String((error as { code?: string }).code) !== "23505") throw error;
-      } else if (isMoodlog && rtype === "like") {
-        // Moodログ既存表示(like_count)との整合。RPC→read+1フォールバック（spot-postsと同じ流儀）
-        await db.rpc("increment_spot_post_counter", { p_post: postId, p_col: "like_count" }).then(() => {}, async () => {
-          const { data } = await db.from("spot_posts").select("like_count").eq("id", postId).maybeSingle();
-          const cur = (data as { like_count?: number } | null)?.like_count ?? 0;
-          await db.from("spot_posts").update({ like_count: cur + 1 }).eq("id", postId).then(() => {}, () => {});
-        });
+      } else {
+        if (isMoodlog && rtype === "like") {
+          // Moodログ既存表示(like_count)との整合。RPC→read+1フォールバック（spot-postsと同じ流儀）
+          await db.rpc("increment_spot_post_counter", { p_post: postId, p_col: "like_count" }).then(() => {}, async () => {
+            const { data } = await db.from("spot_posts").select("like_count").eq("id", postId).maybeSingle();
+            const cur = (data as { like_count?: number } | null)?.like_count ?? 0;
+            await db.from("spot_posts").update({ like_count: cur + 1 }).eq("id", postId).then(() => {}, () => {});
+          });
+        }
+        // 新規いいね時のみ投稿者へプッシュ（自分の投稿は除く・行った!は通知しない）
+        if (rtype === "like") {
+          try {
+            const { data: owner } = await db.from(isMoodlog ? "spot_posts" : "suggestions").select("device_id").eq("id", postId).maybeSingle();
+            const ownerId = (owner as { device_id?: string } | null)?.device_id;
+            if (ownerId && ownerId !== deviceId) {
+              await sendPushToDevice(ownerId, { title: "MoodGo", body: "あなたの投稿にいいねがつきました", data: { type: "like", postId: rawTarget } });
+            }
+          } catch { /* 通知失敗は無視 */ }
+        }
       }
     } else {
       const { data: del, error } = await db.from("spot_post_reactions")

@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
 import { handlesByDevice } from "@/lib/user-handles";
 import { hiddenHashesFor } from "@/lib/blocks";
+import { sendPushToDevice } from "@/lib/push-send";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
 
@@ -89,6 +90,15 @@ export async function POST(req: Request) {
         if (isMissingTable(error)) return NextResponse.json({ ok: false, ready: false, error: "コメント機能は準備中です" }, { status: 400 });
         throw error;
       }
+      // 投稿者へプッシュ（自分のコメントは除く）
+      try {
+        const isMl = rawTarget.startsWith("ml-");
+        const { data: owner } = await db.from(isMl ? "spot_posts" : "suggestions").select("device_id").eq("id", postId).maybeSingle();
+        const ownerId = (owner as { device_id?: string } | null)?.device_id;
+        if (ownerId && ownerId !== deviceId) {
+          await sendPushToDevice(ownerId, { title: "MoodGo", body: "あなたの投稿にコメントがつきました", data: { type: "comment", postId: rawTarget } });
+        }
+      } catch { /* 通知失敗は無視 */ }
       return NextResponse.json({ ok: true, id: (data as { id?: string })?.id, created_at: (data as { created_at?: string })?.created_at });
     }
 
