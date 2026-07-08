@@ -38,7 +38,6 @@ import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
 import CommentsSection from '@/components/CommentsSection';
 import SpotRating from '@/components/SpotRating';
-import VoicesSection from '@/components/VoicesSection';
 
 // この場所のコメント欄を出せるのは Supabase の場所ID(UUID)を持つスポットのみ
 // （Google専用スポットは安定した恒久IDが無いためコメントを紐づけない）。
@@ -991,23 +990,19 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── みんなの声（評価・コメント・Moodログ）＝コメントを上・Moodログを一番下に ─── */}
-          <VoicesSection>
-            {/* MoodGo独自の★評価（あなたの評価＋MoodGo平均）*/}
-            <View style={{ marginBottom: 6 }}>
-              <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
-            </View>
-            {/* コメント（場所ごと。SupabaseスポットID[UUID]がある場合のみ）*/}
-            {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
-              <View style={{ marginTop: 14 }}>
-                <CommentsSection targetId={rec.supabaseId} />
-              </View>
-            ) : null}
-            {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用）＝一番下 */}
+          {/* ─── 口コミ（投稿詳細と統一: 評価 → コメント → みんなのMoodログ[一番下]・見出しラッパー無し）─── */}
+          {/* MoodGo独自の★評価（あなたの評価＋MoodGo平均）*/}
+          <View style={{ marginTop: 4 }}>
+            <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
+          </View>
+          {/* コメント（場所ごと。SupabaseスポットID[UUID]がある場合のみ）*/}
+          {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
             <View style={{ marginTop: 14 }}>
-              <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
+              <CommentsSection targetId={rec.supabaseId} />
             </View>
-          </VoicesSection>
+          ) : null}
+          {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用）＝一番下 */}
+          <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
 
         </View>
       </Animated.ScrollView>
