@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import ThumbImage from '@/components/ThumbImage';
 import PuniPressable from '@/components/PuniPressable';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -47,7 +48,7 @@ type ProfilePost = {
 type VisitedSpot = { id: string; name: string; image: string | null; at: string | null };
 type Profile = {
   posterId: string;
-  name: string | null; handle: string | null; icon: string | null; isMe?: boolean; bio?: string | null;
+  name: string | null; handle: string | null; icon: string | null; isMe?: boolean; bio?: string | null; accountType?: string | null;
   postCount: number; likeCount: number; visitedCount: number;
   followerCount: number; followingCount: number; isFollowing: boolean;
   posts: ProfilePost[];
@@ -324,7 +325,10 @@ export default function UserProfileScreen() {
               </View>
             </LinearGradient>
             <View style={s.heroRight}>
-              <Text style={s.name} numberOfLines={1}>{name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Text style={[s.name, { flexShrink: 1 }]} numberOfLines={1}>{name}</Text>
+                <VerifiedBadge type={profile?.accountType} size={17} />
+              </View>
               {profile?.handle
                 ? <Text style={s.handle} numberOfLines={1}>@{profile.handle}</Text>
                 : <Text style={s.handleMuted} numberOfLines={1}>@MoodGoユーザー</Text>}

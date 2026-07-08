@@ -123,6 +123,7 @@ export async function POST(req: Request) {
     // ── 表示情報（最新の帰属投稿から。無ければ null）──
     const newest = (sugs[0] ?? mls[0]) as Row | undefined;
     let name: string | null = null, handle: string | null = null, icon: string | null = null, bio: string | null = null;
+    let accountType = "user";   // user | store | official（認証/店舗バッジ）
     let dev = "";
     if (newest && typeof newest.device_id === "string") {
       dev = String(newest.device_id);
@@ -130,12 +131,20 @@ export async function POST(req: Request) {
       handle = (await handlesByDevice(db, [dev])).get(dev) ?? null;
       const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
       icon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
-      // 一言メッセージ（user_handles.bio・列未適用[42703]は無視）
+      // 一言メッセージ(bio)＋種別(account_type)。列未適用[42703]は基本列で再取得し、無ければ既定のまま。
       try {
-        const { data: uh } = await db.from("user_handles").select("bio").eq("device_id", dev).maybeSingle();
-        const b = (uh as { bio?: string } | null)?.bio;
+        type UH = { bio?: string; account_type?: string };
+        let uhData: UH | null = null;
+        const full = await db.from("user_handles").select("bio, account_type").eq("device_id", dev).maybeSingle();
+        if (full.error && (full.error as { code?: string }).code === "42703") {
+          const basic = await db.from("user_handles").select("bio").eq("device_id", dev).maybeSingle();
+          uhData = (basic.data ?? null) as UH | null;
+        } else uhData = (full.data ?? null) as UH | null;
+        const b = uhData?.bio;
         if (typeof b === "string" && b.trim()) bio = b.trim().slice(0, 80);
-      } catch { /* bio列未適用は無視 */ }
+        const at = uhData?.account_type;
+        if (at === "store" || at === "official") accountType = at;
+      } catch { /* 未適用は既定のまま */ }
     }
 
     // ── 行ったスポット（この人が「行った！」を押した場所＝勲章バッジ用）──
@@ -200,7 +209,7 @@ export async function POST(req: Request) {
       ok: true,
       profile: {
         posterId: targetId,
-        name, handle, icon, isMe, bio,
+        name, handle, icon, isMe, bio, accountType,
         postCount: posts.length,
         likeCount: likeTotal,        // もらったいいね合計
         visitedCount: visitedTotal,  // 「行った！」された合計
