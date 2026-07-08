@@ -250,11 +250,11 @@ export default function PostScreen() {
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.doneCircle}>
             <Check size={36} color="#fff" strokeWidth={3} />
           </LinearGradient>
-          <Text style={s.doneTitle}>投稿を受け付けました🎉</Text>
+          <Text style={s.doneTitle}>投稿しました</Text>
           <Text style={s.doneSub}>
             {isExisting
-              ? 'ありがとうございます！あなたの投稿はスポットのページに表示されます。'
-              : 'スタッフが確認後、検索に掲載されます。\n掲載された場合はご連絡します！'}
+              ? 'ありがとうございます！あなたの投稿は「全国みんなの穴場」とスポットのページにすぐ表示されます。'
+              : 'ありがとうございます！あなたの投稿は「全国みんなの穴場」にすぐ表示されます。'}
           </Text>
           <TouchableOpacity onPress={() => router.back()} style={s.doneBtnWrap} activeOpacity={0.85}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.doneBtn}>

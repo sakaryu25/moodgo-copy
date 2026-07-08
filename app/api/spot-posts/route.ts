@@ -7,6 +7,8 @@
 // 画像は既存 Storage バケット spot-photos に保存し spot_photos(拡張済) に記録。
 // ハイブリッド承認: 権利確認OK＋疑い語なし→approvedで即表示／疑わしい→pending／通報3件→hidden。
 // 認証はログイン無し＝device_id を「ログイン相当」として必須にする。未適用(テーブル無)でも安全。
+// 承認モデル(2026-07-08〜): 投稿は即 approved で「全国みんなの穴場」に表示（admin事前承認は廃止）。
+//   モデレーションは事後型＝NGワード(投稿時ブロック)＋通報3件で自動非表示＋admin moderateで随時対応。
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -31,8 +33,6 @@ function isValidImageBase64(b64: string): boolean {
   if (payload.length < 100) return false;
   return /^[A-Za-z0-9+/=\r\n]+$/.test(payload.slice(0, 256));
 }
-// 権利的に疑わしい＝pending送り（他サイト/Google/SNS転載っぽい文言）
-const SUSPICIOUS_RE = /https?:\/\/|www\.|\.com|\.jp\b|google|グーグル|マップ|インスタ|instagram|insta|転載|無断|スクショ|スクリーンショット|screenshot|pinterest|tabelog|食べログ|じゃらん|楽天|ホットペッパー/i;
 
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
@@ -175,10 +175,10 @@ export async function POST(req: Request) {
       if (!isValidImageBase64(img)) return NextResponse.json({ ok: false, error: "画像の形式が不正です" }, { status: 400 });
     }
 
-    // ハイブリッド承認: 権利確認OK＋疑い語なし→approved即表示／疑わしい→pending。
-    //   private/group は元から公開写真候補にしないので status は approved でも可視範囲で制御。
-    const suspicious = SUSPICIOUS_RE.test(caption);
-    const status = suspicious ? "pending" : "approved";
+    // 即時公開: すべての投稿を approved にして「全国みんなの穴場」へ即反映（admin事前承認は廃止）。
+    //   安全側の担保は事後型＝NGワード(上でブロック済)＋通報3件で自動非表示＋admin moderateで随時。
+    //   private/group は元から公開写真候補にしないので status=approved でも可視範囲(visibility)で制御。
+    const status = "approved";
 
     // 画像を Storage に保存
     let uploaded: { url: string; path: string }[] = [];
