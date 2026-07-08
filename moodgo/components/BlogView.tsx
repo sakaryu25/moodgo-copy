@@ -23,6 +23,7 @@ import { COLORS } from '@/constants/colors';
 import { HERO_BAND_H } from '@/lib/headerBand';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { apiFetch } from '@/lib/api';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import CommunityFeed from './CommunityFeed';
@@ -62,6 +63,7 @@ export type Detail = {
   address: string | null; mood_tags: string[] | null; scene_tags: string[] | null; companion_tags: string[] | null;
   budget_level: string | null; google_maps_url: string | null; poster_name: string | null;
   poster_handle?: string | null;   // @ユーザーID（未設定はnull）
+  poster_type?: string | null;     // account_type（認証/店舗バッジ）
   helpful_count: number; photos: string[]; isOwn?: boolean;
 };
 
@@ -342,7 +344,10 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           <View style={s.csPosterRow}>
             <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csPosterAvatar}><Text style={s.csPosterAvatarText}>{initial}</Text></LinearGradient>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.csPosterName} numberOfLines={1}>{name}さんのおすすめ</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={[s.csPosterName, { flexShrink: 1 }]} numberOfLines={1}>{name}さんのおすすめ</Text>
+                <VerifiedBadge type={post.poster_type} size={14} />
+              </View>
               {post.poster_handle ? <Text style={s.csPosterHandle} numberOfLines={1}>@{post.poster_handle}</Text> : null}
             </View>
           </View>

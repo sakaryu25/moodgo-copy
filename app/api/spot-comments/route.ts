@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice, deviceByHandle } from "@/lib/user-handles";
+import { handlesByDevice, deviceByHandle, accountTypesByDevice } from "@/lib/user-handles";
 import { hiddenHashesFor } from "@/lib/blocks";
 import { sendPushToDevice } from "@/lib/push-send";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -57,6 +57,7 @@ export async function POST(req: Request) {
       }
       const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
       const handleMap = await handlesByDevice(db, rows.map(r => String(r.device_id ?? "")));
+      const acctMap = await accountTypesByDevice(db, rows.map(r => String(r.device_id ?? "")));   // 認証/店舗バッジ
       const hidden = await hiddenHashesFor(db, deviceId);   // ブロック/ミュートした相手のコメントを隠す
       // 自分がいいねしたコメント
       const likedSet = new Set<string>();
@@ -79,6 +80,7 @@ export async function POST(req: Request) {
           posterId: deviceHash(dev),
           icon: `${pub.publicUrl}?v=${vHour}`,
           mine: !!deviceId && dev === deviceId,   // 本人のみ削除ボタンを出す
+          accountType: acctMap.get(dev) ?? null,
           parentId: r.parent_id ? String(r.parent_id) : null,
           likeCount: Number(r.like_count) || 0,
           liked: likedSet.has(String(r.id)),

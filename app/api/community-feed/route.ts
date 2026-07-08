@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice, deviceByHandle } from "@/lib/user-handles";
+import { handlesByDevice, deviceByHandle, accountTypesByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -99,7 +99,8 @@ export async function GET(request: Request) {
           return m ? m[1].replace(/[都道府県]$/, "") : "";
         };
         // 写真・places(id/name)・@ハンドルの4系統を並列取得（従来は直列で最も遅い区間だった）
-        const [phsRes, plsIdRes, plsNameRes, handleMap] = await Promise.all([
+        const nonAnonDevs = plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? ""));
+        const [phsRes, plsIdRes, plsNameRes, handleMap, acctMap] = await Promise.all([
           supabase.from("spot_photos").select("post_id, image_url")
             .in("post_id", postIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected"),
           placeIds.length > 0
@@ -108,10 +109,8 @@ export async function GET(request: Request) {
           names2.length > 0
             ? supabase.from("places").select("name, address, lat, lng").in("name", names2)
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
-          handlesByDevice(
-            supabase,
-            plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? "")),
-          ),
+          handlesByDevice(supabase, nonAnonDevs),
+          accountTypesByDevice(supabase, nonAnonDevs),
         ]);
         const photoByPost = new Map<string, string[]>();
         for (const ph of (phsRes.data ?? []) as Array<Record<string, unknown>>) {
@@ -148,6 +147,7 @@ export async function GET(request: Request) {
             created_at: p.created_at,
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
             poster_handle: anon ? null : (handleMap.get(String(p.device_id ?? "")) ?? null),
+            poster_type: anon ? null : (acctMap.get(String(p.device_id ?? "")) ?? null),
             poster_icon: anon ? null : iconFor(p.device_id),
             // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
             poster_id: typeof p.device_id === "string" && p.device_id ? deviceHash(p.device_id) : null,
@@ -185,7 +185,9 @@ export async function GET(request: Request) {
           const f = s.available_from as string | null, u = s.available_until as string | null;
           return (!f || f <= today) && (!u || u >= today);
         };
-        const sHandleMap = await handlesByDevice(supabase, slist.map(s => String(s.device_id ?? "")));
+        const sDevs = slist.map(s => String(s.device_id ?? ""));
+        const sHandleMap = await handlesByDevice(supabase, sDevs);
+        const sAcctMap = await accountTypesByDevice(supabase, sDevs);
         suggestionItems = slist.filter(inPeriod).map(s => {
           const rawImgs = (s.image_urls ?? []) as string[];
           const imgs = Array.isArray(rawImgs) ? rawImgs.filter(u => typeof u === "string" && !isLegacyPhotoUrl(u)) : [];
@@ -205,6 +207,7 @@ export async function GET(request: Request) {
             created_at: s.created_at,
             poster_name: (s.poster_name as string | null) ?? null,
             poster_handle: dev ? (sHandleMap.get(dev) ?? null) : null,
+            poster_type: dev ? (sAcctMap.get(dev) ?? null) : null,
             poster_icon: dev ? iconFor(dev) : null,
             poster_id: dev ? deviceHash(dev) : null,
           };

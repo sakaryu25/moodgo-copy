@@ -19,6 +19,24 @@ export async function handlesByDevice(
   return map;
 }
 
+/** device_id[] → Map<device_id, account_type>（'user'は含めない・列未適用[42703]/エラーは空Map） */
+export async function accountTypesByDevice(
+  db: SupabaseClient, deviceIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const ids = [...new Set(deviceIds.filter(Boolean))];
+  if (ids.length === 0) return map;
+  try {
+    const { data, error } = await db.from("user_handles").select("device_id, account_type").in("device_id", ids);
+    if (error) return map;   // account_type 列未適用などは空Mapで安全に劣化
+    for (const r of data ?? []) {
+      const at = (r as { account_type?: string }).account_type;
+      if (at === "store" || at === "official") map.set((r as { device_id: string }).device_id, at);
+    }
+  } catch { /* noop */ }
+  return map;
+}
+
 /** handle → device_id（ユーザー検索/フィルタ用。見つからなければ null） */
 export async function deviceByHandle(db: SupabaseClient, handle: string): Promise<string | null> {
   const h = String(handle ?? "").trim().toLowerCase().replace(/^@+/, "");

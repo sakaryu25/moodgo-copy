@@ -768,6 +768,41 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
   );
 }
 
+// アカウント種別パネル: @IDに認証/店舗バッジを付与
+function AccountTypePanel({ secret }: { secret: string }) {
+  const [handle, setHandle] = useState("");
+  const [type, setType] = useState<"store" | "official" | "user">("official");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputStyle: React.CSSProperties = { border: "1px solid #DDD6FE", borderRadius: 8, padding: "8px 12px", fontSize: 14 };
+  const submit = async () => {
+    const h = handle.trim().replace(/^@+/, "");
+    if (!h) return;
+    setBusy(true); setMsg("");
+    try {
+      const res = await fetch("/api/admin/set-account-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, handle: h, accountType: type }) });
+      const d = await res.json();
+      setMsg(d?.ok ? (d.matched > 0 ? `@${h} を「${type}」に設定しました` : `@${h} が見つかりません（@ID未登録）`) : (d?.error ?? "失敗しました"));
+    } catch { setMsg("通信エラー"); } finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E", marginBottom: 8 }}>アカウント種別（認証/店舗バッジ）</h2>
+      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>@IDを指定して認証(official)/店舗(store)バッジを付与。「user」で解除。プロフィール・投稿・コメントに表示されます（⚠ user-account-type.sql適用が必要）。</p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={handle} onChange={e => setHandle(e.target.value)} placeholder="@ユーザーID" style={{ ...inputStyle, width: 200 }} />
+        <select value={type} onChange={e => setType(e.target.value as "store" | "official" | "user")} style={inputStyle}>
+          <option value="official">公式・認証 (official)</option>
+          <option value="store">店舗 (store)</option>
+          <option value="user">一般に戻す (user)</option>
+        </select>
+        <button onClick={submit} disabled={busy || !handle.trim()} style={{ background: "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "8px 18px", fontWeight: 800, cursor: "pointer" }}>{busy ? "設定中…" : "設定"}</button>
+      </div>
+      {msg && <p style={{ marginTop: 12, fontSize: 13, color: "#4a3034" }}>{msg}</p>}
+    </div>
+  );
+}
+
 // 住所補完パネル: 住所が「日本」/都道府県だけ/空 で位置特定できないspotを補充する
 function AddressFillPanel({ secret }: { secret: string }) {
   type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null };
@@ -850,7 +885,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -3078,6 +3113,7 @@ export default function AdminPage() {
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
             { key: "address-fill", label: "住所補完" },
+            { key: "account-type", label: "アカウント種別" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7853,6 +7889,7 @@ export default function AdminPage() {
         {tab === "server-errors" && <ServerErrorsAdmin />}
         {tab === "pending-spots" && <PendingSpotsPanel secret={adminSecret} />}
         {tab === "address-fill" && <AddressFillPanel secret={adminSecret} />}
+        {tab === "account-type" && <AccountTypePanel secret={adminSecret} />}
 
       </div>
     </div>

@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { blockUser } from '@/lib/blockStore';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { relativeTime } from '@/lib/spotLog';
 import { showToast } from '@/lib/toast';
 
@@ -32,7 +33,7 @@ const INLINE_MAX = 4;                          // インラインに出す最大
 type Comment = {
   id: string; body: string; created_at: string;
   handle: string | null; posterId: string; icon: string | null; mine: boolean;
-  parentId?: string | null; likeCount?: number; liked?: boolean;
+  parentId?: string | null; likeCount?: number; liked?: boolean; accountType?: string | null;
 };
 type Trans = { status: 'loading' | 'done'; text?: string };
 
@@ -55,6 +56,7 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={s.metaRow}>
           <Text style={s.handle} numberOfLines={1}>{c.handle ? `@${c.handle}` : 'MoodGoユーザー'}</Text>
+          <VerifiedBadge type={c.accountType} size={13} />
           <Text style={s.time}>{relativeTime(c.created_at)}</Text>
           {c.mine && <Text style={s.mineTag}>自分</Text>}
         </View>
