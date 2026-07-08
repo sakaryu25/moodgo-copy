@@ -768,6 +768,79 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
   );
 }
 
+// 住所補完パネル: 住所が「日本」/都道府県だけ/空 で位置特定できないspotを補充する
+function AddressFillPanel({ secret }: { secret: string }) {
+  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState("");
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [sugBusy, setSugBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/fill-address?secret=${encodeURIComponent(secret)}&q=${encodeURIComponent(q)}`);
+      const d = await res.json();
+      const list: Row[] = d?.places ?? [];
+      setRows(list);
+      const init: Record<string, string> = {};
+      for (const p of list) init[p.id] = p.address ?? "";
+      setDraft(init);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const suggest = async (id: string) => {
+    setSugBusy(id);
+    try {
+      const res = await fetch("/api/admin/fill-address", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, placeId: id, action: "suggest" }) });
+      const d = await res.json();
+      if (d?.ok && d.address) setDraft(prev => ({ ...prev, [id]: d.address }));
+      else alert(d?.error ?? "候補を取得できませんでした");
+    } catch { alert("通信エラー"); } finally { setSugBusy(null); }
+  };
+  const save = async (id: string) => {
+    const address = (draft[id] ?? "").trim();
+    if (!address) return;
+    setBusy(id);
+    try {
+      const res = await fetch("/api/admin/fill-address", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, placeId: id, address }) });
+      const d = await res.json();
+      if (!d?.ok) { alert(d?.error ?? "保存に失敗"); setBusy(null); return; }
+      setRows(prev => prev.filter(r => r.id !== id));   // 保存したら一覧から即除去
+    } catch { alert("通信エラー"); } finally { setBusy(null); }
+  };
+
+  const inputStyle: React.CSSProperties = { border: "1px solid #DDD6FE", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" };
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E" }}>住所補完（{rows.length}件）</h2>
+        <button onClick={load} style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer" }}>{loading ? "読込中…" : "更新"}</button>
+      </div>
+      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 12 }}>住所が「日本」だけ／都道府県だけ／空 で位置が特定できないスポットです。座標があれば「候補(逆引き)」でGoogleの住所を入れられます。編集して「保存」。</p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="名前で絞り込み（Enter）" style={{ ...inputStyle, maxWidth: 260 }} onKeyDown={e => { if (e.key === "Enter") load(); }} />
+        <button onClick={load} style={{ background: "#EDE9FE", color: "#7C3AED", border: 0, borderRadius: 8, padding: "6px 14px", fontWeight: 700, cursor: "pointer" }}>検索</button>
+      </div>
+      {!loading && rows.length === 0 && <p style={{ color: "#9CA3AF" }}>対象のスポットはありません。</p>}
+      {rows.map(p => (
+        <div key={p.id} style={{ border: "1px solid #E5E0F5", borderRadius: 12, padding: 14, marginBottom: 12, background: "#FCFBFF" }}>
+          <div style={{ fontWeight: 800, color: "#1A0A2E", fontSize: 15 }}>{p.name}</div>
+          <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 3 }}>現在: {p.address || "（空）"} ／ 座標: {p.lat != null && p.lng != null ? `${p.lat}, ${p.lng}` : "なし"}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input value={draft[p.id] ?? ""} onChange={e => setDraft(prev => ({ ...prev, [p.id]: e.target.value }))} placeholder="住所を入力…" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
+            <button onClick={() => suggest(p.id)} disabled={sugBusy === p.id || p.lat == null || p.lng == null} style={{ background: "#EDE9FE", color: "#7C3AED", border: 0, borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: p.lat == null ? "not-allowed" : "pointer", whiteSpace: "nowrap", opacity: p.lat == null ? 0.5 : 1 }}>{sugBusy === p.id ? "取得中…" : "候補(逆引き)"}</button>
+            <button onClick={() => save(p.id)} disabled={busy === p.id || !(draft[p.id] ?? "").trim()} style={{ background: "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "8px 16px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>{busy === p.id ? "保存中…" : "保存"}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -777,7 +850,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -3004,6 +3077,7 @@ export default function AdminPage() {
             { key: "blog-posts", label: "📰 投稿承認" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
+            { key: "address-fill", label: "住所補完" },
           ] as const).map((t) => (
             <button
               key={t.key}
@@ -7778,6 +7852,7 @@ export default function AdminPage() {
         {tab === "blog-posts" && <BlogPostsAdmin secret={adminSecret} />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
         {tab === "pending-spots" && <PendingSpotsPanel secret={adminSecret} />}
+        {tab === "address-fill" && <AddressFillPanel secret={adminSecret} />}
 
       </div>
     </div>
