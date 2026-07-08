@@ -827,6 +827,11 @@ export default function SettingsView({
               label={lang === 'ja' ? '規約・サポート' : 'Legal & Support'}
             />
             <View style={s.card}>
+              <TouchableOpacity onPress={() => { onClose(); router.push('/blocked-users' as Href); }} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
+                <EyeOff size={17} color={PURPLE} strokeWidth={2} />
+                <Text style={s.linkRowText}>{lang === 'ja' ? 'ブロック・ミュートしたユーザー' : 'Blocked & muted users'}</Text>
+                <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => { onClose(); router.push('/privacy' as Href); }} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
                 <ShieldCheck size={17} color={PURPLE} strokeWidth={2} />
                 <Text style={s.linkRowText}>{lang === 'ja' ? 'プライバシーポリシー' : 'Privacy Policy'}</Text>

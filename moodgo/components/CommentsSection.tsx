@@ -10,7 +10,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  ChevronDown, Copy, Flag, Languages, MessageSquare, Send, Trash2, UserRound, X,
+  Ban, ChevronDown, Copy, Flag, Languages, MessageSquare, Send, Trash2, UserRound, X,
 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { blockUser } from '@/lib/blockStore';
 import { relativeTime } from '@/lib/spotLog';
 import { showToast } from '@/lib/toast';
 
@@ -88,9 +89,9 @@ function MenuRow({ Icon, label, danger, onPress }: {
   );
 }
 
-function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, onCopy, onReport, onDelete }: {
+function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, onCopy, onReport, onBlock, onDelete }: {
   open: boolean; mine: boolean; hasTrans: boolean; bottomInset: number;
-  onClose: () => void; onTranslate: () => void; onCopy: () => void; onReport: () => void; onDelete: () => void;
+  onClose: () => void; onTranslate: () => void; onCopy: () => void; onReport: () => void; onBlock: () => void; onDelete: () => void;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(false);
@@ -120,6 +121,12 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
           <MenuRow Icon={Copy} label="コピー" onPress={onCopy} />
           <View style={s.menuDivider} />
           <MenuRow Icon={Flag} label="通報する" onPress={onReport} />
+          {!mine && (
+            <>
+              <View style={s.menuDivider} />
+              <MenuRow Icon={Ban} label="この人をブロック" danger onPress={onBlock} />
+            </>
+          )}
           {mine && (
             <>
               <View style={s.menuDivider} />
@@ -350,10 +357,26 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
   };
 
   const inlineItems = items.slice(0, INLINE_MAX);
+  const actBlock = () => {
+    const c = menuFor; closeMenu();
+    if (!c || !c.posterId) return;
+    const pid = c.posterId;
+    setTimeout(() => {
+      Alert.alert('この投稿者をブロックしますか？', 'この人のコメントや投稿が表示されなくなります。', [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: 'ブロック', style: 'destructive', onPress: () => {
+          blockUser(pid);
+          setItems((prev) => prev.filter((x) => x.posterId !== pid));   // 表示中のコメントからも即消す
+          notify('ブロックしました', 'この人のコメント・投稿を非表示にしました');
+        } },
+      ]);
+    }, 260);
+  };
+
   const menuProps = {
     mine: !!menuFor?.mine,
     hasTrans: !!(menuFor && trans[menuFor.id]?.status === 'done'),
-    onClose: closeMenu, onTranslate: actTranslate, onCopy: actCopy, onReport: actReport, onDelete: actDelete,
+    onClose: closeMenu, onTranslate: actTranslate, onCopy: actCopy, onReport: actReport, onBlock: actBlock, onDelete: actDelete,
   };
 
   const inputRow = (inSheet: boolean) => (
