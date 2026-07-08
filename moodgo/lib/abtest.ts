@@ -1,5 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as SecureStore from "expo-secure-store";
+
+// expo-secure-store は未ビルドのdev-client(ネイティブ未リンク)だと import 時点で
+// 「Cannot find native module 'ExpoSecureStore'」を投げてアプリ全体を落とす。
+// 動的requireで安全に読み込み、失敗時は null → AsyncStorage のみで従来どおり動作させる
+// （＝再ビルド後に自動でKeychain端末ID永続化が有効化。未ビルドでもクラッシュしない）。
+let SecureStore: typeof import("expo-secure-store") | null = null;
+try { SecureStore = require("expo-secure-store"); } catch { SecureStore = null; }
 
 // G-2: 簡易A/Bテスト基盤
 // デバイス単位で安定した variant（"A" or "B"）を割り当てる。
@@ -27,7 +33,7 @@ export async function getDeviceId(): Promise<string> {
   try {
     // 1) Keychain(SecureStore)優先。ネイティブ未ビルド時は throw → 下の経路へフォールバック。
     let secure: string | null = null;
-    try { secure = await SecureStore.getItemAsync(AB_DEVICE_ID_KEY); } catch { secure = null; }
+    if (SecureStore) { try { secure = await SecureStore.getItemAsync(AB_DEVICE_ID_KEY); } catch { secure = null; } }
     if (secure) {
       AsyncStorage.setItem(AB_DEVICE_ID_KEY, secure).catch(() => {});   // ミラー保険
       return secure;
@@ -35,13 +41,13 @@ export async function getDeviceId(): Promise<string> {
     // 2) 旧AsyncStorageのIDを引き継ぐ（既存ユーザーの本人紐付けを保全してKeychainへ移行）
     const legacy = await AsyncStorage.getItem(AB_DEVICE_ID_KEY);
     if (legacy) {
-      try { await SecureStore.setItemAsync(AB_DEVICE_ID_KEY, legacy); } catch { /* 非対応端末はAsyncStorageのまま */ }
+      if (SecureStore) { try { await SecureStore.setItemAsync(AB_DEVICE_ID_KEY, legacy); } catch { /* 非対応端末はAsyncStorageのまま */ } }
       return legacy;
     }
-    // 3) 新規発行（強エントロピー）→ Keychain＋AsyncStorage両方へ
+    // 3) 新規発行（強エントロピー）→ Keychain(可能なら)＋AsyncStorage両方へ
     const rand = () => Math.random().toString(36).slice(2, 10);
     const fresh = `${Date.now()}-${rand()}${rand()}${rand()}${rand()}`;
-    try { await SecureStore.setItemAsync(AB_DEVICE_ID_KEY, fresh); } catch { /* 非対応端末はAsyncStorageのみ */ }
+    if (SecureStore) { try { await SecureStore.setItemAsync(AB_DEVICE_ID_KEY, fresh); } catch { /* 非対応端末はAsyncStorageのみ */ } }
     await AsyncStorage.setItem(AB_DEVICE_ID_KEY, fresh).catch(() => {});
     return fresh;
   } catch {
