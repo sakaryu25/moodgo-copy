@@ -404,6 +404,12 @@ export default function CommunitySpotScreen() {
             </View>
           </View>
 
+          {/* ── あなたの評価（総合評価バーのすぐ下＝上部に配置）── */}
+          <View style={{ marginBottom: 14 }}>
+            <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle}
+              hideAggregate onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
+          </View>
+
           {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
           {(spot.availableFrom || spot.availableUntil) ? (
             <View style={s.periodCard}>
@@ -513,12 +519,6 @@ export default function CommunitySpotScreen() {
               ))}
             </View>
           )}
-
-          {/* ── あなたの評価（検索結果の場所詳細と統一。MoodGo平均＋自分の★）── */}
-          <View style={{ marginTop: 4 }}>
-            <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle}
-              hideAggregate onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
-          </View>
 
           {/* ── コメント（この投稿への会話・1階層）＝Moodログより上 ── */}
           <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
