@@ -26,6 +26,7 @@ import { openInGoogleMaps } from '@/lib/openMaps';
 import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
+import VoicesSection, { type VoiceStat } from '@/components/VoicesSection';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -488,13 +489,18 @@ export default function CommunitySpotScreen() {
             </View>
           )}
 
-          {/* ── コメント（この投稿への会話・1階層）── */}
-          <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
-
-          {/* ── みんなのMoodログ（同じ場所への他の投稿。place.tsxと同じ体験を投稿詳細でも必ず出す）──
-              いま見ている投稿自身は excludePostId で除外（同じログが二重に出ないように）*/}
-          <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address}
-            excludePostId={spot.kind === 'moodlog' ? spot.id : undefined} />
+          {/* ── みんなの声（評価/Moodログ/コメントを1つに集約）── */}
+          <VoicesSection stats={([
+            spot.rating > 0 ? { kind: 'star', value: `${spot.rating}.0`, label: '評価' } : null,
+            { kind: 'heart', value: String(likeCount), label: 'いいね' },
+            { kind: 'foot', value: String(spot.visitedCount ?? 0), label: '行った！' },
+          ].filter(Boolean)) as VoiceStat[]}>
+            {/* みんなのMoodログ（同じ場所への他の投稿）。いま見ている投稿自身は除外 */}
+            <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address}
+              excludePostId={spot.kind === 'moodlog' ? spot.id : undefined} />
+            {/* コメント（この投稿への会話・1階層）*/}
+            <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
+          </VoicesSection>
         </View>
       </ScrollView>
 

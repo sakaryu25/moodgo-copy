@@ -38,6 +38,7 @@ import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
 import CommentsSection from '@/components/CommentsSection';
 import SpotRating from '@/components/SpotRating';
+import VoicesSection from '@/components/VoicesSection';
 
 // この場所のコメント欄を出せるのは Supabase の場所ID(UUID)を持つスポットのみ
 // （Google専用スポットは安定した恒久IDが無いためコメントを紐づけない）。
@@ -858,8 +859,7 @@ export default function PlaceDetailPage() {
             </View>
           )}
 
-          {/* MoodGo独自の星評価セレクタ（心霊含む全スポット。心霊もユーザーは★評価できる） */}
-          <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
+          {/* ★評価セレクタは下の「みんなの声」に集約（口コミ系をまとめる） */}
 
           {/* 価格帯 */}
           {extra.loaded && displayPriceLevel && (
@@ -991,17 +991,21 @@ export default function PlaceDetailPage() {
           )}
 
 
-          {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊含む全スポット）─── */}
-          <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
-
-          {/* ─── コメント（口コミ・場所ごと。SupabaseスポットID[UUID]がある場合のみ）─── */}
-          {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
-            <View style={{ marginTop: 14 }}>
-              <CommentsSection targetId={rec.supabaseId} />
+          {/* ─── みんなの声（評価・Moodログ・コメントを1つに集約）─── */}
+          <VoicesSection>
+            {/* MoodGo独自の★評価（あなたの評価＋MoodGo平均）*/}
+            <View style={{ marginBottom: 6 }}>
+              <SpotRating placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} mood={detailCtx.mood} companion={detailCtx.companion} subCategory={detailCtx.subCategory} onFirstRate={() => setRatingDelta(d => d + 1)} />
             </View>
-          ) : null}
-
-          {/* Google口コミ欄は廃止。MoodGo独自の「みんなのMoodログ」(上)に一本化。 */}
+            {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊含む全スポット）*/}
+            <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
+            {/* コメント（場所ごと。SupabaseスポットID[UUID]がある場合のみ）*/}
+            {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
+              <View style={{ marginTop: 14 }}>
+                <CommentsSection targetId={rec.supabaseId} />
+              </View>
+            ) : null}
+          </VoicesSection>
 
         </View>
       </Animated.ScrollView>
