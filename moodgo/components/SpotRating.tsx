@@ -28,7 +28,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
         const c = JSON.parse(cached);
         setSubmitted(c.myStars ?? 0); setSelected(c.myStars ?? 0);
         setAvg(c.avg ?? null); setCount(c.count ?? 0);
-        onAvgRef.current?.(c.avg ?? null, c.count ?? 0);
+        // onAvgは呼ばない（キャッシュは古い可能性＝バーは親がライブ取得する。送信時のみ通知）
         return;
       }
       const did = await getDeviceId().catch(() => '');
@@ -41,7 +41,6 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
       if (d?.ok) {
         setSubmitted(d.myStars ?? 0); setSelected(d.myStars ?? 0);
         setAvg(d.avg ?? null); setCount(d.count ?? 0);
-        onAvgRef.current?.(d.avg ?? null, d.count ?? 0);
         if (d.myStars > 0) await AsyncStorage.setItem(cacheKey, JSON.stringify({ myStars: d.myStars, avg: d.avg, count: d.count })).catch(() => {});
       }
     } catch { /* 取得失敗は未評価表示 */ }

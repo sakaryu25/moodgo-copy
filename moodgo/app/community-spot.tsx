@@ -103,6 +103,16 @@ export default function CommunitySpotScreen() {
         if (d.ok) {
           setSpot(d.spot);
           if (typeof d.spot.likeCount === 'number') setLikeCount(d.spot.likeCount);
+          // 総合評価（みんなの★平均）をライブ取得してバーに表示（SpotRatingのキャッシュに依存しない）
+          (async () => {
+            try {
+              const qs = new URLSearchParams();
+              if (d.spot.placeId) qs.set('placeId', String(d.spot.placeId));
+              qs.set('placeName', d.spot.placeName || d.spot.userTitle || '');
+              const rr = await apiFetch(`/api/spot-rating?${qs.toString()}`).then((x) => x.json());
+              if (rr?.ok) { setAvgRating(rr.avg ?? null); setRatingCount(rr.count ?? 0); }
+            } catch { /* noop */ }
+          })();
           const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
           setFaved(faves.some((f) => sameFav(f, { title: d.spot.placeName || d.spot.userTitle, placeId: d.spot.placeId })));
           // 自分がいいね済みか（失敗しても未押下扱いで続行）
