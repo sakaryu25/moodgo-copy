@@ -52,7 +52,8 @@ export async function POST(req: Request) {
       if (!deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
       const me = deviceHash(deviceId);
       const c = await counts(db, me);
-      return NextResponse.json({ ok: true, followerCount: c.followers, followingCount: c.following });
+      // 自分の公開ハッシュも返す（自分のフォロワー/フォロー中一覧へ遷移するため。生device_idではない）
+      return NextResponse.json({ ok: true, hash: me, followerCount: c.followers, followingCount: c.following });
     }
 
     if (!HASH_RE.test(targetId)) return NextResponse.json({ ok: false, error: "targetIdが不正です" }, { status: 400 });

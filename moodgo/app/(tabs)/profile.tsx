@@ -180,6 +180,7 @@ export default function ProfileTab() {
   const [notifUnread, setNotifUnread] = useState(false);
   // フォロワー/フォロー中（user_follows・テーブル未適用は0）
   const [follows, setFollows] = useState({ followers: 0, following: 0 });
+  const [myHash, setMyHash] = useState('');   // 自分の公開ハッシュ（フォロワー/フォロー中一覧へ遷移用）
   const loadFollows = useCallback(async () => {
     try {
       const deviceId = await getDeviceId();
@@ -187,7 +188,7 @@ export default function ProfileTab() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'me', deviceId }),
       }).then((r) => r.json());
-      if (d?.ok) setFollows({ followers: d.followerCount ?? 0, following: d.followingCount ?? 0 });
+      if (d?.ok) { setFollows({ followers: d.followerCount ?? 0, following: d.followingCount ?? 0 }); setMyHash(d.hash ?? ''); }
     } catch { /* 0のまま */ }
   }, []);
 
@@ -454,10 +455,12 @@ export default function ProfileTab() {
                   <Text style={s.statLabel}>いいね</Text>
                 </View>
                 <View style={s.statDivider} />
-                <View style={s.statCol}>
+                <TouchableOpacity style={s.statCol} activeOpacity={0.7}
+                  onPress={() => { if (myHash) router.push({ pathname: '/follow-list', params: { id: myHash, kind: 'followers' } }); }}
+                  accessibilityRole="button" accessibilityLabel="フォロワー一覧を見る">
                   <Text style={s.statNum}>{follows.followers}</Text>
                   <Text style={s.statLabel}>フォロワー</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
           </View>

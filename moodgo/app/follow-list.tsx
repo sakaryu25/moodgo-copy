@@ -18,7 +18,7 @@ export default function FollowListScreen() {
   const insets = useSafeAreaInsets();
   const { id, kind } = useLocalSearchParams<{ id?: string; kind?: string }>();
   const targetId = String(id ?? '');
-  const mode = kind === 'following' ? 'following' : 'followers';
+  const [mode, setMode] = useState<'followers' | 'following'>(kind === 'following' ? 'following' : 'followers');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [suggests, setSuggests] = useState<Row[]>([]);
@@ -26,6 +26,7 @@ export default function FollowListScreen() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);   // 切替時もスピナー
     (async () => {
       try {
         const d = await apiFetch('/api/user-follows', {
@@ -70,8 +71,17 @@ export default function FollowListScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn} accessibilityLabel="戻る">
           <ChevronLeft size={24} color="#1A0A2E" strokeWidth={2.4} />
         </Pressable>
-        <Text style={s.title}>{mode === 'followers' ? 'フォロワー' : 'フォロー中'}</Text>
+        <Text style={s.title}>つながり</Text>
         <View style={{ width: 34 }} />
+      </View>
+
+      <View style={s.segRow}>
+        <Pressable style={[s.seg, mode === 'followers' && s.segOn]} onPress={() => setMode('followers')}>
+          <Text style={[s.segText, mode === 'followers' && s.segTextOn]}>フォロワー</Text>
+        </Pressable>
+        <Pressable style={[s.seg, mode === 'following' && s.segOn]} onPress={() => setMode('following')}>
+          <Text style={[s.segText, mode === 'following' && s.segTextOn]}>フォロー中</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -129,6 +139,11 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingBottom: 10 },
   backBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 17, fontWeight: '800', color: '#1A0A2E' },
+  segRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
+  seg: { flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center' },
+  segOn: { backgroundColor: '#7C3AED' },
+  segText: { fontSize: 13.5, fontWeight: '800', color: '#8B88A6' },
+  segTextOn: { color: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 30 },
   empty: { fontSize: 14, color: '#8B88A6', fontWeight: '600', textAlign: 'center' },
   row: {

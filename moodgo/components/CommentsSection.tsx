@@ -304,6 +304,30 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
   };
   const startReply = (c: Comment) => { setReplyTo(c); };
 
+  // @メンション補完: 末尾の @token を検知して候補を出し、タップで挿入
+  const [mentionResults, setMentionResults] = useState<string[]>([]);
+  const mentionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeText = (t: string) => {
+    setText(t);
+    const m = t.match(/@([A-Za-z0-9_]{0,20})$/);
+    if (mentionTimer.current) clearTimeout(mentionTimer.current);
+    if (!m || m[1].length < 1) { setMentionResults([]); return; }
+    const q = m[1];
+    mentionTimer.current = setTimeout(async () => {
+      try {
+        const d = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'search', q }),
+        }).then((r) => r.json());
+        if (isMounted.current) setMentionResults(Array.isArray(d?.handles) ? d.handles.slice(0, 6) : []);
+      } catch { /* noop */ }
+    }, 180);
+  };
+  const insertMention = (handle: string) => {
+    setText((prev) => prev.replace(/@([A-Za-z0-9_]{0,20})$/, `@${handle} `));
+    setMentionResults([]);
+  };
+
   // ── 長押しメニュー開閉 ──
   const openMenu = (c: Comment, from: 'inline' | 'sheet') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -444,10 +468,19 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
           </TouchableOpacity>
         </View>
       ) : null}
+      {mentionResults.length > 0 ? (
+        <View style={s.mentionBox}>
+          {mentionResults.map((h) => (
+            <TouchableOpacity key={h} onPress={() => insertMention(h)} style={s.mentionItem} activeOpacity={0.7}>
+              <Text style={s.mentionItemText}>@{h}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
       <View style={[s.inputRow, inSheet && s.inputRowSheet]}>
       <TextInput
         value={text}
-        onChangeText={setText}
+        onChangeText={onChangeText}
         placeholder={replyTo ? '返信を書く…' : 'コメントを書く…'}
         placeholderTextColor="#B9B6CC"
         style={s.input}
@@ -608,6 +641,9 @@ const s = StyleSheet.create({
   },
   body: { fontSize: 13.5, color: '#2D2240', lineHeight: 20, marginTop: 3 },
   mention: { color: '#7C3AED', fontWeight: '700' },
+  mentionBox: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#EDE9FB' },
+  mentionItem: { paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#F2EFF7' },
+  mentionItemText: { fontSize: 13.5, fontWeight: '700', color: '#7C3AED' },
   hint: { fontSize: 10.5, color: '#B7B3C2', textAlign: 'center', marginTop: 8 },
 
   // 翻訳表示

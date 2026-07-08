@@ -61,6 +61,15 @@ export async function POST(req: Request) {
   const action = String(body?.action ?? "");
 
   try {
+    // ── @ID の前方一致検索（メンション補完用・公開情報のみ）──
+    if (action === "search") {
+      const q = String(body?.q ?? body?.handle ?? "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20);
+      if (q.length < 1) return NextResponse.json({ ok: true, handles: [] });
+      const { data } = await db.from("user_handles").select("handle").ilike("handle", `${q}%`).limit(8);
+      const handles = ((data ?? []) as Array<{ handle?: string }>).map((r) => String(r.handle ?? "")).filter(Boolean);
+      return NextResponse.json({ ok: true, handles });
+    }
+
     // ── 自分のIDを取得（ロック状態も返す）─────────────────────────────────────
     if (action === "get") {
       const deviceId = String(body?.deviceId ?? "").trim();

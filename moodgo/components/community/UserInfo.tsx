@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { Post } from './postTypes';
 import { relativeTime } from './postTypes';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 const AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF', '#FFF3CD', '#E8E0FF'];
 
@@ -30,6 +31,7 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
             : <Text style={s.avatarInit}>{name.slice(0, 1)}</Text>}
         </View>
         <Text style={s.name} numberOfLines={1}>{name}</Text>
+        <VerifiedBadge type={post.raw.poster_type} size={12} />
       </TouchableOpacity>
       <View style={s.right}>
         <Text style={s.time}>{relativeTime(post.createdAt)}</Text>

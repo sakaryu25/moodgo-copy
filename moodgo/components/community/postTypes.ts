@@ -18,6 +18,7 @@ export type FeedLike = {
   poster_name?: string | null;
   poster_icon?: string | null;
   poster_id?: string | null;
+  poster_type?: string | null;   // account_type（認証/店舗バッジ）
   kind?: string;
   price_chip?: string | null;   // 新投稿(spot_posts)は独立カラム
   rating?: number | null;
