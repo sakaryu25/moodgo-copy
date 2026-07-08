@@ -517,7 +517,7 @@ export default function CommunitySpotScreen() {
           {/* ── あなたの評価（検索結果の場所詳細と統一。MoodGo平均＋自分の★）── */}
           <View style={{ marginTop: 4 }}>
             <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle}
-              onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
+              hideAggregate onAvg={(a, c) => { setAvgRating(a); setRatingCount(c); }} />
           </View>
 
           {/* ── コメント（この投稿への会話・1階層）＝Moodログより上 ── */}

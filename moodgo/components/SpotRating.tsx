@@ -9,7 +9,7 @@ import { Star, Send } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
-export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate, onAvg }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void; onAvg?: (avg: number | null, count: number) => void }) {
+export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate, onAvg, hideAggregate }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void; onAvg?: (avg: number | null, count: number) => void; hideAggregate?: boolean }) {
   const KEY = placeId || placeName;
   const cacheKey = `moodgo-rating-${KEY}`;
   // 総合評価(平均)を親(投稿詳細のバー等)へ通知する。inline関数でも load を作り直さないよう ref 経由。
@@ -106,11 +106,11 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
           <Text style={s.done}>評価済み</Text>
         ) : null}
       </View>
-      {count > 0 && avg != null ? (
+      {!hideAggregate && count > 0 && avg != null ? (
         <Text style={s.agg}>MoodGo評価 <Text style={s.aggNum}>{avg.toFixed(1)}</Text>（{count}件）</Text>
-      ) : (
+      ) : submitted === 0 ? (
         <Text style={s.hint}>星をタップして「送信」で評価</Text>
-      )}
+      ) : null}
     </View>
   );
 }
