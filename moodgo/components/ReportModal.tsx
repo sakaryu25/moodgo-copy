@@ -1,12 +1,13 @@
 /**
  * ReportModal.tsx
- * 不適切な内容の報告モーダル（共通コンポーネント）
- * - 理由チップ＋詳細入力 → /api/reports に送信（adminが確認・削除できる）
+ * 不適切な内容の報告モーダル（共通コンポーネント・2026-07-08 最適化）
+ * - 理由チップ（アイコン付き2列）＋詳細入力 → /api/reports に送信（adminが確認・削除できる）
  * - コミュニティフィード・履歴・結果のどこからでも使える
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { Ban, Check, Flag, Info, MoreHorizontal, ShieldAlert, Store } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -14,7 +15,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 
-const REASONS = ['閉店・閉業', '不正確な情報', '不適切なコンテンツ', 'その他'];
+const RED = '#EF4444';
+const REASONS: { label: string; Icon: typeof Info }[] = [
+  { label: '閉店・閉業', Icon: Store },
+  { label: '不正確な情報', Icon: Info },
+  { label: '不適切なコンテンツ', Icon: ShieldAlert },
+  { label: 'その他', Icon: MoreHorizontal },
+];
 
 type Props = {
   visible: boolean;
@@ -89,26 +96,33 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
       <View style={s.overlay}>
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={close} />
         <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={s.handle} />
           {done ? (
             <View style={s.doneBox}>
-              <View style={s.doneIcon}><Text style={{ fontSize: 26 }}>✓</Text></View>
+              <LinearGradient colors={['#34D399', '#10B981']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.doneIcon}>
+                <Check size={30} color="#fff" strokeWidth={3} />
+              </LinearGradient>
               <Text style={s.doneTitle}>報告を受け付けました</Text>
-              <Text style={s.doneSub}>運営が内容を確認します。ご協力ありがとうございます。</Text>
+              <Text style={s.doneSub}>運営が内容を確認します。{'\n'}ご協力ありがとうございます。</Text>
             </View>
           ) : (
             <>
-              <View style={s.handle} />
-              <Text style={s.title}>不適切な内容を報告</Text>
+              <View style={s.titleRow}>
+                <View style={s.titleIcon}><Flag size={17} color={RED} strokeWidth={2.4} /></View>
+                <Text style={s.title}>不適切な内容を報告</Text>
+              </View>
               <Text style={s.spotName} numberOfLines={1}>{spotName}</Text>
 
-              <Text style={s.label}>理由</Text>
+              <Text style={s.label}>理由<Text style={s.required}> *</Text></Text>
               <View style={s.reasonWrap}>
-                {REASONS.map((r) => {
-                  const active = reason === r;
+                {REASONS.map(({ label, Icon }) => {
+                  const active = reason === label;
                   return (
-                    <TouchableOpacity key={r} onPress={() => setReason(r)} activeOpacity={0.8}
-                      style={[s.reasonChip, active && s.reasonChipActive]}>
-                      <Text style={[s.reasonText, active && s.reasonTextActive]}>{r}</Text>
+                    <TouchableOpacity key={label} onPress={() => { Haptics.selectionAsync(); setReason(label); }} activeOpacity={0.85}
+                      style={[s.reasonChip, active && s.reasonChipActive]}
+                      accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={label}>
+                      <Icon size={15} color={active ? RED : '#9CA3AF'} strokeWidth={2.2} />
+                      <Text style={[s.reasonText, active && s.reasonTextActive]} numberOfLines={1}>{label}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -118,9 +132,10 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
                 value={note}
                 onChangeText={setNote}
                 placeholder="詳細（任意）"
-                placeholderTextColor="#F0A8B8"
+                placeholderTextColor="#B7BCC6"
                 multiline
                 textAlignVertical="top"
+                maxLength={500}
                 style={s.input}
               />
 
@@ -130,18 +145,19 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
                 </TouchableOpacity>
                 <TouchableOpacity onPress={submit} disabled={!reason || submitting} activeOpacity={0.85} style={s.sendWrap}>
                   <LinearGradient
-                    colors={reason ? ['#F87171', '#EF4444'] : ['#FCA5A5', '#FCA5A5']}
+                    colors={reason ? ['#F87171', RED] : ['#FBCFCF', '#FBCFCF']}
                     start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                     style={s.sendBtn}
                   >
                     {submitting ? <ActivityIndicator color="#fff" size="small" />
-                      : <Text style={s.sendText}>送信</Text>}
+                      : <><Flag size={16} color="#fff" strokeWidth={2.5} /><Text style={s.sendText}>送信</Text></>}
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
 
               {!!posterId && onBlockUser && (
                 <TouchableOpacity onPress={blockUser} activeOpacity={0.7} style={s.blockBtn}>
+                  <Ban size={14} color="#9CA3AF" strokeWidth={2.2} />
                   <Text style={s.blockText}>この投稿者をブロック</Text>
                 </TouchableOpacity>
               )}
@@ -155,28 +171,33 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
 
 const s = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.42)' },
   sheet: {
     backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     paddingHorizontal: 22, paddingTop: 10,
   },
   handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: '#E5E7EB', marginBottom: 16 },
-  title: { fontSize: 21, fontWeight: '900', color: '#111827' },
-  spotName: { fontSize: 14, color: '#9CA3AF', marginTop: 4, fontWeight: '600' },
+
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  titleIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#FEECEC', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 20, fontWeight: '900', color: '#111827', letterSpacing: -0.2 },
+  spotName: { fontSize: 13.5, color: '#9CA3AF', marginTop: 6, fontWeight: '600', marginLeft: 39 },
 
   label: { fontSize: 13, color: '#6B7280', fontWeight: '700', marginTop: 22, marginBottom: 10 },
+  required: { color: RED, fontWeight: '900' },
   reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   reasonChip: {
-    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14,
-    backgroundColor: '#F3F4F6', borderWidth: 1.5, borderColor: '#F3F4F6',
+    width: '47.5%', flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 14, height: 48, borderRadius: 14,
+    backgroundColor: '#F4F5F7', borderWidth: 1.5, borderColor: '#F4F5F7',
   },
-  reasonChipActive: { backgroundColor: '#FEE2E2', borderColor: '#F87171' },
-  reasonText: { fontSize: 14, fontWeight: '700', color: '#374151' },
+  reasonChipActive: { backgroundColor: '#FEECEC', borderColor: '#F87171' },
+  reasonText: { fontSize: 13.5, fontWeight: '800', color: '#4B5563', flexShrink: 1 },
   reasonTextActive: { color: '#DC2626' },
 
   input: {
-    marginTop: 18, minHeight: 96, borderRadius: 14, backgroundColor: '#F9FAFB',
-    borderWidth: 1.5, borderColor: '#F3F4F6', padding: 14, fontSize: 14, color: '#111827',
+    marginTop: 16, minHeight: 96, borderRadius: 14, backgroundColor: '#F7F8FA',
+    borderWidth: 1.5, borderColor: '#EEF0F3', padding: 14, fontSize: 14, color: '#111827',
   },
 
   actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
@@ -186,14 +207,14 @@ const s = StyleSheet.create({
   },
   cancelText: { fontSize: 16, fontWeight: '800', color: '#6B7280' },
   sendWrap: { flex: 1 },
-  sendBtn: { height: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { height: 54, borderRadius: 16, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   sendText: { fontSize: 16, fontWeight: '900', color: '#fff' },
 
-  blockBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
+  blockBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, marginTop: 6 },
   blockText: { fontSize: 14, fontWeight: '700', color: '#9CA3AF' },
 
-  doneBox: { alignItems: 'center', paddingVertical: 24, gap: 12 },
-  doneIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' },
+  doneBox: { alignItems: 'center', paddingVertical: 20, gap: 12 },
+  doneIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   doneTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  doneSub: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', lineHeight: 20, paddingHorizontal: 20 },
+  doneSub: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', lineHeight: 20 },
 });
