@@ -36,7 +36,12 @@ import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
+import CommentsSection from '@/components/CommentsSection';
 import SpotRating from '@/components/SpotRating';
+
+// この場所のコメント欄を出せるのは Supabase の場所ID(UUID)を持つスポットのみ
+// （Google専用スポットは安定した恒久IDが無いためコメントを紐づけない）。
+const PLACE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
@@ -988,6 +993,13 @@ export default function PlaceDetailPage() {
 
           {/* ─── みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用・心霊含む全スポット）─── */}
           <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
+
+          {/* ─── コメント（口コミ・場所ごと。SupabaseスポットID[UUID]がある場合のみ）─── */}
+          {rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId) ? (
+            <View style={{ marginTop: 14 }}>
+              <CommentsSection targetId={rec.supabaseId} />
+            </View>
+          ) : null}
 
           {/* Google口コミ欄は廃止。MoodGo独自の「みんなのMoodログ」(上)に一本化。 */}
 

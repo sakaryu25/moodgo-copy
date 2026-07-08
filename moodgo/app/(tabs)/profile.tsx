@@ -350,7 +350,8 @@ export default function ProfileTab() {
               <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
                 sub="いろいろなスポットを訪れてバッジを集めよう！" />
             ) : (
-              <View style={[s.grid, { gap: GAP }]}>
+              <View style={[s.grid, { gap: GAP, justifyContent: 'center' }]}>
+                {/* 横2列×N・件数が少ないときは中央揃え */}
                 {badges.map((b, i) => <BadgeItem key={`${b.title}-${i}`} item={b} size={badgeCellFull} />)}
               </View>
             )
