@@ -26,6 +26,7 @@ import { openInGoogleMaps } from '@/lib/openMaps';
 import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
+import SpotRating from '@/components/SpotRating';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -509,6 +510,11 @@ export default function CommunitySpotScreen() {
               ))}
             </View>
           )}
+
+          {/* ── あなたの評価（検索結果の場所詳細と統一。MoodGo平均＋自分の★）── */}
+          <View style={{ marginTop: 4 }}>
+            <SpotRating placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} />
+          </View>
 
           {/* ── コメント（この投稿への会話・1階層）＝Moodログより上 ── */}
           <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
