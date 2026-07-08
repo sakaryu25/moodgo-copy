@@ -1,8 +1,9 @@
 // ── /user/[id] ────────────────────────────────────────────────────────────────
 // 他人のフルプロフィールページ（idは公開ハッシュposterId・生device_idは扱わない）。
-//   自分の投稿ページ(/my-posts)と同じデザイン言語:
-//   ナビ(戻る/名前) → アバター/名前/@ID/統計(投稿/フォロワー/フォロー中) → フォローボタン
-//   → 投稿のMasonryグリッド。データは既存 /api/user-profile。
+//   プロフィールタブと同じデザイン言語（アバター左＋名前/@IDの横並び）:
+//   ナビ(戻る/名前) → アバター/名前/@ID → 統計5列(投稿/行った/いいね/フォロワー/フォロー中)
+//   → フォローボタン(自分のページ isMe では非表示) → 投稿のMasonryグリッド。
+//   行った/いいねは spot_post_reactions 実数（/api/user-profile が集計）。
 import { router, useLocalSearchParams } from 'expo-router';
 import { UserRound } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
