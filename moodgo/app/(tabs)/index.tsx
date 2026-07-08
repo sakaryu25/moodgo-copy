@@ -37,6 +37,7 @@ import {
   BLOCKED_PLACES_KEY, PROFILE_KEY, ONBOARDED_KEY,
   loadJSON, saveJSON,
 } from '@/lib/storage';
+import { pushServerFavorites } from '@/lib/favoritesServer';
 import { apiFetch, API_BASE, prewarmRecommend } from '@/lib/api';
 import { sendEngagement as libSendEngagement } from '@/lib/engagement';
 import { reportError } from '@/lib/crashReporting';
@@ -238,7 +239,7 @@ export default function Home() {
     })();
   }, []);
 
-  useEffect(() => { if (profileLoaded) saveJSON(FAVORITES_KEY,     favorites);    }, [favorites,    profileLoaded]);
+  useEffect(() => { if (profileLoaded) { saveJSON(FAVORITES_KEY, favorites); pushServerFavorites(favorites); } }, [favorites, profileLoaded]);
 
   // 別ルート(詳細ページ/プロフィールタブ)での変更をホームに再同期する。
   // → 穴場詳細でいいねした投稿が戻った瞬間お気に入りに反映され、

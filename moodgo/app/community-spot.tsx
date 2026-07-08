@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import { pushServerFavorites } from '@/lib/favoritesServer';
 import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { showToast } from '@/lib/toast';
@@ -184,7 +185,7 @@ export default function CommunitySpotScreen() {
         kind: 'post', spotId: id || spot.id }, ...faves];
     }
     setFaved(on);
-    if (next) await saveJSON(FAVORITES_KEY, next);
+    if (next) { await saveJSON(FAVORITES_KEY, next); pushServerFavorites(next); }
   };
 
   const onPhotoScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {

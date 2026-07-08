@@ -44,6 +44,7 @@ import SpotRating from '@/components/SpotRating';
 const PLACE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { copyPlaceName } from '@/lib/clipboard';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
+import { pushServerFavorites } from '@/lib/favoritesServer';
 import { sameFav } from '@/lib/favKey';
 import { addViewedLog } from '@/lib/spotLog';
 import { genrePlaceholder } from '@/lib/genrePlaceholder';
@@ -401,6 +402,7 @@ export default function PlaceDetailPage() {
       setFaved(true);
     }
     await saveJSON(FAVORITES_KEY, next);
+    pushServerFavorites(next);   // 行きたいリストのサーバー同期
   };
   const [photoIdx, setPhotoIdx] = useState(0);
   // API削減: 1枚目だけ即読込み、残りは到達ページまで読み込む（未到達はImage描画せず=Google解決を遅延）

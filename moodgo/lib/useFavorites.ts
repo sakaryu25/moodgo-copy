@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { FAVORITES_KEY, loadJSON, saveJSON } from '@/lib/storage';
 import { sameFav } from '@/lib/favKey';
+import { syncFavorites, pushServerFavorites } from '@/lib/favoritesServer';
 import type { FavoriteItem } from '@/types/app';
 
 export function useFavorites() {
@@ -13,9 +14,10 @@ export function useFavorites() {
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      loadJSON<FavoriteItem[]>(FAVORITES_KEY, []).then((f) => {
-        if (alive) setFavorites(f);
-      });
+      // フォーカス毎にサーバーと同期（空なら復元・あれば反映）。失敗時もローカルで動く。
+      syncFavorites()
+        .then((f) => { if (alive) setFavorites(f); })
+        .catch(() => { loadJSON<FavoriteItem[]>(FAVORITES_KEY, []).then((f) => { if (alive) setFavorites(f); }); });
       return () => {
         alive = false;
       };
@@ -27,6 +29,7 @@ export function useFavorites() {
     setFavorites((prev) => {
       const next = prev.filter((f) => !sameFav(f, item));
       saveJSON(FAVORITES_KEY, next);
+      pushServerFavorites(next);   // 解除もサーバーへ反映
       return next;
     });
   }, []);
