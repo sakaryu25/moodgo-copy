@@ -62,13 +62,14 @@ function compact(n: number): string {
 }
 
 // ── 統計1列（数字大・ラベル小・中央・カード無し）──────────────────────────────
-function Stat({ num, label }: { num: number; label: string }) {
-  return (
+function Stat({ num, label, onPress }: { num: number; label: string; onPress?: () => void }) {
+  const inner = (
     <View style={s.statCol}>
       <Text style={s.statNum} numberOfLines={1}>{compact(num)}</Text>
       <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
     </View>
   );
+  return onPress ? <Pressable onPress={onPress} hitSlop={6}>{inner}</Pressable> : inner;
 }
 
 // ── 投稿カード（Pinterest風・画像いっぱい＋下部に黒グラデ＋タイトル/♥/📍）──────
@@ -338,8 +339,8 @@ export default function UserProfileScreen() {
             <Stat num={profile?.postCount ?? 0} label="投稿" />
             <Stat num={profile?.visitedCount ?? 0} label="行った" />
             <Stat num={profile?.likeCount ?? 0} label="いいね" />
-            <Stat num={followerCount} label="フォロワー" />
-            <Stat num={profile?.followingCount ?? 0} label="フォロー中" />
+            <Stat num={followerCount} label="フォロワー" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'followers' } })} />
+            <Stat num={profile?.followingCount ?? 0} label="フォロー中" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'following' } })} />
           </View>
 
           {/* ── フォローボタン（自分のページでは出さない）── */}

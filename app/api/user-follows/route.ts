@@ -57,6 +57,40 @@ export async function POST(req: Request) {
 
     if (!HASH_RE.test(targetId)) return NextResponse.json({ ok: false, error: "targetIdが不正です" }, { status: 400 });
 
+    // ── フォロワー / フォロー中 の一覧（アイコン＋@ID）──
+    //   targetId のフォロワー(=targetIdをfolloweeに持つ) / フォロー中(=targetIdがfollower) のハッシュを集め、
+    //   アイコンはハッシュから直接(user-icons/{hash}.jpg)、@IDは user_handles をハッシュ照合で解決。
+    if (action === "list") {
+      const kind = body?.kind === "following" ? "following" : "followers";
+      const filterCol = kind === "followers" ? "followee_hash" : "follower_hash";
+      const pickCol = kind === "followers" ? "follower_hash" : "followee_hash";
+      let hashes: string[] = [];
+      try {
+        const { data, error } = await db.from("user_follows").select(pickCol).eq(filterCol, targetId).limit(300);
+        if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, items: [] }); throw error; }
+        hashes = [...new Set(((data ?? []) as Array<Record<string, string>>).map((r) => r[pickCol]).filter(Boolean))];
+      } catch { return NextResponse.json({ ok: true, items: [] }); }
+
+      const handleByHash = new Map<string, string>();
+      if (hashes.length) {
+        try {
+          const { data: hs } = await db.from("user_handles").select("device_id, handle");
+          for (const h of (hs ?? []) as Array<{ device_id?: string; handle?: string }>) {
+            const dev = String(h.device_id ?? "");
+            if (!dev || !h.handle) continue;
+            const dh = deviceHash(dev);
+            if (hashes.includes(dh)) handleByHash.set(dh, String(h.handle));
+          }
+        } catch { /* @ID無しでもアイコンは出る */ }
+      }
+      const vHour = Math.floor(Date.now() / 3_600_000);
+      const items = hashes.map((h) => {
+        const { data: pub } = db.storage.from("user-icons").getPublicUrl(`${h}.jpg`);
+        return { id: h, handle: handleByHash.get(h) ?? null, icon: `${pub.publicUrl}?v=${vHour}` };
+      });
+      return NextResponse.json({ ok: true, items });
+    }
+
     // ── 対象の数＋自分のフォロー状態 ──
     if (action === "status") {
       const c = await counts(db, targetId);
