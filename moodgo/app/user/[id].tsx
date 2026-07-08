@@ -24,6 +24,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 import { useSettings } from '@/lib/settingsStore';
+import { useBlocks, blockUser, muteUser, unblockUser } from '@/lib/blockStore';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
@@ -148,6 +149,9 @@ export default function UserProfileScreen() {
   const [isMe, setIsMe] = useState(false);
   const [tab, setTab] = useState<'posts' | 'visited'>('posts');
   const localSettings = useSettings();            // 自分のプロフィールなら一言をローカルからも表示
+  const blocks = useBlocks();                     // ブロック/ミュート状態（メニューの出し分け）
+  const isBlocked = !!posterId && blocks.blocked.includes(posterId);
+  const isMuted = !!posterId && blocks.muted.includes(posterId);
   const [shown, setShown] = useState(PAGE);       // 無限スクロールで表示中の件数
   const [pagingMore, setPagingMore] = useState(false);
   const pagingRef = useRef(false);
@@ -224,7 +228,24 @@ export default function UserProfileScreen() {
 
   const openMenu = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert('プロフィール', undefined, [
+    const name = profile?.name || 'このユーザー';
+    // 自分のプロフィールではブロック等を出さない
+    if (isMe || !posterId) {
+      Alert.alert(name, undefined, [{ text: 'キャンセル', style: 'cancel' }]);
+      return;
+    }
+    // すでにブロック/ミュート中 → 解除
+    if (isBlocked || isMuted) {
+      Alert.alert(name, isBlocked ? 'ブロック中です' : 'ミュート中です', [
+        { text: isBlocked ? 'ブロックを解除' : 'ミュートを解除', onPress: () => { unblockUser(posterId); showToast('解除しました', `${name}の表示を元に戻しました`); } },
+        { text: 'キャンセル', style: 'cancel' },
+      ]);
+      return;
+    }
+    // ミュート（静かに非表示）/ ブロック（相互フォロー解除して遮断）/ 通報
+    Alert.alert(name, undefined, [
+      { text: 'ミュート', onPress: () => { muteUser(posterId); showToast('ミュートしました', 'この人の投稿を静かに非表示にしました'); } },
+      { text: 'ブロック', style: 'destructive', onPress: () => { blockUser(posterId); showToast('ブロックしました', 'この人の投稿・コメントを非表示にしました'); router.back(); } },
       { text: 'この投稿者を通報', style: 'destructive', onPress: () => showToast('通報しました', 'ご協力ありがとうございます') },
       { text: 'キャンセル', style: 'cancel' },
     ]);

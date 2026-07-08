@@ -14,6 +14,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
+import { useBlocks, blockUser } from '@/lib/blockStore';
 import ReportModal from './ReportModal';
 import PostGrid from './community/PostGrid';
 import { parsePost, type FeedLike, type Post } from './community/postTypes';
@@ -65,7 +66,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   const [loadError, setLoadError] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const { hidden: blockedUsers } = useBlocks();   // ブロック/ミュート(サーバー同期)。フィード/一覧の除外に使う
   const [width, setWidth] = useState(0);
   const [uItems, setUItems] = useState<FeedItem[]>([]);
   const [uLoading, setULoading] = useState(false);
@@ -166,12 +167,8 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     setLoadError(false);
     let hadCache = false;
     try {
-      const [blocked, cached] = await Promise.all([
-        loadJSON<string[]>(BLOCKED_USERS_KEY, []),
-        loadJSON<FeedItem[]>(FEED_CACHE_KEY, []),
-      ]);
+      const cached = await loadJSON<FeedItem[]>(FEED_CACHE_KEY, []);
       if (isMounted.current) {
-        setBlockedUsers(blocked);
         if (Array.isArray(cached) && cached.length > 0) {
           hadCache = true;
           setItems(cached);
@@ -255,15 +252,8 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
 
   // 報告モーダル
   const [reportTarget, setReportTarget] = useState<FeedItem | null>(null);
-  const handleBlockUser = (deviceId: string) => {
-    if (!deviceId) return;
-    setBlockedUsers((prev) => {
-      if (prev.includes(deviceId)) return prev;
-      const next = [...prev, deviceId];
-      saveJSON(BLOCKED_USERS_KEY, next);
-      return next;
-    });
-  };
+  // ブロックは blockStore 経由（ローカル即時＋サーバー同期）。購読で blockedUsers が更新され再描画される。
+  const handleBlockUser = (posterId: string) => { blockUser(posterId); };
 
   // メモ化: 毎renderで新配列を返すと posts useMemo→PostGridのmasonry計算→parsePost(正規表現)が
   // 全カード分再実行されるため、items/blockedUsers が変わった時だけ再計算する。
