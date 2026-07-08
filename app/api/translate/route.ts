@@ -1,14 +1,19 @@
 // ─── /api/translate ───────────────────────────────────────────────────────────
-// トークのメッセージを翻訳する。日本語↔英語を自動判定（日本語が含まれていれば英語へ、
-// それ以外は日本語へ）。OpenAI を使用。未設定時は 503。
+// トークのメッセージ／投稿コメント（TikTok風長押しメニュー）を翻訳する。
+// 日本語↔英語を自動判定（日本語が含まれていれば英語へ、それ以外は日本語へ）。
+// OpenAI を使用。未設定時は 503。
 export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 export async function POST(req: Request) {
   if (!openai) return NextResponse.json({ ok: false, error: "翻訳は現在利用できません" }, { status: 503 });
+  if (!rateLimit(`translate:${clientIp(req)}`, 12, 60_000)) {
+    return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+  }
   try {
     const body = await req.json().catch(() => null);
     const text = String(body?.text ?? "").trim().slice(0, 500);

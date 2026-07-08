@@ -5,6 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Check, Footprints, Heart, MapPin, MessageCircle, Moon, Navigation } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -15,6 +16,8 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HERO_BAND_H } from '@/lib/headerBand';
+import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import type { FavoriteItem } from '@/types/app';
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { openInGoogleMaps } from '@/lib/openMaps';
@@ -130,6 +133,8 @@ export default function FavoritesView({
   const t = T[lang];
   const pagerRef = useRef<ScrollView>(null);
   const listRefs = useRef<Array<ScrollView | null>>([]);  // 場所/投稿 各リスト（再タップで先頭へ）
+  // 下スクロールでグラデ帯を格納（場所/投稿の両リストが同じ帯を共有）
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + HERO_BAND_H });
   const [tab, setTab] = useState(0);   // 0=場所, 1=投稿
   // 開いた時点の利用者投稿写真をDBから取得（保存済みGoogle写真より優先表示）
   const [upMaps, setUpMaps] = useState<UserPhotoMaps>({ byId: {}, byName: {} });
@@ -147,6 +152,9 @@ export default function FavoritesView({
     pagerRef.current?.scrollTo({ x: 0, animated: false });
     listRefs.current.forEach((r) => r?.scrollTo({ y: 0, animated: false }));  // 各リストも先頭へ
   }, [resetKey]);
+
+  // 場所⇄投稿を切り替えたら共有ヘッダーを必ず出す（片方で畳んだ状態がもう片方に残らないように）
+  useEffect(() => { collapse.scrollY.setValue(0); }, [tab, collapse.scrollY]);
 
   // 並び替え + 種別で分割
   const { placeFavs, postFavs } = useMemo(() => {
@@ -243,11 +251,13 @@ export default function FavoritesView({
   };
 
   const renderList = (list: FavoriteItem[], emptyTitle: string, emptySub: string, idx: number) => (
-    <ScrollView
-      ref={(r) => { listRefs.current[idx] = r; }}
+    <Animated.ScrollView
+      ref={(r: ScrollView | null) => { listRefs.current[idx] = r; }}
       style={{ width: SCREEN_W }}
-      contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 90 }]}
+      contentContainerStyle={[s.listContent, { paddingTop: collapse.headerH + 16, paddingBottom: insets.bottom + 90 }]}
       showsVerticalScrollIndicator={false}
+      onScroll={collapse.onScroll}
+      scrollEventThrottle={16}
     >
       {list.length === 0 ? (
         <View style={s.emptyBox}>
@@ -332,12 +342,16 @@ export default function FavoritesView({
           </TouchableOpacity>
         ))
       )}
-    </ScrollView>
+    </Animated.ScrollView>
   );
 
   return (
     <View style={s.root}>
-      {/* ── グラデーションヘッダー ── */}
+      {/* ── グラデーションヘッダー（下スクロールで格納・上スクロールで復帰）── */}
+      <Animated.View
+        style={[s.heroOverlay, { transform: [{ translateY: collapse.translateY }] }]}
+        onLayout={collapse.onHeaderLayout}
+      >
       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.heroHeader, { paddingTop: insets.top + 12 }]}>
         <View style={s.decoCircle1} pointerEvents="none" />
         <View style={s.decoCircle2} pointerEvents="none" />
@@ -371,6 +385,7 @@ export default function FavoritesView({
           ))}
         </View>
       </LinearGradient>
+      </Animated.View>
 
       {/* ── 横スワイプの2ページ ── */}
       <ScrollView
@@ -392,6 +407,8 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },  // AppBackground(M透かし)を見せて他画面と統一
 
   // ── ヒーローヘッダー ──
+  // スクロール格納のためabsolute overlay化（リストは contentPaddingTop=headerH で逃がす）
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
   heroHeader: {
     paddingHorizontal: 20,
     paddingBottom: 20,

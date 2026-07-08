@@ -1,19 +1,21 @@
 // ナビゲーション: 左=戻る / 中央=自分の投稿 / 右=＋(新規投稿)。
 // 背景は透明、スクロールすると薄いブラー＋ヘアラインが乗る（iOS標準の挙動）。
+// translateY(useCollapsibleHeader)を渡すと下スクロールでバーごと格納される。
 import { BlurView } from 'expo-blur';
 import { ChevronLeft, Plus } from 'lucide-react-native';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MP } from './types';
 
 export default function MyPostsHeader({
-  topInset, scrolled, onBack, onNew, title = '自分の投稿', showNew = true,
+  topInset, scrolled, onBack, onNew, title = '自分の投稿', showNew = true, translateY,
 }: {
   topInset: number; scrolled: boolean; onBack: () => void; onNew: () => void;
   title?: string;      // 画面タイトル（/user/[id]では相手の名前）
   showNew?: boolean;   // ＋新規投稿ボタンの表示（他人のページでは出さない）
+  translateY?: Animated.AnimatedInterpolation<number>;   // スクロール格納（省略時は従来の固定）
 }) {
   return (
-    <View style={[s.wrap, { paddingTop: topInset }]}>
+    <Animated.View style={[s.wrap, { paddingTop: topInset }, translateY != null && { transform: [{ translateY }] }]}>
       {scrolled && (
         <>
           <BlurView
@@ -39,7 +41,7 @@ export default function MyPostsHeader({
           <View style={{ width: 38 }} />
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Dimensions, Linking,
+  ActivityIndicator, Alert, Animated, Dimensions, Linking,
   type NativeScrollEvent, type NativeSyntheticEvent,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
@@ -21,6 +21,7 @@ import PuniPressable from './PuniPressable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { HERO_BAND_H } from '@/lib/headerBand';
+import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
@@ -86,6 +87,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
     if (near && !nearEndRef.current) { nearEndRef.current = true; setLoadMoreKey((k) => k + 1); }
     else if (!near && nearEndRef.current) { nearEndRef.current = false; }
   };
+  // 下スクロールでグラデ帯を格納・上スクロールで再表示（ヘッダーはoverlay化しリストはpaddingTopで逃がす）
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + HERO_BAND_H + 47, listener: onFeedScroll });
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [uq, setUq] = useState('');
@@ -181,7 +184,14 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   // ── 統一フィード（穴場＋moodログ＋ブログを1つに）──
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      {/* グラデ帯ヘッダー（タブ見出し）*/}
+      {/* グラデ帯ヘッダー（タブ見出し）: 下スクロールで上に格納・上スクロールで復帰 */}
+      <Animated.View
+        style={[s.heroOverlay, { transform: [{ translateY: collapse.translateY }] }]}
+        onLayout={(e) => {
+          // 候補ユーザーチップで帯が一時的に伸びた高さは基準にしない
+          if (uUsers.length === 0 || collapse.headerH === 0) collapse.onHeaderLayout(e);
+        }}
+      >
       <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 12, minHeight: insets.top + HERO_BAND_H }]}>
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
@@ -243,10 +253,11 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           </ScrollView>
         )}
       </LinearGradient>
+      </Animated.View>
       {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
-      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={onFeedScroll} scrollEventThrottle={160}>
+      <Animated.ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: collapse.headerH + 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={collapse.onScroll} scrollEventThrottle={16}>
         <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} feedScope={feedScope} loadMoreKey={loadMoreKey} />
-      </ScrollView>
+      </Animated.ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
         {/* ヘッダー帯と同じブランド3色グラデでアプリ全体の色に統一（旧ローズ→オレンジを廃止）*/}
@@ -566,6 +577,8 @@ const s = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 6 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
   // 帯高はお気に入り基準で統一(HERO_BAND_H=139: 12+タイトル57+10+検索40+20)・下端寄せ
+  // スクロール格納のためabsolute overlay化（リストは contentPaddingTop=headerH で逃がす）
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
   hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end' },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },

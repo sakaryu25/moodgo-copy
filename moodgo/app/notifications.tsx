@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { Bell, Footprints, Heart, UserPlus, UserRound } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
@@ -14,6 +14,7 @@ import MyPostsHeader from '@/components/myposts/MyPostsHeader';
 import { MP } from '@/components/myposts/types';
 import { fetchNotifications, getLastSeen, markSeen, type Notice } from '@/lib/notifications';
 import { relativeTime } from '@/lib/spotLog';
+import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 
 const TYPE_STYLE = {
   like:    { Icon: Heart,      tint: '#F06292', bg: '#FDEBF2', label: 'いいねしました' },
@@ -50,13 +51,19 @@ export default function NotificationsScreen() {
     }
   };
 
+  // 下スクロールでナビバーを格納（ナビ高=inset+48固定）
+  const collapse = useCollapsibleHeader({
+    initialHeight: insets.top + 48,
+    listener: (e) => setScrolled(e.nativeEvent.contentOffset.y > 8),
+  });
+
   return (
     <View style={s.root}>
       <AppBackground />
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 40, paddingHorizontal: MP.SIDE }}
         showsVerticalScrollIndicator={false}
-        onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
+        onScroll={collapse.onScroll}
         scrollEventThrottle={16}
       >
         {loading ? (
@@ -96,11 +103,12 @@ export default function NotificationsScreen() {
             );
           })
         )}
-      </ScrollView>
+      </Animated.ScrollView>
 
       <MyPostsHeader
         topInset={insets.top}
         scrolled={scrolled}
+        translateY={collapse.translateY}
         title="通知"
         showNew={false}
         onBack={() => router.back()}

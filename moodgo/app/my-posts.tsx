@@ -10,7 +10,7 @@ import { PenLine, Plus } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Easing, NativeScrollEvent, NativeSyntheticEvent,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
@@ -25,6 +25,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON } from '@/lib/storage';
+import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 
 const PAGE = 10;
 // 前回の投稿一覧を端末に保持し、次回は即表示→裏で最新化（体感速度対策・プロフィールと共有）
@@ -120,14 +121,17 @@ export default function MyPostsScreen() {
     transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
   };
 
+  // 下スクロールでナビバーを格納（ナビ高=inset+48固定なので測定不要）
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + 48, listener: onScroll });
+
   return (
     <View style={s.root}>
       {/* ホームと同じM透かし背景（各カードは白なのでそのまま映える） */}
       <AppBackground />
-      <ScrollView
+      <Animated.ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 56, paddingBottom: insets.bottom + 40 }}
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
+        onScroll={collapse.onScroll}
         scrollEventThrottle={16}
       >
         <Animated.View style={fadeUp}>
@@ -176,12 +180,13 @@ export default function MyPostsScreen() {
         </View>
 
         {loading && <ActivityIndicator color={MP.MAIN} size="small" style={{ marginTop: 8 }} />}
-      </ScrollView>
+      </Animated.ScrollView>
 
-      {/* ナビ（スクロールでブラー）*/}
+      {/* ナビ（スクロールでブラー＋下スクロールで格納）*/}
       <MyPostsHeader
         topInset={insets.top}
         scrolled={scrolled}
+        translateY={collapse.translateY}
         onBack={() => router.back()}
         onNew={() => router.push('/post')}
       />
