@@ -817,23 +817,34 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   // 気分チップ・ひとことのどちらか一方でも入っていれば送信できる
   const handlePost = async () => {
     if (!active || (!selMood && !comment.trim()) || posting) return;
+    const trimmed = comment.trim();
     // 不適切語のクライアント側フィルタ（サーバー側でも再チェック）
-    const ng = findNgWord(comment.trim());
-    if (ng) { Alert.alert(t.postBlockedTitle, t.postBlockedMsg); return; }
+    if (findNgWord(trimmed)) { Alert.alert(t.postBlockedTitle, t.postBlockedMsg); return; }
+    const mood = selMood;
+    const reply = replyTo;
+    // 楽観更新: 押した瞬間に自分のつぶやきを表示し入力欄をクリア（失敗時は撤回＋復元）
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Post = {
+      id: tempId, device_id: deviceId, nickname: nickname.trim() || 'MoodGo',
+      mood, comment: trimmed || null,
+      reply_to_name: reply?.name ?? null, reply_to_text: reply?.text ?? null,
+      created_at: new Date().toISOString(), mine: true,
+    };
     setPosting(true);
+    setPosts(prev => [optimistic, ...prev]);
+    setReplyTo(null); setSelMood(''); setComment('');
     try {
       const res = await apiFetch('/api/mood-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'post', groupId: active.id, deviceId, mood: selMood, comment: comment.trim(),
-          replyToName: replyTo?.name ?? '', replyToText: replyTo?.text ?? '',
+          action: 'post', groupId: active.id, deviceId, mood, comment: trimmed,
+          replyToName: reply?.name ?? '', replyToText: reply?.text ?? '',
         }),
       });
       const data = await res.json();
       if (data.ok) {
-        setReplyTo(null);
-        setPosts(prev => [data.post, ...prev]);
-        setSelMood(''); setComment('');
+        // 一時投稿をサーバー確定投稿へ置換
+        setPosts(prev => prev.map(p => (p.id === tempId ? data.post : p)));
         // 全員の気分が揃った！ → お祝い＋AI提案の案内（同じ一致では1回だけ）
         if (data.moodMatch) {
           const key = `${active.id}:${data.moodMatch.mood}`;
@@ -844,9 +855,15 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           }
         }
       } else {
+        setPosts(prev => prev.filter(p => p.id !== tempId));   // 撤回
+        setSelMood(mood); setComment(trimmed); setReplyTo(reply);
         Alert.alert(t.error, data.error ?? t.errPost);
       }
-    } catch { Alert.alert(t.error, t.errNetwork); }
+    } catch {
+      setPosts(prev => prev.filter(p => p.id !== tempId));   // 撤回
+      setSelMood(mood); setComment(trimmed); setReplyTo(reply);
+      Alert.alert(t.error, t.errNetwork);
+    }
     finally { setPosting(false); }
   };
 

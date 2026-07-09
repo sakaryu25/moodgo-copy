@@ -18,7 +18,7 @@ import Svg, {
   Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
 } from 'react-native-svg';
 import { getDeviceId } from '@/lib/abtest';
-import { useSettings, saveProfileExtras } from '@/lib/settingsStore';
+import { useSettings, saveProfileExtras, saveNickname, saveIconUrl, saveHandle } from '@/lib/settingsStore';
 import { apiFetch } from '@/lib/api';
 import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
 import AppBackground from './AppBackground';
@@ -223,7 +223,7 @@ export default function SettingsView({
       const data = await res.json();
       if (!data.ok) throw new Error(data.error ?? '設定に失敗しました');
       setIconUrl(data.icon);
-      await AsyncStorage.setItem(USER_ICON_KEY, data.icon);
+      saveIconUrl(data.icon);   // ストア＋AsyncStorageへ即時反映（プロフィール等が即更新）
     } catch (e) {
       Alert.alert('エラー', e instanceof Error ? e.message : '設定に失敗しました');
     } finally { setIconBusy(false); }
@@ -293,7 +293,7 @@ export default function SettingsView({
       .catch(() => {});
     // 名前を保存（トークのニックネームと同期。参加中グループのメンバー名も更新）
     const name = nameInput.trim().slice(0, 20);
-    AsyncStorage.setItem(NICKNAME_KEY, name).catch(() => {});
+    saveNickname(name);   // ストア＋AsyncStorageへ即時反映（プロフィールの名前が即更新）
     if (name) {
       getDeviceId()
         .then(id => apiFetch('/api/mood-groups', {
@@ -333,7 +333,7 @@ export default function SettingsView({
         setSavedHandle(h);
         setHandleStatus('same'); setHandleReason('');
         if (typeof d.daysLeft === 'number') setHandleLockDays(d.daysLeft);   // 変更成功なら14日ロック開始
-        AsyncStorage.setItem(HANDLE_KEY, h).catch(() => {});
+        saveHandle(h);   // ストア＋AsyncStorageへ即時反映（@IDが即更新）
       } catch {
         Alert.alert('通信エラー', 'IDを保存できませんでした。時間をおいて再度お試しください');
         return;

@@ -32,15 +32,13 @@ import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
 import { loadViewedLog, loadVisitedLog, relativeTime, type SpotLogItem } from '@/lib/spotLog';
 import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import type { Recommendation } from '@/types/app';
 import {
-  useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked,
+  useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked, setAccountType,
 } from '@/lib/settingsStore';
 
-// SettingsView / GroupsView と同じキー（同期のため）
-const NICKNAME_KEY  = 'moodgo-group-nickname';
-const USER_ICON_KEY = 'moodgo-user-icon';
-const HANDLE_KEY    = 'moodgo-user-handle';   // ユーザーID(@ハンドル)のローカルキャッシュ
+// 本人プロフィール（名前/アイコン/@ID/バッジ）は settingsStore を真実とする＝設定編集が即時反映
 
 // ── 表示テキストの多言語（ja/en）────────────────────────────────────────────
 const T = {
@@ -181,9 +179,11 @@ export default function ProfileTab() {
   const settings = useSettings();
   const t = T[settings.lang];
 
-  const [nickname, setNickname] = useState('');
-  const [userHandle, setUserHandle] = useState('');   // ユーザーID(@)。未設定なら空
-  const [iconUrl,  setIconUrl]  = useState('');
+  // 本人の名前/アイコン/@ID/バッジはストア(useSettings)から取得＝設定編集が全画面へ即時反映
+  const displayName = settings.nickname.trim() || 'MoodGo';
+  const iconUrl = settings.iconUrl;
+  const userHandle = settings.handle;
+  const accountType = settings.accountType;
   const [posts,    setPosts]    = useState<MyPost[]>([]);
   const [badges,   setBadges]   = useState<SpotLogItem[]>([]);
   const [viewed,   setViewed]   = useState<SpotLogItem[]>([]);
@@ -211,16 +211,16 @@ export default function ProfileTab() {
     transform: [{ translateY: anims[i].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
   });
 
-  // 名前・アイコンを読み直す（設定で変更後の反映用）
+  // アカウント種別(公式/店舗バッジ)をサーバーから取得しストアへ。名前/アイコン/@IDはストアが真実。
   const loadProfile = useCallback(async () => {
-    const [nick, icon, hnd] = await Promise.all([
-      AsyncStorage.getItem(NICKNAME_KEY).catch(() => null),
-      AsyncStorage.getItem(USER_ICON_KEY).catch(() => null),
-      AsyncStorage.getItem(HANDLE_KEY).catch(() => null),
-    ]);
-    setNickname(nick ?? '');
-    setIconUrl(icon ?? '');
-    setUserHandle(hnd ?? '');
+    try {
+      const deviceId = await getDeviceId();
+      const d = await apiFetch('/api/user-handle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get', deviceId }),
+      }).then((r) => r.json());
+      if (d?.ok) setAccountType(d.accountType ?? '');
+    } catch { /* 取得失敗はバッジ非表示のまま */ }
   }, []);
 
   // 自分の投稿を取得（前回結果を即表示→裏で最新化。キャッシュは/my-postsページと共有）
@@ -290,7 +290,6 @@ export default function ProfileTab() {
     setRefreshing(false);
   };
 
-  const displayName = nickname.trim() || 'MoodGo';
   const GAP = 10;
   // ⚠ セル幅は「2列＋gap＝内寸ちょうど」だと端数誤差で折り返して縦積みになる。
   //   floor＋1pxの安全マージンで必ず2列/3列に収まるようにする。
@@ -497,7 +496,10 @@ export default function ProfileTab() {
             </View>
 
             <View style={s.heroRight}>
-              <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
+              <View style={s.nameRow}>
+                <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
+                <VerifiedBadge type={accountType} size={18} />
+              </View>
               <View style={s.handleRow}>
                 {userHandle ? (
                   <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
@@ -686,7 +688,7 @@ const s = StyleSheet.create({
     borderWidth: 2.5, borderColor: '#fff',
   },
   heroRight: { flex: 1, minWidth: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   nickname: { fontSize: 22, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   handle: { fontSize: 13, fontWeight: '600', color: SUB, flexShrink: 1 },

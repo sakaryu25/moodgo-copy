@@ -290,7 +290,11 @@ export default function UserProfileScreen() {
 
   const openPost = (p: ProfilePost) => router.push({ pathname: '/community-spot', params: { id: p.id } });
   const openVisited = (v: VisitedSpot) => router.push({ pathname: '/community-spot', params: { id: v.id } });
-  const name = profile?.name?.trim() || 'MoodGoユーザー';
+  // 自分のページ(isMe)はローカル設定を優先＝プロフィール編集が即時反映（サーバー反映待ちしない）
+  const name = (isMe && localSettings.nickname.trim()) || profile?.name?.trim() || 'MoodGoユーザー';
+  const iconUri = (isMe && localSettings.iconUrl) ? localSettings.iconUrl : (profile?.icon ?? '');
+  const badgeType = isMe ? (localSettings.accountType || profile?.accountType || null) : (profile?.accountType ?? null);
+  const handleText = (isMe && localSettings.handle) ? localSettings.handle : (profile?.handle ?? '');
   const tabW = (SCREEN_W - SIDE * 2) / 2;
   // 一言メッセージ: サーバー(公開)優先。自分のページはローカル設定にもフォールバック。
   const bioText = (profile?.bio?.trim() || (isMe ? (localSettings.profileBio ?? '').trim() : '') || '');
@@ -326,8 +330,8 @@ export default function UserProfileScreen() {
           <View style={s.hero}>
             <LinearGradient colors={RING_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.avatarRing}>
               <View style={s.avatarWhite}>
-                {profile?.icon ? (
-                  <Image source={{ uri: profile.icon }} style={s.avatar} contentFit="cover" />
+                {iconUri ? (
+                  <Image source={{ uri: iconUri }} style={s.avatar} contentFit="cover" />
                 ) : (
                   <View style={[s.avatar, s.avatarPh]}><UserRound size={34} color={BRAND} strokeWidth={1.6} /></View>
                 )}
@@ -336,10 +340,10 @@ export default function UserProfileScreen() {
             <View style={s.heroRight}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Text style={[s.name, { flexShrink: 1 }]} numberOfLines={1}>{name}</Text>
-                <VerifiedBadge type={profile?.accountType} size={17} />
+                <VerifiedBadge type={badgeType} size={17} />
               </View>
-              {profile?.handle
-                ? <Text style={s.handle} numberOfLines={1}>@{profile.handle}</Text>
+              {handleText
+                ? <Text style={s.handle} numberOfLines={1}>@{handleText}</Text>
                 : <Text style={s.handleMuted} numberOfLines={1}>@MoodGoユーザー</Text>}
             </View>
           </View>

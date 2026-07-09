@@ -84,6 +84,8 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         handle: (data?.handle as string | undefined) ?? null,
+        bio: (data?.bio as string | undefined) ?? null,
+        accountType: (data?.account_type as string | undefined) ?? null,   // 'official'|'store'|'user'|null（バッジ用）
         lockedUntil: lock.until,   // ISO or null
         daysLeft: lock.daysLeft,   // ロック中の残り日数（切り上げ）・非ロックは0
       });
