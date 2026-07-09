@@ -62,9 +62,10 @@ type CommunityFeedProps = {
   feedScope?: 'all' | 'following';   // full: すべて / フォロー中のみ
   loadMoreKey?: number;   // full: 親(BlogView)が末尾スクロールで+1して追加読み込みを促す
   moodTag?: string | null;   // full: 気分チップの絞り込み（auto_tags一致・読み込み済み分に適用）
+  refreshKey?: number;   // 親が+1したら最新を再取得（タブ再タップの「更新」用）
 };
 
-export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, feedScope = 'all', loadMoreKey, moodTag }: CommunityFeedProps) {
+export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, feedScope = 'all', loadMoreKey, moodTag, refreshKey }: CommunityFeedProps) {
   const { lang } = useSettings();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,6 +214,14 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   useFocusEffect(useCallback(() => {
     if (consumeFeedStale()) loadInitial();
   }, [loadInitial]));
+
+  // タブ再タップ（親がrefreshKeyを+1）→ 最新を再取得。初回マウントのloadInitialとは重複させない。
+  const prevRefreshRef = useRef(refreshKey);
+  useEffect(() => {
+    if (refreshKey === undefined || refreshKey === prevRefreshRef.current) return;
+    prevRefreshRef.current = refreshKey;
+    loadInitial();
+  }, [refreshKey, loadInitial]);
 
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）
   useEffect(() => {

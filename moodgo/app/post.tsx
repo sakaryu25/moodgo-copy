@@ -67,7 +67,7 @@ const T = {
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
     editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
-    photoLabel: '写真（最大3枚）',
+    photoLabel: '写真（1〜3枚・必須）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！',
     addPhoto: '追加',
     contactLabel: '連絡先（任意）',
@@ -110,6 +110,8 @@ const T = {
     tSpotNameSub: '例: 海が見える穴場カフェ',
     tPlaceTitle: '場所を教えてください',
     tPlaceSub: '「現在地」タップ or 住所・エリアを入力',
+    tPhotoTitle: '写真を1枚以上追加してください',
+    tPhotoSub: '雰囲気が伝わる写真が投稿の主役です（最大3枚）',
     tLicenseTitle: '権利確認が必要です',
     tLicenseSub: '「自分で撮影／使用許可あり」にチェック',
     tPostFailTitle: '投稿できませんでした',
@@ -163,7 +165,7 @@ const T = {
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
     editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
-    photoLabel: 'Photos (up to 3)',
+    photoLabel: 'Photos (1–3, required)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe!',
     addPhoto: 'Add',
     contactLabel: 'Contact (optional)',
@@ -206,6 +208,8 @@ const T = {
     tSpotNameSub: 'e.g. Hidden café with a sea view',
     tPlaceTitle: 'Please tell us the location',
     tPlaceSub: 'Tap "Current location" or enter an address/area',
+    tPhotoTitle: 'Please add at least one photo',
+    tPhotoSub: 'Photos are the star of your post (up to 3)',
     tLicenseTitle: 'Rights confirmation needed',
     tLicenseSub: 'Check "Shot by me / have permission"',
     tPostFailTitle: 'Couldn\'t post',
@@ -441,6 +445,8 @@ export default function PostScreen() {
     if (!isExisting && !address.trim() && (lat == null || lng == null)) {
       showToast(t.tPlaceTitle, t.tPlaceSub); return;
     }
+    // 写真は1枚以上必須（最大3枚は据え置き）。画像中心のフィードの主役なので空投稿を防ぐ。
+    if (images.length === 0) { showToast(t.tPhotoTitle, t.tPhotoSub); return; }
     if (!licenseOk) { showToast(t.tLicenseTitle, t.tLicenseSub); return; }
     setSubmitting(true);
     try {

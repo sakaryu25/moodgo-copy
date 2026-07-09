@@ -848,7 +848,9 @@ export default function PlaceDetailPage() {
               start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
               style={s.heroPlaceholder}
             >
-              <Text style={s.heroGenreEmoji}>{ph ? ph.emoji : '📷'}</Text>
+              <View style={s.heroGenreIconWrap}>
+                <Camera size={28} color="#8A6BF0" strokeWidth={1.9} />
+              </View>
               <View style={s.heroFirstPill}>
                 <Camera size={12} color="#7C3AED" strokeWidth={2.4} />
                 <Text style={s.heroFirstPillText}>{t.noPhotoYet}</Text>
@@ -1206,9 +1208,14 @@ const s = StyleSheet.create({
 
   // ヒーロー
   heroWrap: { position: 'relative', height: 300 },
-  heroPlaceholder: { width: '100%', height: 300, alignItems: 'center', justifyContent: 'center' },
-  // 通常スポットの「一番乗り」招待枠
-  heroGenreEmoji:    { fontSize: 52, marginBottom: 4, opacity: 0.92 },
+  // 角丸シートが下端22pxに重なるため、中央寄せの中身を少し上へ逃がす
+  heroPlaceholder: { width: '100%', height: 300, alignItems: 'center', justifyContent: 'center', paddingBottom: 18 },
+  // 通常スポットの「一番乗り」招待枠（絵文字は使わずlucideのCameraで統一）
+  heroGenreIconWrap: {
+    width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.78)', marginBottom: 6,
+    shadowColor: '#7A5CFF', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+  },
   heroFirstPill:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.82)', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20, marginTop: 2 },
   heroFirstPillText: { color: '#7C3AED', fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
   heroInviteTitle:   { color: '#1E1548', fontSize: 17, fontWeight: '800', marginTop: 12, letterSpacing: 0.2 },
@@ -1225,7 +1232,7 @@ const s = StyleSheet.create({
   },
   heroSpookyBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   heroAddMini: {
-    position: 'absolute', bottom: 14, left: 14, flexDirection: 'row', alignItems: 'center', gap: 5,
+    position: 'absolute', bottom: 36, left: 14, flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 13, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(20,12,35,0.72)',
     borderWidth: 1, borderColor: 'rgba(200,180,255,0.35)',
   },
@@ -1238,20 +1245,24 @@ const s = StyleSheet.create({
   },
   arrowText: { color: '#fff', fontSize: 22, fontWeight: '600' },
   pageDots: {
-    position: 'absolute', bottom: 14, left: 0, right: 0,
+    // 角丸シート(22px重なり)の上に見えるよう少し上げる
+    position: 'absolute', bottom: 36, left: 0, right: 0,
     flexDirection: 'row', justifyContent: 'center', gap: 5,
   },
   pageDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.4)' },
   pageDotActive: { backgroundColor: '#fff', width: 16, borderRadius: 3 },
   photoCount: {
-    position: 'absolute', bottom: 14, right: 14,
+    position: 'absolute', bottom: 36, right: 14,
     backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 10,
     paddingHorizontal: 8, paddingVertical: 3,
   },
   photoCountText: { fontSize: 11, fontWeight: '600', color: '#fff' },
 
-  // ボディ全体
-  body: { paddingHorizontal: 18, paddingTop: 20, gap: 14 },
+  // ボディ全体: 写真に22px重ねた角丸シート（community-spot/blog詳細と同じ設計言語）
+  body: {
+    backgroundColor: '#F8F9FB', borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    marginTop: -22, paddingHorizontal: 18, paddingTop: 22, gap: 14,
+  },
 
   // タイトルブロック
   titleBlock: { gap: 8 },
