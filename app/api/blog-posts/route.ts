@@ -269,7 +269,18 @@ export async function GET(req: Request) {
         const { data: h } = await db.from("user_handles").select("handle").eq("device_id", data.device_id).maybeSingle();
         posterHandle = (h?.handle as string | undefined) ?? null;
       } catch { /* noop */ }
-      return NextResponse.json({ ok: true, post: { ...pub, photos, isOwn: !!own, poster_handle: posterHandle } });
+      // この端末が save/helpful 済みか（詳細の保存/♡ボタンの初期状態用・列/テーブル未適用は false）
+      let saved = false, helped = false;
+      if (deviceId) {
+        try {
+          const { data: rx } = await db.from("blog_post_reactions").select("reaction_type").eq("blog_post_id", id).eq("device_id", deviceId);
+          for (const r of (rx ?? []) as Array<{ reaction_type?: string }>) {
+            if (r.reaction_type === "save") saved = true;
+            if (r.reaction_type === "helpful") helped = true;
+          }
+        } catch { /* noop */ }
+      }
+      return NextResponse.json({ ok: true, post: { ...pub, photos, isOwn: !!own, poster_handle: posterHandle, saved, helped } });
     } catch (e) { return NextResponse.json({ ok: false, error: String(e) }, { status: 500 }); }
   }
 

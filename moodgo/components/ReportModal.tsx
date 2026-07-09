@@ -70,7 +70,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
     setSubmitting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      await apiFetch('/api/reports', {
+      const d = await apiFetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -79,11 +79,17 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
           reason,
           note: [suggestionId ? `[id:${suggestionId}]` : '', note].filter(Boolean).join(' '),
         }),
-      });
-      setDone(true);
-      setTimeout(close, 1400);
+      }).then((r) => r.json());
+      if (d?.ok) {
+        setDone(true);
+        setTimeout(close, 1400);
+      } else {
+        setSubmitting(false);
+        Alert.alert('通報できませんでした', d?.error ?? '時間をおいてお試しください');
+      }
     } catch {
       setSubmitting(false);
+      Alert.alert('通報できませんでした', '通信に失敗しました。時間をおいてお試しください');
     }
   };
 

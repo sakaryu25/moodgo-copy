@@ -456,7 +456,17 @@ export default function ProfileTab() {
                 </View>
                 <View style={s.statDivider} />
                 <TouchableOpacity style={s.statCol} activeOpacity={0.7}
-                  onPress={() => { if (myHash) router.push({ pathname: '/follow-list', params: { id: myHash, kind: 'followers' } }); }}
+                  onPress={async () => {
+                    let h = myHash;
+                    if (!h) {   // ロード前にタップされても取得してから遷移
+                      try {
+                        const deviceId = await getDeviceId();
+                        const d = await apiFetch('/api/user-follows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', deviceId }) }).then((r) => r.json());
+                        h = d?.hash ?? ''; if (h) setMyHash(h);
+                      } catch { /* noop */ }
+                    }
+                    if (h) router.push({ pathname: '/follow-list', params: { id: h, kind: 'followers' } });
+                  }}
                   accessibilityRole="button" accessibilityLabel="フォロワー一覧を見る">
                   <Text style={s.statNum}>{follows.followers}</Text>
                   <Text style={s.statLabel}>フォロワー</Text>

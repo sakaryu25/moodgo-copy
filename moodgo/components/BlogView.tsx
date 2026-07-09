@@ -64,7 +64,7 @@ export type Detail = {
   budget_level: string | null; google_maps_url: string | null; poster_name: string | null;
   poster_handle?: string | null;   // @ユーザーID（未設定はnull）
   poster_type?: string | null;     // account_type（認証/店舗バッジ）
-  helpful_count: number; photos: string[]; isOwn?: boolean;
+  helpful_count: number; photos: string[]; isOwn?: boolean; saved?: boolean; helped?: boolean;
 };
 
 export default function BlogView({ resetKey }: { resetKey?: number }) {
@@ -290,19 +290,20 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () => void; onSearchMood: (tag: string) => void }) {
   const insets = useSafeAreaInsets();
   const [reported, setReported] = useState(false);
-  const [helped, setHelped] = useState(false);
-  const react = async (rtype: 'helpful' | 'save', undo = false) => {
+  const [helped, setHelped] = useState(!!post.helped);   // サーバーの自分の反応状態で初期化（開き直しても保持）
+  const react = async (rtype: 'helpful' | 'save', undo = false): Promise<boolean> => {
     try { const did = await getDeviceId();
-      await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) });
-    } catch { /* noop */ }
+      const d = await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'react', postId: post.id, deviceId: did, rtype, undo }) }).then((r) => r.json());
+      return d?.ok !== false;   // 成否を返し、呼び出し側が失敗時にロールバック
+    } catch { return false; }
   };
   const report = async () => {
     try { const did = await getDeviceId();
-      await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: '不適切' }) });
-      setReported(true);
-    } catch { /* noop */ }
+      const d = await apiFetch('/api/blog-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: '不適切' }) }).then((r) => r.json());
+      if (d?.ok) setReported(true);   // 成功時のみ「通報済み」にする（偽の成功を防ぐ）
+    } catch { /* 失敗時は据え置き＝再試行可能 */ }
   };
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(!!post.saved);   // サーバーの自分の保存状態で初期化
   const [page, setPage] = useState(0);
   const tags = [...(post.mood_tags ?? []), ...(post.scene_tags ?? [])];
   const photos = post.photos ?? [];
@@ -329,7 +330,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           <TouchableOpacity onPress={onBack} style={[s.csCircleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}>
             <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next); }} style={[s.csCircleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next).then((ok) => { if (!ok) setSaved(!next); }); }} style={[s.csCircleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}>
             <Bookmark size={18} color={saved ? CS_PINK : '#1A0A2E'} fill={saved ? CS_PINK : 'transparent'} strokeWidth={2.4} />
           </TouchableOpacity>
           {photos.length > 0 ? <View style={s.csCounter}><Text style={s.csCounterText}>{page + 1} / {photos.length}</Text></View> : null}
@@ -448,7 +449,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
       </ScrollView>
 
       {/* 参考になった FAB */}
-      <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next); }} style={[s.csFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
+      <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next).then((ok) => { if (!ok) setHelped(!next); }); }} style={[s.csFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
         <Heart size={24} color={CS_PINK} fill={helped ? CS_PINK : 'transparent'} strokeWidth={2.4} />
       </TouchableOpacity>
     </View>

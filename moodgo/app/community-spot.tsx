@@ -255,7 +255,16 @@ export default function CommunitySpotScreen() {
         ]
       : [
           { text: '共有する', onPress: onShare },
-          { text: '通報する', style: 'destructive' as const, onPress: () => showToast('通報しました', 'ご協力ありがとうございます') },
+          { text: '通報する', style: 'destructive' as const, onPress: async () => {
+            try {
+              const deviceId = await getDeviceId();
+              const d = await apiFetch('/api/reports', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spot_name: spot?.placeName || spot?.userTitle || '投稿', spot_address: spot?.address ?? null, reason: '不適切な投稿', note: `postId=${spot?.id ?? ''} kind=${spot?.kind ?? ''} poster=${spot?.posterId ?? ''}`, device_id: deviceId }),
+              }).then((r) => r.json());
+              showToast(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
+            } catch { showToast('通報できませんでした', '時間をおいてお試しください'); }
+          } },
           { text: 'キャンセル', style: 'cancel' as const },
         ];
     Alert.alert('メニュー', undefined, opts);

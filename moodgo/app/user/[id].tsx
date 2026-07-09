@@ -248,7 +248,16 @@ export default function UserProfileScreen() {
     Alert.alert(name, undefined, [
       { text: 'ミュート', onPress: () => { muteUser(posterId); showToast('ミュートしました', 'この人の投稿を静かに非表示にしました'); } },
       { text: 'ブロック', style: 'destructive', onPress: () => { blockUser(posterId); showToast('ブロックしました', 'この人の投稿・コメントを非表示にしました'); router.back(); } },
-      { text: 'この投稿者を通報', style: 'destructive', onPress: () => showToast('通報しました', 'ご協力ありがとうございます') },
+      { text: 'この投稿者を通報', style: 'destructive', onPress: async () => {
+        try {
+          const deviceId = await getDeviceId();
+          const d = await apiFetch('/api/reports', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spot_name: `ユーザー: ${profile?.handle ? '@' + profile.handle : (profile?.name || name)}`, reason: '不適切なユーザー', note: `posterId=${posterId}`, device_id: deviceId }),
+          }).then((r) => r.json());
+          showToast(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
+        } catch { showToast('通報できませんでした', '時間をおいてお試しください'); }
+      } },
       { text: 'キャンセル', style: 'cancel' },
     ]);
   };

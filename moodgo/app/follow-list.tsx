@@ -56,11 +56,14 @@ export default function FollowListScreen() {
     setFollowed((prev) => new Set(prev).add(hash));   // 楽観的
     try {
       const deviceId = await getDeviceId();
-      await apiFetch('/api/user-follows', {
+      const d = await apiFetch('/api/user-follows', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'follow', deviceId, targetId: hash }),
-      });
-    } catch { /* 失敗しても表示は据え置き（次回整合）*/ }
+      }).then((r) => r.json());
+      if (!d?.ok) throw new Error('follow失敗');
+    } catch {
+      setFollowed((prev) => { const n = new Set(prev); n.delete(hash); return n; });   // 失敗はロールバック
+    }
   };
 
   return (

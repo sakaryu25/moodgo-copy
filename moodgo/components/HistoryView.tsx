@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import {
   Clock, ChevronLeft, ChevronRight, Trash2,
   MapPin, Users, Banknote, Navigation, MessageSquare, Tag,
-  Sparkles, List,
+  Sparkles, List, RefreshCw,
   Coffee, Music, Leaf, Plane, BookOpen, Zap, Droplets, Car,
   Laugh, Mountain, Wind,
 } from 'lucide-react-native';
@@ -355,6 +355,16 @@ function DetailView({
           <Text style={s.detailDate}>{formatFullDate(item.createdAt, lang)}</Text>
         </View>
       </LinearGradient>
+
+      {/* この気分・条件でもう一度検索（handleResearch を呼ぶ実装済み機能へ接続）*/}
+      {onResearch ? (
+        <TouchableOpacity style={s.reSearchBtn} activeOpacity={0.85} onPress={() => onResearch(item)}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.reSearchGrad}>
+            <RefreshCw size={16} color="#fff" strokeWidth={2.4} />
+            <Text style={s.reSearchText}>{t.reSearch}</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      ) : null}
 
       {/* スポット一覧 */}
       <View style={{ paddingTop: 8 }}>

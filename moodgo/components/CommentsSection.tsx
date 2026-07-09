@@ -390,12 +390,14 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
         {
           text: '通報する', style: 'destructive',
           onPress: async () => {
-            const deviceId = await getDeviceId();
-            await apiFetch('/api/spot-comments', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'report', commentId: c.id, deviceId }),
-            }).catch(() => {});
-            notify('通報しました', 'ご協力ありがとうございます');
+            try {
+              const deviceId = await getDeviceId();
+              const d = await apiFetch('/api/spot-comments', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'report', commentId: c.id, deviceId }),
+              }).then((r) => r.json());
+              notify(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
+            } catch { notify('通報できませんでした', '時間をおいてお試しください'); }
           },
         },
       ]);
