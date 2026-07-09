@@ -19,6 +19,7 @@ export type FeedLike = {
   poster_icon?: string | null;
   poster_id?: string | null;
   poster_type?: string | null;   // account_type（認証/店舗バッジ）
+  poster_anonymous?: boolean;    // 名前非公開の投稿（本人でも名前は出さない＝設定を反映）
   kind?: string;
   price_chip?: string | null;   // 新投稿(spot_posts)は独立カラム
   rating?: number | null;

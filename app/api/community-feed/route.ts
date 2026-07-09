@@ -151,6 +151,7 @@ export async function GET(request: Request) {
             poster_icon: anon ? null : iconFor(p.device_id),
             // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
             poster_id: typeof p.device_id === "string" && p.device_id ? deviceHash(p.device_id) : null,
+            poster_anonymous: anon,   // 名前非公開の投稿か（本人でも名前を出さない＝設定を反映）
           };
         });
       }

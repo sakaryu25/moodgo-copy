@@ -15,16 +15,21 @@ const AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCE
 export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => void }) {
   const { lang } = useSettings();
   const me = useMyIdentity();
-  // 自分の投稿なら現在のプロフィールで上書き（フリーズ表示を最新化＝全画面で統一）
+  // 名前非公開(匿名)の投稿は本人でも名前/アイコン/バッジを出さない＝設定を反映。
+  // 公開投稿は自分なら現在プロフィールで上書き（フリーズ表示を最新化＝全画面で統一）。
   const posterId = post.raw.poster_id;
+  const anon = !!post.raw.poster_anonymous;
   const eff = resolvePoster(posterId, { name: post.raw.poster_name, icon: post.raw.poster_icon, accountType: post.raw.poster_type }, me);
-  const name = eff.name?.trim() || 'MoodGo ユーザー';
-  const icon = eff.icon || null;
+  const name = anon
+    ? (eff.isMe ? (lang === 'en' ? 'Your post' : 'あなたの投稿') : (post.raw.poster_name?.trim() || 'MoodGo ユーザー'))
+    : (eff.name?.trim() || 'MoodGo ユーザー');
+  const icon = anon ? null : (eff.icon || null);
+  const badgeType = anon ? null : eff.accountType;
   const [imgOk, setImgOk] = useState(true);
   const bg = AVATAR_BG[(name.charCodeAt(0) ?? 0) % AVATAR_BG.length];
 
-  // 投稿者(非匿名 or 自分)タップ→フルプロフィールへ。匿名(名前なし)は遷移しない
-  const canOpen = !!posterId && (eff.isMe || !!post.raw.poster_name);
+  // 名前非公開はプロフィール遷移しない。公開かつ(本人 or 名前あり)のみ遷移。
+  const canOpen = !anon && !!posterId && (eff.isMe || !!post.raw.poster_name);
   const openUser = () => { if (canOpen) router.push({ pathname: '/user/[id]', params: { id: posterId! } }); };
   return (
     <View style={s.row}>
@@ -37,7 +42,7 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
             : <Text style={s.avatarInit}>{name.slice(0, 1)}</Text>}
         </View>
         <Text style={s.name} numberOfLines={1}>{name}</Text>
-        <VerifiedBadge type={eff.accountType} size={12} />
+        <VerifiedBadge type={badgeType} size={12} />
       </TouchableOpacity>
       <View style={s.right}>
         <Text style={s.time}>{relativeTime(post.createdAt, lang)}</Text>

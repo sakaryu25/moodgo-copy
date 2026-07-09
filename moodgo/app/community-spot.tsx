@@ -8,11 +8,11 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
   CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, Linking, NativeScrollEvent, NativeSyntheticEvent,
   Share, ScrollView, StyleSheet, Text, TouchableOpacity, View,
@@ -72,7 +72,8 @@ const T = {
     defaultUser: 'MoodGoユーザー',
     poster: '投稿者',
     anonymousPost: '匿名の投稿',
-    anonSelfNote: '匿名で公開中（名前はあなただけに表示）',
+    anonSelfName: 'あなたの投稿（名前非公開）',
+    anonSelfNote: '他の人には名前が表示されません',
     overallRating: '総合評価',
     beenHere: '行った！',
     limitedSpot: '期間限定の穴場',
@@ -118,7 +119,8 @@ const T = {
     defaultUser: 'MoodGo user',
     poster: 'Posted by',
     anonymousPost: 'Anonymous post',
-    anonSelfNote: 'Posted anonymously (name shown only to you)',
+    anonSelfName: 'Your post (name hidden)',
+    anonSelfNote: 'Your name isn\'t shown to others',
     overallRating: 'Overall rating',
     beenHere: 'Been here!',
     limitedSpot: 'Limited-time spot',
@@ -198,7 +200,8 @@ export default function CommunitySpotScreen() {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
 
-  useEffect(() => {
+  // フォーカスの度に再取得＝編集(公開範囲/名前等)から戻ると即その投稿に反映される
+  useFocusEffect(useCallback(() => {
     (async () => {
       try {
         const vh = await getMyHash().catch(() => '');
@@ -247,7 +250,7 @@ export default function CommunitySpotScreen() {
         }
       } catch { /* ignore */ } finally { setLoading(false); }
     })();
-  }, [id]);
+  }, [id]));
 
   // 右下ハート＝いいね（サーバーカウント）＋お気に入り保存を1タップで。
   //   楽観更新・失敗時はいいねのみロールバック（お気に入りはローカルなので成功扱い）。
@@ -472,8 +475,20 @@ export default function CommunitySpotScreen() {
 
           {/* ── 投稿者カード（タップでプロフィール）＋投稿へのいいね ── */}
           <View style={s.posterCard}>
-            {spot.posterId ? (() => {
-              // 自分の投稿なら現在プロフィール（名前/アイコン/@ID/バッジ）で上書き＝全画面統一
+            {spot.visibility === 'spot_public_anonymous' ? (
+              // 名前非公開: 名前は出さない（本人にも設定を反映）。本人には自分の投稿と分かる表記＋注記
+              <View style={s.posterMain}>
+                <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
+                  <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.posterKicker}>{t.poster}</Text>
+                  <Text style={s.posterName} numberOfLines={1}>{isMine ? t.anonSelfName : t.anonymousPost}</Text>
+                  {isMine ? <Text style={s.posterAnonNote}>{t.anonSelfNote}</Text> : null}
+                </View>
+              </View>
+            ) : spot.posterId ? (() => {
+              // 公開投稿: 自分なら現在プロフィール（名前/アイコン/@ID/バッジ）で上書き＝全画面統一
               const poster = resolvePoster(spot.posterId, { name: spot.posterName, icon: spot.posterIcon, handle: spot.posterHandle }, me);
               return (
               <TouchableOpacity
@@ -494,9 +509,6 @@ export default function CommunitySpotScreen() {
                     <VerifiedBadge type={poster.accountType} size={13} />
                     {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
                   </View>
-                  {isMine && spot.visibility === 'spot_public_anonymous' ? (
-                    <Text style={s.posterAnonNote}>{t.anonSelfNote}</Text>
-                  ) : null}
                 </View>
                 <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
               </TouchableOpacity>
