@@ -7,10 +7,12 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { Post } from './postTypes';
 import { relativeTime } from './postTypes';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { useSettings } from '@/lib/settingsStore';
 
 const AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF', '#FFF3CD', '#E8E0FF'];
 
 export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => void }) {
+  const { lang } = useSettings();
   const name = post.raw.poster_name?.trim() || 'MoodGo ユーザー';
   const icon = post.raw.poster_icon || null;
   const [imgOk, setImgOk] = useState(true);
@@ -34,7 +36,7 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
         <VerifiedBadge type={post.raw.poster_type} size={12} />
       </TouchableOpacity>
       <View style={s.right}>
-        <Text style={s.time}>{relativeTime(post.createdAt)}</Text>
+        <Text style={s.time}>{relativeTime(post.createdAt, lang)}</Text>
         <TouchableOpacity onPress={onMenu} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}>
           <MoreHorizontal size={15} color="#B7B3C2" strokeWidth={2} />
         </TouchableOpacity>

@@ -126,7 +126,7 @@ export default function NotificationsScreen() {
                 )}
                 <Text style={s.text} numberOfLines={2}>{text}</Text>
                 <View style={s.rightCol}>
-                  <Text style={s.time}>{relativeTime(n.at)}</Text>
+                  <Text style={s.time}>{relativeTime(n.at, lang)}</Text>
                   {unread && <View style={s.unreadDot} />}
                 </View>
               </TouchableOpacity>

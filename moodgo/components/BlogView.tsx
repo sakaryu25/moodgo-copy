@@ -166,8 +166,13 @@ const T = {
   },
 } as const;
 
-function formatNum(n: number): string {
+function formatNum(n: number, lang: 'ja' | 'en' = 'ja'): string {
   if (!n || n < 0) return '0';
+  if (lang === 'en') {
+    if (n >= 1_000_000) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  }
   if (n >= 10000) { const m = n / 10000; return (m >= 10 ? Math.round(m).toString() : m.toFixed(1).replace(/\.0$/, '')) + '万'; }
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + '千';
   return String(n);
@@ -499,7 +504,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           {likeCount > 0 ? (
             <View style={s.csLikesRow}>
               <Heart size={13} color={CS_PINK} fill={CS_PINK} strokeWidth={0} />
-              <Text style={s.csLikesText}>{t.likesCount(formatNum(likeCount))}</Text>
+              <Text style={s.csLikesText}>{t.likesCount(formatNum(likeCount, lang))}</Text>
             </View>
           ) : null}
 

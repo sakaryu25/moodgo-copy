@@ -155,7 +155,7 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
         <View style={s.metaRow}>
           <Text style={s.handle} numberOfLines={1}>{c.handle ? `@${c.handle}` : t.defaultUser}</Text>
           <VerifiedBadge type={c.accountType} size={13} />
-          <Text style={s.time}>{relativeTime(c.created_at)}</Text>
+          <Text style={s.time}>{relativeTime(c.created_at, lang)}</Text>
           {c.mine && <Text style={s.mineTag}>{t.mine}</Text>}
         </View>
         <Text style={s.body}>{renderBody(c.body)}</Text>

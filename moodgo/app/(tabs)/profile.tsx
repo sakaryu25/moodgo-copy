@@ -390,7 +390,7 @@ export default function ProfileTab() {
         <Text style={s.viewedName} numberOfLines={1}>{item.title}</Text>
         <Text style={s.viewedArea} numberOfLines={1}>{prefOf(item.address) || item.area || t.spotFallback}</Text>
       </View>
-      <Text style={s.viewedTime}>{relativeTime(item.at)}</Text>
+      <Text style={s.viewedTime}>{relativeTime(item.at, settings.lang)}</Text>
     </TouchableOpacity>
   );
 
