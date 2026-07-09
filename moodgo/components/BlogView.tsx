@@ -11,7 +11,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bookmark, Check, ChevronLeft, Flag, Heart, MapPin, MessageCircle, Search, Users, Wallet, X } from 'lucide-react-native';
+import { Bell, Bookmark, Check, ChevronLeft, Clock3, Flag, Flame, Heart, MapPin, MessageCircle, Navigation, Search, Sparkles, UserRound, Users, Wallet, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -28,6 +28,8 @@ import { useMyIdentity } from '@/lib/myIdentity';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { useSettings } from '@/lib/settingsStore';
+import { hasUnread } from '@/lib/notifications';
+import { categoryStyle } from './community/postTypes';
 import CommunityFeed from './CommunityFeed';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -58,10 +60,13 @@ const T = {
     heroSub: '気分でめぐる、みんなのおすすめスポット',
     popular: '人気',
     near: '近く',
+    newest: '新着',
     fetching: '取得中…',
-    searchPlaceholder: 'スポット名・@IDで検索',
+    searchPlaceholder: 'スポット・気分・@IDで検索',
     scopeAll: 'すべて',
     scopeFollowing: 'フォロー中',
+    notifA11y: '通知',
+    myPageA11y: 'マイページ',
     post: '＋ 投稿',
     map: '地図',
     whatPlace: 'どんな場所？',
@@ -114,10 +119,13 @@ const T = {
     heroSub: "Explore everyone's favorite spots by mood",
     popular: 'Popular',
     near: 'Nearby',
+    newest: 'Newest',
     fetching: 'Locating…',
-    searchPlaceholder: 'Search by spot name or @ID',
+    searchPlaceholder: 'Search spots, moods, @ID',
     scopeAll: 'All',
     scopeFollowing: 'Following',
+    notifA11y: 'Notifications',
+    myPageA11y: 'My page',
     post: '＋ Post',
     map: 'Map',
     whatPlace: "What's it like?",
@@ -191,7 +199,8 @@ export type Detail = {
 
 export default function BlogView({ resetKey }: { resetKey?: number }) {
   const insets = useSafeAreaInsets();
-  const { lang } = useSettings();
+  const settings = useSettings();
+  const { lang } = settings;
   const t = T[lang];
   const [mode, setMode] = useState<'list' | 'detail' | 'create'>('list');
   const [items, setItems] = useState<GridItem[]>([]);
@@ -205,6 +214,11 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const [sortMode, setSortMode] = useState<'popular' | 'near' | 'new'>('popular');
   // すべて / フォロー中 の切替（フォロー中=自分がフォローした投稿者の公開投稿のみ）
   const [feedScope, setFeedScope] = useState<'all' | 'following'>('all');
+  // 気分チップの絞り込み（''=なし。タグはMOODSのtag）
+  const [moodTag, setMoodTag] = useState('');
+  // ベルの未読ドット（通知画面を開くと消える・profileタブと同じ方式）
+  const [notifUnread, setNotifUnread] = useState(false);
+  useEffect(() => { hasUnread().then(setNotifUnread).catch(() => {}); }, []);
   // 無限スクロール: 末尾接近でキーを増やして CommunityFeed に次ページ取得を促す
   const [loadMoreKey, setLoadMoreKey] = useState(0);
   const nearEndRef = useRef(false);
@@ -291,7 +305,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   useEffect(() => {
     if (resetKey === undefined) return;
     setMode('list'); setMoodFilter(''); setQ(''); setDetail(null);
-    setSortMode('popular'); setFeedScope('all'); clearUser();
+    setSortMode('popular'); setFeedScope('all'); setMoodTag(''); clearUser();
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [resetKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -322,21 +336,30 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       <LinearGradient colors={['#F472B6', '#C084FC', '#60A5FA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.hero, { paddingTop: insets.top + 12, minHeight: insets.top + HERO_BAND_H }]}>
         <View style={s.heroDeco1} pointerEvents="none" />
         <View style={s.heroDeco2} pointerEvents="none" />
-        {/* タイトル行: 右側に 人気/近く（お気に入りのソートピルと同じ設計言語）*/}
+        {/* タイトル行: 左=タイトル＋キラキラ / 右=通知ベル・マイページ（Instagram発見タブ風の顔）*/}
         <View style={s.heroTopRow}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={s.heroTitle}>{t.heroTitle}</Text>
+            <View style={s.heroTitleRow}>
+              <Text style={s.heroTitle}>{t.heroTitle}</Text>
+              <Sparkles size={17} color="rgba(255,255,255,0.92)" strokeWidth={2.2} />
+            </View>
             <Text style={s.heroSub}>{t.heroSub}</Text>
           </View>
-          <View style={s.heroToggleRow}>
-            {/* 選択中をもう一度押すと解除→新着順に戻る */}
-            <TouchableOpacity onPress={() => setSortMode(sortMode === 'popular' ? 'new' : 'popular')} style={[s.hToggleBtn, sortMode === 'popular' && s.hToggleBtnOn]} activeOpacity={0.8}
-              accessibilityRole="button" accessibilityState={{ selected: sortMode === 'popular' }}>
-              <Text style={[s.hToggleText, sortMode === 'popular' && s.hToggleTextOn]}>{t.popular}</Text>
+          <View style={s.heroIconRow}>
+            <TouchableOpacity
+              style={s.heroIconBtn}
+              onPress={() => { setNotifUnread(false); router.push('/notifications'); }}
+              activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.notifA11y}>
+              <Bell size={16.5} color="#fff" strokeWidth={2.2} />
+              {notifUnread && <View style={s.heroNotifDot} />}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { if (sortMode === 'near') setSortMode('new'); else selectNear(); }} style={[s.hToggleBtn, sortMode === 'near' && s.hToggleBtnOn]} activeOpacity={0.8}
-              accessibilityRole="button" accessibilityState={{ selected: sortMode === 'near' }}>
-              <Text style={[s.hToggleText, sortMode === 'near' && s.hToggleTextOn]}>{locLoading ? t.fetching : t.near}</Text>
+            <TouchableOpacity
+              style={s.heroIconBtn}
+              onPress={() => router.navigate('/profile')}
+              activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t.myPageA11y}>
+              {settings.iconUrl
+                ? <Image source={{ uri: settings.iconUrl }} style={s.heroAvatar} contentFit="cover" />
+                : <UserRound size={16.5} color="#fff" strokeWidth={2.2} />}
             </TouchableOpacity>
           </View>
         </View>
@@ -358,18 +381,45 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
             </TouchableOpacity>
           )}
         </View>
-        {/* すべて / フォロー中 */}
-        <View style={s.scopeRow}>
-          {(['all', 'following'] as const).map((sc) => (
-            <TouchableOpacity key={sc} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFeedScope(sc); }}
-              style={[s.scopeBtn, feedScope === sc && s.scopeBtnOn]} activeOpacity={0.8}
-              accessibilityRole="button" accessibilityState={{ selected: feedScope === sc }}>
-              <Text style={[s.scopeText, feedScope === sc && s.scopeTextOn]}>
-                {sc === 'all' ? t.scopeAll : t.scopeFollowing}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* フィルターチップ（1行横スクロール）: 並び順（人気/近く/新着/フォロー中）＋ 気分で絞る */}
+        {(() => {
+          const isFollowing = feedScope === 'following';
+          const isPopular = !isFollowing && sortMode === 'popular';
+          const isNear = !isFollowing && sortMode === 'near';
+          const isNew = !isFollowing && sortMode === 'new';
+          const tap = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          const primary: Array<{ key: string; label: string; Icon: typeof Flame; color: string; on: boolean; press: () => void }> = [
+            { key: 'popular', label: t.popular, Icon: Flame, color: '#E0559B', on: isPopular, press: () => { tap(); setFeedScope('all'); setSortMode('popular'); } },
+            { key: 'near', label: locLoading ? t.fetching : t.near, Icon: Navigation, color: '#4FA3FF', on: isNear, press: () => { tap(); setFeedScope('all'); if (sortMode !== 'near') selectNear(); } },
+            { key: 'new', label: t.newest, Icon: Clock3, color: '#9B6BFF', on: isNew, press: () => { tap(); setFeedScope('all'); setSortMode('new'); } },
+            { key: 'following', label: t.scopeFollowing, Icon: Users, color: '#7A5CFF', on: isFollowing, press: () => { tap(); setFeedScope('following'); } },
+          ];
+          return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fChipRow} keyboardShouldPersistTaps="handled">
+              {primary.map(({ key, label, Icon, color, on, press }) => (
+                <TouchableOpacity key={key} onPress={press} style={[s.fChip, on && s.fChipOn]} activeOpacity={0.8}
+                  accessibilityRole="button" accessibilityState={{ selected: on }}>
+                  <Icon size={12} color={on ? color : 'rgba(255,255,255,0.92)'} strokeWidth={2.4} />
+                  <Text style={[s.fChipText, on && s.fChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <View style={s.fDivider} />
+              {/* 気分チップ: MoodGoらしい「気分で探す」軸（もう一度押すと解除）*/}
+              {MOODS.map(({ tag }) => {
+                const { Icon, color } = categoryStyle([tag]);
+                const on = moodTag === tag;
+                return (
+                  <TouchableOpacity key={tag} onPress={() => { tap(); setMoodTag(on ? '' : tag); }}
+                    style={[s.fChip, on && s.fChipOn]} activeOpacity={0.8}
+                    accessibilityRole="button" accessibilityState={{ selected: on }}>
+                    <Icon size={12} color={on ? color : 'rgba(255,255,255,0.92)'} strokeWidth={2.4} />
+                    <Text style={[s.fChipText, on && s.fChipTextOn]}>{t.moodLabels[tag] ?? tag.replace(/^#/, '')}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          );
+        })()}
 
         {/* 候補ユーザーのチップ（入力中のみ・帯が下に伸びる）*/}
         {uUsers.length > 0 && !uActive && (
@@ -386,7 +436,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </Animated.View>
       {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
       <Animated.ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: collapse.headerH + 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={collapse.onScroll} scrollEventThrottle={16}>
-        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} feedScope={feedScope} loadMoreKey={loadMoreKey} />
+        <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} feedScope={feedScope} loadMoreKey={loadMoreKey} moodTag={moodTag || null} />
       </Animated.ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
       <PuniPressable onPress={() => router.push('/post')} containerStyle={s.fab}>
@@ -722,10 +772,37 @@ const s = StyleSheet.create({
   // スクロール格納のためabsolute overlay化（リストは contentPaddingTop=headerH で逃がす）
   heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
   hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end' },
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   heroSub: { fontSize: 12, color: 'rgba(255,255,255,0.82)', marginTop: 3 },
+  // 右上のベル/マイページ（半透明の丸ボタン）
+  heroIconRow: { flexDirection: 'row', gap: 8 },
+  heroIconBtn: {
+    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden',
+  },
+  heroAvatar: { width: 36, height: 36, borderRadius: 18 },
+  heroNotifDot: {
+    position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: '#FF5B8C', borderWidth: 1.5, borderColor: '#E9A8F5',
+  },
   // 人気/近く ピル（お気に入りのソートピルと同じ見た目）
+  // フィルターチップ（並び順＋気分・1行横スクロール）
+  fChipRow: { gap: 7, marginTop: 11, paddingRight: 20, alignItems: 'center' },
+  fChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4.5,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+  },
+  fChipOn: {
+    backgroundColor: '#fff', borderColor: '#fff',
+    shadowColor: '#3A1D6E', shadowOpacity: 0.18, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  fChipText: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.92)' },
+  fChipTextOn: { color: '#3A3357', fontWeight: '800' },
+  fDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.4)', marginHorizontal: 2 },
   heroToggleRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
   hToggleBtn: {
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999,

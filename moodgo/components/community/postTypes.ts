@@ -36,14 +36,14 @@ export type Post = {
   images: string[];          // 全写真（フィードカードのスワイプ用・最大3）
   price: string | null;     // 例: 無料 / 〜¥500
   rating: number;           // 0〜5（0=未評価＝星非表示）
-  category: { Icon: IconComp; color: string; bg: string };
+  category: { Icon: IconComp; color: string; bg: string; tag: string | null };
   createdAt: string;
   kind?: string;
   raw: FeedLike;            // 通報/遷移用に元データを保持
 };
 
-// カテゴリ（気分タグ）→ アイコン＋色＋淡い背景。画像なしカードの左上バッジに使う。
-export function categoryStyle(tags: string[] | null): { Icon: IconComp; color: string; bg: string } {
+// カテゴリ（気分タグ）→ アイコン＋色＋淡い背景＋一致タグ。カードの気分チップに使う。
+export function categoryStyle(tags: string[] | null): { Icon: IconComp; color: string; bg: string; tag: string | null } {
   const M: Array<[string, IconComp, string, string]> = [
     ['#お腹すいた',        UtensilsCrossed, '#E8863C', '#FCEEE0'],
     ['#まったりしたい',    Cloud,           '#5E93B0', '#E5F0F5'],
@@ -55,8 +55,8 @@ export function categoryStyle(tags: string[] | null): { Icon: IconComp; color: s
     ['#ショッピング',      ShoppingBag,     '#E0559B', '#FCE6F1'],
     ['#穴場スポット',      Map,             '#8A6BF0', '#EEE9FD'],
   ];
-  if (tags) for (const [t, Icon, color, bg] of M) if (tags.includes(t)) return { Icon, color, bg };
-  return { Icon: MapPin, color: '#8A6BF0', bg: '#EEE9FD' };
+  if (tags) for (const [t, Icon, color, bg] of M) if (tags.includes(t)) return { Icon, color, bg, tag: t };
+  return { Icon: MapPin, color: '#8A6BF0', bg: '#EEE9FD', tag: null };
 }
 
 // 説明文に埋め込まれた 【目安価格】/【おすすめ度】 を抽出し、本文からは除去する。

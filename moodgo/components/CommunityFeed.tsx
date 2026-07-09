@@ -18,6 +18,8 @@ import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
 import { useBlocks, blockUser } from '@/lib/blockStore';
 import ReportModal from './ReportModal';
 import PostGrid from './community/PostGrid';
+import ExploreGrid from './community/ExploreGrid';
+import { useSettings } from '@/lib/settingsStore';
 import { parsePost, type FeedLike, type Post } from './community/postTypes';
 
 const PURPLE = '#9B6BFF';
@@ -59,9 +61,11 @@ type CommunityFeedProps = {
   searchQuery?: string | null;   // full: スポット名/本文のキーワード検索（@ID絞り込みと排他）
   feedScope?: 'all' | 'following';   // full: すべて / フォロー中のみ
   loadMoreKey?: number;   // full: 親(BlogView)が末尾スクロールで+1して追加読み込みを促す
+  moodTag?: string | null;   // full: 気分チップの絞り込み（auto_tags一致・読み込み済み分に適用）
 };
 
-export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, feedScope = 'all', loadMoreKey }: CommunityFeedProps) {
+export default function CommunityFeed({ full, sortMode: propSort, coords: propCoords, posterHandle, searchQuery, feedScope = 'all', loadMoreKey, moodTag }: CommunityFeedProps) {
+  const { lang } = useSettings();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -306,6 +310,13 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
 
   const searching = full && !!kw && !posterHandle;
   const gridPosts = full && posterHandle ? uPosts : searching ? kPosts : followingMode ? fPosts : posts;
+  // 気分チップ絞り込み（full・読み込み済みの投稿に適用。追加読み込みでも維持される）
+  const displayPosts = useMemo(
+    () => (full && moodTag ? gridPosts.filter((p) => p.raw.auto_tags?.includes(moodTag)) : gridPosts),
+    [full, moodTag, gridPosts],
+  );
+  // 気分絞り込みだけで0件（投稿自体はある）→ 専用の空メッセージ
+  const moodEmpty = full && !!moodTag && gridPosts.length > 0 && displayPosts.length === 0;
   // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
   const showError = !loading && !uLoading && !kLoading && !fLoading && loadError
     && !(full && posterHandle) && !searching && !followingMode;
@@ -352,14 +363,34 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
 
       {!loading && !uLoading && !kLoading && !fLoading && (
         <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-          {width > 0 && gridPosts.length > 0 && (
-            <PostGrid
-              posts={gridPosts}
-              containerWidth={width}
-              onPressPost={(p) => openSpot(p.raw as FeedItem)}
-              onMenuPost={(p) => setReportTarget(p.raw as FeedItem)}
-            />
+          {width > 0 && displayPosts.length > 0 && (
+            full ? (
+              // 一覧ページ: Instagram発見タブ風の3列画像グリッド
+              <ExploreGrid
+                posts={displayPosts}
+                containerWidth={width}
+                onPressPost={(p) => openSpot(p.raw as FeedItem)}
+                onMenuPost={(p) => setReportTarget(p.raw as FeedItem)}
+              />
+            ) : (
+              // ホーム埋め込み: 従来の2列カード
+              <PostGrid
+                posts={displayPosts}
+                containerWidth={width}
+                onPressPost={(p) => openSpot(p.raw as FeedItem)}
+                onMenuPost={(p) => setReportTarget(p.raw as FeedItem)}
+              />
+            )
           )}
+        </View>
+      )}
+
+      {/* 気分チップで絞って0件（投稿はある）*/}
+      {moodEmpty && !loading && (
+        <View style={s.loadingWrap}>
+          <Text style={{ color: '#9CA3AF', fontSize: 13 }}>
+            {lang === 'en' ? 'No posts for this mood yet' : 'この気分の投稿はまだありません'}
+          </Text>
         </View>
       )}
 
