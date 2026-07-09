@@ -134,10 +134,10 @@ export async function POST(req: Request) {
 
       // ── 編集フォームのプレフィル用（本人のみ・写真URLも返す）──
       if (action === "get-mine") {
-        const FULL = "id, place_id, place_name, caption, mood_tags, rating, price_chip, price_note, contact";
+        const FULL = "id, place_id, place_name, caption, mood_tags, visibility, rating, price_chip, price_note, contact";
         let { data: p, error } = await db.from("spot_posts").select(FULL).eq("id", postId).maybeSingle();
         if (error && (error as { code?: string }).code === "42703") {
-          ({ data: p } = await db.from("spot_posts").select("id, place_id, place_name, caption, mood_tags").eq("id", postId).maybeSingle());
+          ({ data: p } = await db.from("spot_posts").select("id, place_id, place_name, caption, mood_tags, visibility").eq("id", postId).maybeSingle());
         }
         const { data: phs } = await db.from("spot_photos").select("image_url").eq("post_id", postId)
           .neq("moderation_status", "hidden").neq("moderation_status", "rejected");
@@ -148,6 +148,7 @@ export async function POST(req: Request) {
           placeName: String(row.place_name ?? ""),
           caption: String(row.caption ?? ""),
           moodTags: Array.isArray(row.mood_tags) ? row.mood_tags : [],
+          visibility: String(row.visibility ?? "spot_public_anonymous"),
           rating: typeof row.rating === "number" ? row.rating : 0,
           priceChip: (row.price_chip as string | null) ?? "",
           priceNote: (row.price_note as string | null) ?? "",
@@ -165,9 +166,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, deleted: true });
       }
 
-      // ── 更新（本人のみ・本文/気分タグ/評価/価格/連絡先。NGワード再チェック）──
+      // ── 更新（本人のみ・名前/本文/気分タグ/公開範囲/評価/価格/連絡先。NGワード再チェック）──
       const caption = String(body?.caption ?? "").trim().slice(0, 300);
-      if (findNgWord(caption)) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
+      const placeName = body?.placeName != null ? String(body.placeName).trim().slice(0, 200) : null;
+      if (findNgWord(caption) || (placeName && findNgWord(placeName))) return NextResponse.json({ ok: false, error: "不適切な表現が含まれています" }, { status: 400 });
       const rawTags = Array.isArray(body?.moodTags) ? body.moodTags.filter((t: unknown) => typeof t === "string").slice(0, 8) : [];
       const moodTags = Array.from(new Set([...(rawTags as string[]), ...MANDATORY_TAGS]));
       const ratingIn = Number(body?.rating);
@@ -175,7 +177,12 @@ export async function POST(req: Request) {
       const priceChip = body?.priceChip ? String(body.priceChip).trim().slice(0, 20) : null;
       const priceNote = body?.priceNote ? String(body.priceNote).trim().slice(0, 120) : null;
       const contact = body?.contact ? String(body.contact).trim().slice(0, 120) : null;
+      let visibility: string | null = body?.visibility != null ? String(body.visibility) : null;
+      if (visibility && !VALID_VISIBILITY.has(visibility)) visibility = null;
+      // 名前/公開範囲は基本カラム＝extra列未適用でも必ず保存する（base に含める）
       const base: Record<string, unknown> = { caption, mood_tags: moodTags };
+      if (placeName) base.place_name = placeName;
+      if (visibility) base.visibility = visibility;
       const full = { ...base, rating, price_chip: priceChip, price_note: priceNote, contact };
       // extra列(spot-posts-extra.sql)未適用時は42703 → 基本列のみで再試行（更新自体は失敗させない）
       let { error } = await db.from("spot_posts").update(full).match({ id: postId, device_id: deviceId });

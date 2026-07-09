@@ -65,7 +65,7 @@ const T = {
     gotLoc: (addr: string) => `📍 位置を取得しました${addr ? `（${addr}）` : ''}`,
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
-    editNote: '※ 編集では本文・気分タグ・おすすめ度・値段を変更できます（写真は変更できません）。',
+    editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
     photoLabel: '写真（最大3枚）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！',
     addPhoto: '追加',
@@ -79,6 +79,9 @@ const T = {
     visAnon: '匿名で公開',
     visNoteAnon: '投稿者名は表示されず、あなたのプロフィールにも表示されません。',
     visNotePublic: 'ニックネームと@IDが投稿に表示され、プロフィールの投稿一覧に載ります。',
+    visPrivate: '非公開',
+    visPrivateLabel: '自分だけが見られる非公開にする',
+    visNotePrivate: '自分だけが見られます。みんなの穴場フィードには表示されません。',
     licenseText: '自分で撮影した、または使用許可のある写真・内容です（必須）',
     licenseNote: '※ Google画像・Googleマップ・SNS等から保存した画像の投稿は禁止です。',
     sending: '送信中…',
@@ -158,7 +161,7 @@ const T = {
     gotLoc: (addr: string) => `📍 Location captured${addr ? ` (${addr})` : ''}`,
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
-    editNote: '※ When editing you can change the text, mood tags, rating and price (photos can\'t be changed).',
+    editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
     photoLabel: 'Photos (up to 3)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe!',
     addPhoto: 'Add',
@@ -172,6 +175,9 @@ const T = {
     visAnon: 'Post anonymously',
     visNoteAnon: 'Your name won\'t be shown, and it won\'t appear on your profile.',
     visNotePublic: 'Your nickname and @ID appear on the post and in your profile\'s post list.',
+    visPrivate: 'Private',
+    visPrivateLabel: 'Make it private, visible only to you',
+    visNotePrivate: 'Only you can see this. It won\'t appear in the public feed.',
     licenseText: 'These photos and content are my own or I have permission to use them (required)',
     licenseNote: '※ Posting images saved from Google Images, Google Maps, social media, etc. is prohibited.',
     sending: 'Sending…',
@@ -255,7 +261,7 @@ export default function PostScreen() {
   const [tempDate, setTempDate] = useState(new Date());
   const [licenseOk, setLicenseOk] = useState(false);
   // 公開範囲: false=名前を出して公開(デフォルト・プロフィール/フォロー対象) / true=匿名で公開
-  const [anonymous, setAnonymous] = useState(false);
+  const [vis, setVis] = useState<'public' | 'anon' | 'private'>('public');   // 公開範囲: 名前/匿名/非公開
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
@@ -296,6 +302,7 @@ export default function PostScreen() {
           setPriceChip(String(d.post.priceChip ?? ''));
           setPriceNote(String(d.post.priceNote ?? ''));
           setContact(String(d.post.contact ?? ''));
+          setVis(d.post.visibility === 'private' ? 'private' : d.post.visibility === 'public' ? 'public' : 'anon');
         } else {
           showToast(t.tCannotEditTitle, d?.error ?? t.tCannotEditSub);
           router.back();
@@ -394,12 +401,14 @@ export default function PostScreen() {
     return out;
   }, [moodTags]);
 
+  const visServer = vis === 'private' ? 'private' : vis === 'anon' ? 'spot_public_anonymous' : 'public';
   const submit = async () => {
-    // ── 編集モード: テキスト項目だけを更新（写真・場所・公開範囲は変更しない）──
+    // ── 編集モード: 名前・本文・気分・公開範囲・評価・値段・連絡先を更新（最初の投稿と同項目）──
     if (editMode) {
+      if (!spotName.trim()) { showToast(t.tSpotNameTitle, t.tSpotNameSub); return; }
       if (!caption.trim()) { showToast(t.tCaptionTitle, t.tCaptionSub); return; }
       if (moodTags.length === 0) { showToast(t.tMoodTitle, t.tMoodSub); return; }
-      if (findNgWord(caption)) { showToast(t.tNgTitle, t.tNgSub); return; }
+      if (findNgWord(caption) || findNgWord(spotName) || findNgWord(contact)) { showToast(t.tNgTitle, t.tNgSub); return; }
       setSubmitting(true);
       try {
         const deviceId = await getDeviceId();
@@ -407,6 +416,7 @@ export default function PostScreen() {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'update', postId: editId, deviceId,
+            placeName: spotName.trim(), visibility: visServer,
             caption: caption.trim(), moodTags,
             rating: rating > 0 ? rating : undefined,
             priceChip: priceChip || undefined,
@@ -469,7 +479,7 @@ export default function PostScreen() {
           placeId: existingPlaceId || undefined, placeName: spotName, address,
           lat: lat ?? undefined, lng: lng ?? undefined,
           // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
-          caption: caption.trim(), moodTags, visibility: anonymous ? 'spot_public_anonymous' : 'public',
+          caption: caption.trim(), moodTags, visibility: visServer,
           canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs, thumbImages: thumbImgs,
           priceChip: priceChip || undefined,
           priceNote: priceNote.trim() || undefined,
@@ -525,9 +535,11 @@ export default function PostScreen() {
             <Text style={s.leadText}>{t.leadText}</Text>
           </View>
 
-          {/* ① スポット名（既存スポット検索つき: 打つと同じ場所の候補が出る） */}
+          {/* ① スポット名（既存スポット検索つき: 打つと同じ場所の候補が出る。編集時は検索なしで自由編集） */}
           <Text style={s.label}>{t.spotNameLabel}<Text style={s.req}>*</Text></Text>
-          {lockedFromParam ? (
+          {editMode ? (
+            <TextInput style={s.input} value={spotName} onChangeText={setSpotName} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" maxLength={100} />
+          ) : lockedFromParam ? (
             <View style={s.pickedRow}>
               <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
               <Text style={s.pickedText} numberOfLines={1}>{spotName}</Text>
@@ -680,8 +692,8 @@ export default function PostScreen() {
             </>
           )}
 
-          {/* ⑨ 連絡先（任意・新スポットのみ＝掲載特典の連絡用） */}
-          {!isExisting && !editMode && (
+          {/* ⑨ 連絡先（任意・新スポット/編集時） */}
+          {(!isExisting || editMode) && (
             <>
               <Text style={s.label}>{t.contactLabel}</Text>
               <Text style={s.hint}>{t.contactHint}</Text>
@@ -689,29 +701,25 @@ export default function PostScreen() {
             </>
           )}
 
-          {/* 公開範囲: 名前を出す(デフォルト) / 匿名（編集時は変更しない） */}
-          {!editMode && (<>
+          {/* 公開範囲: 名前を出す / 匿名 / 非公開（自分だけ）。編集でも変更可 */}
           <Text style={s.label}>{t.visLabel}</Text>
           <View style={s.visRow}>
-            <TouchableOpacity
-              style={[s.visChip, !anonymous && s.visChipOn]} activeOpacity={0.8}
-              onPress={() => setAnonymous(false)}
-              accessibilityRole="button" accessibilityLabel={t.visPublicLabel}>
-              <Text style={[s.visChipText, !anonymous && s.visChipTextOn]}>{t.visPublic}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.visChip, anonymous && s.visChipOn]} activeOpacity={0.8}
-              onPress={() => setAnonymous(true)}
-              accessibilityRole="button" accessibilityLabel={t.visAnonLabel}>
-              <Text style={[s.visChipText, anonymous && s.visChipTextOn]}>{t.visAnon}</Text>
-            </TouchableOpacity>
+            {([
+              { k: 'public', label: t.visPublic, a11y: t.visPublicLabel },
+              { k: 'anon', label: t.visAnon, a11y: t.visAnonLabel },
+              { k: 'private', label: t.visPrivate, a11y: t.visPrivateLabel },
+            ] as const).map((o) => (
+              <TouchableOpacity key={o.k}
+                style={[s.visChip, vis === o.k && s.visChipOn]} activeOpacity={0.8}
+                onPress={() => setVis(o.k)}
+                accessibilityRole="button" accessibilityLabel={o.a11y}>
+                <Text style={[s.visChipText, vis === o.k && s.visChipTextOn]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <Text style={s.note}>
-            {anonymous
-              ? t.visNoteAnon
-              : t.visNotePublic}
+            {vis === 'private' ? t.visNotePrivate : vis === 'anon' ? t.visNoteAnon : t.visNotePublic}
           </Text>
-          </>)}
 
           {/* 権利確認（編集時は写真を変えないので不要） */}
           {!editMode && (<>
