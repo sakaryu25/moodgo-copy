@@ -437,7 +437,16 @@ export default function ProfileTab() {
                   <View style={s.onlineDot} />
                   <Text style={s.onlineText}>オンライン</Text>
                 </View>
+                {settings.showPrefecture && settings.profilePrefecture ? (
+                  <View style={s.prefPill}>
+                    <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
+                    <Text style={s.prefText}>{settings.profilePrefecture}</Text>
+                  </View>
+                ) : null}
               </View>
+              {settings.profileBio ? (
+                <Text style={s.bioText} numberOfLines={2}>{settings.profileBio}</Text>
+              ) : null}
               {/* 統計 4列（投稿 / 行った=自分が行った！を押した数 / いいね=もらった / フォロワー） */}
               <View style={s.statsRow}>
                 <View style={s.statCol}>
@@ -618,6 +627,9 @@ const s = StyleSheet.create({
   },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#34C759' },
   onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
+  prefPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  prefText: { fontSize: 11, fontWeight: '700', color: SUB },
+  bioText: { fontSize: 13, color: '#5B5470', lineHeight: 19, marginTop: 8 },
 
   // 統計
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
