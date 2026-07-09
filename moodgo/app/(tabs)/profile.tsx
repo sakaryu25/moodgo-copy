@@ -497,9 +497,7 @@ export default function ProfileTab() {
             </View>
 
             <View style={s.heroRight}>
-              <View style={s.nameRow}>
-                <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
-              </View>
+              <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
               <View style={s.handleRow}>
                 {userHandle ? (
                   <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
@@ -508,10 +506,6 @@ export default function ProfileTab() {
                     <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
                   </TouchableOpacity>
                 )}
-                <View style={s.onlinePill}>
-                  <View style={s.onlineDot} />
-                  <Text style={s.onlineText}>{t.online}</Text>
-                </View>
                 {settings.showPrefecture && settings.profilePrefecture ? (
                   <View style={s.prefPill}>
                     <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
@@ -519,44 +513,47 @@ export default function ProfileTab() {
                   </View>
                 ) : null}
               </View>
-              {settings.profileBio ? (
-                <Text style={s.bioText} numberOfLines={2}>{settings.profileBio}</Text>
-              ) : null}
-              {/* 統計 4列（投稿 / 行った=自分が行った！を押した数 / いいね=もらった / フォロワー） */}
-              <View style={s.statsRow}>
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{posts.length}</Text>
-                  <Text style={s.statLabel}>{t.statPosts}</Text>
-                </View>
-                <View style={s.statDivider} />
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{badges.length}</Text>
-                  <Text style={s.statLabel}>{t.statVisited}</Text>
-                </View>
-                <View style={s.statDivider} />
-                <View style={s.statCol}>
-                  <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
-                  <Text style={s.statLabel}>{t.statLikes}</Text>
-                </View>
-                <View style={s.statDivider} />
-                <TouchableOpacity style={s.statCol} activeOpacity={0.7}
-                  onPress={async () => {
-                    let h = myHash;
-                    if (!h) {   // ロード前にタップされても取得してから遷移
-                      try {
-                        const deviceId = await getDeviceId();
-                        const d = await apiFetch('/api/user-follows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', deviceId }) }).then((r) => r.json());
-                        h = d?.hash ?? ''; if (h) setMyHash(h);
-                      } catch { /* noop */ }
-                    }
-                    if (h) router.push({ pathname: '/follow-list', params: { id: h, kind: 'followers' } });
-                  }}
-                  accessibilityRole="button" accessibilityLabel={t.followersA11y}>
-                  <Text style={s.statNum}>{follows.followers}</Text>
-                  <Text style={s.statLabel}>{t.statFollowers}</Text>
-                </TouchableOpacity>
-              </View>
             </View>
+          </View>
+
+          {/* 一言（フル幅・名前の下に表示） */}
+          {settings.profileBio ? (
+            <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
+          ) : null}
+
+          {/* 統計 4列（投稿 / 行った / いいね / フォロワー）: フル幅 */}
+          <View style={s.statsRow}>
+            <View style={s.statCol}>
+              <Text style={s.statNum}>{posts.length}</Text>
+              <Text style={s.statLabel}>{t.statPosts}</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statCol}>
+              <Text style={s.statNum}>{badges.length}</Text>
+              <Text style={s.statLabel}>{t.statVisited}</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statCol}>
+              <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
+              <Text style={s.statLabel}>{t.statLikes}</Text>
+            </View>
+            <View style={s.statDivider} />
+            <TouchableOpacity style={s.statCol} activeOpacity={0.7}
+              onPress={async () => {
+                let h = myHash;
+                if (!h) {   // ロード前にタップされても取得してから遷移
+                  try {
+                    const deviceId = await getDeviceId();
+                    const d = await apiFetch('/api/user-follows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', deviceId }) }).then((r) => r.json());
+                    h = d?.hash ?? ''; if (h) setMyHash(h);
+                  } catch { /* noop */ }
+                }
+                if (h) router.push({ pathname: '/follow-list', params: { id: h, kind: 'followers' } });
+              }}
+              accessibilityRole="button" accessibilityLabel={t.followersA11y}>
+              <Text style={s.statNum}>{follows.followers}</Text>
+              <Text style={s.statLabel}>{t.statFollowers}</Text>
+            </TouchableOpacity>
           </View>
 
           {/* プロフィールを編集（h60 / r999 / グラデ #FF63A9→#5A8DFF）→ 既存の編集画面へ */}
@@ -676,7 +673,7 @@ const s = StyleSheet.create({
   },
 
   // ヒーロー
-  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 0 },
   avatarBox: { width: 96, height: 96 },
   avatarRing: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   avatarWhite: {
@@ -690,7 +687,7 @@ const s = StyleSheet.create({
     width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2.5, borderColor: '#fff',
   },
-  heroRight: { flex: 1, minWidth: 0 },
+  heroRight: { flex: 1, minWidth: 0, justifyContent: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   nickname: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
   handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
@@ -704,10 +701,10 @@ const s = StyleSheet.create({
   onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
   prefPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   prefText: { fontSize: 11, fontWeight: '700', color: SUB },
-  bioText: { fontSize: 13, color: '#5B5470', lineHeight: 19, marginTop: 8 },
+  bioText: { fontSize: 14, color: '#5B5470', lineHeight: 20, marginTop: 16 },
 
   // 統計
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   statCol: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.5 },
   statLabel: { fontSize: 11.5, fontWeight: '600', color: SUB, marginTop: 1 },
