@@ -29,6 +29,8 @@ import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
 import SpotRating from '@/components/SpotRating';
+import VerifiedBadge from '@/components/VerifiedBadge';
+import { useMyIdentity, resolvePoster } from '@/lib/myIdentity';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -174,6 +176,7 @@ function Stars({ n, size = 16 }: { n: number; size?: number }) {
 }
 
 export default function CommunitySpotScreen() {
+  const me = useMyIdentity();   // 自分の投稿なら現在プロフィールで投稿者表示を上書き
   const insets = useSafeAreaInsets();
   const { lang } = useSettings();
   const t = T[lang];
@@ -464,13 +467,16 @@ export default function CommunitySpotScreen() {
 
           {/* ── 投稿者カード（タップでプロフィール）＋投稿へのいいね ── */}
           <View style={s.posterCard}>
-            {spot.posterId ? (
+            {spot.posterId ? (() => {
+              // 自分の投稿なら現在プロフィール（名前/アイコン/@ID/バッジ）で上書き＝全画面統一
+              const poster = resolvePoster(spot.posterId, { name: spot.posterName, icon: spot.posterIcon, handle: spot.posterHandle }, me);
+              return (
               <TouchableOpacity
                 onPress={() => router.push({ pathname: '/user/[id]', params: { id: spot.posterId! } })}
                 activeOpacity={0.75} style={s.posterMain}
-                accessibilityRole="button" accessibilityLabel={t.profileA11y(spot.posterName?.trim() || t.defaultUser)}>
-                {spot.posterIcon ? (
-                  <Image source={{ uri: spot.posterIcon }} style={s.posterCardAvatar} contentFit="cover" />
+                accessibilityRole="button" accessibilityLabel={t.profileA11y(poster.name?.trim() || t.defaultUser)}>
+                {poster.icon ? (
+                  <Image source={{ uri: poster.icon }} style={s.posterCardAvatar} contentFit="cover" />
                 ) : (
                   <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
                     <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
@@ -479,13 +485,15 @@ export default function CommunitySpotScreen() {
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.posterKicker}>{t.poster}</Text>
                   <View style={s.posterNameRow}>
-                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || t.defaultUser}</Text>
-                    {spot.posterHandle ? <Text style={s.posterHandle} numberOfLines={1}>@{spot.posterHandle}</Text> : null}
+                    <Text style={s.posterName} numberOfLines={1}>{poster.name?.trim() || t.defaultUser}</Text>
+                    <VerifiedBadge type={poster.accountType} size={13} />
+                    {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
                   </View>
                 </View>
                 <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
               </TouchableOpacity>
-            ) : (
+              );
+            })() : (
               <View style={s.posterMain}>
                 <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
                   <UserRound size={20} color={PURPLE} strokeWidth={1.8} />

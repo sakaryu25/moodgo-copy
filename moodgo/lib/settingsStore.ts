@@ -60,6 +60,8 @@ function subscribe(cb: () => void): () => void {
   return () => { listeners.delete(cb); };
 }
 function getSnapshot(): SettingsState { return state; }
+// 非リアクティブに現在値を読む（effect内での条件分岐用・購読しない）
+export function getSettings(): SettingsState { return state; }
 
 // ── 初期ハイドレート（アプリ起動時に一度）──────────────────────────────────────
 let hydrating = false;

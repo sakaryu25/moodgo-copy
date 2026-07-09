@@ -8,19 +8,23 @@ import type { Post } from './postTypes';
 import { relativeTime } from './postTypes';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { useSettings } from '@/lib/settingsStore';
+import { useMyIdentity, resolvePoster } from '@/lib/myIdentity';
 
 const AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF', '#FFF3CD', '#E8E0FF'];
 
 export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => void }) {
   const { lang } = useSettings();
-  const name = post.raw.poster_name?.trim() || 'MoodGo ユーザー';
-  const icon = post.raw.poster_icon || null;
+  const me = useMyIdentity();
+  // 自分の投稿なら現在のプロフィールで上書き（フリーズ表示を最新化＝全画面で統一）
+  const posterId = post.raw.poster_id;
+  const eff = resolvePoster(posterId, { name: post.raw.poster_name, icon: post.raw.poster_icon, accountType: post.raw.poster_type }, me);
+  const name = eff.name?.trim() || 'MoodGo ユーザー';
+  const icon = eff.icon || null;
   const [imgOk, setImgOk] = useState(true);
   const bg = AVATAR_BG[(name.charCodeAt(0) ?? 0) % AVATAR_BG.length];
 
-  // 投稿者(非匿名)タップ→フルプロフィールへ。匿名(名前なし)は遷移しない
-  const posterId = post.raw.poster_id;
-  const canOpen = !!posterId && !!post.raw.poster_name;
+  // 投稿者(非匿名 or 自分)タップ→フルプロフィールへ。匿名(名前なし)は遷移しない
+  const canOpen = !!posterId && (eff.isMe || !!post.raw.poster_name);
   const openUser = () => { if (canOpen) router.push({ pathname: '/user/[id]', params: { id: posterId! } }); };
   return (
     <View style={s.row}>
@@ -33,7 +37,7 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
             : <Text style={s.avatarInit}>{name.slice(0, 1)}</Text>}
         </View>
         <Text style={s.name} numberOfLines={1}>{name}</Text>
-        <VerifiedBadge type={post.raw.poster_type} size={12} />
+        <VerifiedBadge type={eff.accountType} size={12} />
       </TouchableOpacity>
       <View style={s.right}>
         <Text style={s.time}>{relativeTime(post.createdAt, lang)}</Text>

@@ -22,6 +22,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { blockUser } from '@/lib/blockStore';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { useMyIdentity } from '@/lib/myIdentity';
 import { relativeTime } from '@/lib/spotLog';
 import { showToast } from '@/lib/toast';
 import { useSettings } from '@/lib/settingsStore';
@@ -141,20 +142,25 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
 }) {
   const { lang } = useSettings();
   const t = T[lang];
+  const me = useMyIdentity();
+  // 自分のコメントなら現在プロフィール（アイコン/@ID/バッジ）で上書き＝全画面統一
+  const icon = (c.mine && me.icon) || c.icon;
+  const handle = (c.mine && me.handle) || c.handle;
+  const badgeType = c.mine ? (me.accountType || c.accountType) : c.accountType;
   return (
     <TouchableOpacity style={[s.row, isReply && s.replyRow]} activeOpacity={0.8} onLongPress={() => onLongPress(c)} delayLongPress={280}>
       <TouchableOpacity onPress={() => onPressUser(c)}
         accessibilityRole="button" accessibilityLabel={t.a11yViewProfile}>
-        {c.icon ? (
-          <Image source={{ uri: c.icon }} style={[s.avatar, isReply && s.avatarSm]} contentFit="cover" />
+        {icon ? (
+          <Image source={{ uri: icon }} style={[s.avatar, isReply && s.avatarSm]} contentFit="cover" />
         ) : (
           <View style={[s.avatar, isReply && s.avatarSm, s.avatarPh]}><UserRound size={isReply ? 12 : 14} color={PURPLE} strokeWidth={1.8} /></View>
         )}
       </TouchableOpacity>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={s.metaRow}>
-          <Text style={s.handle} numberOfLines={1}>{c.handle ? `@${c.handle}` : t.defaultUser}</Text>
-          <VerifiedBadge type={c.accountType} size={13} />
+          <Text style={s.handle} numberOfLines={1}>{handle ? `@${handle}` : t.defaultUser}</Text>
+          <VerifiedBadge type={badgeType} size={13} />
           <Text style={s.time}>{relativeTime(c.created_at, lang)}</Text>
           {c.mine && <Text style={s.mineTag}>{t.mine}</Text>}
         </View>

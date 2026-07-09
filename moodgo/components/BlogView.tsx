@@ -24,6 +24,7 @@ import { HERO_BAND_H } from '@/lib/headerBand';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { apiFetch } from '@/lib/api';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { useMyIdentity } from '@/lib/myIdentity';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { useSettings } from '@/lib/settingsStore';
@@ -414,6 +415,8 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
   const insets = useSafeAreaInsets();
   const { lang } = useSettings();
   const t = T[lang];
+  const me = useMyIdentity();
+  const isMe = !!post.isOwn;   // 自分の投稿なら投稿者表示を現在プロフィールで上書き（全画面統一）
   const [reported, setReported] = useState(false);
   const [helped, setHelped] = useState(!!post.helped);   // サーバーの自分の反応状態で初期化（開き直しても保持）
   const react = async (rtype: 'helpful' | 'save', undo = false): Promise<boolean> => {
@@ -432,7 +435,9 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
   const [page, setPage] = useState(0);
   const tags = [...(post.mood_tags ?? []), ...(post.scene_tags ?? [])];
   const photos = post.photos ?? [];
-  const name = post.poster_name || t.defaultPoster;
+  const name = (isMe && me.name) || post.poster_name || t.defaultPoster;
+  const posterHandle = (isMe && me.handle) || post.poster_handle || null;
+  const posterBadge = isMe ? (me.accountType || post.poster_type) : post.poster_type;
   const initial = (name.trim().charAt(0) || 'M').toUpperCase();
   const likeCount = (post.helpful_count ?? 0) + (helped ? 1 : 0);
   const openMap = () => openInGoogleMaps({ query: [post.place_name, post.address].filter(Boolean).join(' '), mapsUri: post.google_maps_url ?? undefined });
@@ -472,9 +477,9 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={[s.csPosterName, { flexShrink: 1 }]} numberOfLines={1}>{t.recommendedBy(name)}</Text>
-                <VerifiedBadge type={post.poster_type} size={14} />
+                <VerifiedBadge type={posterBadge} size={14} />
               </View>
-              {post.poster_handle ? <Text style={s.csPosterHandle} numberOfLines={1}>@{post.poster_handle}</Text> : null}
+              {posterHandle ? <Text style={s.csPosterHandle} numberOfLines={1}>@{posterHandle}</Text> : null}
             </View>
           </View>
 

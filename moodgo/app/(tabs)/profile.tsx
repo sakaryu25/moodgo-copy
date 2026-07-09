@@ -33,9 +33,11 @@ import { loadViewedLog, loadVisitedLog, relativeTime, type SpotLogItem } from '@
 import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { getMyHash } from '@/lib/myIdentity';
 import type { Recommendation } from '@/types/app';
 import {
   useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked, setAccountType,
+  getSettings, saveNickname, saveIconUrl, saveHandle,
 } from '@/lib/settingsStore';
 
 // 本人プロフィール（名前/アイコン/@ID/バッジ）は settingsStore を真実とする＝設定編集が即時反映
@@ -211,16 +213,21 @@ export default function ProfileTab() {
     transform: [{ translateY: anims[i].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
   });
 
-  // アカウント種別(公式/店舗バッジ)をサーバーから取得しストアへ。名前/アイコン/@IDはストアが真実。
+  // 自分のサーバープロフィールを取得。バッジ種別を反映し、ローカル未設定の名前/アイコン/@IDを
+  // サーバー値で補完（再インストール等での不整合を解消し、全画面の投稿者表示と統一する）。
   const loadProfile = useCallback(async () => {
     try {
-      const deviceId = await getDeviceId();
-      const d = await apiFetch('/api/user-handle', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get', deviceId }),
-      }).then((r) => r.json());
-      if (d?.ok) setAccountType(d.accountType ?? '');
-    } catch { /* 取得失敗はバッジ非表示のまま */ }
+      const hash = await getMyHash();
+      if (!hash) return;
+      const d = await apiFetch(`/api/user-profile?id=${encodeURIComponent(hash)}`).then((r) => r.json());
+      const p = d?.profile;
+      if (!p) return;
+      setAccountType(typeof p.accountType === 'string' ? p.accountType : '');
+      const cur = getSettings();
+      if (!cur.nickname.trim() && typeof p.name === 'string' && p.name.trim()) saveNickname(p.name.trim());
+      if (!cur.iconUrl && typeof p.icon === 'string' && p.icon) saveIconUrl(p.icon);
+      if (!cur.handle && typeof p.handle === 'string' && p.handle) saveHandle(p.handle);
+    } catch { /* 取得失敗はローカルのまま */ }
   }, []);
 
   // 自分の投稿を取得（前回結果を即表示→裏で最新化。キャッシュは/my-postsページと共有）
