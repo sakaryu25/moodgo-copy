@@ -51,6 +51,7 @@ const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const idParam = searchParams.get("id");
+  const viewerHash = (searchParams.get("viewerHash") ?? "").trim().slice(0, 32);   // 閲覧者の公開ハッシュ=本人判定用（生device_idではない）
   if (!idParam) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
 
@@ -87,6 +88,8 @@ export async function GET(request: Request) {
     let posterHandle: string | null = null;
     let posterIcon: string | null = null;
     let posterId: string | null = null;   // 公開ハッシュ（プロフィール/フォロー用・生device_idは返さない）
+    let isMine = false;                    // 閲覧者が投稿者本人か（匿名でも本人には自分の表示を出す）
+    let postVisibility = "";               // 投稿の公開範囲（本人向けに「匿名で公開中」等の表示に使う）
 
     if (isMoodlog) {
       // ── みんなのMoodログ(spot_posts)＝「投稿」ボタンから入る統一投稿 ──
@@ -110,12 +113,17 @@ export async function GET(request: Request) {
       if (typeof post.price_note === "string" && post.price_note) priceText = post.price_note;
       else if (typeof post.price_chip === "string" && post.price_chip) priceText = post.price_chip;
       if (typeof post.rating === "number" && post.rating >= 1 && post.rating <= 5) rating = post.rating;
-      if (post.visibility !== "spot_public_anonymous" && typeof post.device_id === "string" && post.device_id) {
-        posterName = (post.poster_name as string | null) ?? null;
-        posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
-        const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
-        posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
-        posterId = deviceHash(post.device_id);
+      postVisibility = String(post.visibility ?? "");
+      if (typeof post.device_id === "string" && post.device_id) {
+        isMine = !!viewerHash && deviceHash(post.device_id) === viewerHash;
+        // 匿名投稿は他者には出さないが、本人(isMine)には自分のプロフィール表示を出す
+        if (post.visibility !== "spot_public_anonymous" || isMine) {
+          posterName = (post.poster_name as string | null) ?? null;
+          posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
+          const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
+          posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+          posterId = deviceHash(post.device_id);
+        }
       }
       respId = String(post.id);
       userTitle = String(post.place_name ?? "").trim();
@@ -382,8 +390,11 @@ export async function GET(request: Request) {
         posterHandle,         // 投稿者の@ID（未設定はnull）
         posterIcon,           // 投稿者アイコン（ハッシュ名URL）
         posterId,             // 投稿者の公開ハッシュ（プロフィール/フォロー用・匿名はnull）
+        isMine,               // 閲覧者が投稿者本人か（本人には匿名でも自分の表示を出す）
+        visibility: postVisibility,   // 公開範囲（本人向けに「匿名で公開中」等の表示に使う・他者には影響なし）
       },
-    }, { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600" } });
+      // viewerHash 付きは本人向けに内容が変わるため CDN 共有キャッシュしない（本人の匿名投稿情報の混在防止）
+    }, { headers: { "Cache-Control": viewerHash ? "private, no-store" : "public, s-maxage=60, stale-while-revalidate=600" } });
   } catch (e) {
     console.error("[community-spot]", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

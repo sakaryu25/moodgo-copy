@@ -30,7 +30,7 @@ import CommentsSection from '@/components/CommentsSection';
 import MoodLogSection from '@/components/MoodLogSection';
 import SpotRating from '@/components/SpotRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
-import { useMyIdentity, resolvePoster } from '@/lib/myIdentity';
+import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -55,6 +55,7 @@ type Spot = {
   availableFrom?: string | null; availableUntil?: string | null;  // 公開期間（期間限定投稿）
   posterName?: string | null; posterHandle?: string | null; posterIcon?: string | null;  // 投稿者（匿名はnull）
   posterId?: string | null;   // 投稿者の公開ハッシュ（プロフィール/フォロー用）
+  visibility?: string | null; isMine?: boolean;   // 公開範囲＋本人判定（本人は匿名でも自分の表示）
   kind?: string;              // 'moodlog' | 'suggestion'（いいねtargetId構築用）
   likeCount?: number;         // 投稿へのいいね数
   visitedCount?: number;      // 行った！された回数（閲覧者が押した数）
@@ -71,6 +72,7 @@ const T = {
     defaultUser: 'MoodGoユーザー',
     poster: '投稿者',
     anonymousPost: '匿名の投稿',
+    anonSelfNote: '匿名で公開中（名前はあなただけに表示）',
     overallRating: '総合評価',
     beenHere: '行った！',
     limitedSpot: '期間限定の穴場',
@@ -116,6 +118,7 @@ const T = {
     defaultUser: 'MoodGo user',
     poster: 'Posted by',
     anonymousPost: 'Anonymous post',
+    anonSelfNote: 'Posted anonymously (name shown only to you)',
     overallRating: 'Overall rating',
     beenHere: 'Been here!',
     limitedSpot: 'Limited-time spot',
@@ -198,10 +201,12 @@ export default function CommunitySpotScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch(`/api/community-spot?id=${id}`);
+        const vh = await getMyHash().catch(() => '');
+        const res = await apiFetch(`/api/community-spot?id=${id}${vh ? `&viewerHash=${encodeURIComponent(vh)}` : ''}`);
         const d = await res.json();
         if (d.ok) {
           setSpot(d.spot);
+          if (typeof d.spot.isMine === 'boolean') setIsMine(d.spot.isMine);   // 本人なら匿名でも自分の表示＋編集/削除
           if (typeof d.spot.likeCount === 'number') setLikeCount(d.spot.likeCount);
           // 総合評価（みんなの★平均）をライブ取得してバーに表示（SpotRatingのキャッシュに依存しない）
           (async () => {
@@ -489,6 +494,9 @@ export default function CommunitySpotScreen() {
                     <VerifiedBadge type={poster.accountType} size={13} />
                     {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
                   </View>
+                  {isMine && spot.visibility === 'spot_public_anonymous' ? (
+                    <Text style={s.posterAnonNote}>{t.anonSelfNote}</Text>
+                  ) : null}
                 </View>
                 <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
               </TouchableOpacity>
@@ -794,6 +802,7 @@ const s = StyleSheet.create({
   voiceLabel: { fontSize: 10.5, fontWeight: '600', color: '#8B88A6' },
   voiceDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: 'rgba(0,0,0,0.09)' },
   posterKicker: { fontSize: 10, fontWeight: '800', color: '#B7A9E0', letterSpacing: 0.8, marginBottom: 1 },
+  posterAnonNote: { fontSize: 10.5, fontWeight: '700', color: '#B0A2C8', marginTop: 2 },
   posterNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   posterName: { fontSize: 13.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
   posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', flexShrink: 1 },
