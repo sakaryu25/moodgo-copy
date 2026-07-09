@@ -496,25 +496,27 @@ export default function ProfileTab() {
               </PuniPressable>
             </View>
 
-            <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
-            <View style={s.handleRow}>
-              {userHandle ? (
-                <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
-              ) : (
-                <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
-                  <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
-                </TouchableOpacity>
-              )}
-              {settings.showPrefecture && settings.profilePrefecture ? (
-                <View style={s.prefPill}>
-                  <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
-                  <Text style={s.prefText}>{settings.profilePrefecture}</Text>
-                </View>
+            <View style={s.heroRight}>
+              <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
+              <View style={s.handleRow}>
+                {userHandle ? (
+                  <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
+                ) : (
+                  <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
+                    <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
+                  </TouchableOpacity>
+                )}
+                {settings.showPrefecture && settings.profilePrefecture ? (
+                  <View style={s.prefPill}>
+                    <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
+                    <Text style={s.prefText}>{settings.profilePrefecture}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {settings.profileBio ? (
+                <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
               ) : null}
             </View>
-            {settings.profileBio ? (
-              <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
-            ) : null}
           </View>
 
           {/* 統計 4列（投稿 / 行った / いいね / フォロワー）: フル幅 */}
@@ -669,7 +671,7 @@ const s = StyleSheet.create({
   },
 
   // ヒーロー
-  heroRow: { alignItems: 'center', marginBottom: 0 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 0 },
   avatarBox: { width: 96, height: 96 },
   avatarRing: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   avatarWhite: {
@@ -683,10 +685,10 @@ const s = StyleSheet.create({
     width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2.5, borderColor: '#fff',
   },
-  heroRight: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  heroRight: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nickname: { fontSize: 23, fontWeight: '800', color: INK, letterSpacing: -0.5, textAlign: 'center', marginTop: 14, maxWidth: '100%' },
-  handleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 },
+  nickname: { fontSize: 22, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
+  handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   handle: { fontSize: 13, fontWeight: '600', color: SUB, flexShrink: 1 },
   onlinePill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -697,10 +699,10 @@ const s = StyleSheet.create({
   onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
   prefPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   prefText: { fontSize: 11, fontWeight: '700', color: SUB },
-  bioText: { fontSize: 14, color: '#5B5470', lineHeight: 20, marginTop: 10, textAlign: 'center', maxWidth: '92%' },
+  bioText: { fontSize: 13.5, color: '#5B5470', lineHeight: 19, marginTop: 7 },
 
   // 統計
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 18 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   statCol: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.5 },
   statLabel: { fontSize: 11.5, fontWeight: '600', color: SUB, marginTop: 1 },
