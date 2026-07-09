@@ -6,9 +6,10 @@
  *  - 一覧ページ(full=BlogView): 全件・無限スクロール(親のloadMoreKeyで追加読み込み)
  *  カードは components/community/*（PostGrid/PostCard/ImageCard/TextCard/UserInfo）。
  */
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ChevronDown, Map } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { consumeFeedStale } from '@/lib/feedRefresh';
 import * as Location from 'expo-location';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiFetch } from '@/lib/api';
@@ -203,6 +204,11 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     loadInitial();
     return () => { isMounted.current = false; };
   }, [loadInitial]);
+
+  // 投稿の作成/編集/削除でフィードが古くなった時だけ、次のフォーカスで再取得（公開範囲/名前の変更を反映）
+  useFocusEffect(useCallback(() => {
+    if (consumeFeedStale()) loadInitial();
+  }, [loadInitial]));
 
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）
   useEffect(() => {

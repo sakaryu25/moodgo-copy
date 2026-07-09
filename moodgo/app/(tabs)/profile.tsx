@@ -52,6 +52,7 @@ const T = {
     statVisited: '行った',
     statLikes: 'いいね',
     statFollowers: 'フォロワー',
+    statFollowing: 'フォロー中',
     editProfile: 'プロフィールを編集',
     myPosts: '自分の投稿',
     badges: 'バッジ',
@@ -67,6 +68,7 @@ const T = {
     emptyViewedSub: '気になるスポットをチェックしてみよう！',
     seeAll: (t: string) => `${t}をすべて見る`,
     followersA11y: 'フォロワー一覧を見る',
+    followingA11y: 'フォロー中一覧を見る',
     achieved: '達成',
     spotFallback: 'スポット',
     postFallback: '投稿',
@@ -84,6 +86,7 @@ const T = {
     statVisited: 'Visited',
     statLikes: 'Likes',
     statFollowers: 'Followers',
+    statFollowing: 'Following',
     editProfile: 'Edit profile',
     myPosts: 'My posts',
     badges: 'Badges',
@@ -99,6 +102,7 @@ const T = {
     emptyViewedSub: 'Check out a spot you’re curious about!',
     seeAll: (t: string) => `See all ${t}`,
     followersA11y: 'View followers',
+    followingA11y: 'View following',
     achieved: 'earned',
     spotFallback: 'Spot',
     postFallback: 'Post',
@@ -273,6 +277,19 @@ export default function ProfileTab() {
       if (d?.ok) { setFollows({ followers: d.followerCount ?? 0, following: d.followingCount ?? 0 }); setMyHash(d.hash ?? ''); }
     } catch { /* 0のまま */ }
   }, []);
+
+  // フォロワー/フォロー中の一覧へ遷移（ハッシュ未取得ならその場で取得してから）
+  const goFollowList = async (kind: 'followers' | 'following') => {
+    let h = myHash;
+    if (!h) {
+      try {
+        const deviceId = await getDeviceId();
+        const d = await apiFetch('/api/user-follows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', deviceId }) }).then((r) => r.json());
+        h = d?.hash ?? ''; if (h) setMyHash(h);
+      } catch { /* noop */ }
+    }
+    if (h) router.push({ pathname: '/follow-list', params: { id: h, kind } });
+  };
 
   // タブにフォーカスするたびに最新化（設定変更・投稿・行った！・閲覧の反映）
   useFocusEffect(
@@ -515,20 +532,21 @@ export default function ProfileTab() {
                     <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
                   </TouchableOpacity>
                 )}
-                {settings.showPrefecture && settings.profilePrefecture ? (
-                  <View style={s.prefPill}>
-                    <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
-                    <Text style={s.prefText}>{settings.profilePrefecture}</Text>
-                  </View>
-                ) : null}
               </View>
               {settings.profileBio ? (
                 <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
               ) : null}
+              {/* 在住地は自己紹介の後ろ（一言の下）に表示 */}
+              {settings.showPrefecture && settings.profilePrefecture ? (
+                <View style={s.prefPill}>
+                  <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
+                  <Text style={s.prefText}>{settings.profilePrefecture}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
-          {/* 統計 4列（投稿 / 行った / いいね / フォロワー）: フル幅 */}
+          {/* 統計 5列（投稿 / 行った / フォロー中 / フォロワー / いいね）: フル幅 */}
           <View style={s.statsRow}>
             <View style={s.statCol}>
               <Text style={s.statNum}>{posts.length}</Text>
@@ -540,27 +558,24 @@ export default function ProfileTab() {
               <Text style={s.statLabel}>{t.statVisited}</Text>
             </View>
             <View style={s.statDivider} />
-            <View style={s.statCol}>
-              <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
-              <Text style={s.statLabel}>{t.statLikes}</Text>
-            </View>
+            <TouchableOpacity style={s.statCol} activeOpacity={0.7}
+              onPress={() => goFollowList('following')}
+              accessibilityRole="button" accessibilityLabel={t.followingA11y}>
+              <Text style={s.statNum}>{follows.following}</Text>
+              <Text style={s.statLabel}>{t.statFollowing}</Text>
+            </TouchableOpacity>
             <View style={s.statDivider} />
             <TouchableOpacity style={s.statCol} activeOpacity={0.7}
-              onPress={async () => {
-                let h = myHash;
-                if (!h) {   // ロード前にタップされても取得してから遷移
-                  try {
-                    const deviceId = await getDeviceId();
-                    const d = await apiFetch('/api/user-follows', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', deviceId }) }).then((r) => r.json());
-                    h = d?.hash ?? ''; if (h) setMyHash(h);
-                  } catch { /* noop */ }
-                }
-                if (h) router.push({ pathname: '/follow-list', params: { id: h, kind: 'followers' } });
-              }}
+              onPress={() => goFollowList('followers')}
               accessibilityRole="button" accessibilityLabel={t.followersA11y}>
               <Text style={s.statNum}>{follows.followers}</Text>
               <Text style={s.statLabel}>{t.statFollowers}</Text>
             </TouchableOpacity>
+            <View style={s.statDivider} />
+            <View style={s.statCol}>
+              <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
+              <Text style={s.statLabel}>{t.statLikes}</Text>
+            </View>
           </View>
 
           {/* プロフィールを編集（h60 / r999 / グラデ #FF63A9→#5A8DFF）→ 既存の編集画面へ */}
@@ -706,7 +721,7 @@ const s = StyleSheet.create({
   },
   onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#34C759' },
   onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
-  prefPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  prefPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8 },
   prefText: { fontSize: 11, fontWeight: '700', color: SUB },
   bioText: { fontSize: 13.5, color: '#5B5470', lineHeight: 19, marginTop: 7 },
 

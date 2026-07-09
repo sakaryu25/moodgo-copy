@@ -22,6 +22,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
 import { showToast } from '@/lib/toast';
+import { markFeedStale } from '@/lib/feedRefresh';
 import { DEEP_DIVE } from '@/components/QuizFlow';
 import { useSettings } from '@/lib/settingsStore';
 
@@ -425,7 +426,7 @@ export default function PostScreen() {
           }),
         }).then((r) => r.json());
         setSubmitting(false);
-        if (d?.ok) setDone(true);
+        if (d?.ok) { markFeedStale(); setDone(true); }   // フィードを再取得対象に（公開範囲/名前の変更を反映）
         else showToast(t.tUpdateFailTitle, d?.error ?? t.tRetrySub);
       } catch { setSubmitting(false); showToast(t.tUpdateFailSub2Title, t.tNetworkSub); }
       return;
@@ -495,6 +496,7 @@ export default function PostScreen() {
       const d = await res.json();
       if (!d?.ok) { showToast(t.tPostFailTitle, d?.error ?? t.tRetrySub); setSubmitting(false); return; }
       setSubmitting(false);
+      markFeedStale();   // 新規投稿をフィードに反映（次のフィード表示で再取得）
       setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast(t.tPostFailSub2Title, t.tPostFailSub2); setSubmitting(false); }
   };

@@ -507,8 +507,8 @@ export default function CommunitySpotScreen() {
                   <View style={s.posterNameRow}>
                     <Text style={s.posterName} numberOfLines={1}>{poster.name?.trim() || t.defaultUser}</Text>
                     <VerifiedBadge type={poster.accountType} size={13} />
-                    {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
                   </View>
+                  {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
                 </View>
                 <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
               </TouchableOpacity>
@@ -817,7 +817,7 @@ const s = StyleSheet.create({
   posterAnonNote: { fontSize: 10.5, fontWeight: '700', color: '#B0A2C8', marginTop: 2 },
   posterNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   posterName: { fontSize: 13.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
-  posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', flexShrink: 1 },
+  posterHandle: { fontSize: 11, fontWeight: '600', color: '#8B88A6', marginTop: 1 },
   posterRate: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F0EDF7' },
   posterRateTop: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   posterRateLabel: { fontSize: 12, fontWeight: '700', color: '#D97706' },
