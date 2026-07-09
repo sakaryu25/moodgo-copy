@@ -31,7 +31,9 @@ const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
 const GAP = 12;                                    // カード間（横・縦）
 const COL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);
-const CARD_H = Math.round(COL_W * 4 / 3);          // カード比率 3:4
+const CARD_H = Math.round(COL_W * 4 / 3);          // カード比率 3:4（既定）
+// みんなの穴場のような段差(masonry)にするためカード高さ比率を循環させる
+const CARD_RATIOS = [1.34, 1.0, 1.18, 1.5];
 const PAGE = 8;                                    // 無限スクロールの1回の追加数
 
 // 配色（白ベース・線少なめ・高級感）
@@ -74,11 +76,11 @@ function Stat({ num, label, onPress }: { num: number; label: string; onPress?: (
 }
 
 // ── 投稿カード（Pinterest風・画像いっぱい＋下部に黒グラデ＋タイトル/♥/📍）──────
-function PostCard({ post, onPress }: { post: ProfilePost; onPress: () => void }) {
+function PostCard({ post, ratio = 1.34, onPress }: { post: ProfilePost; ratio?: number; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [s.card, pressed && { transform: [{ scale: 0.98 }] }]}
+      style={({ pressed }) => [s.card, { height: Math.round(COL_W * ratio) }, pressed && { transform: [{ scale: 0.98 }] }]}
       accessibilityRole="button" accessibilityLabel={`${post.spot_name || '投稿'}を見る`}
     >
       {post.image ? (
@@ -108,7 +110,7 @@ function PostCard({ post, onPress }: { post: ProfilePost; onPress: () => void })
 }
 
 // ── 行ったスポットの勲章バッジ（円形写真＋グラデリング＋メダル＋名前/達成日）──────
-const MEDAL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP) / 2);   // 2列
+const MEDAL_W = Math.floor((SCREEN_W - SIDE * 2 - GAP * 3) / 4);   // 行ったスポットは横4列（中央揃え）
 function fmtAchieved(at: string | null): string {
   if (!at) return '';
   const m = at.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -266,9 +268,15 @@ export default function UserProfileScreen() {
   const visible = useMemo(() => posts.slice(0, shown), [posts, shown]);
   const hasMore = shown < posts.length;
   // 貪欲2列（左=偶数index / 右=奇数index。3:4の均一グリッド）
+  // みんなの穴場のような段差(masonry): 各カードに可変高さ比率を付け、低い方の列へ積む
   const [colL, colR] = useMemo(() => {
-    const l: ProfilePost[] = [], r: ProfilePost[] = [];
-    visible.forEach((p, i) => (i % 2 === 0 ? l : r).push(p));
+    const l: Array<ProfilePost & { _ratio: number }> = [], r: Array<ProfilePost & { _ratio: number }> = [];
+    let hL = 0, hR = 0;
+    visible.forEach((p, i) => {
+      const ratio = CARD_RATIOS[i % CARD_RATIOS.length];
+      if (hL <= hR) { l.push({ ...p, _ratio: ratio }); hL += ratio; }
+      else { r.push({ ...p, _ratio: ratio }); hR += ratio; }
+    });
     return [l, r];
   }, [visible]);
 
@@ -354,10 +362,14 @@ export default function UserProfileScreen() {
           {/* ── 統計 5列（カード無し・背景直載せ）── */}
           <View style={s.statsRow}>
             <Stat num={profile?.postCount ?? 0} label="投稿" />
-            <Stat num={profile?.visitedCount ?? 0} label="行った" />
-            <Stat num={profile?.likeCount ?? 0} label="いいね" />
-            <Stat num={followerCount} label="フォロワー" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'followers' } })} />
+            <View style={s.statDivider} />
             <Stat num={profile?.followingCount ?? 0} label="フォロー中" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'following' } })} />
+            <View style={s.statDivider} />
+            <Stat num={followerCount} label="フォロワー" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'followers' } })} />
+            <View style={s.statDivider} />
+            <Stat num={profile?.likeCount ?? 0} label="いいね" />
+            <View style={s.statDivider} />
+            <Stat num={profile?.visitedCount ?? 0} label="行った" />
           </View>
 
           {/* ── フォローボタン（自分のページでは出さない）── */}
@@ -401,8 +413,8 @@ export default function UserProfileScreen() {
             ) : (
               <>
                 <View style={s.grid}>
-                  <View style={s.col}>{colL.map((p) => <PostCard key={p.id} post={p} onPress={() => openPost(p)} />)}</View>
-                  <View style={s.col}>{colR.map((p) => <PostCard key={p.id} post={p} onPress={() => openPost(p)} />)}</View>
+                  <View style={s.col}>{colL.map((p) => <PostCard key={p.id} post={p} ratio={p._ratio} onPress={() => openPost(p)} />)}</View>
+                  <View style={s.col}>{colR.map((p) => <PostCard key={p.id} post={p} ratio={p._ratio} onPress={() => openPost(p)} />)}</View>
                 </View>
                 {pagingMore && <ActivityIndicator color={BRAND} size="small" style={{ marginTop: 16 }} />}
               </>
@@ -449,11 +461,12 @@ const s = StyleSheet.create({
   handle: { fontSize: 14, fontWeight: '700', color: BRAND, marginTop: 4 },
   handleMuted: { fontSize: 14, fontWeight: '600', color: SUB, marginTop: 4 },
 
-  // 統計（カード無し）
-  statsRow: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: SIDE, marginTop: 22 },
+  // 統計（カード無し・区切り線あり＝プロフィールタブと統一）
+  statsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE, marginTop: 22 },
   statCol: { flex: 1, alignItems: 'center', paddingHorizontal: 2 },
-  statNum: { fontSize: 21, fontWeight: '800', color: INK, letterSpacing: -0.6 },
-  statLabel: { fontSize: 11, fontWeight: '600', color: SUB, marginTop: 4 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 24, backgroundColor: 'rgba(90,90,120,0.16)' },
+  statNum: { fontSize: 19, fontWeight: '800', color: INK, letterSpacing: -0.6 },
+  statLabel: { fontSize: 10.5, fontWeight: '600', color: SUB, marginTop: 4 },
 
   // フォローボタン
   followWrap: { paddingHorizontal: SIDE, marginTop: 22 },
@@ -480,7 +493,7 @@ const s = StyleSheet.create({
   grid: { flexDirection: 'row', gap: GAP, paddingHorizontal: SIDE, marginTop: 18, alignItems: 'flex-start' },
   col: { flex: 1, minWidth: 0, gap: GAP },
   card: {
-    width: COL_W, height: CARD_H, borderRadius: 18, overflow: 'hidden', backgroundColor: '#ECE8F5',
+    width: COL_W, borderRadius: 18, overflow: 'hidden', backgroundColor: '#ECE8F5',
     shadowColor: '#1A1420', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
   cardImg: { width: '100%', height: '100%' },
@@ -498,17 +511,17 @@ const s = StyleSheet.create({
   // 行ったスポットの勲章バッジ（2列×N・少数は中央揃え）
   medalGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: GAP, paddingHorizontal: SIDE, marginTop: 18 },
   medal: { width: MEDAL_W, alignItems: 'center', paddingVertical: 8 },
-  medalRingWrap: { width: 92, height: 92 },
-  medalRing: { width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center' },
-  medalWhite: { width: 82, height: 82, borderRadius: 41, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  medalImg: { width: 74, height: 74, borderRadius: 37 },
+  medalRingWrap: { width: 64, height: 64 },
+  medalRing: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  medalWhite: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  medalImg: { width: 50, height: 50, borderRadius: 25 },
   medalPh: { backgroundColor: '#F0EBFF', alignItems: 'center', justifyContent: 'center' },
   medalIcon: {
-    position: 'absolute', right: -2, bottom: -2, width: 30, height: 30, borderRadius: 15,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#fff',
+    position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff',
   },
-  medalName: { fontSize: 12.5, fontWeight: '800', color: INK, marginTop: 9, maxWidth: MEDAL_W - 8, textAlign: 'center' },
-  medalDate: { fontSize: 10.5, fontWeight: '600', color: SUB, marginTop: 2 },
+  medalName: { fontSize: 10.5, fontWeight: '800', color: INK, marginTop: 7, maxWidth: MEDAL_W - 2, textAlign: 'center' },
+  medalDate: { fontSize: 9, fontWeight: '600', color: SUB, marginTop: 1 },
 
   // 空状態
   emptyWrap: { alignItems: 'center', paddingVertical: 70, gap: 12 },
