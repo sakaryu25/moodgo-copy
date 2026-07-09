@@ -271,21 +271,35 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     const body = text.trim();
     if (!body || sending) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const parentId = replyTo?.id ?? null;
+    const prevReplyTo = replyTo;
+    // 楽観的に即挿入（押した瞬間に自分のコメントが出る）。成功後の load() で@handle/アイコン等を整える。
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Comment = {
+      id: tempId, body, created_at: new Date().toISOString(),
+      handle: null, posterId: '', icon: null, mine: true, parentId, likeCount: 0, liked: false,
+    };
+    setItems((prev) => [optimistic, ...prev]);
+    setText(''); setReplyTo(null); setMentionResults([]);
     setSending(true);
     try {
       const deviceId = await getDeviceId();
       const d = await apiFetch('/api/spot-comments', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', targetId, deviceId, body, parentId: replyTo?.id ?? undefined }),
+        body: JSON.stringify({ action: 'create', targetId, deviceId, body, parentId: parentId ?? undefined }),
       }).then((r) => r.json());
       if (d?.ok) {
-        setText(''); setReplyTo(null);
-        load();   // 追加後に再取得（@handle等をサーバー整形で揃える）
+        load();   // サーバー整形（@handle/アイコン等）で置き換え
       } else {
+        setItems((prev) => prev.filter((c) => c.id !== tempId));   // 失敗は取り消し＋入力を戻す
+        setText(body); setReplyTo(prevReplyTo);
         notify('コメントできませんでした', d?.error ?? '時間をおいてお試しください');
       }
-    } catch { notify('コメントできませんでした', '通信に失敗しました'); }
-    finally { if (isMounted.current) setSending(false); }
+    } catch {
+      setItems((prev) => prev.filter((c) => c.id !== tempId));
+      setText(body); setReplyTo(prevReplyTo);
+      notify('コメントできませんでした', '通信に失敗しました');
+    } finally { if (isMounted.current) setSending(false); }
   };
 
   // コメントいいね（楽観的更新→サーバー整合）

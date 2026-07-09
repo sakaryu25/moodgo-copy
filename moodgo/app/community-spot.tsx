@@ -173,6 +173,7 @@ export default function CommunitySpotScreen() {
   // お気に入り保存/解除（ローカル）を目標状態に合わせる
   const setFavTo = async (on: boolean) => {
     if (!spot) return;
+    setFaved(on);   // 楽観的に即反映（ハートは押した瞬間に反映）
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
     const title = spot.placeName || spot.userTitle;
     const target = { title, placeId: spot.placeId };  // sameFav: ID優先の同一判定
@@ -184,7 +185,6 @@ export default function CommunitySpotScreen() {
         createdAt: new Date().toISOString(), placeId: spot.placeId, address: spot.address, rating: spot.googleRating,
         kind: 'post', spotId: id || spot.id }, ...faves];
     }
-    setFaved(on);
     if (next) { await saveJSON(FAVORITES_KEY, next); pushServerFavorites(next); }
   };
 

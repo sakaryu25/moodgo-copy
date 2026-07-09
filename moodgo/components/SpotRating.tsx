@@ -50,9 +50,11 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
 
   const send = async () => {
     if (busy || selected < 1 || selected === submitted) return;
-    setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const prevSubmitted = submitted;
     const wasFirst = submitted === 0;
+    setSubmitted(selected);   // 楽観的: 押した瞬間に「評価済み」表示（失敗時はロールバック）
+    setBusy(true);
     try {
       const did = await getDeviceId();
       const res = await apiFetch('/api/spot-rating', {
@@ -61,7 +63,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
       });
       const d = await res.json();
       if (d?.ok) {
-        setAvg(d.avg ?? null); setCount(d.count ?? 0); setSubmitted(selected);
+        setAvg(d.avg ?? null); setCount(d.count ?? 0);   // submitted は楽観的に設定済み
         onAvgRef.current?.(d.avg ?? null, d.count ?? 0);
         await AsyncStorage.setItem(cacheKey, JSON.stringify({ myStars: selected, avg: d.avg, count: d.count })).catch(() => {});
         if (wasFirst) onFirstRate?.();
@@ -80,8 +82,8 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
             }).catch(() => {});
           }
         }
-      }
-    } catch { /* 失敗時は据え置き */ } finally { setBusy(false); }
+      } else { setSubmitted(prevSubmitted); }   // 失敗はロールバック
+    } catch { setSubmitted(prevSubmitted); } finally { setBusy(false); }
   };
 
   const canSend = selected >= 1 && selected !== submitted;

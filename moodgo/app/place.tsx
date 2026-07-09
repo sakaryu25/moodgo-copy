@@ -384,23 +384,20 @@ export default function PlaceDetailPage() {
   const toggleFav = async () => {
     if (!rec) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const nextFaved = !faved;
+    setFaved(nextFaved);   // 楽観的に即トグル（ハートは押した瞬間に反映・ストレージ整合は後追い）
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-    let next: FavoriteItem[];
-    if (faves.some((f) => sameFav(f, rec))) {
-      next = faves.filter((f) => !sameFav(f, rec));
-      setFaved(false);
-    } else {
-      next = [{
-        title: rec.title, area: '', vibe: rec.vibe ?? '',
-        photoUrl: rec.photoUrl ?? '', photoUrls: rec.photoUrls,
-        mapUrl: rec.mapUrl, createdAt: new Date().toISOString(),
-        placeId: rec.placeId, address: rec.address, rating: rec.rating ?? null,
-        stationText: rec.stationText, distanceText: rec.distanceText,
-        priceLevel: rec.priceLevel, kind: 'place',
-        supabaseId: rec.supabaseId,  // 同一判定用(sameFav)
-      }, ...faves];
-      setFaved(true);
-    }
+    const next: FavoriteItem[] = nextFaved
+      ? (faves.some((f) => sameFav(f, rec)) ? faves : [{
+          title: rec.title, area: '', vibe: rec.vibe ?? '',
+          photoUrl: rec.photoUrl ?? '', photoUrls: rec.photoUrls,
+          mapUrl: rec.mapUrl, createdAt: new Date().toISOString(),
+          placeId: rec.placeId, address: rec.address, rating: rec.rating ?? null,
+          stationText: rec.stationText, distanceText: rec.distanceText,
+          priceLevel: rec.priceLevel, kind: 'place',
+          supabaseId: rec.supabaseId,  // 同一判定用(sameFav)
+        }, ...faves])
+      : faves.filter((f) => !sameFav(f, rec));
     await saveJSON(FAVORITES_KEY, next);
     pushServerFavorites(next);   // 行きたいリストのサーバー同期
   };
