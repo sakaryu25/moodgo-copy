@@ -712,7 +712,7 @@ const s = StyleSheet.create({
 
   // 編集ボタン
   editBtn: {
-    borderRadius: 999, overflow: 'hidden', marginBottom: GAP_Y,
+    borderRadius: 999, overflow: 'hidden', marginTop: 18, marginBottom: GAP_Y,
     shadowColor: PINK, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 14, elevation: 4,
   },
   editBtnInner: {
