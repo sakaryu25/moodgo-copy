@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { deviceHash, iconPathFor } from "@/lib/device-hash";
+import { deviceHash, anonPosterId, iconPathFor } from "@/lib/device-hash";
 import { handlesByDevice, deviceByHandle, accountTypesByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
@@ -150,7 +150,11 @@ export async function GET(request: Request) {
             poster_type: anon ? null : (acctMap.get(String(p.device_id ?? "")) ?? null),
             poster_icon: anon ? null : iconFor(p.device_id),
             // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
-            poster_id: typeof p.device_id === "string" && p.device_id ? deviceHash(p.device_id) : null,
+            //   匿名投稿は deviceHash とは別名前空間の anonPosterId を使う（公開投稿/プロフィールへの
+            //   逆引きを遮断・ブロックは不透明ハッシュ一致なので維持）。
+            poster_id: typeof p.device_id === "string" && p.device_id
+              ? (anon ? anonPosterId(p.device_id) : deviceHash(p.device_id))
+              : null,
             poster_anonymous: anon,   // 名前非公開の投稿か（本人でも名前を出さない＝設定を反映）
           };
         });

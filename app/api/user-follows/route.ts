@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { deviceHash } from "@/lib/device-hash";
+import { deviceHash, anonPosterId } from "@/lib/device-hash";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { sendPushToHash } from "@/lib/push-send";
 
@@ -52,8 +52,9 @@ export async function POST(req: Request) {
       if (!deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
       const me = deviceHash(deviceId);
       const c = await counts(db, me);
-      // 自分の公開ハッシュも返す（自分のフォロワー/フォロー中一覧へ遷移するため。生device_idではない）
-      return NextResponse.json({ ok: true, hash: me, followerCount: c.followers, followingCount: c.following });
+      // 自分の公開ハッシュも返す（自分のフォロワー/フォロー中一覧へ遷移するため。生device_idではない）。
+      //   anonHash=匿名投稿用ハッシュ。client が「自分の匿名投稿」を判定するため（240711cの自己表示）。
+      return NextResponse.json({ ok: true, hash: me, anonHash: anonPosterId(deviceId), followerCount: c.followers, followingCount: c.following });
     }
 
     if (!HASH_RE.test(targetId)) return NextResponse.json({ ok: false, error: "targetIdが不正です" }, { status: 400 });

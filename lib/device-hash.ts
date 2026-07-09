@@ -11,6 +11,21 @@ export function deviceHash(deviceId: string): string {
   return createHash("sha256").update(String(deviceId ?? "")).digest("hex").slice(0, 16);
 }
 
+/**
+ * 匿名投稿(spot_public_anonymous)用の公開識別子。
+ * 公開 deviceHash とは別名前空間（sha256入力に "anon:v1:" を前置）にすることで、
+ * 匿名投稿の poster_id を deviceHash と一致させない。狙い:
+ *   - /api/user-profile や /user/[id] は deviceHash で照合するため、この値では名前/アイコンに
+ *     逆引きできない（同一人物の公開投稿・プロフィールとも突き合わせ不可＝匿名性の維持）。
+ *   - それでいて端末ごとに安定 → ブロック(user_blocks は不透明ハッシュ一致)はそのまま機能する。
+ * ⚠ deviceHash と同じ 16hex 形式(HASH_RE 互換)だが、前置により値は必ず異なる。
+ *   残存: 同一人物の匿名投稿どうしは同じ値になる（クラスタリング可能）。これは per-user
+ *   ブロックを匿名投稿でも効かせるための不可避なトレードオフ。
+ */
+export function anonPosterId(deviceId: string): string {
+  return createHash("sha256").update("anon:v1:" + String(deviceId ?? "")).digest("hex").slice(0, 16);
+}
+
 /** プロフィールアイコンの保存パス（user-icons バケット内） */
 export function iconPathFor(deviceId: string): string {
   return `${deviceHash(deviceId)}.jpg`;
