@@ -1,7 +1,7 @@
 // カード下部の投稿者情報: アイコン＋名前（左）／ 投稿時間＋⋯メニュー（右）
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { MoreHorizontal } from 'lucide-react-native';
+import { Lock, MoreHorizontal } from 'lucide-react-native';
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { Post } from './postTypes';
@@ -15,22 +15,24 @@ const AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCE
 export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => void }) {
   const { lang } = useSettings();
   const me = useMyIdentity();
-  // 名前非公開(匿名)の投稿は本人でも名前/アイコン/バッジを出さない＝設定を反映。
-  // 公開投稿は自分なら現在プロフィールで上書き（フリーズ表示を最新化＝全画面で統一）。
+  // 自分の投稿は公開/名前非公開を問わず常に自分の名前・アイコン・バッジで表示（全画面で統一）。
+  // 他人の名前非公開(匿名)投稿だけ名前/アイコン/バッジを隠す＝逆引き不可のまま。
   const posterId = post.raw.poster_id;
   const anon = !!post.raw.poster_anonymous;
   const eff = resolvePoster(posterId, { name: post.raw.poster_name, icon: post.raw.poster_icon, accountType: post.raw.poster_type }, me);
-  const name = anon
-    ? (eff.isMe ? (lang === 'en' ? 'Your post' : 'あなたの投稿') : (post.raw.poster_name?.trim() || 'MoodGo ユーザー'))
-    : (eff.name?.trim() || 'MoodGo ユーザー');
-  const icon = anon ? null : (eff.icon || null);
-  const badgeType = anon ? null : eff.accountType;
+  const hidden = anon && !eff.isMe;         // 他人の名前非公開＝名前を隠す
+  const selfAnon = anon && eff.isMe;        // 自分の名前非公開＝名前は出すが「非公開」を明示
+  const name = hidden ? (post.raw.poster_name?.trim() || 'MoodGo ユーザー') : (eff.name?.trim() || 'MoodGo ユーザー');
+  const icon = hidden ? null : (eff.icon || null);
+  const badgeType = hidden ? null : eff.accountType;
   const [imgOk, setImgOk] = useState(true);
   const bg = AVATAR_BG[(name.charCodeAt(0) ?? 0) % AVATAR_BG.length];
 
-  // 名前非公開はプロフィール遷移しない。公開かつ(本人 or 名前あり)のみ遷移。
-  const canOpen = !anon && !!posterId && (eff.isMe || !!post.raw.poster_name);
-  const openUser = () => { if (canOpen) router.push({ pathname: '/user/[id]', params: { id: posterId! } }); };
+  // 自分の投稿は自分の公開プロフィールへ（名前非公開でも本人は開ける＝開く先は me.hash）。
+  // 他人は公開かつ名前ありのみ遷移。
+  const openId = eff.isMe ? (me.hash || posterId) : posterId;
+  const canOpen = !hidden && !!openId && (eff.isMe || !!post.raw.poster_name);
+  const openUser = () => { if (canOpen && openId) router.push({ pathname: '/user/[id]', params: { id: openId } }); };
   return (
     <View style={s.row}>
       <TouchableOpacity style={s.left} onPress={openUser} disabled={!canOpen} activeOpacity={0.7}
@@ -43,6 +45,12 @@ export default function UserInfo({ post, onMenu }: { post: Post; onMenu: () => v
         </View>
         <Text style={s.name} numberOfLines={1}>{name}</Text>
         <VerifiedBadge type={badgeType} size={12} />
+        {selfAnon ? (
+          <View style={s.privTag}>
+            <Lock size={8} color="#9A96A8" strokeWidth={2.4} />
+            <Text style={s.privTagText}>{lang === 'en' ? 'Private' : '非公開'}</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
       <View style={s.right}>
         <Text style={s.time}>{relativeTime(post.createdAt, lang)}</Text>
@@ -61,6 +69,9 @@ const s = StyleSheet.create({
   avatarImg: { width: 20, height: 20 },
   avatarInit: { fontSize: 10, fontWeight: '800', color: '#6B6480' },
   name: { fontSize: 11.5, fontWeight: '700', color: '#555', flexShrink: 1 },
+  // 自分の名前非公開投稿につく小さな「非公開」タグ（名前は出しつつ状態を明示）
+  privTag: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#F0EEF5', borderRadius: 5, paddingHorizontal: 4, paddingVertical: 1, flexShrink: 0 },
+  privTagText: { fontSize: 8.5, fontWeight: '700', color: '#9A96A8' },
   right: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   time: { fontSize: 10.5, color: '#9B96A6', fontWeight: '500' },
 });

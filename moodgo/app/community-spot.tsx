@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -74,6 +74,7 @@ const T = {
     anonymousPost: '匿名の投稿',
     anonSelfName: 'あなたの投稿（名前非公開）',
     anonSelfNote: '他の人には名前が表示されません',
+    privateTag: '非公開',
     overallRating: '総合評価',
     beenHere: '行った！',
     limitedSpot: '期間限定の穴場',
@@ -121,6 +122,7 @@ const T = {
     anonymousPost: 'Anonymous post',
     anonSelfName: 'Your post (name hidden)',
     anonSelfNote: 'Your name isn\'t shown to others',
+    privateTag: 'Private',
     overallRating: 'Overall rating',
     beenHere: 'Been here!',
     limitedSpot: 'Limited-time spot',
@@ -475,24 +477,27 @@ export default function CommunitySpotScreen() {
 
           {/* ── 投稿者カード（タップでプロフィール）＋投稿へのいいね ── */}
           <View style={s.posterCard}>
-            {spot.visibility === 'spot_public_anonymous' ? (
-              // 名前非公開: 名前は出さない（本人にも設定を反映）。本人には自分の投稿と分かる表記＋注記
+            {spot.visibility === 'spot_public_anonymous' && !isMine ? (
+              // 他人の名前非公開投稿: 名前は出さない（匿名のまま＝逆引き不可）
               <View style={s.posterMain}>
                 <View style={[s.posterCardAvatar, s.posterAvatarPh]}>
                   <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.posterKicker}>{t.poster}</Text>
-                  <Text style={s.posterName} numberOfLines={1}>{isMine ? t.anonSelfName : t.anonymousPost}</Text>
-                  {isMine ? <Text style={s.posterAnonNote}>{t.anonSelfNote}</Text> : null}
+                  <Text style={s.posterName} numberOfLines={1}>{t.anonymousPost}</Text>
                 </View>
               </View>
             ) : spot.posterId ? (() => {
-              // 公開投稿: 自分なら現在プロフィール（名前/アイコン/@ID/バッジ）で上書き＝全画面統一
+              // 公開 or 自分の名前非公開: 現在プロフィール（名前/アイコン/@ID/バッジ）で表示＝全画面で名前を統一。
+              //   自分の名前非公開は本人にだけ名前を出し「非公開」を明示（他者には上の匿名分岐で隠れる）。
               const poster = resolvePoster(spot.posterId, { name: spot.posterName, icon: spot.posterIcon, handle: spot.posterHandle }, me);
+              const selfAnon = isMine && spot.visibility === 'spot_public_anonymous';
+              const openId = poster.isMe ? (me.hash || spot.posterId) : spot.posterId;
               return (
               <TouchableOpacity
-                onPress={() => router.push({ pathname: '/user/[id]', params: { id: spot.posterId! } })}
+                onPress={() => { if (openId) router.push({ pathname: '/user/[id]', params: { id: openId } }); }}
+                disabled={!openId}
                 activeOpacity={0.75} style={s.posterMain}
                 accessibilityRole="button" accessibilityLabel={t.profileA11y(poster.name?.trim() || t.defaultUser)}>
                 {poster.icon ? (
@@ -507,8 +512,15 @@ export default function CommunitySpotScreen() {
                   <View style={s.posterNameRow}>
                     <Text style={s.posterName} numberOfLines={1}>{poster.name?.trim() || t.defaultUser}</Text>
                     <VerifiedBadge type={poster.accountType} size={13} />
+                    {selfAnon ? (
+                      <View style={s.posterPrivTag}>
+                        <Lock size={9} color="#9A96A8" strokeWidth={2.4} />
+                        <Text style={s.posterPrivText}>{t.privateTag}</Text>
+                      </View>
+                    ) : null}
                   </View>
                   {poster.handle ? <Text style={s.posterHandle} numberOfLines={1}>@{poster.handle}</Text> : null}
+                  {selfAnon ? <Text style={s.posterAnonNote}>{t.anonSelfNote}</Text> : null}
                 </View>
                 <ChevronRight size={17} color="#B7B3C2" strokeWidth={2.2} />
               </TouchableOpacity>
@@ -815,6 +827,9 @@ const s = StyleSheet.create({
   voiceDivider: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: 'rgba(0,0,0,0.09)' },
   posterKicker: { fontSize: 10, fontWeight: '800', color: '#B7A9E0', letterSpacing: 0.8, marginBottom: 3 },
   posterAnonNote: { fontSize: 10.5, fontWeight: '700', color: '#B0A2C8', marginTop: 2 },
+  // 自分の名前非公開投稿につく「非公開」タグ（本人だけに名前を出しつつ状態を明示）
+  posterPrivTag: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#F0EEF5', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1.5, flexShrink: 0 },
+  posterPrivText: { fontSize: 9.5, fontWeight: '800', color: '#9A96A8' },
   posterNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   posterName: { fontSize: 14.5, fontWeight: '800', color: '#1E1548', flexShrink: 1 },
   posterHandle: { fontSize: 11.5, fontWeight: '600', color: '#8B88A6', marginTop: 3 },
