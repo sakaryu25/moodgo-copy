@@ -496,30 +496,26 @@ export default function ProfileTab() {
               </PuniPressable>
             </View>
 
-            <View style={s.heroRight}>
-              <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
-              <View style={s.handleRow}>
-                {userHandle ? (
-                  <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
-                ) : (
-                  <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
-                    <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
-                  </TouchableOpacity>
-                )}
-                {settings.showPrefecture && settings.profilePrefecture ? (
-                  <View style={s.prefPill}>
-                    <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
-                    <Text style={s.prefText}>{settings.profilePrefecture}</Text>
-                  </View>
-                ) : null}
-              </View>
+            <Text style={s.nickname} numberOfLines={1}>{displayName}</Text>
+            <View style={s.handleRow}>
+              {userHandle ? (
+                <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
+              ) : (
+                <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
+                  <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
+                </TouchableOpacity>
+              )}
+              {settings.showPrefecture && settings.profilePrefecture ? (
+                <View style={s.prefPill}>
+                  <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
+                  <Text style={s.prefText}>{settings.profilePrefecture}</Text>
+                </View>
+              ) : null}
             </View>
+            {settings.profileBio ? (
+              <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
+            ) : null}
           </View>
-
-          {/* 一言（フル幅・名前の下に表示） */}
-          {settings.profileBio ? (
-            <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
-          ) : null}
 
           {/* 統計 4列（投稿 / 行った / いいね / フォロワー）: フル幅 */}
           <View style={s.statsRow}>
@@ -673,7 +669,7 @@ const s = StyleSheet.create({
   },
 
   // ヒーロー
-  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 0 },
+  heroRow: { alignItems: 'center', marginBottom: 0 },
   avatarBox: { width: 96, height: 96 },
   avatarRing: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   avatarWhite: {
@@ -689,8 +685,8 @@ const s = StyleSheet.create({
   },
   heroRight: { flex: 1, minWidth: 0, justifyContent: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nickname: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.5, flexShrink: 1 },
-  handleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  nickname: { fontSize: 23, fontWeight: '800', color: INK, letterSpacing: -0.5, textAlign: 'center', marginTop: 14, maxWidth: '100%' },
+  handleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 },
   handle: { fontSize: 13, fontWeight: '600', color: SUB, flexShrink: 1 },
   onlinePill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -701,10 +697,10 @@ const s = StyleSheet.create({
   onlineText: { fontSize: 10.5, fontWeight: '700', color: INK },
   prefPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   prefText: { fontSize: 11, fontWeight: '700', color: SUB },
-  bioText: { fontSize: 14, color: '#5B5470', lineHeight: 20, marginTop: 16 },
+  bioText: { fontSize: 14, color: '#5B5470', lineHeight: 20, marginTop: 10, textAlign: 'center', maxWidth: '92%' },
 
   // 統計
-  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 18 },
   statCol: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 20, fontWeight: '800', color: INK, letterSpacing: -0.5 },
   statLabel: { fontSize: 11.5, fontWeight: '600', color: SUB, marginTop: 1 },
