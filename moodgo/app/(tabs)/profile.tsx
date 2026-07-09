@@ -533,15 +533,14 @@ export default function ProfileTab() {
                   </TouchableOpacity>
                 )}
               </View>
-              {settings.profileBio ? (
-                <Text style={s.bioText} numberOfLines={3}>{settings.profileBio}</Text>
-              ) : null}
-              {/* 在住地は自己紹介の後ろ（一言の下）に表示 */}
-              {settings.showPrefecture && settings.profilePrefecture ? (
-                <View style={s.prefPill}>
-                  <MapPin size={11} color="#8B88A6" strokeWidth={2.2} />
-                  <Text style={s.prefText}>{settings.profilePrefecture}</Text>
-                </View>
+              {/* 一言（自己紹介）＋在住地(県)を同じ行に続けて表示（例: よろしくお願いします　神奈川）*/}
+              {(settings.profileBio || (settings.showPrefecture && settings.profilePrefecture)) ? (
+                <Text style={s.bioText} numberOfLines={3}>
+                  {settings.profileBio}
+                  {settings.showPrefecture && settings.profilePrefecture ? (
+                    <Text style={s.prefInline}>{settings.profileBio ? '　' : ''}{settings.profilePrefecture}</Text>
+                  ) : null}
+                </Text>
               ) : null}
             </View>
           </View>
@@ -724,6 +723,7 @@ const s = StyleSheet.create({
   prefPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 3, backgroundColor: '#F1ECFB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8 },
   prefText: { fontSize: 11, fontWeight: '700', color: SUB },
   bioText: { fontSize: 13.5, color: '#5B5470', lineHeight: 19, marginTop: 7 },
+  prefInline: { color: '#8B88A6', fontWeight: '700' },   // 一言の続きに出す在住地（薄めの色で区別）
 
   // 統計
   statsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
