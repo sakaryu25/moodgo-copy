@@ -48,10 +48,87 @@ import { pushServerFavorites } from '@/lib/favoritesServer';
 import { sameFav } from '@/lib/favKey';
 import { addViewedLog } from '@/lib/spotLog';
 import { genrePlaceholder } from '@/lib/genrePlaceholder';
+import { useSettings, type Lang } from '@/lib/settingsStore';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const GRAD_DARK: [string, string] = ['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)'];
+
+// ── 表示テキスト（日本語 / 英語） ──────────────────────────────────────────────
+const T = {
+  ja: {
+    close: '閉じる',
+    readMore: '続きを読む',
+    photoPermTitle: '写真へのアクセスが必要です',
+    photoPermMsg: '設定アプリからMoodGoに写真の許可をしてください。',
+    uploadFailed: '送信に失敗しました',
+    firstThanksTitle: 'ありがとうございます！',
+    firstThanksMsg: 'この場所の一番乗りです。あなたの写真がサムネに使われます 📸',
+    errorTitle: 'エラー',
+    photoUploadFailed: '写真の投稿に失敗しました',
+    notFound: 'データが見つかりませんでした',
+    openNow: '営業中',
+    closedNow: '閉店中',
+    spookyContributeTitle: '写真を提供してください',
+    spookyContributeSub: 'あなたの写真でこの場所を伝えてください 🙏',
+    addPhoto: '写真を追加',
+    spookyNoPhotoTitle: 'この場所の写真がありません',
+    spookyNoPhotoSub: '写真をお持ちの方は、ぜひ提供してください 🙏',
+    noPhotoYet: 'まだ写真がありません',
+    inviteTitle: 'あなたが「最初の1枚」の主に',
+    inviteSub: 'ここを探す次の人の、いちばんの手がかりになります',
+    addFirstPhoto: '一番乗りで写真を追加',
+    map: 'マップ',
+    overallRating: '総合評価',
+    overallRatingCount: (n: number) => `総合評価（${n}）`,
+    visited: '行った！',
+    loadingDetail: '詳細情報を読み込み中...',
+    hoursLoadFailed: '営業時間などの読み込みに失敗しました。タップして再試行',
+    searchInstagram: 'Instagramで検索',
+    openingHours: '営業時間',
+    hoursCheckedAt: (fresh: string) => `営業時間の最終確認: ${fresh}`,
+    freshToday: '今日',
+    freshYesterday: '昨日',
+    freshDaysAgo: (n: number) => `${n}日前`,
+    freshMonthsAgo: (n: number) => `${n}ヶ月前`,
+  },
+  en: {
+    close: 'Close',
+    readMore: 'Read more',
+    photoPermTitle: 'Photo access needed',
+    photoPermMsg: 'Please allow MoodGo to access your photos in Settings.',
+    uploadFailed: 'Upload failed',
+    firstThanksTitle: 'Thank you!',
+    firstThanksMsg: "You're the first here. Your photo will be used as the thumbnail 📸",
+    errorTitle: 'Error',
+    photoUploadFailed: 'Failed to upload photo',
+    notFound: 'No data found',
+    openNow: 'Open',
+    closedNow: 'Closed',
+    spookyContributeTitle: 'Please share a photo',
+    spookyContributeSub: 'Help show this place with your photo 🙏',
+    addPhoto: 'Add photo',
+    spookyNoPhotoTitle: 'No photos of this place yet',
+    spookyNoPhotoSub: 'If you have a photo, please share it 🙏',
+    noPhotoYet: 'No photos yet',
+    inviteTitle: 'Be the first to add a photo',
+    inviteSub: 'It becomes the best clue for the next person looking for this spot',
+    addFirstPhoto: 'Be the first to add a photo',
+    map: 'Map',
+    overallRating: 'Overall',
+    overallRatingCount: (n: number) => `Overall (${n})`,
+    visited: 'Been here!',
+    loadingDetail: 'Loading details...',
+    hoursLoadFailed: 'Failed to load hours and more. Tap to retry',
+    searchInstagram: 'Search on Instagram',
+    openingHours: 'Opening hours',
+    hoursCheckedAt: (fresh: string) => `Hours last checked: ${fresh}`,
+    freshToday: 'Today',
+    freshYesterday: 'Yesterday',
+    freshDaysAgo: (n: number) => `${n} day${n === 1 ? '' : 's'} ago`,
+    freshMonthsAgo: (n: number) => `${n} month${n === 1 ? '' : 's'} ago`,
+  },
+} as const;
 
 // ── 住所からエリア名（市区町村）を抽出 ────────────────────────────────────────
 function extractAreaName(address: string | null | undefined): string | null {
@@ -132,14 +209,15 @@ type Review = {
 };
 
 // 鮮度ラベル: ISO日時 → 「今日/昨日/N日前/Nヶ月前」（情報の最終確認の目安表示）
-function freshnessLabel(iso: string): string {
+function freshnessLabel(iso: string, lang: Lang): string {
+  const tt = T[lang];
   const t = new Date(iso).getTime();
   if (isNaN(t)) return '';
   const days = Math.floor((Date.now() - t) / 86400000);
-  if (days <= 0) return '今日';
-  if (days === 1) return '昨日';
-  if (days < 30) return `${days}日前`;
-  return `${Math.floor(days / 30)}ヶ月前`;
+  if (days <= 0) return tt.freshToday;
+  if (days === 1) return tt.freshYesterday;
+  if (days < 30) return tt.freshDaysAgo(days);
+  return tt.freshMonthsAgo(Math.floor(days / 30));
 }
 
 type ExtraDetail = {
@@ -205,6 +283,8 @@ function StarRow({ rating, size = 13 }: { rating: number; size?: number }) {
 
 // ── レビューカード ─────────────────────────────────────────────────────────────
 function ReviewCard({ review, index }: { review: Review; index: number }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const [expanded, setExpanded] = useState(false);
   const MAX = 120;
   const needsExpand = review.text.length > MAX;
@@ -246,8 +326,8 @@ function ReviewCard({ review, index }: { review: Review; index: number }) {
           activeOpacity={0.7}
         >
           {expanded
-            ? <><ChevronUp size={13} color="#C084FC" strokeWidth={2} /><Text style={rs.expandText}>閉じる</Text></>
-            : <><ChevronDown size={13} color="#C084FC" strokeWidth={2} /><Text style={rs.expandText}>続きを読む</Text></>
+            ? <><ChevronUp size={13} color="#C084FC" strokeWidth={2} /><Text style={rs.expandText}>{t.close}</Text></>
+            : <><ChevronDown size={13} color="#C084FC" strokeWidth={2} /><Text style={rs.expandText}>{t.readMore}</Text></>
           }
         </TouchableOpacity>
       )}
@@ -320,6 +400,8 @@ function InfoSkeleton() {
 // ── メインコンポーネント ────────────────────────────────────────────────────────
 export default function PlaceDetailPage() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const place = getSelectedPlace();
   const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
   const [rec, setRec] = useState<Recommendation | null>(place);
@@ -461,7 +543,7 @@ export default function PlaceDetailPage() {
     if (uploadingPhoto || !rec) return;
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { Alert.alert('写真へのアクセスが必要です', '設定アプリからMoodGoに写真の許可をしてください。'); return; }
+      if (!perm.granted) { Alert.alert(t.photoPermTitle, t.photoPermMsg); return; }
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
       if (picked.canceled || !picked.assets?.length) return;
       setUploadingPhoto(true);
@@ -475,15 +557,15 @@ export default function PlaceDetailPage() {
         body: JSON.stringify({ placeId: rec.supabaseId, placeName: rec.title, address: rec.address ?? '', deviceId, imageBase64: small.base64 }),
       });
       const data = await res.json().catch(() => ({ ok: false }));
-      if (!data.ok) throw new Error(data.error ?? '送信に失敗しました');
+      if (!data.ok) throw new Error(data.error ?? t.uploadFailed);
       addSpotPhoto(rec.supabaseId, rec.title, data.url);  // 共有ストアへ→一覧にも即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // 一番乗り（写真ゼロだった場所）への投稿だけ、達成感を言語化して次の投稿動機に
       if (userPhotos.length === 0 && !isSpooky) {
-        Alert.alert('ありがとうございます！', 'この場所の一番乗りです。あなたの写真がサムネに使われます 📸');
+        Alert.alert(t.firstThanksTitle, t.firstThanksMsg);
       }
     } catch (e) {
-      Alert.alert('エラー', e instanceof Error ? e.message : '写真の投稿に失敗しました');
+      Alert.alert(t.errorTitle, e instanceof Error ? e.message : t.photoUploadFailed);
     } finally { setUploadingPhoto(false); }
   };
 
@@ -639,7 +721,7 @@ export default function PlaceDetailPage() {
           <ArrowLeft size={20} color="#374151" strokeWidth={2.5} />
         </TouchableOpacity>
         <View style={s.errorBox}>
-          <Text style={s.errorText}>データが見つかりませんでした</Text>
+          <Text style={s.errorText}>{t.notFound}</Text>
         </View>
       </View>
     );
@@ -664,7 +746,7 @@ export default function PlaceDetailPage() {
     console.log('[place.tsx] hoursSource lines:', hoursSource.split('\n').length, hoursSource.slice(0, 80));
   }
   const openNowColor = displayOpenNow === true ? '#10B981' : displayOpenNow === false ? '#EF4444' : '#9CA3AF';
-  const openNowLabel = displayOpenNow === true ? '営業中' : displayOpenNow === false ? '閉店中' : null;
+  const openNowLabel = displayOpenNow === true ? t.openNow : displayOpenNow === false ? t.closedNow : null;
   const hoursRows = hoursSource ? formatOpeningHours(hoursSource) : [];
 
   return (
@@ -738,12 +820,12 @@ export default function PlaceDetailPage() {
                 <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
                   style={[s.heroPlaceholder, { width: photoWidth, height: 300 }]}>
                   <Moon size={44} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
-                  <Text style={s.heroSpookyTitle}>写真を提供してください</Text>
-                  <Text style={s.heroSpookySub}>あなたの写真でこの場所を伝えてください 🙏</Text>
+                  <Text style={s.heroSpookyTitle}>{t.spookyContributeTitle}</Text>
+                  <Text style={s.heroSpookySub}>{t.spookyContributeSub}</Text>
                   <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.8} style={s.heroSpookyBtn}>
                     {uploadingPhoto
                       ? <ActivityIndicator color="#fff" size="small" />
-                      : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>写真を追加</Text></>}
+                      : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>{t.addPhoto}</Text></>}
                   </TouchableOpacity>
                 </LinearGradient>
               )}
@@ -751,12 +833,12 @@ export default function PlaceDetailPage() {
           ) : isSpooky ? (
             <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={s.heroPlaceholder}>
               <Moon size={48} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
-              <Text style={s.heroSpookyTitle}>この場所の写真がありません</Text>
-              <Text style={s.heroSpookySub}>写真をお持ちの方は、ぜひ提供してください 🙏</Text>
+              <Text style={s.heroSpookyTitle}>{t.spookyNoPhotoTitle}</Text>
+              <Text style={s.heroSpookySub}>{t.spookyNoPhotoSub}</Text>
               <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.8} style={s.heroSpookyBtn}>
                 {uploadingPhoto
                   ? <ActivityIndicator color="#fff" size="small" />
-                  : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>写真を追加</Text></>}
+                  : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>{t.addPhoto}</Text></>}
               </TouchableOpacity>
             </LinearGradient>
           ) : (
@@ -769,15 +851,15 @@ export default function PlaceDetailPage() {
               <Text style={s.heroGenreEmoji}>{ph ? ph.emoji : '📷'}</Text>
               <View style={s.heroFirstPill}>
                 <Camera size={12} color="#7C3AED" strokeWidth={2.4} />
-                <Text style={s.heroFirstPillText}>まだ写真がありません</Text>
+                <Text style={s.heroFirstPillText}>{t.noPhotoYet}</Text>
               </View>
-              <Text style={s.heroInviteTitle}>あなたが「最初の1枚」の主に</Text>
-              <Text style={s.heroInviteSub}>ここを探す次の人の、いちばんの手がかりになります</Text>
+              <Text style={s.heroInviteTitle}>{t.inviteTitle}</Text>
+              <Text style={s.heroInviteSub}>{t.inviteSub}</Text>
               <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.85} style={s.heroInviteBtnWrap}>
                 <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroInviteBtn}>
                   {uploadingPhoto
                     ? <ActivityIndicator color="#fff" size="small" />
-                    : <><Camera size={16} color="#fff" strokeWidth={2.4} /><Text style={s.heroInviteBtnText}>一番乗りで写真を追加</Text></>}
+                    : <><Camera size={16} color="#fff" strokeWidth={2.4} /><Text style={s.heroInviteBtnText}>{t.addFirstPhoto}</Text></>}
                 </LinearGradient>
               </TouchableOpacity>
             </LinearGradient>
@@ -834,7 +916,7 @@ export default function PlaceDetailPage() {
                 >
                   <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mapPillGrad}>
                     <MapPin size={12} color="#fff" strokeWidth={2.5} />
-                    <Text style={s.mapPillText}>マップ</Text>
+                    <Text style={s.mapPillText}>{t.map}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               ) : null}
@@ -863,7 +945,7 @@ export default function PlaceDetailPage() {
                 <Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} />
                 <Text style={s.voiceVal}>{ratingCount > 0 && avgRating != null ? avgRating.toFixed(1) : '—'}</Text>
               </View>
-              <Text style={s.voiceLabel}>総合評価{ratingCount > 0 ? `（${ratingCount}）` : ''}</Text>
+              <Text style={s.voiceLabel}>{ratingCount > 0 ? t.overallRatingCount(ratingCount) : t.overallRating}</Text>
             </View>
             <View style={s.voiceDivider} />
             <View style={s.voiceCell}>
@@ -871,7 +953,7 @@ export default function PlaceDetailPage() {
                 <Footprints size={13} color="#10B981" strokeWidth={2.2} />
                 <Text style={s.voiceVal}>{placeVisited}</Text>
               </View>
-              <Text style={s.voiceLabel}>行った！</Text>
+              <Text style={s.voiceLabel}>{t.visited}</Text>
             </View>
           </View>
 
@@ -883,7 +965,7 @@ export default function PlaceDetailPage() {
             <>
               <View style={s.loadingBanner}>
                 <ActivityIndicator size="small" color="#C084FC" />
-                <Text style={s.loadingText}>詳細情報を読み込み中...</Text>
+                <Text style={s.loadingText}>{t.loadingDetail}</Text>
               </View>
               <InfoSkeleton />
             </>
@@ -891,7 +973,7 @@ export default function PlaceDetailPage() {
             /* ── APIエラー（リトライボタン）── 評価や住所があっても常に表示 */
             <TouchableOpacity style={s.retryBtn} onPress={() => fetchDetail()} activeOpacity={0.8}>
               <RefreshCw size={14} color="#C084FC" strokeWidth={2} />
-              <Text style={s.retryText}>営業時間などの読み込みに失敗しました。タップして再試行</Text>
+              <Text style={s.retryText}>{t.hoursLoadFailed}</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -984,7 +1066,7 @@ export default function PlaceDetailPage() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>
-                  Instagramで検索
+                  {t.searchInstagram}
                 </Text>
                 <Text style={s.infoSubText}>#{rec.title.replace(/\s+/g, '')}</Text>
               </View>
@@ -997,7 +1079,7 @@ export default function PlaceDetailPage() {
             <View style={s.section}>
               <View style={s.sectionHeader}>
                 <Clock size={15} color="#C084FC" strokeWidth={2} />
-                <Text style={s.sectionTitle}>営業時間</Text>
+                <Text style={s.sectionTitle}>{t.openingHours}</Text>
                 {openNowLabel && (
                   <View style={[s.openPillSm, { backgroundColor: openNowColor + '20', borderColor: openNowColor + '60' }]}>
                     <View style={[s.openDot, { backgroundColor: openNowColor, width: 6, height: 6 }]} />
@@ -1021,7 +1103,7 @@ export default function PlaceDetailPage() {
                 ))}
               </View>
               {extra.checkedAt && (
-                <Text style={s.hoursChecked}>営業時間の最終確認: {freshnessLabel(extra.checkedAt)}</Text>
+                <Text style={s.hoursChecked}>{t.hoursCheckedAt(freshnessLabel(extra.checkedAt, lang))}</Text>
               )}
             </View>
           )}

@@ -8,8 +8,32 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Star, Send } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { useSettings } from '@/lib/settingsStore';
+
+const T = {
+  ja: {
+    yourRating: 'あなたの評価',
+    send: '送信',
+    sending: '送信中',
+    rated: '評価済み',
+    moodgoRating: 'MoodGo評価',
+    count: (n: number) => `（${n}件）`,
+    hint: '星をタップして「送信」で評価',
+  },
+  en: {
+    yourRating: 'Your rating',
+    send: 'Send',
+    sending: 'Sending…',
+    rated: 'Rated',
+    moodgoRating: 'MoodGo rating',
+    count: (n: number) => `(${n})`,
+    hint: 'Tap the stars, then Send to rate',
+  },
+} as const;
 
 export default function SpotRating({ placeId, placeName, mood, companion, subCategory, onFirstRate, onAvg, hideAggregate }: { placeId?: string; placeName: string; mood?: string; companion?: string; subCategory?: string; onFirstRate?: () => void; onAvg?: (avg: number | null, count: number) => void; hideAggregate?: boolean }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const KEY = placeId || placeName;
   const cacheKey = `moodgo-rating-${KEY}`;
   // 総合評価(平均)を親(投稿詳細のバー等)へ通知する。inline関数でも load を作り直さないよう ref 経由。
@@ -91,7 +115,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
   return (
     <View style={s.wrap}>
       <View style={s.row}>
-        <Text style={s.label}>あなたの評価</Text>
+        <Text style={s.label}>{t.yourRating}</Text>
         <View style={s.stars}>
           {[1, 2, 3, 4, 5].map(n => (
             <TouchableOpacity key={n} onPress={() => setSelected(n)} hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }} activeOpacity={0.7}>
@@ -102,16 +126,16 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
         {canSend ? (
           <TouchableOpacity style={[s.sendBtn, busy && { opacity: 0.6 }]} onPress={send} disabled={busy} activeOpacity={0.85}>
             <Send size={13} color="#fff" strokeWidth={2.4} />
-            <Text style={s.sendText}>{busy ? '送信中' : '送信'}</Text>
+            <Text style={s.sendText}>{busy ? t.sending : t.send}</Text>
           </TouchableOpacity>
         ) : submitted > 0 ? (
-          <Text style={s.done}>評価済み</Text>
+          <Text style={s.done}>{t.rated}</Text>
         ) : null}
       </View>
       {!hideAggregate && count > 0 && avg != null ? (
-        <Text style={s.agg}>MoodGo評価 <Text style={s.aggNum}>{avg.toFixed(1)}</Text>（{count}件）</Text>
+        <Text style={s.agg}>{t.moodgoRating} <Text style={s.aggNum}>{avg.toFixed(1)}</Text>{t.count(count)}</Text>
       ) : submitted === 0 ? (
-        <Text style={s.hint}>星をタップして「送信」で評価</Text>
+        <Text style={s.hint}>{t.hint}</Text>
       ) : null}
     </View>
   );

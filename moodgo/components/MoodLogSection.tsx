@@ -9,6 +9,58 @@ import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Repeat2, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { useSettings } from '@/lib/settingsStore';
+
+const T = {
+  ja: {
+    minAgo: (n: number) => `${n}分前`,
+    hourAgo: (n: number) => `${n}時間前`,
+    dayAgo: (n: number) => `${n}日前`,
+    monthAgo: (n: number) => `${n}ヶ月前`,
+    you: '（あなた）',
+    wantRevisit: 'また行きたい',
+    matchesPhoto: '写真どおり',
+    like: 'いいね',
+    helpful: '参考',
+    revisit: 'また',
+    reportTitle: 'この投稿を通報',
+    reportMsg: '不適切・無断転載・関係ない写真などの場合に通報できます。',
+    cancel: 'キャンセル',
+    reportConfirm: '通報する',
+    reportOkTitle: '通報を受け付けました',
+    reportOkMsg: 'ご協力ありがとうございます。',
+    reportFailTitle: '通報を送信できませんでした',
+    reportFailMsg: '通信環境を確認して再度お試しください。',
+    sectionTitle: 'みんなのMoodログ',
+    count: (n: number) => `${n}件`,
+    postBtn: '投稿する',
+    empty: 'まだMoodログがありません。\nこの場所の最初のMoodログを投稿しませんか？',
+  },
+  en: {
+    minAgo: (n: number) => `${n}m ago`,
+    hourAgo: (n: number) => `${n}h ago`,
+    dayAgo: (n: number) => `${n}d ago`,
+    monthAgo: (n: number) => `${n}mo ago`,
+    you: ' (You)',
+    wantRevisit: 'Want to revisit',
+    matchesPhoto: 'Matches photo',
+    like: 'Like',
+    helpful: 'Helpful',
+    revisit: 'Revisit',
+    reportTitle: 'Report this post',
+    reportMsg: 'Report posts that are inappropriate, reposted without permission, or use unrelated photos.',
+    cancel: 'Cancel',
+    reportConfirm: 'Report',
+    reportOkTitle: 'Report received',
+    reportOkMsg: 'Thanks for helping out.',
+    reportFailTitle: 'Couldn’t send report',
+    reportFailMsg: 'Check your connection and try again.',
+    sectionTitle: 'Everyone’s Mood logs',
+    count: (n: number) => `${n}`,
+    postBtn: 'Post',
+    empty: 'No Mood logs yet.\nBe the first to post a Mood log for this place.',
+  },
+} as const;
 
 export type MoodPost = {
   id: string; author: string; isOwn: boolean;
@@ -20,20 +72,22 @@ export type MoodPost = {
   createdAt?: string;
 };
 
-function timeAgo(iso?: string): string {
+function timeAgo(iso: string | undefined, t: (typeof T)['ja' | 'en']): string {
   if (!iso) return '';
-  const t = new Date(iso).getTime(); if (isNaN(t)) return '';
-  const d = Math.floor((Date.now() - t) / 1000);
-  if (d < 3600) return `${Math.max(1, Math.floor(d / 60))}分前`;
-  if (d < 86400) return `${Math.floor(d / 3600)}時間前`;
-  if (d < 2592000) return `${Math.floor(d / 86400)}日前`;
-  return `${Math.floor(d / 2592000)}ヶ月前`;
+  const ms = new Date(iso).getTime(); if (isNaN(ms)) return '';
+  const d = Math.floor((Date.now() - ms) / 1000);
+  if (d < 3600) return t.minAgo(Math.max(1, Math.floor(d / 60)));
+  if (d < 86400) return t.hourAgo(Math.floor(d / 3600));
+  if (d < 2592000) return t.dayAgo(Math.floor(d / 86400));
+  return t.monthAgo(Math.floor(d / 2592000));
 }
 
 export default function MoodLogSection(
   { placeId, placeName, address, excludePostId }:
   { placeId?: string; placeName: string; address?: string; excludePostId?: string },
 ) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const [posts, setPosts] = useState<MoodPost[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -86,16 +140,16 @@ export default function MoodLogSection(
   };
 
   const report = (post: MoodPost) => {
-    Alert.alert('この投稿を通報', '不適切・無断転載・関係ない写真などの場合に通報できます。', [
-      { text: 'キャンセル', style: 'cancel' },
-      { text: '通報する', style: 'destructive', onPress: async () => {
+    Alert.alert(t.reportTitle, t.reportMsg, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.reportConfirm, style: 'destructive', onPress: async () => {
         try {
           const did = await getDeviceId();
           await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: 'user_report' }) });
           setPosts(prev => prev.filter(p => p.id !== post.id));
-          Alert.alert('通報を受け付けました', 'ご協力ありがとうございます。');
+          Alert.alert(t.reportOkTitle, t.reportOkMsg);
         } catch {
-          Alert.alert('通報を送信できませんでした', '通信環境を確認して再度お試しください。');
+          Alert.alert(t.reportFailTitle, t.reportFailMsg);
         }
       } },
     ]);
@@ -105,8 +159,8 @@ export default function MoodLogSection(
   const renderPost = (post: MoodPost) => (
     <View key={post.id} style={s.card}>
       <View style={s.cardTop}>
-        <Text style={s.author} numberOfLines={1}>{post.author}{post.isOwn ? '（あなた）' : ''}</Text>
-        <Text style={s.time}>{timeAgo(post.createdAt)}</Text>
+        <Text style={s.author} numberOfLines={1}>{post.author}{post.isOwn ? t.you : ''}</Text>
+        <Text style={s.time}>{timeAgo(post.createdAt, t)}</Text>
         <TouchableOpacity onPress={() => report(post)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Flag size={13} color="#C4B5D6" strokeWidth={2} />
         </TouchableOpacity>
@@ -126,8 +180,8 @@ export default function MoodLogSection(
           {post.moodTags.slice(0, 4).map(t => <View key={t} style={s.chip}><Text style={s.chipText}>{t}</Text></View>)}
           {post.companion ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.companion}</Text></View> : null}
           {post.timeOfDay ? <View style={s.chipAlt}><Text style={s.chipAltText}>{post.timeOfDay}</Text></View> : null}
-          {post.wantRevisit ? <View style={s.chipGood}><Text style={s.chipGoodText}>また行きたい</Text></View> : null}
-          {post.matchesPhoto ? <View style={s.chipGood}><Text style={s.chipGoodText}>写真どおり</Text></View> : null}
+          {post.wantRevisit ? <View style={s.chipGood}><Text style={s.chipGoodText}>{t.wantRevisit}</Text></View> : null}
+          {post.matchesPhoto ? <View style={s.chipGood}><Text style={s.chipGoodText}>{t.matchesPhoto}</Text></View> : null}
         </View>
       )}
 
@@ -136,15 +190,15 @@ export default function MoodLogSection(
       <View style={s.reactions}>
         <TouchableOpacity style={[s.reactBtn, post.myLike && s.reactOn]} onPress={() => react(post, 'like')} activeOpacity={0.7}>
           <ThumbsUp size={12} color={post.myLike ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-          <Text style={[s.reactText, post.myLike && s.reactTextOn]}>いいね {post.likeCount || ''}</Text>
+          <Text style={[s.reactText, post.myLike && s.reactTextOn]}>{t.like} {post.likeCount || ''}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[s.reactBtn, post.myHelpful && s.reactOn]} onPress={() => react(post, 'helpful')} activeOpacity={0.7}>
           <Sparkles size={12} color={post.myHelpful ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-          <Text style={[s.reactText, post.myHelpful && s.reactTextOn]}>参考 {post.helpfulCount || ''}</Text>
+          <Text style={[s.reactText, post.myHelpful && s.reactTextOn]}>{t.helpful} {post.helpfulCount || ''}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[s.reactBtn, post.myRevisit && s.reactOn]} onPress={() => react(post, 'revisit')} activeOpacity={0.7}>
           <Repeat2 size={12} color={post.myRevisit ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-          <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>また {post.revisitCount || ''}</Text>
+          <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>{t.revisit} {post.revisitCount || ''}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -154,17 +208,17 @@ export default function MoodLogSection(
     <View style={s.section}>
       <View style={s.header}>
         <Sparkles size={15} color="#C084FC" strokeWidth={2} />
-        <Text style={s.title}>みんなのMoodログ</Text>
-        {posts.length > 0 && <Text style={s.count}>{posts.length}件</Text>}
+        <Text style={s.title}>{t.sectionTitle}</Text>
+        {posts.length > 0 && <Text style={s.count}>{t.count(posts.length)}</Text>}
         <TouchableOpacity onPress={goPost} style={s.postBtn} activeOpacity={0.85}>
           <MessageCirclePlus size={14} color="#fff" strokeWidth={2.4} />
-          <Text style={s.postBtnText}>投稿する</Text>
+          <Text style={s.postBtnText}>{t.postBtn}</Text>
         </TouchableOpacity>
       </View>
 
       {!loading && posts.length === 0 && (
         <TouchableOpacity onPress={goPost} activeOpacity={0.8} style={s.empty}>
-          <Text style={s.emptyText}>まだMoodログがありません。{'\n'}この場所の最初のMoodログを投稿しませんか？</Text>
+          <Text style={s.emptyText}>{t.empty}</Text>
         </TouchableOpacity>
       )}
 

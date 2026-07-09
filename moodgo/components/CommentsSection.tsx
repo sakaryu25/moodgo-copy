@@ -24,6 +24,102 @@ import { blockUser } from '@/lib/blockStore';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { relativeTime } from '@/lib/spotLog';
 import { showToast } from '@/lib/toast';
+import { useSettings } from '@/lib/settingsStore';
+
+const T = {
+  ja: {
+    a11yViewProfile: 'コメント者のプロフィールを見る',
+    defaultUser: 'MoodGoユーザー',
+    mine: '自分',
+    translating: '翻訳中…',
+    translationLabel: '翻訳',
+    reply: '返信',
+    a11yCloseMenu: 'メニューを閉じる',
+    showOriginal: '原文を表示',
+    translate: '翻訳する',
+    copy: 'コピー',
+    report: '通報する',
+    blockUser: 'この人をブロック',
+    delete: '削除',
+    cancel: 'キャンセル',
+    commentFailedTitle: 'コメントできませんでした',
+    commentFailedRetry: '時間をおいてお試しください',
+    commentFailedNetwork: '通信に失敗しました',
+    copied: 'コピーしました',
+    translateFailedTitle: '翻訳できませんでした',
+    reportConfirmTitle: 'このコメントを通報しますか？',
+    reportConfirmMsg: '不適切な内容として運営に報告します。',
+    reportedTitle: '通報しました',
+    reportedThanks: 'ご協力ありがとうございます',
+    reportFailedTitle: '通報できませんでした',
+    deleteConfirmTitle: 'コメントを削除しますか？',
+    blockConfirmTitle: 'この投稿者をブロックしますか？',
+    blockConfirmMsg: 'この人のコメントや投稿が表示されなくなります。',
+    block: 'ブロック',
+    blockedTitle: 'ブロックしました',
+    blockedMsg: 'この人のコメント・投稿を非表示にしました',
+    replyingTo: (h: string) => `@${h} に返信`,
+    a11yCancelReply: '返信をやめる',
+    a11ySendComment: 'コメントを送信',
+    replyPlaceholder: '返信を書く…',
+    commentPlaceholder: 'コメントを書く…',
+    commentsTitle: 'コメント',
+    countItems: (n: number) => `${n}件`,
+    commentsUnavailable: 'コメント機能は準備中です',
+    beFirst: '最初のコメントを書いてみませんか？',
+    a11ySeeAll: 'すべてのコメントを見る',
+    seeAll: (n: number) => `すべてのコメントを見る（${n}件）`,
+    a11yCloseComments: 'コメントを閉じる',
+    a11yClose: '閉じる',
+    sheetTitle: (n: number) => `${n}件のコメント`,
+  },
+  en: {
+    a11yViewProfile: "View commenter's profile",
+    defaultUser: 'MoodGo user',
+    mine: 'You',
+    translating: 'Translating…',
+    translationLabel: 'Translation',
+    reply: 'Reply',
+    a11yCloseMenu: 'Close menu',
+    showOriginal: 'Show original',
+    translate: 'Translate',
+    copy: 'Copy',
+    report: 'Report',
+    blockUser: 'Block this person',
+    delete: 'Delete',
+    cancel: 'Cancel',
+    commentFailedTitle: "Couldn't post comment",
+    commentFailedRetry: 'Please try again later',
+    commentFailedNetwork: 'Connection failed',
+    copied: 'Copied',
+    translateFailedTitle: "Couldn't translate",
+    reportConfirmTitle: 'Report this comment?',
+    reportConfirmMsg: "We'll report it to our team as inappropriate.",
+    reportedTitle: 'Reported',
+    reportedThanks: 'Thanks for your help',
+    reportFailedTitle: "Couldn't report",
+    deleteConfirmTitle: 'Delete this comment?',
+    blockConfirmTitle: 'Block this poster?',
+    blockConfirmMsg: "You'll no longer see this person's comments or posts.",
+    block: 'Block',
+    blockedTitle: 'Blocked',
+    blockedMsg: "This person's comments and posts are now hidden",
+    replyingTo: (h: string) => `Replying to @${h}`,
+    a11yCancelReply: 'Cancel reply',
+    a11ySendComment: 'Send comment',
+    replyPlaceholder: 'Write a reply…',
+    commentPlaceholder: 'Write a comment…',
+    commentsTitle: 'Comments',
+    countItems: (n: number) => `${n}`,
+    commentsUnavailable: 'Comments are coming soon',
+    beFirst: 'Be the first to comment',
+    a11ySeeAll: 'See all comments',
+    seeAll: (n: number) => `See all comments (${n})`,
+    a11yCloseComments: 'Close comments',
+    a11yClose: 'Close',
+    sheetTitle: (n: number) => `${n} comment${n === 1 ? '' : 's'}`,
+  },
+} as const;
 
 const PURPLE = '#9B6BFF';
 const SCREEN_H = Dimensions.get('window').height;
@@ -43,10 +139,12 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
   onLongPress: (c: Comment) => void; onPressUser: (c: Comment) => void;
   onLike: (c: Comment) => void; onReply: (c: Comment) => void;
 }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   return (
     <TouchableOpacity style={[s.row, isReply && s.replyRow]} activeOpacity={0.8} onLongPress={() => onLongPress(c)} delayLongPress={280}>
       <TouchableOpacity onPress={() => onPressUser(c)}
-        accessibilityRole="button" accessibilityLabel="コメント者のプロフィールを見る">
+        accessibilityRole="button" accessibilityLabel={t.a11yViewProfile}>
         {c.icon ? (
           <Image source={{ uri: c.icon }} style={[s.avatar, isReply && s.avatarSm]} contentFit="cover" />
         ) : (
@@ -55,22 +153,22 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
       </TouchableOpacity>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={s.metaRow}>
-          <Text style={s.handle} numberOfLines={1}>{c.handle ? `@${c.handle}` : 'MoodGoユーザー'}</Text>
+          <Text style={s.handle} numberOfLines={1}>{c.handle ? `@${c.handle}` : t.defaultUser}</Text>
           <VerifiedBadge type={c.accountType} size={13} />
           <Text style={s.time}>{relativeTime(c.created_at)}</Text>
-          {c.mine && <Text style={s.mineTag}>自分</Text>}
+          {c.mine && <Text style={s.mineTag}>{t.mine}</Text>}
         </View>
         <Text style={s.body}>{renderBody(c.body)}</Text>
         {trans?.status === 'loading' ? (
           <View style={s.transLoadingRow}>
             <ActivityIndicator size="small" color={PURPLE} />
-            <Text style={s.transLoadingText}>翻訳中…</Text>
+            <Text style={s.transLoadingText}>{t.translating}</Text>
           </View>
         ) : trans?.status === 'done' ? (
           <View style={s.transBox}>
             <View style={s.transLabelRow}>
               <Languages size={11} color={PURPLE} strokeWidth={2.2} />
-              <Text style={s.transLabel}>翻訳</Text>
+              <Text style={s.transLabel}>{t.translationLabel}</Text>
             </View>
             <Text style={s.body}>{trans.text}</Text>
           </View>
@@ -82,7 +180,7 @@ function CommentRow({ c, trans, isReply, onLongPress, onPressUser, onLike, onRep
           </TouchableOpacity>
           {!isReply && (
             <TouchableOpacity onPress={() => onReply(c)} style={s.cmtAction} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-              <Text style={s.cmtActionText}>返信</Text>
+              <Text style={s.cmtActionText}>{t.reply}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -108,6 +206,8 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
   open: boolean; mine: boolean; hasTrans: boolean; bottomInset: number;
   onClose: () => void; onTranslate: () => void; onCopy: () => void; onReport: () => void; onBlock: () => void; onDelete: () => void;
 }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const anim = useRef(new Animated.Value(0)).current;
   const [shown, setShown] = useState(false);
   useEffect(() => {
@@ -123,7 +223,7 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(12,6,28,0.42)', opacity: anim }]}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="メニューを閉じる" />
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel={t.a11yCloseMenu} />
       </Animated.View>
       <Animated.View style={[
         s.menuPanel,
@@ -131,26 +231,26 @@ function ActionMenu({ open, mine, hasTrans, bottomInset, onClose, onTranslate, o
         { transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [340, 0] }) }] },
       ]}>
         <View style={s.menuGroup}>
-          <MenuRow Icon={Languages} label={hasTrans ? '原文を表示' : '翻訳する'} onPress={onTranslate} />
+          <MenuRow Icon={Languages} label={hasTrans ? t.showOriginal : t.translate} onPress={onTranslate} />
           <View style={s.menuDivider} />
-          <MenuRow Icon={Copy} label="コピー" onPress={onCopy} />
+          <MenuRow Icon={Copy} label={t.copy} onPress={onCopy} />
           <View style={s.menuDivider} />
-          <MenuRow Icon={Flag} label="通報する" onPress={onReport} />
+          <MenuRow Icon={Flag} label={t.report} onPress={onReport} />
           {!mine && (
             <>
               <View style={s.menuDivider} />
-              <MenuRow Icon={Ban} label="この人をブロック" danger onPress={onBlock} />
+              <MenuRow Icon={Ban} label={t.blockUser} danger onPress={onBlock} />
             </>
           )}
           {mine && (
             <>
               <View style={s.menuDivider} />
-              <MenuRow Icon={Trash2} label="削除" danger onPress={onDelete} />
+              <MenuRow Icon={Trash2} label={t.delete} danger onPress={onDelete} />
             </>
           )}
         </View>
         <TouchableOpacity style={s.menuCancel} onPress={onClose} activeOpacity={0.8}>
-          <Text style={s.menuCancelText}>キャンセル</Text>
+          <Text style={s.menuCancelText}>{t.cancel}</Text>
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -180,6 +280,8 @@ function buildThreaded(list: Comment[]): Array<Comment & { isReply?: boolean }> 
 }
 
 export default function CommentsSection({ targetId }: { targetId: string }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Comment[]>([]);
   const [ready, setReady] = useState(true);
@@ -293,12 +395,12 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       } else {
         setItems((prev) => prev.filter((c) => c.id !== tempId));   // 失敗は取り消し＋入力を戻す
         setText(body); setReplyTo(prevReplyTo);
-        notify('コメントできませんでした', d?.error ?? '時間をおいてお試しください');
+        notify(t.commentFailedTitle, d?.error ?? t.commentFailedRetry);
       }
     } catch {
       setItems((prev) => prev.filter((c) => c.id !== tempId));
       setText(body); setReplyTo(prevReplyTo);
-      notify('コメントできませんでした', '通信に失敗しました');
+      notify(t.commentFailedTitle, t.commentFailedNetwork);
     } finally { if (isMounted.current) setSending(false); }
   };
 
@@ -366,7 +468,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     try {
       await Clipboard.setStringAsync(c.body);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      notify('コピーしました');
+      notify(t.copied);
     } catch { /* noop */ }
   };
 
@@ -390,7 +492,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     } catch {
       if (isMounted.current) {
         setTrans((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
-        notify('翻訳できませんでした', '時間をおいてお試しください');
+        notify(t.translateFailedTitle, t.commentFailedRetry);
       }
     }
   };
@@ -399,10 +501,10 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     const c = menuFor; closeMenu();
     if (!c) return;
     setTimeout(() => {
-      Alert.alert('このコメントを通報しますか？', '不適切な内容として運営に報告します。', [
-        { text: 'キャンセル', style: 'cancel' },
+      Alert.alert(t.reportConfirmTitle, t.reportConfirmMsg, [
+        { text: t.cancel, style: 'cancel' },
         {
-          text: '通報する', style: 'destructive',
+          text: t.report, style: 'destructive',
           onPress: async () => {
             try {
               const deviceId = await getDeviceId();
@@ -410,8 +512,8 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'report', commentId: c.id, deviceId }),
               }).then((r) => r.json());
-              notify(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
-            } catch { notify('通報できませんでした', '時間をおいてお試しください'); }
+              notify(d?.ok ? t.reportedTitle : t.reportFailedTitle, d?.ok ? t.reportedThanks : t.commentFailedRetry);
+            } catch { notify(t.reportFailedTitle, t.commentFailedRetry); }
           },
         },
       ]);
@@ -422,10 +524,10 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     const c = menuFor; closeMenu();
     if (!c) return;
     setTimeout(() => {
-      Alert.alert('コメントを削除しますか？', '', [
-        { text: 'キャンセル', style: 'cancel' },
+      Alert.alert(t.deleteConfirmTitle, '', [
+        { text: t.cancel, style: 'cancel' },
         {
-          text: '削除', style: 'destructive',
+          text: t.delete, style: 'destructive',
           onPress: async () => {
             const deviceId = await getDeviceId();
             await apiFetch('/api/spot-comments', {
@@ -457,12 +559,12 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     if (!c || !c.posterId) return;
     const pid = c.posterId;
     setTimeout(() => {
-      Alert.alert('この投稿者をブロックしますか？', 'この人のコメントや投稿が表示されなくなります。', [
-        { text: 'キャンセル', style: 'cancel' },
-        { text: 'ブロック', style: 'destructive', onPress: () => {
+      Alert.alert(t.blockConfirmTitle, t.blockConfirmMsg, [
+        { text: t.cancel, style: 'cancel' },
+        { text: t.block, style: 'destructive', onPress: () => {
           blockUser(pid);
           setItems((prev) => prev.filter((x) => x.posterId !== pid));   // 表示中のコメントからも即消す
-          notify('ブロックしました', 'この人のコメント・投稿を非表示にしました');
+          notify(t.blockedTitle, t.blockedMsg);
         } },
       ]);
     }, 260);
@@ -478,8 +580,8 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     <View>
       {replyTo ? (
         <View style={s.replyChip}>
-          <Text style={s.replyChipText} numberOfLines={1}>@{replyTo.handle ?? 'MoodGoユーザー'} に返信</Text>
-          <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="返信をやめる">
+          <Text style={s.replyChipText} numberOfLines={1}>{t.replyingTo(replyTo.handle ?? t.defaultUser)}</Text>
+          <TouchableOpacity onPress={() => setReplyTo(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel={t.a11yCancelReply}>
             <X size={13} color="#8B88A6" strokeWidth={2.4} />
           </TouchableOpacity>
         </View>
@@ -497,7 +599,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       <TextInput
         value={text}
         onChangeText={onChangeText}
-        placeholder={replyTo ? '返信を書く…' : 'コメントを書く…'}
+        placeholder={replyTo ? t.replyPlaceholder : t.commentPlaceholder}
         placeholderTextColor="#B9B6CC"
         style={s.input}
         maxLength={200}
@@ -505,7 +607,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       />
       <TouchableOpacity onPress={send} disabled={!text.trim() || sending}
         style={[s.sendBtn, (!text.trim() || sending) && { opacity: 0.4 }]}
-        accessibilityRole="button" accessibilityLabel="コメントを送信">
+        accessibilityRole="button" accessibilityLabel={t.a11ySendComment}>
         {sending ? <ActivityIndicator size="small" color="#fff" /> : <Send size={15} color="#fff" strokeWidth={2.4} />}
       </TouchableOpacity>
       </View>
@@ -516,8 +618,8 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
     <View style={s.card}>
       <View style={s.head}>
         <MessageSquare size={16} color={PURPLE} strokeWidth={2.2} />
-        <Text style={s.title}>コメント</Text>
-        {items.length > 0 && <Text style={s.count}>{items.length}件</Text>}
+        <Text style={s.title}>{t.commentsTitle}</Text>
+        {items.length > 0 && <Text style={s.count}>{t.countItems(items.length)}</Text>}
       </View>
 
       {/* 入力行 */}
@@ -526,9 +628,9 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
       {loading ? (
         <View style={s.centerPad}><ActivityIndicator color={PURPLE} size="small" /></View>
       ) : !ready ? (
-        <Text style={s.emptyText}>コメント機能は準備中です</Text>
+        <Text style={s.emptyText}>{t.commentsUnavailable}</Text>
       ) : items.length === 0 ? (
-        <Text style={s.emptyText}>最初のコメントを書いてみませんか？</Text>
+        <Text style={s.emptyText}>{t.beFirst}</Text>
       ) : (
         <>
           {inlineItems.map((c) => (
@@ -538,8 +640,8 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
           ))}
           {items.length > INLINE_MAX && (
             <TouchableOpacity style={s.moreRow} onPress={openSheet} activeOpacity={0.8}
-              accessibilityRole="button" accessibilityLabel="すべてのコメントを見る">
-              <Text style={s.moreText}>すべてのコメントを見る（{items.length}件）</Text>
+              accessibilityRole="button" accessibilityLabel={t.a11ySeeAll}>
+              <Text style={s.moreText}>{t.seeAll(items.length)}</Text>
               <ChevronDown size={14} color={PURPLE} strokeWidth={2.4} />
             </TouchableOpacity>
           )}
@@ -558,7 +660,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
             backgroundColor: '#000',
             opacity: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.45] }),
           }]}>
-            <Pressable style={{ flex: 1 }} onPress={closeSheet} accessibilityLabel="コメントを閉じる" />
+            <Pressable style={{ flex: 1 }} onPress={closeSheet} accessibilityLabel={t.a11yCloseComments} />
           </Animated.View>
 
           <Animated.View style={[
@@ -572,9 +674,9 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
             <View style={s.grabber} />
             <View style={s.sheetHead}>
               <View style={{ width: 32 }} />
-              <Text style={s.sheetTitle}>{items.length > 0 ? `${items.length}件のコメント` : 'コメント'}</Text>
+              <Text style={s.sheetTitle}>{items.length > 0 ? t.sheetTitle(items.length) : t.commentsTitle}</Text>
               <TouchableOpacity onPress={closeSheet} style={s.sheetClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button" accessibilityLabel="閉じる">
+                accessibilityRole="button" accessibilityLabel={t.a11yClose}>
                 <X size={18} color="#4B3B6B" strokeWidth={2.4} />
               </TouchableOpacity>
             </View>
@@ -590,7 +692,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
               contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12 }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              ListEmptyComponent={<Text style={[s.emptyText, { paddingVertical: 28 }]}>最初のコメントを書いてみませんか？</Text>}
+              ListEmptyComponent={<Text style={[s.emptyText, { paddingVertical: 28 }]}>{t.beFirst}</Text>}
             />
 
             {/* シート下部の入力行 */}

@@ -19,12 +19,34 @@ import React, { useRef } from 'react';
 import {
   Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
+import { useSettings, type Lang } from '@/lib/settingsStore';
 
 // プロフィールのデザイントークンと同値（ページ全体の統一感を維持）
 const INK  = '#1E1548';
 const SUB  = '#8B88A6';
 const PINK = '#FF63A9';
 const BLUE = '#5A8DFF';
+
+const T = {
+  ja: {
+    title: '自分の投稿',
+    count: (n: number) => `${n}件`,
+    pending: '審査中',
+    rejected: '非公開',
+    a11ySeeAll: '自分の投稿をすべて見る',
+    a11yOpen: (name: string) => `${name}の投稿を開く`,
+    a11ySeeRest: (n: number) => `残り${n}件の投稿を見る`,
+  },
+  en: {
+    title: 'My posts',
+    count: (n: number) => `${n}`,
+    pending: 'Under review',
+    rejected: 'Private',
+    a11ySeeAll: 'See all my posts',
+    a11yOpen: (name: string) => `Open post for ${name}`,
+    a11ySeeRest: (n: number) => `See ${n} more posts`,
+  },
+} as const;
 
 // profile.tsx の MyPost と構造互換（likesはAPIが返すが型未宣言でも安全に拾う）
 export type GlassPost = {
@@ -44,9 +66,10 @@ function fmtDate(iso: string): string {
   return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
 }
 
-function statusLabel(status?: string | null): string | null {
-  if (status === 'pending') return '審査中';
-  if (status === 'rejected') return '非公開';
+// status は 'pending'/'rejected' の値で比較。返すのは表示用ラベル（言語別）
+function statusLabel(status: string | null | undefined, lang: Lang): string | null {
+  if (status === 'pending') return T[lang].pending;
+  if (status === 'rejected') return T[lang].rejected;
   return null;
 }
 
@@ -92,10 +115,12 @@ export default function MyPostsGlassCard({
   onMore: () => void;
   onPressPost: (p: GlassPost) => void;
 }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const hero = posts[0];
   const thumbs = posts.slice(1, 6);   // サムネイルは最大5枚
   const heroImg = hero.image_urls?.[0] ?? null;
-  const heroStatus = statusLabel(hero.status);
+  const heroStatus = statusLabel(hero.status, lang);
 
   return (
     <View style={s.shadowWrap}>
@@ -105,20 +130,20 @@ export default function MyPostsGlassCard({
           <View style={s.header}>
             <View style={s.headerLeft}>
               <Sparkles size={16} color={PINK} strokeWidth={2.2} />
-              <Text style={s.title}>自分の投稿</Text>
+              <Text style={s.title}>{t.title}</Text>
             </View>
             <Pressable
               onPress={onMore} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button" accessibilityLabel="自分の投稿をすべて見る"
+              accessibilityRole="button" accessibilityLabel={t.a11ySeeAll}
               style={s.headerRight}
             >
-              <Text style={s.count}>{posts.length}件</Text>
+              <Text style={s.count}>{t.count(posts.length)}</Text>
               <ChevronRight size={18} color={SUB} strokeWidth={2.2} />
             </Pressable>
           </View>
 
           {/* ── メイン: 最新投稿のヒーロー（背後に写真色のガラスグロー）── */}
-          <GlassPress onPress={() => onPressPost(hero)} label={`${hero.spot_name}の投稿を開く`}>
+          <GlassPress onPress={() => onPressPost(hero)} label={t.a11yOpen(hero.spot_name)}>
             {/* 写真自身をぼかして背後に敷く＝写真の色がにじむ「ガラスの影」（iOSアルバム風） */}
             {heroImg && (
               <Image
@@ -184,7 +209,7 @@ export default function MyPostsGlassCard({
                   <GlassPress
                     key={p.id}
                     onPress={() => (isMore ? onMore() : onPressPost(p))}
-                    label={isMore ? `残り${extra}件の投稿を見る` : `${p.spot_name}の投稿を開く`}
+                    label={isMore ? t.a11ySeeRest(extra) : t.a11yOpen(p.spot_name)}
                   >
                     <View style={s.thumbRing}>
                       <View style={s.thumb}>

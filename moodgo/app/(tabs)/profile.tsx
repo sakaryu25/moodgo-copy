@@ -42,6 +42,74 @@ const NICKNAME_KEY  = 'moodgo-group-nickname';
 const USER_ICON_KEY = 'moodgo-user-icon';
 const HANDLE_KEY    = 'moodgo-user-handle';   // ユーザーID(@ハンドル)のローカルキャッシュ
 
+// ── 表示テキストの多言語（ja/en）────────────────────────────────────────────
+const T = {
+  ja: {
+    pageTitle: 'プロフィール',
+    setId: 'IDを設定 ›',
+    online: 'オンライン',
+    statPosts: '投稿',
+    statVisited: '行った',
+    statLikes: 'いいね',
+    statFollowers: 'フォロワー',
+    editProfile: 'プロフィールを編集',
+    myPosts: '自分の投稿',
+    badges: 'バッジ',
+    recentSpots: '最近チェックしたスポット',
+    allBadges: 'すべてのバッジ',
+    checkedSpots: 'チェックしたスポット',
+    postCta: '投稿する',
+    emptyPostsTitle: 'まだ投稿がありません',
+    emptyPostsSub: '気になったスポットで「投稿」してみよう！',
+    emptyBadgesTitle: 'バッジはまだありません',
+    emptyBadgesSub: 'いろいろなスポットを訪れてバッジを集めよう！',
+    emptyViewedTitle: '最近チェックしたスポットはありません',
+    emptyViewedSub: '気になるスポットをチェックしてみよう！',
+    seeAll: (t: string) => `${t}をすべて見る`,
+    followersA11y: 'フォロワー一覧を見る',
+    achieved: '達成',
+    spotFallback: 'スポット',
+    postFallback: '投稿',
+    kindSuggestion: '穴場',
+    kindMoodlog: 'moodログ',
+    kindBlog: 'おすすめ',
+    statusPending: '審査中',
+    statusRejected: '非公開',
+  },
+  en: {
+    pageTitle: 'Profile',
+    setId: 'Set ID ›',
+    online: 'Online',
+    statPosts: 'Posts',
+    statVisited: 'Visited',
+    statLikes: 'Likes',
+    statFollowers: 'Followers',
+    editProfile: 'Edit profile',
+    myPosts: 'My posts',
+    badges: 'Badges',
+    recentSpots: 'Recently viewed spots',
+    allBadges: 'All badges',
+    checkedSpots: 'Viewed spots',
+    postCta: 'Post',
+    emptyPostsTitle: 'No posts yet',
+    emptyPostsSub: 'Share a spot you liked!',
+    emptyBadgesTitle: 'No badges yet',
+    emptyBadgesSub: 'Visit different spots to collect badges!',
+    emptyViewedTitle: 'No recently viewed spots',
+    emptyViewedSub: 'Check out a spot you’re curious about!',
+    seeAll: (t: string) => `See all ${t}`,
+    followersA11y: 'View followers',
+    achieved: 'earned',
+    spotFallback: 'Spot',
+    postFallback: 'Post',
+    kindSuggestion: 'Hidden gem',
+    kindMoodlog: 'Mood log',
+    kindBlog: 'Recommended',
+    statusPending: 'Under review',
+    statusRejected: 'Private',
+  },
+} as const;
+
 // ── デザイントークン（完成系指定）────────────────────────────────────────────
 const BG    = '#F7F7FA';
 const INK   = '#1E1548';
@@ -77,12 +145,18 @@ function openPost(item: MyPost) {
   router.push({ pathname: '/community-spot', params: { id: item.id } });
 }
 
-const KIND_LABEL: Record<string, string> = { suggestion: '穴場', moodlog: 'moodログ', blog: 'おすすめ' };
+function kindLabel(kind: string, lang: 'ja' | 'en'): string | undefined {
+  const t = T[lang];
+  if (kind === 'suggestion') return t.kindSuggestion;
+  if (kind === 'moodlog')    return t.kindMoodlog;
+  if (kind === 'blog')       return t.kindBlog;
+  return undefined;
+}
 // 承認前/却下のステータスだけ本人に見せる（approved / null は非表示）
-function statusLabel(status?: string | null): string | null {
+function statusLabel(status: string | null | undefined, lang: 'ja' | 'en'): string | null {
   if (!status) return null;
-  if (status === 'pending')  return '審査中';
-  if (status === 'rejected') return '非公開';
+  if (status === 'pending')  return T[lang].statusPending;
+  if (status === 'rejected') return T[lang].statusRejected;
   return null;
 }
 
@@ -105,6 +179,7 @@ function openSpot(x: SpotLogItem) {
 export default function ProfileTab() {
   const insets = useSafeAreaInsets();
   const settings = useSettings();
+  const t = T[settings.lang];
 
   const [nickname, setNickname] = useState('');
   const [userHandle, setUserHandle] = useState('');   // ユーザーID(@)。未設定なら空
@@ -233,7 +308,7 @@ export default function ProfileTab() {
       </View>
       {onMore && (
         <TouchableOpacity onPress={onMore} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button" accessibilityLabel={`${title}をすべて見る`}>
+          accessibilityRole="button" accessibilityLabel={t.seeAll(title)}>
           <ChevronRight size={18} color={SUB} strokeWidth={2.2} />
         </TouchableOpacity>
       )}
@@ -251,7 +326,7 @@ export default function ProfileTab() {
 
   const PostTile = ({ item, size }: { item: MyPost; size: number }) => {
     const photo = item.image_urls?.[0];
-    const st = statusLabel(item.status);
+    const st = statusLabel(item.status, settings.lang);
     return (
       <TouchableOpacity onPress={() => openPost(item)} activeOpacity={0.85}
         style={[s.tile, { width: size, height: size }]}>
@@ -264,7 +339,7 @@ export default function ProfileTab() {
         )}
         <LinearGradient colors={['transparent', 'rgba(30,21,72,0.55)']} style={s.tileScrim} pointerEvents="none" />
         {item.kind && (
-          <View style={s.kindBadge}><Text style={s.kindBadgeText}>{KIND_LABEL[item.kind] ?? '投稿'}</Text></View>
+          <View style={s.kindBadge}><Text style={s.kindBadgeText}>{kindLabel(item.kind, settings.lang) ?? t.postFallback}</Text></View>
         )}
         {st && <View style={s.statusBadge}><Text style={s.statusBadgeText}>{st}</Text></View>}
         <Text style={s.tileLoc} numberOfLines={1}>{item.prefecture || item.spot_name}</Text>
@@ -297,7 +372,7 @@ export default function ProfileTab() {
           </LinearGradient>
         </View>
         <Text style={s.badgeName} numberOfLines={1}>{item.title}</Text>
-        <Text style={s.badgeDate}>{new Date(item.at).getMonth() + 1}/{new Date(item.at).getDate()} 達成</Text>
+        <Text style={s.badgeDate}>{new Date(item.at).getMonth() + 1}/{new Date(item.at).getDate()} {t.achieved}</Text>
       </TouchableOpacity>
     );
   };
@@ -313,7 +388,7 @@ export default function ProfileTab() {
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={s.viewedName} numberOfLines={1}>{item.title}</Text>
-        <Text style={s.viewedArea} numberOfLines={1}>{prefOf(item.address) || item.area || 'スポット'}</Text>
+        <Text style={s.viewedArea} numberOfLines={1}>{prefOf(item.address) || item.area || t.spotFallback}</Text>
       </View>
       <Text style={s.viewedTime}>{relativeTime(item.at)}</Text>
     </TouchableOpacity>
@@ -321,7 +396,7 @@ export default function ProfileTab() {
 
   // ── サブビュー（全件表示）────────────────────────────────────────────────
   const renderSubView = () => {
-    const title = subView === 'posts' ? '自分の投稿' : subView === 'badges' ? 'すべてのバッジ' : 'チェックしたスポット';
+    const title = subView === 'posts' ? t.myPosts : subView === 'badges' ? t.allBadges : t.checkedSpots;
     return (
       <View style={[s.root, StyleSheet.absoluteFill]}>
         <AppBackground />
@@ -338,8 +413,8 @@ export default function ProfileTab() {
         >
           {subView === 'posts' && (
             posts.length === 0 ? (
-              <Empty icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />} title="まだ投稿がありません"
-                sub="気になったスポットで「投稿」してみよう！" />
+              <Empty icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyPostsTitle}
+                sub={t.emptyPostsSub} />
             ) : (
               <View style={[s.grid, { gap: GAP }]}>
                 {posts.map((p) => <PostTile key={p.id} item={p} size={tileCellFull} />)}
@@ -348,8 +423,8 @@ export default function ProfileTab() {
           )}
           {subView === 'badges' && (
             badges.length === 0 ? (
-              <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
-                sub="いろいろなスポットを訪れてバッジを集めよう！" />
+              <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
+                sub={t.emptyBadgesSub} />
             ) : (
               <View style={[s.grid, { gap: GAP, justifyContent: 'center' }]}>
                 {/* 横2列×N・件数が少ないときは中央揃え */}
@@ -359,8 +434,8 @@ export default function ProfileTab() {
           )}
           {subView === 'viewed' && (
             viewed.length === 0 ? (
-              <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
-                sub="気になるスポットをチェックしてみよう！" />
+              <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyViewedTitle}
+                sub={t.emptyViewedSub} />
             ) : (
               <View style={{ gap: 4 }}>
                 {viewed.map((v, i) => <ViewedRow key={`${v.title}-${i}`} item={v} />)}
@@ -390,7 +465,7 @@ export default function ProfileTab() {
             <Bell size={18} color={INK} strokeWidth={2} />
             {notifUnread && <View style={s.notifDot} />}
           </PuniPressable>
-          <Text style={s.pageTitle}>プロフィール</Text>
+          <Text style={s.pageTitle}>{t.pageTitle}</Text>
           <PuniPressable onPress={() => { setSettingsSection('other'); setShowSettings(true); }}
             style={s.glassBtn}>
             <SettingsIcon size={19} color={INK} strokeWidth={2} />
@@ -430,12 +505,12 @@ export default function ProfileTab() {
                   <Text style={s.handle} numberOfLines={1}>@{userHandle}</Text>
                 ) : (
                   <TouchableOpacity onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} activeOpacity={0.7}>
-                    <Text style={s.handle} numberOfLines={1}>IDを設定 ›</Text>
+                    <Text style={s.handle} numberOfLines={1}>{t.setId}</Text>
                   </TouchableOpacity>
                 )}
                 <View style={s.onlinePill}>
                   <View style={s.onlineDot} />
-                  <Text style={s.onlineText}>オンライン</Text>
+                  <Text style={s.onlineText}>{t.online}</Text>
                 </View>
                 {settings.showPrefecture && settings.profilePrefecture ? (
                   <View style={s.prefPill}>
@@ -451,17 +526,17 @@ export default function ProfileTab() {
               <View style={s.statsRow}>
                 <View style={s.statCol}>
                   <Text style={s.statNum}>{posts.length}</Text>
-                  <Text style={s.statLabel}>投稿</Text>
+                  <Text style={s.statLabel}>{t.statPosts}</Text>
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
                   <Text style={s.statNum}>{badges.length}</Text>
-                  <Text style={s.statLabel}>行った</Text>
+                  <Text style={s.statLabel}>{t.statVisited}</Text>
                 </View>
                 <View style={s.statDivider} />
                 <View style={s.statCol}>
                   <Text style={s.statNum}>{posts.reduce((n, p) => n + (p.likes ?? 0), 0)}</Text>
-                  <Text style={s.statLabel}>いいね</Text>
+                  <Text style={s.statLabel}>{t.statLikes}</Text>
                 </View>
                 <View style={s.statDivider} />
                 <TouchableOpacity style={s.statCol} activeOpacity={0.7}
@@ -476,9 +551,9 @@ export default function ProfileTab() {
                     }
                     if (h) router.push({ pathname: '/follow-list', params: { id: h, kind: 'followers' } });
                   }}
-                  accessibilityRole="button" accessibilityLabel="フォロワー一覧を見る">
+                  accessibilityRole="button" accessibilityLabel={t.followersA11y}>
                   <Text style={s.statNum}>{follows.followers}</Text>
-                  <Text style={s.statLabel}>フォロワー</Text>
+                  <Text style={s.statLabel}>{t.statFollowers}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -488,7 +563,7 @@ export default function ProfileTab() {
           <PuniPressable onPress={() => { setSettingsSection('profile'); setShowSettings(true); }} style={s.editBtn}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.editBtnInner}>
               <PenLine size={16} color="#fff" strokeWidth={2.2} />
-              <Text style={s.editBtnText}>プロフィールを編集</Text>
+              <Text style={s.editBtnText}>{t.editProfile}</Text>
             </LinearGradient>
           </PuniPressable>
         </Animated.View>
@@ -497,20 +572,20 @@ export default function ProfileTab() {
         <Animated.View style={sectionStyle(1)}>
           {loading || posts.length === 0 ? (
             <View style={s.card}>
-              <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title="自分の投稿"
+              <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title={t.myPosts}
                 onMore={() => router.push('/my-posts')} />
               {loading ? (
                 <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
               ) : (
                 <Empty
                   icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />}
-                  title="まだ投稿がありません"
-                  sub="気になったスポットで「投稿」してみよう！"
+                  title={t.emptyPostsTitle}
+                  sub={t.emptyPostsSub}
                   action={
                     // 全国みんなの穴場と同じ投稿画面(/post)をそのまま開く（新規画面は作らない）
                     <PuniPressable onPress={() => router.push('/post')} style={s.outlineBtn}>
                       <Plus size={15} color={BLUE} strokeWidth={2.4} />
-                      <Text style={s.outlineBtnText}>投稿する</Text>
+                      <Text style={s.outlineBtnText}>{t.postCta}</Text>
                     </PuniPressable>
                   }
                 />
@@ -527,11 +602,11 @@ export default function ProfileTab() {
 
         {/* ── 🏅 バッジ（行った！から生成） ── */}
         <Animated.View style={[s.card, sectionStyle(2)]}>
-          <CardHeader icon={<Award size={16} color="#F5A623" strokeWidth={2.2} />} title="バッジ"
+          <CardHeader icon={<Award size={16} color="#F5A623" strokeWidth={2.2} />} title={t.badges}
             onMore={() => setSubView('badges')} />
           {badges.length === 0 ? (
-            <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title="バッジはまだありません"
-              sub="いろいろなスポットを訪れてバッジを集めよう！" />
+            <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
+              sub={t.emptyBadgesSub} />
           ) : (
             <View style={[s.grid, { gap: GAP }]}>
               {badges.slice(0, 4).map((b, i) => <BadgeItem key={`${b.title}-${i}`} item={b} size={badgeCell} />)}
@@ -541,11 +616,11 @@ export default function ProfileTab() {
 
         {/* ── 📍 最近チェックしたスポット ── */}
         <Animated.View style={[s.card, sectionStyle(3)]}>
-          <CardHeader icon={<MapPin size={16} color={BLUE} strokeWidth={2.2} />} title="最近チェックしたスポット"
+          <CardHeader icon={<MapPin size={16} color={BLUE} strokeWidth={2.2} />} title={t.recentSpots}
             onMore={() => setSubView('viewed')} />
           {viewed.length === 0 ? (
-            <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title="最近チェックしたスポットはありません"
-              sub="気になるスポットをチェックしてみよう！" />
+            <Empty icon={<MapPin size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyViewedTitle}
+              sub={t.emptyViewedSub} />
           ) : (
             <View style={{ gap: 4 }}>
               {viewed.slice(0, 4).map((v, i) => <ViewedRow key={`${v.title}-${i}`} item={v} />)}

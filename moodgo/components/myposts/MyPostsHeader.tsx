@@ -4,16 +4,25 @@
 import { BlurView } from 'expo-blur';
 import { ChevronLeft, Plus } from 'lucide-react-native';
 import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSettings } from '@/lib/settingsStore';
 import { MP } from './types';
 
+const T = {
+  ja: { myPosts: '自分の投稿', a11yBack: '戻る', a11yNew: '新しく投稿する' },
+  en: { myPosts: 'My posts', a11yBack: 'Back', a11yNew: 'Create a new post' },
+} as const;
+
 export default function MyPostsHeader({
-  topInset, scrolled, onBack, onNew, title = '自分の投稿', showNew = true, translateY,
+  topInset, scrolled, onBack, onNew, title, showNew = true, translateY,
 }: {
   topInset: number; scrolled: boolean; onBack: () => void; onNew: () => void;
   title?: string;      // 画面タイトル（/user/[id]では相手の名前）
   showNew?: boolean;   // ＋新規投稿ボタンの表示（他人のページでは出さない）
   translateY?: Animated.AnimatedInterpolation<number>;   // スクロール格納（省略時は従来の固定）
 }) {
+  const { lang } = useSettings();
+  const t = T[lang];
+  const shownTitle = title ?? t.myPosts;   // タイトル未指定時は言語別の既定を表示
   return (
     <Animated.View style={[s.wrap, { paddingTop: topInset }, translateY != null && { transform: [{ translateY }] }]}>
       {scrolled && (
@@ -28,13 +37,13 @@ export default function MyPostsHeader({
       )}
       <View style={s.bar}>
         <TouchableOpacity onPress={onBack} style={s.circleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button" accessibilityLabel="戻る">
+          accessibilityRole="button" accessibilityLabel={t.a11yBack}>
           <ChevronLeft size={22} color={MP.INK} strokeWidth={2.4} />
         </TouchableOpacity>
-        <Text style={s.title} numberOfLines={1}>{title}</Text>
+        <Text style={s.title} numberOfLines={1}>{shownTitle}</Text>
         {showNew ? (
           <TouchableOpacity onPress={onNew} style={s.circleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button" accessibilityLabel="新しく投稿する">
+            accessibilityRole="button" accessibilityLabel={t.a11yNew}>
             <Plus size={20} color={MP.INK} strokeWidth={2.4} />
           </TouchableOpacity>
         ) : (

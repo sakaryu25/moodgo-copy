@@ -15,15 +15,42 @@ import { MP } from '@/components/myposts/types';
 import { fetchNotifications, getLastSeen, markSeen, type Notice } from '@/lib/notifications';
 import { relativeTime } from '@/lib/spotLog';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
+import { useSettings } from '@/lib/settingsStore';
 
 const TYPE_STYLE = {
-  like:    { Icon: Heart,      tint: '#F06292', bg: '#FDEBF2', label: 'いいねしました' },
-  visited: { Icon: Footprints, tint: '#F5A623', bg: '#FDF3E1', label: '行った！しました' },
-  follow:  { Icon: UserPlus,   tint: '#8B6BF2', bg: '#F1EBFF', label: 'あなたをフォローしました' },
+  like:    { Icon: Heart,      tint: '#F06292', bg: '#FDEBF2' },
+  visited: { Icon: Footprints, tint: '#F5A623', bg: '#FDF3E1' },
+  follow:  { Icon: UserPlus,   tint: '#8B6BF2', bg: '#F1EBFF' },
+} as const;
+
+const T = {
+  ja: {
+    title: '通知',
+    emptyTitle: '通知はまだありません',
+    emptySub: '投稿にいいねや行った！が付くとここに届きます',
+    someone: '誰か',
+    spot: 'スポット',
+    // 表示専用のメッセージ組み立て（type値そのものは翻訳しない）
+    followText: (who: string) => `${who}があなたをフォローしました`,
+    likeText: (who: string, spot: string) => `${who}があなたの「${spot}」にいいねしました`,
+    visitedText: (who: string, spot: string) => `${who}があなたの「${spot}」に行った！しました`,
+  },
+  en: {
+    title: 'Notifications',
+    emptyTitle: 'No notifications yet',
+    emptySub: "You'll be notified here when someone likes or marks your posts as been here",
+    someone: 'Someone',
+    spot: 'spot',
+    followText: (who: string) => `${who} followed you`,
+    likeText: (who: string, spot: string) => `${who} liked your "${spot}"`,
+    visitedText: (who: string, spot: string) => `${who} marked your "${spot}" as been here`,
+  },
 } as const;
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const [items, setItems] = useState<Notice[]>([]);
   const [lastSeen, setLastSeen] = useState('');
   const [loading, setLoading] = useState(true);
@@ -71,23 +98,26 @@ export default function NotificationsScreen() {
         ) : items.length === 0 ? (
           <View style={s.center}>
             <View style={s.emptyIcon}><Bell size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
-            <Text style={s.emptyTitle}>通知はまだありません</Text>
-            <Text style={s.emptySub}>投稿にいいねや行った！が付くとここに届きます</Text>
+            <Text style={s.emptyTitle}>{t.emptyTitle}</Text>
+            <Text style={s.emptySub}>{t.emptySub}</Text>
           </View>
         ) : (
           items.map((n, i) => {
-            const t = TYPE_STYLE[n.type];
+            const st = TYPE_STYLE[n.type];
             const unread = !!n.at && (!lastSeen || n.at > lastSeen);
-            const who = n.actorHandle ? `@${n.actorHandle} さん` : '誰か';
+            const who = n.actorHandle ? `@${n.actorHandle}` : t.someone;
+            const spot = n.spotName ?? t.spot;
             const text = n.type === 'follow'
-              ? `${who}が${t.label}`
-              : `${who}があなたの「${n.spotName ?? 'スポット'}」に${t.label}`;
+              ? t.followText(who)
+              : n.type === 'visited'
+                ? t.visitedText(who, spot)
+                : t.likeText(who, spot);
             return (
               <TouchableOpacity key={`${n.type}-${n.at}-${i}`} style={[s.row, unread && s.rowUnread]}
                 onPress={() => openNotice(n)} activeOpacity={0.75}
                 accessibilityRole="button" accessibilityLabel={text}>
-                <View style={[s.iconCircle, { backgroundColor: t.bg }]}>
-                  <t.Icon size={16} color={t.tint} strokeWidth={2.2} />
+                <View style={[s.iconCircle, { backgroundColor: st.bg }]}>
+                  <st.Icon size={16} color={st.tint} strokeWidth={2.2} />
                 </View>
                 {n.actorIcon ? (
                   <Image source={{ uri: n.actorIcon }} style={s.avatar} contentFit="cover" />
@@ -109,7 +139,7 @@ export default function NotificationsScreen() {
         topInset={insets.top}
         scrolled={scrolled}
         translateY={collapse.translateY}
-        title="通知"
+        title={t.title}
         showNew={false}
         onBack={() => router.back()}
         onNew={() => {}}

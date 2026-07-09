@@ -11,11 +11,41 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { useSettings } from '@/lib/settingsStore';
+
+const T = {
+  ja: {
+    back: '戻る',
+    title: 'つながり',
+    tabFollowers: 'フォロワー',
+    tabFollowing: 'フォロー中',
+    suggestTitle: 'おすすめのユーザー',
+    defaultName: 'MoodGoユーザー',
+    following: 'フォロー中',
+    follow: 'フォロー',
+    emptyFollowers: 'フォロワーはいません',
+    emptyFollowing: 'まだ誰もフォローしていません',
+  },
+  en: {
+    back: 'Back',
+    title: 'Connections',
+    tabFollowers: 'Followers',
+    tabFollowing: 'Following',
+    suggestTitle: 'Suggested users',
+    defaultName: 'MoodGo user',
+    following: 'Following',
+    follow: 'Follow',
+    emptyFollowers: 'No followers yet',
+    emptyFollowing: 'Not following anyone yet',
+  },
+} as const;
 
 type Row = { id: string; handle: string | null; icon: string | null };
 
 export default function FollowListScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const { id, kind } = useLocalSearchParams<{ id?: string; kind?: string }>();
   const targetId = String(id ?? '');
   const [mode, setMode] = useState<'followers' | 'following'>(kind === 'following' ? 'following' : 'followers');
@@ -71,19 +101,19 @@ export default function FollowListScreen() {
       <AppBackground />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[s.header, { paddingTop: insets.top + 6 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn} accessibilityLabel="戻る">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn} accessibilityLabel={t.back}>
           <ChevronLeft size={24} color="#1A0A2E" strokeWidth={2.4} />
         </Pressable>
-        <Text style={s.title}>つながり</Text>
+        <Text style={s.title}>{t.title}</Text>
         <View style={{ width: 34 }} />
       </View>
 
       <View style={s.segRow}>
         <Pressable style={[s.seg, mode === 'followers' && s.segOn]} onPress={() => setMode('followers')}>
-          <Text style={[s.segText, mode === 'followers' && s.segTextOn]}>フォロワー</Text>
+          <Text style={[s.segText, mode === 'followers' && s.segTextOn]}>{t.tabFollowers}</Text>
         </Pressable>
         <Pressable style={[s.seg, mode === 'following' && s.segOn]} onPress={() => setMode('following')}>
-          <Text style={[s.segText, mode === 'following' && s.segTextOn]}>フォロー中</Text>
+          <Text style={[s.segText, mode === 'following' && s.segTextOn]}>{t.tabFollowing}</Text>
         </Pressable>
       </View>
 
@@ -93,7 +123,7 @@ export default function FollowListScreen() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 30, paddingTop: 4 }}>
           {mode === 'following' && suggests.length > 0 && (
             <View style={{ marginBottom: 18 }}>
-              <Text style={s.sectionTitle}>おすすめのユーザー</Text>
+              <Text style={s.sectionTitle}>{t.suggestTitle}</Text>
               {suggests.map((u) => (
                 <View key={u.id} style={s.row}>
                   {u.icon ? (
@@ -102,12 +132,12 @@ export default function FollowListScreen() {
                     <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
                   )}
                   <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/user/[id]', params: { id: u.id } })}>
-                    <Text style={s.name} numberOfLines={1}>{u.handle ? `@${u.handle}` : 'MoodGoユーザー'}</Text>
+                    <Text style={s.name} numberOfLines={1}>{u.handle ? `@${u.handle}` : t.defaultName}</Text>
                   </Pressable>
                   {followed.has(u.id) ? (
-                    <Text style={s.followedTag}>フォロー中</Text>
+                    <Text style={s.followedTag}>{t.following}</Text>
                   ) : (
-                    <Pressable style={s.followBtn} onPress={() => doFollow(u.id)}><Text style={s.followBtnText}>フォロー</Text></Pressable>
+                    <Pressable style={s.followBtn} onPress={() => doFollow(u.id)}><Text style={s.followBtnText}>{t.follow}</Text></Pressable>
                   )}
                 </View>
               ))}
@@ -116,7 +146,7 @@ export default function FollowListScreen() {
           {rows.length === 0 ? (
             <View style={s.centerPad}>
               <UserRound size={34} color="#C9BCE6" strokeWidth={1.8} />
-              <Text style={s.empty}>{mode === 'followers' ? 'フォロワーはいません' : 'まだ誰もフォローしていません'}</Text>
+              <Text style={s.empty}>{mode === 'followers' ? t.emptyFollowers : t.emptyFollowing}</Text>
             </View>
           ) : (
             rows.map((r) => (
@@ -126,7 +156,7 @@ export default function FollowListScreen() {
                 ) : (
                   <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
                 )}
-                <Text style={s.name} numberOfLines={1}>{r.handle ? `@${r.handle}` : 'MoodGoユーザー'}</Text>
+                <Text style={s.name} numberOfLines={1}>{r.handle ? `@${r.handle}` : t.defaultName}</Text>
                 <ChevronRight size={18} color="#C9BCE6" strokeWidth={2.4} />
               </Pressable>
             ))

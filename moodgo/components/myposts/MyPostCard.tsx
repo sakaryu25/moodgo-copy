@@ -6,20 +6,41 @@ import * as Haptics from 'expo-haptics';
 import { Footprints, Heart, MapPin } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSettings, type Lang } from '@/lib/settingsStore';
 import ThumbImage from '../ThumbImage';
 import { MP, aspectOf, type MyPost } from './types';
 
-function statusLabel(status?: string | null): string | null {
-  if (status === 'pending') return '審査中';
-  if (status === 'rejected') return '非公開';
+const T = {
+  ja: {
+    pending: '審査中',
+    rejected: '非公開',
+    likes: (n: number) => `いいね ${n}`,
+    visited: (n: number) => `行った ${n}`,
+    a11yOpen: (name: string) => `${name}の投稿を開く`,
+  },
+  en: {
+    pending: 'Under review',
+    rejected: 'Private',
+    likes: (n: number) => `${n} likes`,
+    visited: (n: number) => `${n} visited`,
+    a11yOpen: (name: string) => `Open post for ${name}`,
+  },
+} as const;
+
+// status は 'pending'/'rejected' の値で比較。返すのは表示用ラベル（言語別）
+function statusLabel(status: string | null | undefined, lang: Lang): string | null {
+  if (status === 'pending') return T[lang].pending;
+  if (status === 'rejected') return T[lang].rejected;
   return null;
 }
 
 export default function MyPostCard({
   post, index = 0, onPress,
 }: { post: MyPost; index?: number; onPress: () => void }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const img = post.image_urls?.[0] ?? null;
-  const st = statusLabel(post.status);
+  const st = statusLabel(post.status, lang);
   const scale = useRef(new Animated.Value(1)).current;
   const enter = useRef(new Animated.Value(0)).current;
 
@@ -40,7 +61,7 @@ export default function MyPostCard({
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
         onPressIn={() => to(0.98)} onPressOut={() => to(1)}
         style={s.card}
-        accessibilityRole="button" accessibilityLabel={`${post.spot_name}の投稿を開く`}
+        accessibilityRole="button" accessibilityLabel={t.a11yOpen(post.spot_name)}
       >
         <View style={[s.imgWrap, { aspectRatio: aspectOf(post.id) }]}>
           {img ? (
@@ -65,10 +86,10 @@ export default function MyPostCard({
             <Text style={s.name} numberOfLines={2}>{post.spot_name}</Text>
             <View style={s.metaRow}>
               <Heart size={12} color="#fff" fill="#fff" strokeWidth={0} />
-              <Text style={s.metaText}>いいね {post.likes ?? 0}</Text>
+              <Text style={s.metaText}>{t.likes(post.likes ?? 0)}</Text>
               <View style={{ width: 10 }} />
               <Footprints size={12} color="#fff" strokeWidth={2.4} />
-              <Text style={s.metaText}>行った {post.visited ?? 0}</Text>
+              <Text style={s.metaText}>{t.visited(post.visited ?? 0)}</Text>
             </View>
           </View>
         </View>

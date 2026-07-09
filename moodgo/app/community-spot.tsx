@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import { useSettings } from '@/lib/settingsStore';
 import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
 import { pushServerFavorites } from '@/lib/favoritesServer';
@@ -57,6 +58,99 @@ type Spot = {
   visitedCount?: number;      // 行った！された回数（閲覧者が押した数）
 };
 
+const T = {
+  ja: {
+    notFound: 'スポットが見つかりませんでした',
+    back: '戻る',
+    menuA11y: 'メニュー（共有・編集・削除など）',
+    userPhotos: '利用者の写真',
+    map: 'マップ',
+    profileA11y: (name: string) => `${name}のプロフィールを見る`,
+    defaultUser: 'MoodGoユーザー',
+    poster: '投稿者',
+    anonymousPost: '匿名の投稿',
+    overallRating: '総合評価',
+    beenHere: '行った！',
+    limitedSpot: '期間限定の穴場',
+    whatPlace: 'どんな場所？',
+    posterRecommend: '投稿者のおすすめ度',
+    reviewCount: (n: string) => `${n}件の口コミ`,
+    searchInstagram: 'Instagramで検索',
+    hours: '営業時間',
+    open: '営業中',
+    closed: '営業時間外',
+    helpfulReviews: 'ためになった口コミ',
+    close: '閉じる',
+    seeMore: 'もっと見る',
+    likeRemove: 'いいねを取り消す',
+    likeAdd: 'この投稿にいいね',
+    editPost: '投稿を編集',
+    deletePost: '投稿を削除',
+    share: '共有する',
+    report: '通報する',
+    cancel: 'キャンセル',
+    menu: 'メニュー',
+    deleteConfirmTitle: '投稿を削除しますか？',
+    deleteConfirmMsg: 'この操作は取り消せません。',
+    deleteAction: '削除する',
+    deleted: '投稿を削除しました',
+    deleteFailed: '削除できませんでした',
+    deleteFailedRetry: '時間をおいてお試しください',
+    deleteFailedNet: '通信に失敗しました',
+    reported: '通報しました',
+    reportFailed: '通報できませんでした',
+    reportThanks: 'ご協力ありがとうございます',
+    reportRetry: '時間をおいてお試しください',
+    fromNow: '即日',
+    noEnd: '無期限',
+  },
+  en: {
+    notFound: 'Spot not found',
+    back: 'Back',
+    menuA11y: 'Menu (share, edit, delete, etc.)',
+    userPhotos: 'User photos',
+    map: 'Map',
+    profileA11y: (name: string) => `View ${name}'s profile`,
+    defaultUser: 'MoodGo user',
+    poster: 'Posted by',
+    anonymousPost: 'Anonymous post',
+    overallRating: 'Overall rating',
+    beenHere: 'Been here!',
+    limitedSpot: 'Limited-time spot',
+    whatPlace: 'What kind of place?',
+    posterRecommend: "Poster's rating",
+    reviewCount: (n: string) => `${n} reviews`,
+    searchInstagram: 'Search on Instagram',
+    hours: 'Hours',
+    open: 'Open now',
+    closed: 'Closed',
+    helpfulReviews: 'Helpful reviews',
+    close: 'Close',
+    seeMore: 'See more',
+    likeRemove: 'Remove like',
+    likeAdd: 'Like this post',
+    editPost: 'Edit post',
+    deletePost: 'Delete post',
+    share: 'Share',
+    report: 'Report',
+    cancel: 'Cancel',
+    menu: 'Menu',
+    deleteConfirmTitle: 'Delete this post?',
+    deleteConfirmMsg: 'This action cannot be undone.',
+    deleteAction: 'Delete',
+    deleted: 'Post deleted',
+    deleteFailed: "Couldn't delete",
+    deleteFailedRetry: 'Please try again later',
+    deleteFailedNet: 'Connection failed',
+    reported: 'Reported',
+    reportFailed: "Couldn't report",
+    reportThanks: 'Thanks for your help',
+    reportRetry: 'Please try again later',
+    fromNow: 'Today',
+    noEnd: 'No end date',
+  },
+} as const;
+
 // "2026-04-15" → "2026/4/15"。null/未設定はnull。
 function fmtJpDate(d?: string | null): string | null {
   if (!d) return null;
@@ -64,8 +158,8 @@ function fmtJpDate(d?: string | null): string | null {
   return m ? `${m[1]}/${Number(m[2])}/${Number(m[3])}` : d;
 }
 // 公開期間の表示。開始未設定→「即日」、終了未設定→「無期限」。
-function fmtPeriod(from?: string | null, until?: string | null): string {
-  return `${fmtJpDate(from) ?? '即日'} 〜 ${fmtJpDate(until) ?? '無期限'}`;
+function fmtPeriod(from: string | null | undefined, until: string | null | undefined, t: typeof T['ja' | 'en']): string {
+  return `${fmtJpDate(from) ?? t.fromNow} 〜 ${fmtJpDate(until) ?? t.noEnd}`;
 }
 
 function Stars({ n, size = 16 }: { n: number; size?: number }) {
@@ -81,6 +175,8 @@ function Stars({ n, size = 16 }: { n: number; size?: number }) {
 
 export default function CommunitySpotScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [spot, setSpot] = useState<Spot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -224,10 +320,10 @@ export default function CommunitySpotScreen() {
   // 自分の投稿を削除（確認 → サーバー削除 → 戻る）
   const onDelete = () => {
     if (!spot) return;
-    Alert.alert('投稿を削除しますか？', 'この操作は取り消せません。', [
-      { text: 'キャンセル', style: 'cancel' },
+    Alert.alert(t.deleteConfirmTitle, t.deleteConfirmMsg, [
+      { text: t.cancel, style: 'cancel' },
       {
-        text: '削除する', style: 'destructive',
+        text: t.deleteAction, style: 'destructive',
         onPress: async () => {
           try {
             const deviceId = await getDeviceId();
@@ -235,9 +331,9 @@ export default function CommunitySpotScreen() {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'delete', postId: spot.id, deviceId }),
             }).then((r) => r.json());
-            if (d?.ok) { showToast('投稿を削除しました'); router.back(); }
-            else showToast('削除できませんでした', d?.error ?? '時間をおいてお試しください');
-          } catch { showToast('削除できませんでした', '通信に失敗しました'); }
+            if (d?.ok) { showToast(t.deleted); router.back(); }
+            else showToast(t.deleteFailed, d?.error ?? t.deleteFailedRetry);
+          } catch { showToast(t.deleteFailed, t.deleteFailedNet); }
         },
       },
     ]);
@@ -248,26 +344,26 @@ export default function CommunitySpotScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const opts = isMine
       ? [
-          { text: '投稿を編集', onPress: onEdit },
-          { text: '投稿を削除', style: 'destructive' as const, onPress: onDelete },
-          { text: '共有する', onPress: onShare },
-          { text: 'キャンセル', style: 'cancel' as const },
+          { text: t.editPost, onPress: onEdit },
+          { text: t.deletePost, style: 'destructive' as const, onPress: onDelete },
+          { text: t.share, onPress: onShare },
+          { text: t.cancel, style: 'cancel' as const },
         ]
       : [
-          { text: '共有する', onPress: onShare },
-          { text: '通報する', style: 'destructive' as const, onPress: async () => {
+          { text: t.share, onPress: onShare },
+          { text: t.report, style: 'destructive' as const, onPress: async () => {
             try {
               const deviceId = await getDeviceId();
               const d = await apiFetch('/api/reports', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ spot_name: spot?.placeName || spot?.userTitle || '投稿', spot_address: spot?.address ?? null, reason: '不適切な投稿', note: `postId=${spot?.id ?? ''} kind=${spot?.kind ?? ''} poster=${spot?.posterId ?? ''}`, device_id: deviceId }),
               }).then((r) => r.json());
-              showToast(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
-            } catch { showToast('通報できませんでした', '時間をおいてお試しください'); }
+              showToast(d?.ok ? t.reported : t.reportFailed, d?.ok ? t.reportThanks : t.reportRetry);
+            } catch { showToast(t.reportFailed, t.reportRetry); }
           } },
-          { text: 'キャンセル', style: 'cancel' as const },
+          { text: t.cancel, style: 'cancel' as const },
         ];
-    Alert.alert('メニュー', undefined, opts);
+    Alert.alert(t.menu, undefined, opts);
   };
 
   if (loading) {
@@ -276,8 +372,8 @@ export default function CommunitySpotScreen() {
   if (!spot) {
     return (
       <View style={[s.root, s.center, { paddingTop: insets.top }]}>
-        <Text style={{ color: '#888' }}>スポットが見つかりませんでした</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}><Text style={{ color: PURPLE, fontWeight: '800' }}>戻る</Text></TouchableOpacity>
+        <Text style={{ color: '#888' }}>{t.notFound}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}><Text style={{ color: PURPLE, fontWeight: '800' }}>{t.back}</Text></TouchableOpacity>
       </View>
     );
   }
@@ -310,7 +406,7 @@ export default function CommunitySpotScreen() {
             <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
           <TouchableOpacity onPress={openMenu} style={[s.circleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}
-            accessibilityRole="button" accessibilityLabel="メニュー（共有・編集・削除など）">
+            accessibilityRole="button" accessibilityLabel={t.menuA11y}>
             <MoreHorizontal size={20} color="#1A0A2E" strokeWidth={2.4} />
           </TouchableOpacity>
 
@@ -322,7 +418,7 @@ export default function CommunitySpotScreen() {
           {spot.hasUserPhotos && photos.length > 0 && (
             <View style={s.userBadge}>
               <Camera size={12} color="#fff" strokeWidth={2.2} />
-              <Text style={s.userBadgeText}>利用者の写真</Text>
+              <Text style={s.userBadgeText}>{t.userPhotos}</Text>
             </View>
           )}
           {/* ドット */}
@@ -349,7 +445,7 @@ export default function CommunitySpotScreen() {
             <TouchableOpacity onPress={openMap} activeOpacity={0.85}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapPill}>
                 <MapPin size={15} color="#fff" strokeWidth={2.5} />
-                <Text style={s.mapPillText}>マップ</Text>
+                <Text style={s.mapPillText}>{t.map}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -372,7 +468,7 @@ export default function CommunitySpotScreen() {
               <TouchableOpacity
                 onPress={() => router.push({ pathname: '/user/[id]', params: { id: spot.posterId! } })}
                 activeOpacity={0.75} style={s.posterMain}
-                accessibilityRole="button" accessibilityLabel={`${spot.posterName?.trim() || 'MoodGoユーザー'}のプロフィールを見る`}>
+                accessibilityRole="button" accessibilityLabel={t.profileA11y(spot.posterName?.trim() || t.defaultUser)}>
                 {spot.posterIcon ? (
                   <Image source={{ uri: spot.posterIcon }} style={s.posterCardAvatar} contentFit="cover" />
                 ) : (
@@ -381,9 +477,9 @@ export default function CommunitySpotScreen() {
                   </View>
                 )}
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.posterKicker}>投稿者</Text>
+                  <Text style={s.posterKicker}>{t.poster}</Text>
                   <View style={s.posterNameRow}>
-                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || 'MoodGoユーザー'}</Text>
+                    <Text style={s.posterName} numberOfLines={1}>{spot.posterName?.trim() || t.defaultUser}</Text>
                     {spot.posterHandle ? <Text style={s.posterHandle} numberOfLines={1}>@{spot.posterHandle}</Text> : null}
                   </View>
                 </View>
@@ -395,8 +491,8 @@ export default function CommunitySpotScreen() {
                   <UserRound size={20} color={PURPLE} strokeWidth={1.8} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.posterKicker}>投稿者</Text>
-                  <Text style={s.posterName}>匿名の投稿</Text>
+                  <Text style={s.posterKicker}>{t.poster}</Text>
+                  <Text style={s.posterName}>{t.anonymousPost}</Text>
                 </View>
               </View>
             )}
@@ -406,12 +502,12 @@ export default function CommunitySpotScreen() {
           <View style={s.voiceBar}>
             <View style={s.voiceCell}>
               <View style={s.voiceValRow}><Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} /><Text style={s.voiceVal}>{ratingCount > 0 && avgRating != null ? avgRating.toFixed(1) : '—'}</Text></View>
-              <Text style={s.voiceLabel}>総合評価{ratingCount > 0 ? `（${ratingCount}）` : ''}</Text>
+              <Text style={s.voiceLabel}>{t.overallRating}{ratingCount > 0 ? `（${ratingCount}）` : ''}</Text>
             </View>
             <View style={s.voiceDivider} />
             <View style={s.voiceCell}>
               <View style={s.voiceValRow}><Footprints size={13} color="#10B981" strokeWidth={2.2} /><Text style={s.voiceVal}>{spot.visitedCount ?? 0}</Text></View>
-              <Text style={s.voiceLabel}>行った！</Text>
+              <Text style={s.voiceLabel}>{t.beenHere}</Text>
             </View>
           </View>
 
@@ -428,8 +524,8 @@ export default function CommunitySpotScreen() {
                 <CalendarClock size={17} color="#fff" strokeWidth={2.4} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.periodLabel}>期間限定の穴場</Text>
-                <Text style={s.periodValue}>{fmtPeriod(spot.availableFrom, spot.availableUntil)}</Text>
+                <Text style={s.periodLabel}>{t.limitedSpot}</Text>
+                <Text style={s.periodValue}>{fmtPeriod(spot.availableFrom, spot.availableUntil, t)}</Text>
               </View>
             </View>
           ) : null}
@@ -442,14 +538,14 @@ export default function CommunitySpotScreen() {
                 <>
                   <View style={s.commentLabelRow}>
                     <MessageCircle size={14} color={PURPLE} fill={PURPLE} strokeWidth={0} />
-                    <Text style={s.commentLabel}>どんな場所？</Text>
+                    <Text style={s.commentLabel}>{t.whatPlace}</Text>
                   </View>
                   <Text style={s.commentText}>{spot.description}</Text>
                 </>
               ) : null}
               {spot.rating > 0 ? (
                 <View style={[s.posterRate, !spot.description && s.posterRateTop]}>
-                  <Text style={s.posterRateLabel}>投稿者のおすすめ度</Text>
+                  <Text style={s.posterRateLabel}>{t.posterRecommend}</Text>
                   <Stars n={spot.rating} size={16} />
                   <Text style={s.posterRateNum}>{spot.rating}.0</Text>
                 </View>
@@ -464,7 +560,7 @@ export default function CommunitySpotScreen() {
               <View style={{ flex: 1 }}>
                 <Stars n={spot.googleRating!} size={18} />
                 {spot.reviewCount != null && (
-                  <Text style={s.reviewCount}>{spot.reviewCount.toLocaleString('ja-JP')}件の口コミ</Text>
+                  <Text style={s.reviewCount}>{t.reviewCount(spot.reviewCount.toLocaleString('ja-JP'))}</Text>
                 )}
               </View>
             </View>
@@ -486,7 +582,7 @@ export default function CommunitySpotScreen() {
                 </LinearGradient>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>Instagramで検索</Text>
+                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>{t.searchInstagram}</Text>
                 <Text style={s.infoSubText}>#{(spot.placeName || spot.userTitle).replace(/\s+/g, '')}</Text>
               </View>
             </TouchableOpacity>
@@ -498,12 +594,12 @@ export default function CommunitySpotScreen() {
               <View style={s.hoursHead}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                   <Clock size={16} color={PURPLE} strokeWidth={2.2} />
-                  <Text style={s.hoursTitle}>営業時間</Text>
+                  <Text style={s.hoursTitle}>{t.hours}</Text>
                 </View>
                 {spot.openNow != null && (
                   <View style={[s.openBadge, !spot.openNow && s.closedBadge]}>
                     <View style={[s.openDot, !spot.openNow && { backgroundColor: '#EF4444' }]} />
-                    <Text style={[s.openText, !spot.openNow && { color: '#EF4444' }]}>{spot.openNow ? '営業中' : '営業時間外'}</Text>
+                    <Text style={[s.openText, !spot.openNow && { color: '#EF4444' }]}>{spot.openNow ? t.open : t.closed}</Text>
                   </View>
                 )}
               </View>
@@ -525,7 +621,7 @@ export default function CommunitySpotScreen() {
             <View style={s.reviewsCard}>
               <View style={s.reviewsHead}>
                 <MessageCircle size={16} color={PURPLE} strokeWidth={2.2} />
-                <Text style={s.reviewsTitle}>ためになった口コミ</Text>
+                <Text style={s.reviewsTitle}>{t.helpfulReviews}</Text>
               </View>
               {spot.reviews.map((r, i) => (
                 <ReviewCard key={i} review={r} last={i === spot.reviews!.length - 1} />
@@ -544,7 +640,7 @@ export default function CommunitySpotScreen() {
 
       {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存 */}
       <TouchableOpacity onPress={onHeartPress} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
-        accessibilityRole="button" accessibilityLabel={(liked || faved) ? 'いいねを取り消す' : 'この投稿にいいね'}>
+        accessibilityRole="button" accessibilityLabel={(liked || faved) ? t.likeRemove : t.likeAdd}>
         <Heart size={22} color={PINK} fill={(liked || faved) ? PINK : 'transparent'} strokeWidth={2.4} />
         <Text style={s.favFabCount}>{likeCount}</Text>
       </TouchableOpacity>
@@ -555,6 +651,8 @@ export default function CommunitySpotScreen() {
 
 const REVIEW_AVATAR_BG = ['#FDEBD0', '#D5F5E3', '#D6EAF8', '#E8DAEF', '#D1F2EB', '#FDCEDF'];
 function ReviewCard({ review, last }: { review: Review; last?: boolean }) {
+  const { lang } = useSettings();
+  const t = T[lang];
   const [expanded, setExpanded] = useState(false);
   const MAX = 100;
   const needsExpand = review.text.length > MAX;
@@ -580,7 +678,7 @@ function ReviewCard({ review, last }: { review: Review; last?: boolean }) {
       <Text style={s.reviewText}>{shown}</Text>
       {needsExpand && (
         <TouchableOpacity onPress={() => setExpanded((v) => !v)} activeOpacity={0.7}>
-          <Text style={s.reviewMore}>{expanded ? '閉じる' : 'もっと見る'}</Text>
+          <Text style={s.reviewMore}>{expanded ? t.close : t.seeMore}</Text>
         </TouchableOpacity>
       )}
     </View>

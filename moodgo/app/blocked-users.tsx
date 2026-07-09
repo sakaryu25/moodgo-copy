@@ -13,11 +13,37 @@ import PuniPressable from '@/components/PuniPressable';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { useBlocks, unblockUser } from '@/lib/blockStore';
+import { useSettings } from '@/lib/settingsStore';
+
+const T = {
+  ja: {
+    back: '戻る',
+    title: 'ブロック・ミュート',
+    empty: 'ブロック・ミュートした\nユーザーはいません',
+    caption: 'ブロックした人の投稿・コメントは表示されません。ミュートは相手に気づかれず非表示にします。',
+    defaultName: 'ユーザー',
+    blocked: 'ブロック中',
+    muted: 'ミュート中',
+    unblock: '解除',
+  },
+  en: {
+    back: 'Back',
+    title: 'Blocked & Muted',
+    empty: 'No blocked or muted\nusers yet',
+    caption: "Posts and comments from blocked users won't be shown. Muting hides them without notifying the person.",
+    defaultName: 'User',
+    blocked: 'Blocked',
+    muted: 'Muted',
+    unblock: 'Unblock',
+  },
+} as const;
 
 type Row = { hash: string; kind: 'block' | 'mute'; name: string | null; handle: string | null; icon: string | null };
 
 export default function BlockedUsersScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const { blocked, muted } = useBlocks();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +88,10 @@ export default function BlockedUsersScreen() {
       <AppBackground />
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[s.header, { paddingTop: insets.top + 6 }]}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn} accessibilityLabel="戻る">
+        <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn} accessibilityLabel={t.back}>
           <ChevronLeft size={24} color="#1A0A2E" strokeWidth={2.4} />
         </Pressable>
-        <Text style={s.title}>ブロック・ミュート</Text>
+        <Text style={s.title}>{t.title}</Text>
         <View style={{ width: 34 }} />
       </View>
 
@@ -74,11 +100,11 @@ export default function BlockedUsersScreen() {
       ) : rows.length === 0 ? (
         <View style={s.center}>
           <UserRound size={34} color="#C9BCE6" strokeWidth={1.8} />
-          <Text style={s.empty}>ブロック・ミュートした{'\n'}ユーザーはいません</Text>
+          <Text style={s.empty}>{t.empty}</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 30 }}>
-          <Text style={s.caption}>ブロックした人の投稿・コメントは表示されません。ミュートは相手に気づかれず非表示にします。</Text>
+          <Text style={s.caption}>{t.caption}</Text>
           {rows.map((r) => (
             <View key={r.hash} style={s.row}>
               {r.icon ? (
@@ -87,13 +113,13 @@ export default function BlockedUsersScreen() {
                 <View style={[s.avatar, s.avatarPh]}><UserRound size={18} color="#B7A9D6" strokeWidth={2} /></View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={s.name} numberOfLines={1}>{r.name || (r.handle ? `@${r.handle}` : 'ユーザー')}</Text>
+                <Text style={s.name} numberOfLines={1}>{r.name || (r.handle ? `@${r.handle}` : t.defaultName)}</Text>
                 <Text style={s.sub} numberOfLines={1}>
-                  {r.kind === 'block' ? 'ブロック中' : 'ミュート中'}{r.handle && r.name ? ` ・ @${r.handle}` : ''}
+                  {r.kind === 'block' ? t.blocked : t.muted}{r.handle && r.name ? ` ・ @${r.handle}` : ''}
                 </Text>
               </View>
               <PuniPressable onPress={() => onUnblock(r.hash)} style={s.unblockBtn} haptic>
-                <Text style={s.unblockText}>解除</Text>
+                <Text style={s.unblockText}>{t.unblock}</Text>
               </PuniPressable>
             </View>
           ))}

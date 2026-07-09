@@ -26,6 +26,7 @@ import { apiFetch } from '@/lib/api';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
+import { useSettings } from '@/lib/settingsStore';
 import CommunityFeed from './CommunityFeed';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -50,6 +51,121 @@ const MOODS: { label: string; tag: string }[] = [
 const COMPANIONS = ['#1人', '#友達', '#恋人', '#家族', '#大人数'];
 const BUDGETS = ['#無料', '#〜3000', '#〜5000', '#〜10000', '#10000〜'];
 
+const T = {
+  ja: {
+    heroTitle: '全国みんなの穴場',
+    heroSub: '気分でめぐる、みんなのおすすめスポット',
+    popular: '人気',
+    near: '近く',
+    fetching: '取得中…',
+    searchPlaceholder: 'スポット名・@IDで検索',
+    scopeAll: 'すべて',
+    scopeFollowing: 'フォロー中',
+    post: '＋ 投稿',
+    map: '地図',
+    whatPlace: 'どんな場所？',
+    likesCount: (n: string) => `${n}件の「参考になった」`,
+    budgetLabel: '予算感',
+    companionLabel: 'おすすめの相手',
+    seeThisPlace: 'この場所を見る',
+    reportThis: 'この投稿を通報',
+    reported: '通報しました',
+    reportTitle: 'この投稿を通報しますか？',
+    reportMsg: '不適切な内容として運営に報告します。',
+    cancel: 'キャンセル',
+    doReport: '通報する',
+    recommendedBy: (name: string) => `${name}さんのおすすめ`,
+    postRecommend: 'おすすめを投稿',
+    photoPermTitle: '写真へのアクセスが許可されていません。\n設定アプリ →（MoodGo/Expo Go）→ 写真 で「すべての写真」または「選択した写真」を許可してください。',
+    photoLoadError: (e: string) => `写真の読み込みでエラーが発生しました: ${e}`,
+    needTitle: 'タイトルを入力してください',
+    needPlace: '場所名/お店名を入力してください',
+    needLicense: '写真の権利確認にチェックしてください',
+    postedOk: '投稿しました！運営の承認後に公開されます。',
+    postFailed: (e: string) => `投稿に失敗しました: ${e}`,
+    networkError: '通信エラー',
+    addPhoto: '＋ 写真を追加（1〜10枚）',
+    fieldTitle: 'タイトル *',
+    fieldTitlePh: '例: 夕方に行きたい静かな散歩スポット',
+    fieldPlace: '場所名 / お店名 *',
+    fieldPlacePh: '例: 称名寺市民の森',
+    fieldAddress: '住所・エリア',
+    fieldAddressPh: '例: 横浜市金沢区',
+    moodTags: '気分タグ',
+    withWhom: '誰と',
+    budgetFeel: '予算感',
+    bio: 'ひとこと',
+    bioPh: 'どんな気分の日におすすめ？',
+    bodyLabel: '本文',
+    bodyPh: 'どんな場所か、行った感想など',
+    licenseText: '自分で撮影した、または使用許可のある写真です（Google画像/マップ/他サイトの転載ではありません）',
+    posting: '投稿中…',
+    submit: '投稿する（承認後に公開）',
+    moodLabels: {
+      '#自然感じたい': '自然', '#まったりしたい': 'まったり', '#わいわい楽しみたい': 'わいわい',
+      '#お腹すいた': 'お腹すいた', '#ドライブしたい': 'ドライブ', '#集中したい': '集中',
+      '#体動かしたい': '運動', '#遠くに行きたい': '旅行', '#ショッピング': '買い物', '#スリル味わいたい': 'スリル',
+    } as Record<string, string>,
+    defaultPoster: 'MoodGoユーザー',
+  },
+  en: {
+    heroTitle: 'Hidden gems nationwide',
+    heroSub: "Explore everyone's favorite spots by mood",
+    popular: 'Popular',
+    near: 'Nearby',
+    fetching: 'Locating…',
+    searchPlaceholder: 'Search by spot name or @ID',
+    scopeAll: 'All',
+    scopeFollowing: 'Following',
+    post: '＋ Post',
+    map: 'Map',
+    whatPlace: "What's it like?",
+    likesCount: (n: string) => `${n} found this helpful`,
+    budgetLabel: 'Budget',
+    companionLabel: 'Great with',
+    seeThisPlace: 'View this place',
+    reportThis: 'Report this post',
+    reported: 'Reported',
+    reportTitle: 'Report this post?',
+    reportMsg: "We'll report it to our team as inappropriate.",
+    cancel: 'Cancel',
+    doReport: 'Report',
+    recommendedBy: (name: string) => `Recommended by ${name}`,
+    postRecommend: 'Share a recommendation',
+    photoPermTitle: 'Photo access is not allowed.\nOpen Settings → (MoodGo/Expo Go) → Photos and allow "All Photos" or "Selected Photos".',
+    photoLoadError: (e: string) => `Something went wrong loading the photo: ${e}`,
+    needTitle: 'Please enter a title',
+    needPlace: 'Please enter a place or business name',
+    needLicense: 'Please confirm the photo rights',
+    postedOk: 'Posted! It will go live after our team approves it.',
+    postFailed: (e: string) => `Failed to post: ${e}`,
+    networkError: 'Connection error',
+    addPhoto: '＋ Add photos (1–10)',
+    fieldTitle: 'Title *',
+    fieldTitlePh: 'e.g. A quiet stroll for the evening',
+    fieldPlace: 'Place / business name *',
+    fieldPlacePh: 'e.g. Shomyoji Community Forest',
+    fieldAddress: 'Address / area',
+    fieldAddressPh: 'e.g. Kanazawa Ward, Yokohama',
+    moodTags: 'Mood tags',
+    withWhom: 'With whom',
+    budgetFeel: 'Budget',
+    bio: 'Bio',
+    bioPh: 'What kind of mood is it good for?',
+    bodyLabel: 'Details',
+    bodyPh: "What's the place like, how was your visit…",
+    licenseText: 'This photo is one I took myself or have permission to use (not reposted from Google Images/Maps or other sites).',
+    posting: 'Posting…',
+    submit: 'Post (goes live after approval)',
+    moodLabels: {
+      '#自然感じたい': 'Nature', '#まったりしたい': 'Relax', '#わいわい楽しみたい': 'Lively',
+      '#お腹すいた': 'Hungry', '#ドライブしたい': 'Drive', '#集中したい': 'Focus',
+      '#体動かしたい': 'Exercise', '#遠くに行きたい': 'Travel', '#ショッピング': 'Shopping', '#スリル味わいたい': 'Thrill',
+    } as Record<string, string>,
+    defaultPoster: 'MoodGo user',
+  },
+} as const;
+
 function formatNum(n: number): string {
   if (!n || n < 0) return '0';
   if (n >= 10000) { const m = n / 10000; return (m >= 10 ? Math.round(m).toString() : m.toFixed(1).replace(/\.0$/, '')) + '万'; }
@@ -69,6 +185,8 @@ export type Detail = {
 
 export default function BlogView({ resetKey }: { resetKey?: number }) {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const [mode, setMode] = useState<'list' | 'detail' | 'create'>('list');
   const [items, setItems] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -201,18 +319,18 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         {/* タイトル行: 右側に 人気/近く（お気に入りのソートピルと同じ設計言語）*/}
         <View style={s.heroTopRow}>
           <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text style={s.heroTitle}>全国みんなの穴場</Text>
-            <Text style={s.heroSub}>気分でめぐる、みんなのおすすめスポット</Text>
+            <Text style={s.heroTitle}>{t.heroTitle}</Text>
+            <Text style={s.heroSub}>{t.heroSub}</Text>
           </View>
           <View style={s.heroToggleRow}>
             {/* 選択中をもう一度押すと解除→新着順に戻る */}
             <TouchableOpacity onPress={() => setSortMode(sortMode === 'popular' ? 'new' : 'popular')} style={[s.hToggleBtn, sortMode === 'popular' && s.hToggleBtnOn]} activeOpacity={0.8}
               accessibilityRole="button" accessibilityState={{ selected: sortMode === 'popular' }}>
-              <Text style={[s.hToggleText, sortMode === 'popular' && s.hToggleTextOn]}>人気</Text>
+              <Text style={[s.hToggleText, sortMode === 'popular' && s.hToggleTextOn]}>{t.popular}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => { if (sortMode === 'near') setSortMode('new'); else selectNear(); }} style={[s.hToggleBtn, sortMode === 'near' && s.hToggleBtnOn]} activeOpacity={0.8}
               accessibilityRole="button" accessibilityState={{ selected: sortMode === 'near' }}>
-              <Text style={[s.hToggleText, sortMode === 'near' && s.hToggleTextOn]}>{locLoading ? '取得中…' : '近く'}</Text>
+              <Text style={[s.hToggleText, sortMode === 'near' && s.hToggleTextOn]}>{locLoading ? t.fetching : t.near}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -222,7 +340,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           <TextInput
             value={uq}
             onChangeText={onChangeUq}
-            placeholder="スポット名・@IDで検索"
+            placeholder={t.searchPlaceholder}
             placeholderTextColor="#B9B6CC"
             style={s.heroSearchInput}
             autoCapitalize="none"
@@ -241,7 +359,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
               style={[s.scopeBtn, feedScope === sc && s.scopeBtnOn]} activeOpacity={0.8}
               accessibilityRole="button" accessibilityState={{ selected: feedScope === sc }}>
               <Text style={[s.scopeText, feedScope === sc && s.scopeTextOn]}>
-                {sc === 'all' ? 'すべて' : 'フォロー中'}
+                {sc === 'all' ? t.scopeAll : t.scopeFollowing}
               </Text>
             </TouchableOpacity>
           ))}
@@ -271,7 +389,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
           {LIQUID_GLASS && (
             <GlassView glassEffectStyle="clear" isInteractive style={[StyleSheet.absoluteFill, { borderRadius: 30 }]} />
           )}
-          <Text style={s.fabText}>＋ 投稿</Text>
+          <Text style={s.fabText}>{t.post}</Text>
         </LinearGradient>
       </PuniPressable>
     </View>
@@ -289,6 +407,8 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 // ── 詳細 ──
 export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBack: () => void; onSearchMood: (tag: string) => void }) {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const [reported, setReported] = useState(false);
   const [helped, setHelped] = useState(!!post.helped);   // サーバーの自分の反応状態で初期化（開き直しても保持）
   const react = async (rtype: 'helpful' | 'save', undo = false): Promise<boolean> => {
@@ -307,7 +427,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
   const [page, setPage] = useState(0);
   const tags = [...(post.mood_tags ?? []), ...(post.scene_tags ?? [])];
   const photos = post.photos ?? [];
-  const name = post.poster_name || 'MoodGoユーザー';
+  const name = post.poster_name || t.defaultPoster;
   const initial = (name.trim().charAt(0) || 'M').toUpperCase();
   const likeCount = (post.helpful_count ?? 0) + (helped ? 1 : 0);
   const openMap = () => openInGoogleMaps({ query: [post.place_name, post.address].filter(Boolean).join(' '), mapsUri: post.google_maps_url ?? undefined });
@@ -346,7 +466,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
             <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csPosterAvatar}><Text style={s.csPosterAvatarText}>{initial}</Text></LinearGradient>
             <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={[s.csPosterName, { flexShrink: 1 }]} numberOfLines={1}>{name}さんのおすすめ</Text>
+                <Text style={[s.csPosterName, { flexShrink: 1 }]} numberOfLines={1}>{t.recommendedBy(name)}</Text>
                 <VerifiedBadge type={post.poster_type} size={14} />
               </View>
               {post.poster_handle ? <Text style={s.csPosterHandle} numberOfLines={1}>@{post.poster_handle}</Text> : null}
@@ -360,7 +480,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
               <TouchableOpacity onPress={openMap} activeOpacity={0.85}>
                 <LinearGradient colors={CS_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.csMapPill}>
                   <MapPin size={15} color="#fff" strokeWidth={2.5} />
-                  <Text style={s.csMapPillText}>地図</Text>
+                  <Text style={s.csMapPillText}>{t.map}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             ) : null}
@@ -379,7 +499,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           {likeCount > 0 ? (
             <View style={s.csLikesRow}>
               <Heart size={13} color={CS_PINK} fill={CS_PINK} strokeWidth={0} />
-              <Text style={s.csLikesText}>{formatNum(likeCount)}件の「参考になった」</Text>
+              <Text style={s.csLikesText}>{t.likesCount(formatNum(likeCount))}</Text>
             </View>
           ) : null}
 
@@ -388,7 +508,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
             <View style={s.csCommentCard}>
               <View style={s.csCommentLabelRow}>
                 <MessageCircle size={14} color={CS_PURPLE} fill={CS_PURPLE} strokeWidth={0} />
-                <Text style={s.csCommentLabel}>どんな場所？</Text>
+                <Text style={s.csCommentLabel}>{t.whatPlace}</Text>
               </View>
               {post.caption ? <Text style={s.csCommentText}>{post.caption}</Text> : null}
               {post.body ? <Text style={[s.csCommentText, post.caption ? { marginTop: 8 } : null]}>{post.body}</Text> : null}
@@ -413,7 +533,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
                 <View style={s.csInfoRow}>
                   <View style={s.csInfoIcon}><Wallet size={17} color={CS_PURPLE} strokeWidth={2} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.csInfoLabel}>予算感</Text>
+                    <Text style={s.csInfoLabel}>{t.budgetLabel}</Text>
                     <Text style={s.csInfoValue}>{post.budget_level.replace('#', '')}</Text>
                   </View>
                 </View>
@@ -424,7 +544,7 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
                   <View style={s.csInfoRow}>
                     <View style={s.csInfoIcon}><Users size={17} color={CS_PURPLE} strokeWidth={2} /></View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.csInfoLabel}>おすすめの相手</Text>
+                      <Text style={s.csInfoLabel}>{t.companionLabel}</Text>
                       <Text style={s.csInfoValue}>{post.companion_tags.map(c => c.replace('#', '')).join('・')}</Text>
                     </View>
                   </View>
@@ -436,14 +556,14 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
           {/* この場所を見る */}
           {(post.place_name || post.google_maps_url) ? (
             <TouchableOpacity onPress={openMap} style={s.csMapBtn} activeOpacity={0.9}>
-              <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csMapBtnInner}><Text style={s.csMapBtnText}>この場所を見る</Text></LinearGradient>
+              <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.csMapBtnInner}><Text style={s.csMapBtnText}>{t.seeThisPlace}</Text></LinearGradient>
             </TouchableOpacity>
           ) : null}
 
           {/* 通報 */}
-          <TouchableOpacity onPress={() => Alert.alert('この投稿を通報しますか？', '不適切な内容として運営に報告します。', [{ text: 'キャンセル', style: 'cancel' }, { text: '通報する', style: 'destructive', onPress: report }])} disabled={reported} style={{ marginTop: 18, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <TouchableOpacity onPress={() => Alert.alert(t.reportTitle, t.reportMsg, [{ text: t.cancel, style: 'cancel' }, { text: t.doReport, style: 'destructive', onPress: report }])} disabled={reported} style={{ marginTop: 18, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             {!reported && <Flag size={13} color="#B0AAB8" strokeWidth={2} />}
-            <Text style={s.reportText}>{reported ? '通報しました' : 'この投稿を通報'}</Text>
+            <Text style={s.reportText}>{reported ? t.reported : t.reportThis}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -459,6 +579,8 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
 // ── 投稿フォーム ──
 function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
   const [title, setTitle] = useState('');
   const [placeName, setPlaceName] = useState('');
@@ -475,7 +597,7 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        alert('写真へのアクセスが許可されていません。\n設定アプリ →（MoodGo/Expo Go）→ 写真 で「すべての写真」または「選択した写真」を許可してください。');
+        alert(t.photoPermTitle);
         return;
       }
       const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 1, exif: false });
@@ -492,15 +614,15 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         setImages(prev => [...prev, ...resized].slice(0, 10));
       }
     } catch (e) {
-      alert('写真の読み込みでエラーが発生しました: ' + String(e).slice(0, 150));
+      alert(t.photoLoadError(String(e).slice(0, 150)));
     }
   };
   const toggle = (arr: string[], setArr: (v: string[]) => void, t: string) => setArr(arr.includes(t) ? arr.filter(x => x !== t) : [...arr, t]);
 
   const submit = async () => {
-    if (!title.trim()) return alert('タイトルを入力してください');
-    if (!placeName.trim()) return alert('場所名/お店名を入力してください');
-    if (!license) return alert('写真の権利確認にチェックしてください');
+    if (!title.trim()) return alert(t.needTitle);
+    if (!placeName.trim()) return alert(t.needPlace);
+    if (!license) return alert(t.needLicense);
     setPosting(true);
     try {
       const deviceId = await getDeviceId();
@@ -514,21 +636,21 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         }),
       });
       const d = await res.json();
-      if (d?.ok) { alert('投稿しました！運営の承認後に公開されます。'); onDone(); }
-      else alert('投稿に失敗しました: ' + (d?.error ?? ''));
-    } catch { alert('通信エラー'); } finally { setPosting(false); }
+      if (d?.ok) { alert(t.postedOk); onDone(); }
+      else alert(t.postFailed(d?.error ?? ''));
+    } catch { alert(t.networkError); } finally { setPosting(false); }
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ padding: 16, paddingTop: insets.top + 8, paddingBottom: 140 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-        <TouchableOpacity onPress={onCancel}><Text style={s.backText}>キャンセル</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { flex: 1, textAlign: 'center' }]}>おすすめを投稿</Text>
+        <TouchableOpacity onPress={onCancel}><Text style={s.backText}>{t.cancel}</Text></TouchableOpacity>
+        <Text style={[s.headerTitle, { flex: 1, textAlign: 'center' }]}>{t.postRecommend}</Text>
         <View style={{ width: 60 }} />
       </View>
 
       <TouchableOpacity onPress={pick} style={s.photoAdd}>
-        <Text style={s.photoAddText}>＋ 写真を追加（1〜10枚）</Text>
+        <Text style={s.photoAddText}>{t.addPhoto}</Text>
       </TouchableOpacity>
       {images.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
@@ -541,28 +663,28 @@ function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         </ScrollView>
       )}
 
-      <Field label="タイトル *" value={title} onChange={setTitle} placeholder="例: 夕方に行きたい静かな散歩スポット" />
-      <Field label="場所名 / お店名 *" value={placeName} onChange={setPlaceName} placeholder="例: 称名寺市民の森" />
-      <Field label="住所・エリア" value={address} onChange={setAddress} placeholder="例: 横浜市金沢区" />
+      <Field label={t.fieldTitle} value={title} onChange={setTitle} placeholder={t.fieldTitlePh} />
+      <Field label={t.fieldPlace} value={placeName} onChange={setPlaceName} placeholder={t.fieldPlacePh} />
+      <Field label={t.fieldAddress} value={address} onChange={setAddress} placeholder={t.fieldAddressPh} />
 
-      <Text style={s.fLabel}>気分タグ</Text>
-      <View style={s.tagWrap}>{MOODS.map(m => <Toggle key={m.tag} label={m.label} on={moods.includes(m.tag)} onPress={() => toggle(moods, setMoods, m.tag)} />)}</View>
-      <Text style={s.fLabel}>誰と</Text>
+      <Text style={s.fLabel}>{t.moodTags}</Text>
+      <View style={s.tagWrap}>{MOODS.map(m => <Toggle key={m.tag} label={t.moodLabels[m.tag] ?? m.label} on={moods.includes(m.tag)} onPress={() => toggle(moods, setMoods, m.tag)} />)}</View>
+      <Text style={s.fLabel}>{t.withWhom}</Text>
       <View style={s.tagWrap}>{COMPANIONS.map(c => <Toggle key={c} label={c.replace('#', '')} on={companions.includes(c)} onPress={() => toggle(companions, setCompanions, c)} />)}</View>
-      <Text style={s.fLabel}>予算感</Text>
+      <Text style={s.fLabel}>{t.budgetFeel}</Text>
       <View style={s.tagWrap}>{BUDGETS.map(b => <Toggle key={b} label={b.replace('#', '')} on={budget === b} onPress={() => setBudget(budget === b ? '' : b)} />)}</View>
 
-      <Field label="ひとこと" value={caption} onChange={setCaption} placeholder="どんな気分の日におすすめ？" />
-      <Field label="本文" value={body} onChange={setBody} placeholder="どんな場所か、行った感想など" multiline />
+      <Field label={t.bio} value={caption} onChange={setCaption} placeholder={t.bioPh} />
+      <Field label={t.bodyLabel} value={body} onChange={setBody} placeholder={t.bodyPh} multiline />
 
       <TouchableOpacity onPress={() => setLicense(!license)} style={s.checkRow}>
         <View style={[s.checkbox, license && s.checkboxOn]}>{license && <Check size={13} color="#fff" strokeWidth={3} />}</View>
-        <Text style={s.checkText}>自分で撮影した、または使用許可のある写真です（Google画像/マップ/他サイトの転載ではありません）</Text>
+        <Text style={s.checkText}>{t.licenseText}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={submit} disabled={posting} activeOpacity={0.9} style={{ marginTop: 18 }}>
         <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.submitBtn}>
-          <Text style={s.submitText}>{posting ? '投稿中…' : '投稿する（承認後に公開）'}</Text>
+          <Text style={s.submitText}>{posting ? t.posting : t.submit}</Text>
         </LinearGradient>
       </TouchableOpacity>
     </ScrollView>

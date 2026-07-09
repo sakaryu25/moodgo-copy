@@ -8,11 +8,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { DetailView, type Detail } from '@/components/BlogView';
+import { useSettings } from '@/lib/settingsStore';
 
 const PURPLE = '#9B6BFF';
 
+const T = {
+  ja: { notFound: '投稿が見つかりませんでした', back: '戻る' },
+  en: { notFound: 'Post not found', back: 'Back' },
+} as const;
+
 export default function BlogPostScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [post, setPost] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,8 +42,8 @@ export default function BlogPostScreen() {
   if (!post) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }}>
-        <Text style={{ color: '#888' }}>投稿が見つかりませんでした</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}><Text style={{ color: PURPLE, fontWeight: '800' }}>戻る</Text></TouchableOpacity>
+        <Text style={{ color: '#888' }}>{t.notFound}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}><Text style={{ color: PURPLE, fontWeight: '800' }}>{t.back}</Text></TouchableOpacity>
       </View>
     );
   }

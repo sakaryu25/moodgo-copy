@@ -32,6 +32,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { loadJSON, saveJSON, BLOCKED_USERS_KEY } from '@/lib/storage';
 import { findNgWord } from '@/lib/ngwords';
+import { useSettings } from '@/lib/settingsStore';
 import ReportModal from '@/components/ReportModal';
 import type { FavoriteItem } from '@/types/app';
 
@@ -44,6 +45,243 @@ const INK    = '#1E0753';
 
 const NICKNAME_KEY = 'moodgo-group-nickname';
 const POLL_MS = 15000; // チャット表示中の自動更新間隔
+
+// ─── i18n（表示文言のみ。API/比較に使う値は絶対に翻訳しない）─────────────────────
+const T = {
+  ja: {
+    // 一覧
+    talks: 'トーク',
+    noGroups: 'まだグループがないよ\n右上の「＋」から作るか、招待コードで参加してね',
+    noPostsYet: 'まだつぶやきがないよ',
+    // ＋モーダル（作成・参加）
+    createOrJoin: 'グループを作る・参加',
+    yourName: 'あなたの名前',
+    nameEditableHint: '（設定で変更できます）',
+    setNameFirst: '先にプロフィールタブ → 設定 → プロフィールで「名前」を入れてね',
+    createGroup: 'グループを作る',
+    groupNamePh: 'グループ名（例: いつめん）',
+    joinByCode: '招待コードで参加',
+    codePh: '6桁コード（例: AB3XY9）',
+    // チャットヘッダー・メンバー
+    member: 'メンバー',
+    chatEmpty: 'まだつぶやきがないよ\n最初の気分をつぶやいてみて！',
+    // コンポーザー
+    commentPh: 'ひとこと（任意）',
+    // コンテキストメニュー
+    reply: '返信',
+    copy: 'コピー',
+    translate: '翻訳',
+    hideTranslation: '翻訳を消す',
+    hideForMe: '自分のトークだけ消す',
+    reportBlock: '報告・ブロック',
+    unsend: '送信を取り消す',
+    wantToGo: '行きたい',
+    meh: '微妙',
+    // バブル内
+    memberFallback: 'メンバー',
+    translation: '翻訳',
+    recommendedSpot: 'おすすめスポット',
+    viewOnMap: '地図で見る',
+    wantWithCount: (n: number) => `行きたい ${n}`,
+    mehWithCount: (n: number) => `微妙 ${n}`,
+    decided: '決定！',
+    replyPreview: (name: string) => `${name} に返信`,
+    // グループ設定モーダル
+    groupSettings: 'グループ設定',
+    tapToChangePhoto: 'タップして写真を変更',
+    membersWithCount: (n: number) => `メンバー ${n}人`,
+    inviteCode: '招待コード',
+    share: '共有',
+    membersLabel: (n: number) => `メンバー（${n}）`,
+    meBadge: '自分',
+    leaveGroup: 'グループを抜ける',
+    // ルーレット
+    rouletteTitle: 'ルーレットで決める',
+    rouletteHint: 'タップして候補を選んでから回そう',
+    spinning: '回転中…',
+    sendAsDecision: (name: string) => `「${name}」に決定として送る`,
+    pickTwoPlus: '候補を2つ以上選んでね',
+    spinCount: (n: number) => `回す！（${n}か所）`,
+    spinAgain: 'もう一回回す',
+    needMoreCands: '候補が足りないよ',
+    needMoreCandsMsg: 'スポットを2件以上シェアするとルーレットで決められるよ',
+    // 気分一致 → AI提案
+    matchTitle: (mood: string) => `全員「${mood}」気分！`,
+    matchSub: (n: number) => `${n}人の気分がそろったよ`,
+    askAi: 'AIにおすすめを探してもらう',
+    notNow: '今はいいかな',
+    noRecTitle: 'ごめん！',
+    noRecMsg: 'いまの条件ではおすすめが見つからなかったよ',
+    // いいねから送る
+    sendFromFav: 'いいねから送る',
+    tabPlace: '場所',
+    tabPost: '投稿',
+    segLabel: (label: string, n: number) => `${label}（${n}）`,
+    noFavPlace: 'まだいいねした場所がないよ',
+    noFavPost: 'まだいいねした投稿がないよ',
+    // 名前未設定
+    needNameTitle: '名前を設定してね',
+    needNameMsg: 'プロフィールタブ → 設定 → プロフィールの「名前」を入れると、グループを作成・参加できるよ',
+    // アイコン変更
+    photoPermTitle: '写真へのアクセスが必要です',
+    photoPermMsg: '設定アプリからMoodGoに写真の許可をしてね',
+    // グループ作成成功
+    createdTitle: 'グループを作ったよ🎉',
+    createdMsg: (code: string) => `招待コード: ${code}\nこのコードを友達に教えてね`,
+    shareCode: 'コードを共有',
+    ok: 'OK',
+    // 退会確認
+    leaveTitle: 'グループを抜ける',
+    leaveConfirm: (name: string) => `「${name}」から抜けますか？`,
+    leave: '抜ける',
+    // 送信取り消し確認
+    unsendTitle: '送信を取り消す',
+    unsendConfirm: 'このメッセージをみんなの画面から消します。よろしいですか？',
+    // 投稿NG
+    postBlockedTitle: '投稿できません',
+    postBlockedMsg: '不適切な表現が含まれています。',
+    // 翻訳失敗
+    translateFailTitle: '翻訳できませんでした',
+    // 汎用エラー・共通
+    cancel: 'キャンセル',
+    error: 'エラー',
+    errSend: '送信に失敗しました',
+    errNetwork: '通信に失敗しました',
+    errCreate: '作成に失敗しました',
+    errJoin: '参加に失敗しました',
+    errPost: '投稿に失敗しました',
+    errUnsend: '取り消しに失敗しました',
+    errReact: 'リアクションに失敗しました',
+    errChangeIcon: '変更に失敗しました',
+    errTranslate: '翻訳に失敗しました',
+    errFetchRec: 'おすすめの取得に失敗しました',
+    // 招待共有メッセージ（Share.share）
+    inviteShare: (name: string, code: string) => `MoodGoのグループ「${name}」に招待！\n招待コード: ${code}`,
+    // 相対時刻
+    now: 'たった今',
+    minAgo: (n: number) => `${n}分前`,
+    hourAgo: (n: number) => `${n}時間前`,
+    yesterday: '昨日',
+    dayAgo: (n: number) => `${n}日前`,
+  },
+  en: {
+    // 一覧
+    talks: 'Talks',
+    noGroups: 'No groups yet\nTap “+” at the top right to create one, or join with an invite code',
+    noPostsYet: 'No posts yet',
+    // ＋モーダル（作成・参加）
+    createOrJoin: 'Create or join a group',
+    yourName: 'Your name',
+    nameEditableHint: '(editable in settings)',
+    setNameFirst: 'First set your name in Profile tab → Settings → Profile',
+    createGroup: 'Create a group',
+    groupNamePh: 'Group name (e.g. Besties)',
+    joinByCode: 'Join with an invite code',
+    codePh: '6-digit code (e.g. AB3XY9)',
+    // チャットヘッダー・メンバー
+    member: 'Members',
+    chatEmpty: 'No posts yet\nBe the first to share how you feel!',
+    // コンポーザー
+    commentPh: 'Say something (optional)',
+    // コンテキストメニュー
+    reply: 'Reply',
+    copy: 'Copy',
+    translate: 'Translate',
+    hideTranslation: 'Hide translation',
+    hideForMe: 'Hide just for me',
+    reportBlock: 'Report / block',
+    unsend: 'Unsend',
+    wantToGo: 'Want to go',
+    meh: 'Meh',
+    // バブル内
+    memberFallback: 'Member',
+    translation: 'Translation',
+    recommendedSpot: 'Recommended spot',
+    viewOnMap: 'View on map',
+    wantWithCount: (n: number) => `Want to go ${n}`,
+    mehWithCount: (n: number) => `Meh ${n}`,
+    decided: 'Decided!',
+    replyPreview: (name: string) => `Replying to ${name}`,
+    // グループ設定モーダル
+    groupSettings: 'Group settings',
+    tapToChangePhoto: 'Tap to change photo',
+    membersWithCount: (n: number) => `${n} member${n === 1 ? '' : 's'}`,
+    inviteCode: 'Invite code',
+    share: 'Share',
+    membersLabel: (n: number) => `Members (${n})`,
+    meBadge: 'You',
+    leaveGroup: 'Leave group',
+    // ルーレット
+    rouletteTitle: 'Decide by roulette',
+    rouletteHint: 'Tap to pick candidates, then spin',
+    spinning: 'Spinning…',
+    sendAsDecision: (name: string) => `Send “${name}” as the pick`,
+    pickTwoPlus: 'Pick at least two candidates',
+    spinCount: (n: number) => `Spin! (${n} spots)`,
+    spinAgain: 'Spin again',
+    needMoreCands: 'Not enough candidates',
+    needMoreCandsMsg: 'Share 2 or more spots to decide with the roulette',
+    // 気分一致 → AI提案
+    matchTitle: (mood: string) => `Everyone feels “${mood}”!`,
+    matchSub: (n: number) => `${n} people are in the same mood`,
+    askAi: 'Have AI find recommendations',
+    notNow: 'Maybe later',
+    noRecTitle: 'Sorry!',
+    noRecMsg: 'No recommendations found for the current conditions',
+    // いいねから送る
+    sendFromFav: 'Send from likes',
+    tabPlace: 'Places',
+    tabPost: 'Posts',
+    segLabel: (label: string, n: number) => `${label} (${n})`,
+    noFavPlace: 'No liked places yet',
+    noFavPost: 'No liked posts yet',
+    // 名前未設定
+    needNameTitle: 'Set your name first',
+    needNameMsg: 'Set your name in Profile tab → Settings → Profile to create or join a group',
+    // アイコン変更
+    photoPermTitle: 'Photo access needed',
+    photoPermMsg: 'Allow MoodGo to access your photos in the Settings app',
+    // グループ作成成功
+    createdTitle: 'Group created 🎉',
+    createdMsg: (code: string) => `Invite code: ${code}\nShare this code with your friends`,
+    shareCode: 'Share code',
+    ok: 'OK',
+    // 退会確認
+    leaveTitle: 'Leave group',
+    leaveConfirm: (name: string) => `Leave “${name}”?`,
+    leave: 'Leave',
+    // 送信取り消し確認
+    unsendTitle: 'Unsend message',
+    unsendConfirm: 'This will remove the message from everyone’s screen. Are you sure?',
+    // 投稿NG
+    postBlockedTitle: 'Can’t post',
+    postBlockedMsg: 'Your message contains inappropriate language.',
+    // 翻訳失敗
+    translateFailTitle: 'Couldn’t translate',
+    // 汎用エラー・共通
+    cancel: 'Cancel',
+    error: 'Error',
+    errSend: 'Failed to send',
+    errNetwork: 'Connection failed',
+    errCreate: 'Failed to create',
+    errJoin: 'Failed to join',
+    errPost: 'Failed to post',
+    errUnsend: 'Failed to unsend',
+    errReact: 'Reaction failed',
+    errChangeIcon: 'Failed to change',
+    errTranslate: 'Translation failed',
+    errFetchRec: 'Failed to get recommendations',
+    // 招待共有メッセージ（Share.share）
+    inviteShare: (name: string, code: string) => `Join my MoodGo group “${name}”!\nInvite code: ${code}`,
+    // 相対時刻
+    now: 'just now',
+    minAgo: (n: number) => `${n}m ago`,
+    hourAgo: (n: number) => `${n}h ago`,
+    yesterday: 'yesterday',
+    dayAgo: (n: number) => `${n}d ago`,
+  },
+} as const;
+type Lang = keyof typeof T;
 
 // つぶやき用の気分チップ（クイズの気分カードと同じSVGアイコン）
 type MoodIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -129,17 +367,18 @@ const REACTIONS: { key: string; Icon: RIcon; color: string; fill?: string }[] = 
 const reactionDef = (key: string) => REACTIONS.find(r => r.key === key);
 
 // 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, lang: Lang = 'ja'): string {
+  const tr = T[lang];
   const t = new Date(iso).getTime();
   const diff = Date.now() - t;
   const min = Math.floor(diff / 60000);
-  if (min < 1)  return 'たった今';
-  if (min < 60) return `${min}分前`;
+  if (min < 1)  return tr.now;
+  if (min < 60) return tr.minAgo(min);
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h}時間前`;
+  if (h < 24) return tr.hourAgo(h);
   const d = Math.floor(h / 24);
-  if (d === 1) return '昨日';
-  if (d < 7)   return `${d}日前`;
+  if (d === 1) return tr.yesterday;
+  if (d < 7)   return tr.dayAgo(d);
   const dt = new Date(t);
   return `${dt.getMonth() + 1}/${dt.getDate()}`;
 }
@@ -157,6 +396,8 @@ type Props = {
 
 export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites = [], onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
 
   const [deviceId, setDeviceId]   = useState('');
   const [nickname, setNickname]   = useState('');
@@ -277,10 +518,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         }),
       });
       const data = await res.json();
-      if (!data.ok) { Alert.alert('エラー', data.error ?? '送信に失敗しました'); return; }
+      if (!data.ok) { Alert.alert(t.error, data.error ?? t.errSend); return; }
       setPosts(prev => [data.post, ...prev]);
       closeFavSheet();
-    } catch { Alert.alert('エラー', '通信に失敗しました'); }
+    } catch { Alert.alert(t.error, t.errNetwork); }
     finally { setSendingFav(false); }
   };
   const [selMood, setSelMood] = useState('');
@@ -353,16 +594,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const actTranslate = async (p: Post) => {
     const src = p.comment || p.spot_name || '';
     if (!src) return;
-    if (translated[p.id]) { setTranslated(t => { const n = { ...t }; delete n[p.id]; return n; }); return; } // 再タップで戻す
+    if (translated[p.id]) { setTranslated(prev => { const n = { ...prev }; delete n[p.id]; return n; }); return; } // 再タップで戻す
     try {
       const res = await apiFetch('/api/translate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: src }),
       });
       const data = await res.json();
-      if (data.ok) setTranslated(t => ({ ...t, [p.id]: data.text }));
-      else Alert.alert('翻訳できませんでした', data.error ?? '');
-    } catch { Alert.alert('エラー', '翻訳に失敗しました'); }
+      if (data.ok) setTranslated(prev => ({ ...prev, [p.id]: data.text }));
+      else Alert.alert(t.translateFailTitle, data.error ?? '');
+    } catch { Alert.alert(t.error, t.errTranslate); }
   };
 
   const actHideForMe = async (p: Post) => {
@@ -373,10 +614,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
 
   const actUnsend = (p: Post) => {
     if (!active) return;
-    Alert.alert('送信を取り消す', 'このメッセージをみんなの画面から消します。よろしいですか？', [
-      { text: 'キャンセル', style: 'cancel' },
+    Alert.alert(t.unsendTitle, t.unsendConfirm, [
+      { text: t.cancel, style: 'cancel' },
       {
-        text: '取り消す', style: 'destructive',
+        text: t.unsend, style: 'destructive',
         onPress: async () => {
           setPosts(prev => prev.filter(x => x.id !== p.id));   // 楽観的に消す
           try {
@@ -385,8 +626,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               body: JSON.stringify({ action: 'unsend', groupId: active.id, deviceId, postId: p.id }),
             });
             const data = await res.json();
-            if (!data.ok) { fetchGroupDetail(active, deviceId); Alert.alert('エラー', data.error ?? '取り消しに失敗しました'); }
-          } catch { fetchGroupDetail(active, deviceId); Alert.alert('エラー', '通信に失敗しました'); }
+            if (!data.ok) { fetchGroupDetail(active, deviceId); Alert.alert(t.error, data.error ?? t.errUnsend); }
+          } catch { fetchGroupDetail(active, deviceId); Alert.alert(t.error, t.errNetwork); }
         },
       },
     ]);
@@ -432,10 +673,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   const requireNickname = (): string | null => {
     const nick = nickname.trim().slice(0, 20);
     if (!nick) {
-      Alert.alert(
-        '名前を設定してね',
-        'プロフィールタブ → 設定 → プロフィールの「名前」を入れると、グループを作成・参加できるよ',
-      );
+      Alert.alert(t.needNameTitle, t.needNameMsg);
       return null;
     }
     return nick;
@@ -461,19 +699,19 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         body: JSON.stringify({ action: 'create', name, nickname: nick, deviceId }),
       });
       const data = await res.json();
-      if (!data.ok) { Alert.alert('エラー', data.error ?? '作成に失敗しました'); return; }
+      if (!data.ok) { Alert.alert(t.error, data.error ?? t.errCreate); return; }
       setNewGroupName('');
       setShowAdd(false);
       await fetchGroups(deviceId);
       Alert.alert(
-        'グループを作ったよ🎉',
-        `招待コード: ${data.group.invite_code}\nこのコードを友達に教えてね`,
+        t.createdTitle,
+        t.createdMsg(data.group.invite_code),
         [
-          { text: 'コードを共有', onPress: () => Share.share({ message: `MoodGoのグループ「${data.group.name}」に招待！\n招待コード: ${data.group.invite_code}` }) },
-          { text: 'OK' },
+          { text: t.shareCode, onPress: () => Share.share({ message: t.inviteShare(data.group.name, data.group.invite_code) }) },
+          { text: t.ok },
         ],
       );
-    } catch { Alert.alert('エラー', '通信に失敗しました'); }
+    } catch { Alert.alert(t.error, t.errNetwork); }
     finally { setBusy(false); }
   };
 
@@ -490,12 +728,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         body: JSON.stringify({ action: 'join', code, nickname: nick, deviceId }),
       });
       const data = await res.json();
-      if (!data.ok) { Alert.alert('エラー', data.error ?? '参加に失敗しました'); return; }
+      if (!data.ok) { Alert.alert(t.error, data.error ?? t.errJoin); return; }
       setJoinCode('');
       setShowAdd(false);
       await fetchGroups(deviceId);
       openGroup(data.group);
-    } catch { Alert.alert('エラー', '通信に失敗しました'); }
+    } catch { Alert.alert(t.error, t.errNetwork); }
     finally { setBusy(false); }
   };
 
@@ -514,7 +752,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!active || iconBusy) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('写真へのアクセスが必要です', '設定アプリからMoodGoに写真の許可をしてね');
+      Alert.alert(t.photoPermTitle, t.photoPermMsg);
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -538,12 +776,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error ?? '変更に失敗しました');
+      if (!data.ok) throw new Error(data.error ?? t.errChangeIcon);
       const url = data.icon as string;
       setActive(a => (a ? { ...a, icon: url } : a));
       setGroups(gs => gs.map(g => (g.id === active.id ? { ...g, icon: url } : g)));
     } catch (e) {
-      Alert.alert('エラー', e instanceof Error ? e.message : '変更に失敗しました');
+      Alert.alert(t.error, e instanceof Error ? e.message : t.errChangeIcon);
     } finally { setIconBusy(false); }
   };
 
@@ -581,7 +819,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
     if (!active || (!selMood && !comment.trim()) || posting) return;
     // 不適切語のクライアント側フィルタ（サーバー側でも再チェック）
     const ng = findNgWord(comment.trim());
-    if (ng) { Alert.alert('投稿できません', '不適切な表現が含まれています。'); return; }
+    if (ng) { Alert.alert(t.postBlockedTitle, t.postBlockedMsg); return; }
     setPosting(true);
     try {
       const res = await apiFetch('/api/mood-groups', {
@@ -606,9 +844,9 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           }
         }
       } else {
-        Alert.alert('エラー', data.error ?? '投稿に失敗しました');
+        Alert.alert(t.error, data.error ?? t.errPost);
       }
-    } catch { Alert.alert('エラー', '通信に失敗しました'); }
+    } catch { Alert.alert(t.error, t.errNetwork); }
     finally { setPosting(false); }
   };
 
@@ -632,10 +870,10 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         body: JSON.stringify({ action: 'react', groupId: active.id, deviceId, postId, rtype, value }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error ?? 'リアクションに失敗しました');
+      if (!data.ok) throw new Error(data.error ?? t.errReact);
     } catch (e) {
       fetchGroupDetail(active, deviceId);
-      Alert.alert('エラー', e instanceof Error ? e.message : 'リアクションに失敗しました');
+      Alert.alert(t.error, e instanceof Error ? e.message : t.errReact);
     }
   };
 
@@ -749,7 +987,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       type Rec = { title: string; address?: string; mapUrl?: string };
       const recs: Rec[] = (d.recommendations ?? d.data ?? []).slice(0, 3);
       if (recs.length === 0) {
-        Alert.alert('ごめん！', 'いまの条件ではおすすめが見つからなかったよ');
+        Alert.alert(t.noRecTitle, t.noRecMsg);
         return;
       }
       // MoodGo名義で前置き＋スポットカードを投下
@@ -768,16 +1006,16 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       await fetchGroupDetail(active, deviceId);
       setMatchInfo(null);
     } catch {
-      Alert.alert('エラー', 'おすすめの取得に失敗しました');
+      Alert.alert(t.error, t.errFetchRec);
     } finally { setMatchBusy(false); }
   };
 
   const handleLeave = () => {
     if (!active) return;
-    Alert.alert('グループを抜ける', `「${active.name}」から抜けますか？`, [
-      { text: 'キャンセル', style: 'cancel' },
+    Alert.alert(t.leaveTitle, t.leaveConfirm(active.name), [
+      { text: t.cancel, style: 'cancel' },
       {
-        text: '抜ける', style: 'destructive',
+        text: t.leave, style: 'destructive',
         onPress: async () => {
           await apiFetch('/api/mood-groups', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -791,7 +1029,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   };
 
   const shareCode = (g: Group) =>
-    Share.share({ message: `MoodGoのグループ「${g.name}」に招待！\n招待コード: ${g.invite_code}` });
+    Share.share({ message: t.inviteShare(g.name, g.invite_code) });
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -870,14 +1108,14 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         >
           <View style={s.spotCardLabelRow}>
             <MapPin size={10} color="#A78BFA" strokeWidth={2.4} />
-            <Text style={s.spotCardLabel}>おすすめスポット</Text>
+            <Text style={s.spotCardLabel}>{t.recommendedSpot}</Text>
           </View>
           <Text style={s.spotCardName}>{p.spot_name}</Text>
           {p.spot_address ? <Text style={s.spotCardAddr} numberOfLines={1}>{p.spot_address}</Text> : null}
           {p.spot_url ? (
             <View style={s.spotCardLinkRow}>
               <MapPin size={11} color="#7C3AED" strokeWidth={2.2} />
-              <Text style={s.spotCardLink}>地図で見る</Text>
+              <Text style={s.spotCardLink}>{t.viewOnMap}</Text>
             </View>
           ) : null}
         </PuniPressable>
@@ -888,7 +1126,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           {/* 返信の引用 */}
           {p.reply_to_text ? (
             <View style={[s.replyQuote, mine && s.replyQuoteMine]}>
-              <Text style={s.replyQuoteName} numberOfLines={1}>{p.reply_to_name || 'メンバー'}</Text>
+              <Text style={s.replyQuoteName} numberOfLines={1}>{p.reply_to_name || t.memberFallback}</Text>
               <Text style={s.replyQuoteText} numberOfLines={2}>{p.reply_to_text}</Text>
             </View>
           ) : null}
@@ -900,7 +1138,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
           {/* 翻訳結果 */}
           {translated[p.id] ? (
             <View style={s.translateBox}>
-              <Text style={s.translateLabel}>翻訳</Text>
+              <Text style={s.translateLabel}>{t.translation}</Text>
               <Text style={mine ? s.bubbleMineText : s.bubbleOtherText}>{translated[p.id]}</Text>
             </View>
           ) : null}
@@ -912,7 +1150,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   style={[s.reactChip, myVote === 'want' && s.voteChipOnWant]}
                 >
                   <Heart size={12} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
-                  <Text style={s.reactChipText}>行きたい {wantCount}</Text>
+                  <Text style={s.reactChipText}>{t.wantWithCount(wantCount)}</Text>
                 </PuniPressable>
               )}
               {mehCount > 0 && (
@@ -921,13 +1159,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   style={[s.reactChip, myVote === 'meh' && s.voteChipOnMeh]}
                 >
                   <Meh size={12} color="#F97316" strokeWidth={2.2} />
-                  <Text style={s.reactChipText}>微妙 {mehCount}</Text>
+                  <Text style={s.reactChipText}>{t.mehWithCount(mehCount)}</Text>
                 </PuniPressable>
               )}
               {decided && (
                 <View style={s.decidedBadge}>
                   <PartyPopper size={11} color="#92400E" strokeWidth={2.2} />
-                  <Text style={s.decidedText}>決定！</Text>
+                  <Text style={s.decidedText}>{t.decided}</Text>
                 </View>
               )}
               {[...emojiAgg.entries()].map(([key, info]) => {
@@ -1038,7 +1276,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             {timeline.length === 0 ? (
               <View style={s.emptyBox}>
                 <MessageCircle size={36} color="#C4B5FD" strokeWidth={1.5} />
-                <Text style={s.emptyText}>まだつぶやきがないよ{'\n'}最初の気分をつぶやいてみて！</Text>
+                <Text style={s.emptyText}>{t.chatEmpty}</Text>
               </View>
             ) : timeline.map(p => {
               const isBot = p.nickname === 'MoodGo';
@@ -1047,7 +1285,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 // 自分: 右側の紫グラデバブル（長押しでインスタ風リアクション）
                 return (
                   <View key={p.id} style={s.rowMine}>
-                    <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
+                    <Text style={s.bubbleTime}>{timeAgo(p.created_at, lang)}</Text>
                     <Pressable
                       ref={(r) => { bubbleRefs.current[p.id] = r; }}
                       onLongPress={() => openReactions(p.id)}
@@ -1085,7 +1323,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                       >
                         {bubbleInner(p)}
                       </Pressable>
-                      <Text style={s.bubbleTime}>{timeAgo(p.created_at)}</Text>
+                      <Text style={s.bubbleTime}>{timeAgo(p.created_at, lang)}</Text>
                     </View>
                   </View>
                 </View>
@@ -1100,7 +1338,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               <View style={s.replyBar}>
                 <View style={s.replyBarAccent} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.replyBarName} numberOfLines={1}>{replyTo.name} に返信</Text>
+                  <Text style={s.replyBarName} numberOfLines={1}>{t.replyPreview(replyTo.name)}</Text>
                   <Text style={s.replyBarText} numberOfLines={1}>{replyTo.text}</Text>
                 </View>
                 <PuniPressable onPress={() => setReplyTo(null)} style={s.replyBarClose}>
@@ -1139,7 +1377,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               <PuniPressable
                 onPress={() => {
                   if (rouletteCands.length < 2) {
-                    Alert.alert('候補が足りないよ', 'スポットを2件以上シェアするとルーレットで決められるよ');
+                    Alert.alert(t.needMoreCands, t.needMoreCandsMsg);
                     return;
                   }
                   setRouSel(new Set(rouletteCands.map(c => c.id)));  // 最初は全員参加
@@ -1154,7 +1392,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               <TextInput
                 value={comment}
                 onChangeText={setComment}
-                placeholder="ひとこと（任意）"
+                placeholder={t.commentPh}
                 placeholderTextColor="#C4B5FD"
                 style={s.commentInput}
                 maxLength={200}
@@ -1177,7 +1415,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             <View style={s.modalOverlay}>
               <View style={[s.modalCard, { maxHeight: '78%' }]}>
                 <View style={s.modalHeader}>
-                  <Text style={s.modalTitle}>グループ設定</Text>
+                  <Text style={s.modalTitle}>{t.groupSettings}</Text>
                   <PuniPressable onPress={() => setShowGroupSettings(false)} style={s.modalClose}>
                     <X size={18} color="#7C3AED" strokeWidth={2.5} />
                   </PuniPressable>
@@ -1200,28 +1438,28 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                         </View>
                       )}
                     </PuniPressable>
-                    <Text style={s.iconHint}>タップして写真を変更</Text>
+                    <Text style={s.iconHint}>{t.tapToChangePhoto}</Text>
                     <Text style={s.settingsGroupName} numberOfLines={1}>{active.name}</Text>
-                    <Text style={s.settingsMeta}>メンバー {members.length}人</Text>
+                    <Text style={s.settingsMeta}>{t.membersWithCount(members.length)}</Text>
                   </View>
 
                   {/* 招待コード */}
-                  <Text style={s.label}>招待コード</Text>
+                  <Text style={s.label}>{t.inviteCode}</Text>
                   <PuniPressable onPress={() => shareCode(active)} style={s.codeRow}>
                     <Text style={s.codeRowText}>{active.invite_code}</Text>
                     <View style={s.codeShareChip}>
                       <Copy size={12} color="#7C3AED" strokeWidth={2.2} />
-                      <Text style={s.codeShareText}>共有</Text>
+                      <Text style={s.codeShareText}>{t.share}</Text>
                     </View>
                   </PuniPressable>
 
                   {/* メンバー一覧 */}
-                  <Text style={[s.label, { marginTop: 18 }]}>メンバー（{members.length}）</Text>
+                  <Text style={[s.label, { marginTop: 18 }]}>{t.membersLabel(members.length)}</Text>
                   {members.map(m => (
                     <View key={m.device_id} style={s.memberRow}>
                       <MemberAvatar icon={m.icon} label={m.nickname} size={36} />
                       <Text style={s.memberNick} numberOfLines={1}>{m.nickname}</Text>
-                      {m.mine && <Text style={s.meBadge}>自分</Text>}
+                      {m.mine && <Text style={s.meBadge}>{t.meBadge}</Text>}
                     </View>
                   ))}
 
@@ -1231,7 +1469,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     style={s.leaveBtn}
                   >
                     <LogOut size={15} color="#F43F5E" strokeWidth={2.2} />
-                    <Text style={s.leaveText}>グループを抜ける</Text>
+                    <Text style={s.leaveText}>{t.leaveGroup}</Text>
                   </PuniPressable>
                 </ScrollView>
               </View>
@@ -1310,41 +1548,41 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                       <>
                         <PuniPressable onPress={() => { sendReaction(tp.id, 'vote', 'want'); closeReactions(); }} style={s.ctxRow}>
                           <Heart size={17} color="#10B981" fill="#D1FAE5" strokeWidth={2.2} />
-                          <Text style={s.ctxText}>行きたい</Text>
+                          <Text style={s.ctxText}>{t.wantToGo}</Text>
                         </PuniPressable>
                         <View style={s.ctxDiv} />
                         <PuniPressable onPress={() => { sendReaction(tp.id, 'vote', 'meh'); closeReactions(); }} style={s.ctxRow}>
                           <Meh size={17} color="#F97316" strokeWidth={2.2} />
-                          <Text style={s.ctxText}>微妙</Text>
+                          <Text style={s.ctxText}>{t.meh}</Text>
                         </PuniPressable>
                         <View style={s.ctxDiv} />
                       </>
                     )}
                     <PuniPressable onPress={() => { actReply(tp); closeReactions(); }} style={s.ctxRow}>
                       <Reply size={17} color="#7C3AED" strokeWidth={2.2} />
-                      <Text style={s.ctxText}>返信</Text>
+                      <Text style={s.ctxText}>{t.reply}</Text>
                     </PuniPressable>
                     <View style={s.ctxDiv} />
                     <PuniPressable onPress={() => { actCopy(tp); closeReactions(); }} style={s.ctxRow}>
                       <Copy size={17} color="#7C3AED" strokeWidth={2.2} />
-                      <Text style={s.ctxText}>コピー</Text>
+                      <Text style={s.ctxText}>{t.copy}</Text>
                     </PuniPressable>
                     <View style={s.ctxDiv} />
                     <PuniPressable onPress={() => { actTranslate(tp); closeReactions(); }} style={s.ctxRow}>
                       <Languages size={17} color="#7C3AED" strokeWidth={2.2} />
-                      <Text style={s.ctxText}>{translated[tp.id] ? '翻訳を消す' : '翻訳'}</Text>
+                      <Text style={s.ctxText}>{translated[tp.id] ? t.hideTranslation : t.translate}</Text>
                     </PuniPressable>
                     <View style={s.ctxDiv} />
                     <PuniPressable onPress={() => { actHideForMe(tp); closeReactions(); }} style={s.ctxRow}>
                       <EyeOff size={17} color="#6B7280" strokeWidth={2.2} />
-                      <Text style={[s.ctxText, { color: '#6B7280' }]}>自分のトークだけ消す</Text>
+                      <Text style={[s.ctxText, { color: '#6B7280' }]}>{t.hideForMe}</Text>
                     </PuniPressable>
                     {!mineT && !isBotT && (
                       <>
                         <View style={s.ctxDiv} />
                         <PuniPressable onPress={() => { const target = tp; closeReactions(); setReportTarget(target); }} style={s.ctxRow}>
                           <Flag size={17} color="#F43F5E" strokeWidth={2.2} />
-                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>報告・ブロック</Text>
+                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>{t.reportBlock}</Text>
                         </PuniPressable>
                       </>
                     )}
@@ -1353,7 +1591,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                         <View style={s.ctxDiv} />
                         <PuniPressable onPress={() => { closeReactions(); actUnsend(tp); }} style={s.ctxRow}>
                           <Undo2 size={17} color="#F43F5E" strokeWidth={2.2} />
-                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>送信を取り消す</Text>
+                          <Text style={[s.ctxText, { color: '#F43F5E' }]}>{t.unsend}</Text>
                         </PuniPressable>
                       </>
                     )}
@@ -1370,13 +1608,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 <View style={s.modalHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                     <Dices size={18} color="#7C3AED" strokeWidth={2.2} />
-                    <Text style={s.modalTitle}>ルーレットで決める</Text>
+                    <Text style={s.modalTitle}>{t.rouletteTitle}</Text>
                   </View>
                   <PuniPressable onPress={() => setShowRoulette(false)} style={s.modalClose}>
                     <X size={18} color="#7C3AED" strokeWidth={2.5} />
                   </PuniPressable>
                 </View>
-                <Text style={s.rouHint}>タップして候補を選んでから回そう</Text>
+                <Text style={s.rouHint}>{t.rouletteHint}</Text>
                 <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
                   {rouletteCands.map((c) => {
                     const included = rouSel.has(c.id);
@@ -1418,18 +1656,18 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                   <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.rouBtnInner}>
                     <Text style={s.rouBtnText} numberOfLines={1}>
                       {spinning
-                        ? '回転中…'
+                        ? t.spinning
                         : rDone
-                          ? `「${rouSelCands[rIdx]?.spot_name}」に決定として送る`
+                          ? t.sendAsDecision(rouSelCands[rIdx]?.spot_name ?? '')
                           : rouSelCands.length < 2
-                            ? '候補を2つ以上選んでね'
-                            : `回す！（${rouSelCands.length}か所）`}
+                            ? t.pickTwoPlus
+                            : t.spinCount(rouSelCands.length)}
                     </Text>
                   </LinearGradient>
                 </PuniPressable>
                 {rDone && !spinning && (
                   <PuniPressable onPress={startRoulette} style={s.matchLater}>
-                    <Text style={s.matchLaterText}>もう一回回す</Text>
+                    <Text style={s.matchLaterText}>{t.spinAgain}</Text>
                   </PuniPressable>
                 )}
               </View>
@@ -1446,8 +1684,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             <View style={s.modalOverlay}>
               <View style={[s.modalCard, { alignItems: 'center' }]}>
                 <PartyPopper size={48} color="#F59E0B" strokeWidth={1.8} />
-                <Text style={s.matchTitle}>全員「{matchInfo?.mood}」気分！</Text>
-                <Text style={s.matchSub}>{matchInfo?.count}人の気分がそろったよ</Text>
+                <Text style={s.matchTitle}>{t.matchTitle(matchInfo?.mood ?? '')}</Text>
+                <Text style={s.matchSub}>{t.matchSub(matchInfo?.count ?? 0)}</Text>
                 <PuniPressable
                   onPress={runMoodMatchSearch}
                   disabled={matchBusy}
@@ -1460,13 +1698,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                       : (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Bot size={16} color="#fff" strokeWidth={2.2} />
-                          <Text style={s.rouBtnText}>AIにおすすめを探してもらう</Text>
+                          <Text style={s.rouBtnText}>{t.askAi}</Text>
                         </View>
                       )}
                   </LinearGradient>
                 </PuniPressable>
                 <PuniPressable onPress={() => setMatchInfo(null)} disabled={matchBusy} style={s.matchLater}>
-                  <Text style={s.matchLaterText}>今はいいかな</Text>
+                  <Text style={s.matchLaterText}>{t.notNow}</Text>
                 </PuniPressable>
               </View>
             </View>
@@ -1493,28 +1731,28 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 <View style={s.sheetHandle} />
                 <View style={s.sheetHeader}>
                   <Heart size={15} color="#EC4899" fill="#FBCFE8" strokeWidth={2} />
-                  <Text style={s.sheetTitle}>いいねから送る</Text>
+                  <Text style={s.sheetTitle}>{t.sendFromFav}</Text>
                 </View>
 
                 {/* 場所 / 投稿 セグメント */}
                 <View style={s.favSegRow}>
-                  {(['場所', '投稿'] as const).map((label, i) => {
+                  {[t.tabPlace, t.tabPost].map((label, i) => {
                     const count = i === 0 ? placeFavs.length : postFavs.length;
                     const on = favTab === i;
                     return (
                       <PuniPressable
-                        key={label}
+                        key={i}
                         onPress={() => goFavTab(i)}
                         containerStyle={{ flex: 1 }}
                         style={{ borderRadius: 999, overflow: 'hidden' }}
                       >
                         {on ? (
                           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.favSegInner}>
-                            <Text style={s.favSegTextOn}>{label}（{count}）</Text>
+                            <Text style={s.favSegTextOn}>{t.segLabel(label, count)}</Text>
                           </LinearGradient>
                         ) : (
                           <View style={[s.favSegInner, s.favSegOff]}>
-                            <Text style={s.favSegText}>{label}（{count}）</Text>
+                            <Text style={s.favSegText}>{t.segLabel(label, count)}</Text>
                           </View>
                         )}
                       </PuniPressable>
@@ -1544,7 +1782,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                         <View style={s.favEmpty}>
                           <Heart size={28} color="#FBCFE8" strokeWidth={1.5} />
                           <Text style={s.favEmptyText}>
-                            {i === 0 ? 'まだいいねした場所がないよ' : 'まだいいねした投稿がないよ'}
+                            {i === 0 ? t.noFavPlace : t.noFavPost}
                           </Text>
                         </View>
                       ) : list.map(f => (
@@ -1602,7 +1840,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         ) : (
           <View style={{ width: 40 }} />
         )}
-        <Text style={s.headerTitle}>トーク</Text>
+        <Text style={s.headerTitle}>{t.talks}</Text>
         <PuniPressable onPress={openAdd} style={s.addBtn}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.addBtnInner}>
             <Plus size={20} color="#fff" strokeWidth={2.5} />
@@ -1620,13 +1858,13 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         ) : groups.length === 0 ? (
           <View style={s.emptyBox}>
             <Users size={34} color="#C4B5FD" strokeWidth={1.5} />
-            <Text style={s.emptyText}>まだグループがないよ{'\n'}右上の「＋」から作るか、招待コードで参加してね</Text>
+            <Text style={s.emptyText}>{t.noGroups}</Text>
           </View>
         ) : groups.map(g => {
           const lp = g.last_post;
           const preview = lp
             ? `${lp.nickname}: ${lp.spot_name ? `📍 ${lp.spot_name}` : `${lp.mood ? `#${lp.mood} ` : ''}${lp.comment ?? ''}`.trim()}`
-            : 'まだつぶやきがないよ';
+            : t.noPostsYet;
           return (
             <PuniPressable key={g.id} onPress={() => openGroup(g)} style={s.groupCard}>
               <View style={s.groupIconCircle}>
@@ -1640,7 +1878,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     {g.name}
                     <Text style={s.groupCount}>（{g.member_count ?? 1}）</Text>
                   </Text>
-                  {lp ? <Text style={s.groupTime}>{timeAgo(lp.created_at)}</Text> : null}
+                  {lp ? <Text style={s.groupTime}>{timeAgo(lp.created_at, lang)}</Text> : null}
                 </View>
                 <Text style={[s.groupPreview, !lp && s.groupPreviewEmpty]} numberOfLines={1}>
                   {preview}
@@ -1656,7 +1894,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.modalCard}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>グループを作る・参加</Text>
+              <Text style={s.modalTitle}>{t.createOrJoin}</Text>
               <PuniPressable onPress={() => setShowAdd(false)} style={s.modalClose}>
                 <X size={18} color="#7C3AED" strokeWidth={2.5} />
               </PuniPressable>
@@ -1665,23 +1903,23 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             {/* 名前は設定（プロフィール）のものを使用 */}
             {nickname.trim() ? (
               <View style={s.myNameRow}>
-                <Text style={s.myNameLabel}>あなたの名前</Text>
+                <Text style={s.myNameLabel}>{t.yourName}</Text>
                 <Text style={s.myNameValue}>{nickname}</Text>
-                <Text style={s.myNameHint}>（設定で変更できます）</Text>
+                <Text style={s.myNameHint}>{t.nameEditableHint}</Text>
               </View>
             ) : (
               <Text style={s.warnText}>
-                先にプロフィールタブ → 設定 → プロフィールで「名前」を入れてね
+                {t.setNameFirst}
               </Text>
             )}
 
             {/* 作成 */}
-            <Text style={[s.label, { marginTop: 20 }]}>グループを作る</Text>
+            <Text style={[s.label, { marginTop: 20 }]}>{t.createGroup}</Text>
             <View style={s.inputRow}>
               <TextInput
                 value={newGroupName}
                 onChangeText={setNewGroupName}
-                placeholder="グループ名（例: いつめん）"
+                placeholder={t.groupNamePh}
                 placeholderTextColor="#C4B5FD"
                 style={[s.input, { flex: 1 }]}
                 maxLength={30}
@@ -1698,12 +1936,12 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             </View>
 
             {/* 参加 */}
-            <Text style={[s.label, { marginTop: 20 }]}>招待コードで参加</Text>
+            <Text style={[s.label, { marginTop: 20 }]}>{t.joinByCode}</Text>
             <View style={s.inputRow}>
               <TextInput
                 value={joinCode}
-                onChangeText={t => setJoinCode(t.toUpperCase())}
-                placeholder="6桁コード（例: AB3XY9）"
+                onChangeText={v => setJoinCode(v.toUpperCase())}
+                placeholder={t.codePh}
                 placeholderTextColor="#C4B5FD"
                 autoCapitalize="characters"
                 style={[s.input, { flex: 1, letterSpacing: 2 }]}

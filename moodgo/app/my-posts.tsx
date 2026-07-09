@@ -25,7 +25,27 @@ import {
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { loadJSON, saveJSON } from '@/lib/storage';
+import { useSettings } from '@/lib/settingsStore';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
+
+const T = {
+  ja: {
+    loading: '読み込み中…',
+    allShown: 'すべて表示しました',
+    emptyNone: 'まだ投稿がありません',
+    emptyCategory: 'このカテゴリの投稿はありません',
+    a11yNew: '新しく投稿する',
+    post: '投稿する',
+  },
+  en: {
+    loading: 'Loading…',
+    allShown: 'You’ve reached the end',
+    emptyNone: 'No posts yet',
+    emptyCategory: 'No posts in this category',
+    a11yNew: 'Create a new post',
+    post: 'Post',
+  },
+} as const;
 
 const PAGE = 10;
 // 前回の投稿一覧を端末に保持し、次回は即表示→裏で最新化（体感速度対策・プロフィールと共有）
@@ -42,6 +62,8 @@ function openPost(item: MyPost) {
 
 export default function MyPostsScreen() {
   const insets = useSafeAreaInsets();
+  const { lang } = useSettings();
+  const t = T[lang];
 
   const [posts, setPosts] = useState<MyPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,26 +175,26 @@ export default function MyPostsScreen() {
         {/* 投稿一覧（Masonry）*/}
         <View style={s.gridWrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           {loading ? (
-            <LoadingSkeleton label="読み込み中…" />
+            <LoadingSkeleton label={t.loading} />
           ) : visible.length > 0 && width > 0 ? (
             <>
               <MyPostGrid posts={visible} containerWidth={width} onPressPost={openPost} />
               {pagingMore && <View style={{ marginTop: MP.GAP }}><LoadingSkeleton /></View>}
               {!hasMore && filtered.length > PAGE && (
-                <Text style={s.endText}>すべて表示しました</Text>
+                <Text style={s.endText}>{t.allShown}</Text>
               )}
             </>
           ) : (
             <View style={s.emptyWrap}>
               <View style={s.emptyIcon}><PenLine size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
               <Text style={s.emptyTitle}>
-                {posts.length === 0 ? 'まだ投稿がありません' : 'このカテゴリの投稿はありません'}
+                {posts.length === 0 ? t.emptyNone : t.emptyCategory}
               </Text>
               {posts.length === 0 && (
                 <TouchableOpacity onPress={() => router.push('/post')} style={s.emptyBtn} activeOpacity={0.85}
-                  accessibilityRole="button" accessibilityLabel="新しく投稿する">
+                  accessibilityRole="button" accessibilityLabel={t.a11yNew}>
                   <Plus size={15} color="#fff" strokeWidth={2.6} />
-                  <Text style={s.emptyBtnText}>投稿する</Text>
+                  <Text style={s.emptyBtnText}>{t.post}</Text>
                 </TouchableOpacity>
               )}
             </View>
