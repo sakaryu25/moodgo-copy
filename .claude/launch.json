@@ -10,7 +10,7 @@
     {
       "name": "MoodGo Dev Server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": ["run", "dev", "--", "--webpack"],
       "port": 3000,
       "autoPort": true
     },

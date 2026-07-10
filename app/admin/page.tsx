@@ -885,7 +885,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "featured" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -985,58 +985,6 @@ export default function AdminPage() {
   const [autoFillSearching, setAutoFillSearching] = useState(false);
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
-
-  // ─── 特集ページ管理 ───────────────────────────────────────────────────────
-  type RecommendedItem = { name: string; description: string; price: string; image_url: string };
-  type FeaturedPageRecord = {
-    id: string;
-    slug: string;
-    partner_name: string;
-    spot_name: string;
-    catch_copy: string;
-    description: string;
-    access: string;
-    address: string;
-    phone: string;
-    website: string;
-    instagram: string;
-    business_hours: string;
-    recommended_items: RecommendedItem[];
-    features: string[];
-    congestion_info: string;
-    cover_image_url: string;
-    gallery_image_urls: string[];
-    tags: string[];
-    contract_start: string;
-    contract_end: string;
-    is_published: boolean;
-    created_at: string;
-  };
-  const emptyFeaturedForm = {
-    slug: "", partner_name: "", spot_name: "", catch_copy: "",
-    description: "", access: "", address: "", phone: "",
-    website: "", instagram: "", business_hours: "",
-    congestion_info: "", cover_image_url: "",
-    contract_start: "", contract_end: "",
-    is_published: false,
-    features: [] as string[],
-    gallery_image_urls: [] as string[],
-    tags: [] as string[],
-    recommended_items: [] as RecommendedItem[],
-  };
-  const [featuredPages, setFeaturedPages] = useState<FeaturedPageRecord[]>([]);
-  const [featuredLoading, setFeaturedLoading] = useState(false);
-  const [featuredError, setFeaturedError] = useState("");
-  const [featuredForm, setFeaturedForm] = useState(emptyFeaturedForm);
-  const [featuredSubmitting, setFeaturedSubmitting] = useState(false);
-  const [featuredSuccess, setFeaturedSuccess] = useState("");
-  const [editingFeaturedId, setEditingFeaturedId] = useState<string | null>(null);
-  const [deletingFeaturedId, setDeletingFeaturedId] = useState<string | null>(null);
-  const [featuredTagInput, setFeaturedTagInput] = useState("");
-  const [featuredPrefRegionOpen, setFeaturedPrefRegionOpen] = useState<string | null>(null);
-  const [featuredFeatureInput, setFeaturedFeatureInput] = useState("");
-  const [featuredGalleryInput, setFeaturedGalleryInput] = useState("");
-  const [featuredItemForm, setFeaturedItemForm] = useState({ name: "", description: "", price: "", image_url: "" });
 
   // ─── クイック投稿 ────────────────────────────────────────────────────────────
   const [quickModal, setQuickModal] = useState(false);
@@ -1236,73 +1184,6 @@ export default function AdminPage() {
     setQuickCoverUrl("");
     setQuickAdminHint("");
     setQuickTikTokUrl("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const loadFeaturedPages = async () => {
-    setFeaturedLoading(true);
-    setFeaturedError("");
-    try {
-      const res = await fetch(`/api/featured?secret=${adminSecret}`);
-      const d = await res.json();
-      if (d.ok) setFeaturedPages(d.data);
-      else setFeaturedError(d.error ?? "取得失敗");
-    } catch { setFeaturedError("通信エラー"); }
-    setFeaturedLoading(false);
-  };
-
-  const handleFeaturedSubmit = async () => {
-    if (!featuredForm.slug.trim() || !featuredForm.spot_name.trim()) {
-      setFeaturedError("スラッグとスポット名は必須です"); return;
-    }
-    setFeaturedSubmitting(true);
-    setFeaturedError("");
-    try {
-      const url = editingFeaturedId ? `/api/featured/${editingFeaturedId}` : "/api/featured";
-      const method = editingFeaturedId ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...featuredForm, secret: adminSecret }),
-      });
-      const d = await res.json();
-      if (!d.ok) throw new Error(d.error ?? "失敗");
-      setFeaturedSuccess(editingFeaturedId ? "更新しました ✅" : "作成しました ✅");
-      setFeaturedForm(emptyFeaturedForm);
-      setEditingFeaturedId(null);
-      await loadFeaturedPages();
-      setTimeout(() => setFeaturedSuccess(""), 3000);
-    } catch (e: unknown) {
-      setFeaturedError(e instanceof Error ? e.message : "エラー");
-    }
-    setFeaturedSubmitting(false);
-  };
-
-  const handleFeaturedDelete = async (id: string) => {
-    if (!confirm("この特集ページを削除しますか？")) return;
-    setDeletingFeaturedId(id);
-    await fetch(`/api/featured/${id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret: adminSecret }),
-    });
-    await loadFeaturedPages();
-    setDeletingFeaturedId(null);
-  };
-
-  const startEditFeatured = (p: FeaturedPageRecord) => {
-    setFeaturedForm({
-      slug: p.slug, partner_name: p.partner_name, spot_name: p.spot_name,
-      catch_copy: p.catch_copy ?? "", description: p.description ?? "",
-      access: p.access ?? "", address: p.address ?? "", phone: p.phone ?? "",
-      website: p.website ?? "", instagram: p.instagram ?? "",
-      business_hours: p.business_hours ?? "", congestion_info: p.congestion_info ?? "",
-      cover_image_url: p.cover_image_url ?? "", contract_start: p.contract_start ?? "",
-      contract_end: p.contract_end ?? "", is_published: p.is_published,
-      features: p.features ?? [], gallery_image_urls: p.gallery_image_urls ?? [],
-      tags: p.tags ?? [], recommended_items: p.recommended_items ?? [],
-    });
-    setEditingFeaturedId(p.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -2556,12 +2437,6 @@ export default function AdminPage() {
       .finally(() => setVisitedLoading(false));
   }, [authed, tab]);
 
-  // 特集ページデータ読み込み（featuredタブ）
-  useEffect(() => {
-    if (!authed || tab !== "featured") return;
-    loadFeaturedPages();
-  }, [authed, tab]);
-
   // 気分別評価データ（mood_ratingsタブ）
   const [moodRatings, setMoodRatings] = useState<Array<{ place_name: string; mood: string; sub_category: string; good: number; bad: number; last_bad_at: string }>>([]);
   const [moodRatingsLoading, setMoodRatingsLoading] = useState(false);
@@ -2576,11 +2451,11 @@ export default function AdminPage() {
     if (!authed || tab !== "mood_ratings") return;
     setMoodRatingsLoading(true);
     setMoodRatingsError("");
-    fetch(`/api/admin/quality-alerts?secret=moodgoadmin123`)
+    fetch(`/api/admin/quality-alerts?secret=${encodeURIComponent(adminSecret)}`)
       .then(r => r.json())
       .then(d => { if (d.ok) setQualityAlerts(d.alerts ?? []); })
       .catch(() => {});
-    fetch(`/api/mood-rating?secret=moodgoadmin123`)
+    fetch(`/api/mood-rating?secret=${encodeURIComponent(adminSecret)}`)
       .then(r => r.json())
       .then(d => {
         if (d.ok) setMoodRatings(d.data ?? []);
@@ -2680,7 +2555,7 @@ export default function AdminPage() {
     if (!authed || tab !== "retag") return;
     setRetagAllLoading(true);
     setRetagAllResult(null);
-    fetch("/api/admin/retag-all?secret=moodgoadmin123")
+    fetch(`/api/admin/retag-all?secret=${encodeURIComponent(adminSecret)}`)
       .then(r => r.json())
       .then(d => { if (d.ok) setRetagAllInfo({ total: d.total, needsRetag: d.needsRetag }); })
       .catch(() => {})
@@ -6711,7 +6586,7 @@ export default function AdminPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => { setMoodRatingsLoading(true); fetch("/api/mood-rating?secret=moodgoadmin123").then(r => r.json()).then(d => { if (d.ok) setMoodRatings(d.data ?? []); }).finally(() => setMoodRatingsLoading(false)); }}
+                  onClick={() => { setMoodRatingsLoading(true); fetch(`/api/mood-rating?secret=${encodeURIComponent(adminSecret)}`).then(r => r.json()).then(d => { if (d.ok) setMoodRatings(d.data ?? []); }).finally(() => setMoodRatingsLoading(false)); }}
                   style={{ padding: "6px 14px", borderRadius: "999px", border: "none", fontSize: "12px", fontWeight: 700, cursor: "pointer", background: "#fbbf24", color: "#fff" }}
                 >
                   🔄 再読み込み
@@ -6821,497 +6696,6 @@ export default function AdminPage() {
                   </div>
                 );
               })()}
-            </div>
-          </div>
-        )}
-
-        {/* ===== 特集ページタブ ===== */}
-        {tab === "featured" && (
-          <div>
-            {/* フォームエリア */}
-            <div style={{ ...card, marginBottom: "24px" }}>
-              <div style={{ ...titleStyle, marginBottom: "20px" }}>
-                {editingFeaturedId ? "✏️ 特集ページを編集" : "⭐ 特集ページを新規作成"}
-              </div>
-              {featuredError && <div style={{ color: "#c0385a", marginBottom: "12px", fontSize: "13px" }}>⚠ {featuredError}</div>}
-              {featuredSuccess && <div style={{ color: "#18794e", marginBottom: "12px", fontSize: "13px", fontWeight: 800 }}>{featuredSuccess}</div>}
-
-              {/* 基本情報 */}
-              <div style={{ display: "grid", gap: "14px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>スラッグ（URL） <span style={{ color: "#c0385a" }}>*</span></label>
-                    <input
-                      value={featuredForm.slug}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, slug: e.target.value.replace(/[^a-z0-9-]/g, "") }))}
-                      placeholder="tokyo-cafe"
-                      disabled={!!editingFeaturedId}
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box", background: editingFeaturedId ? "#f5f5f5" : undefined }}
-                    />
-                    <div style={{ fontSize: "11px", color: "#999", marginTop: "3px" }}>/feature/{featuredForm.slug || "スラッグ"}</div>
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>提携企業・パートナー名</label>
-                    <input
-                      value={featuredForm.partner_name}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, partner_name: e.target.value }))}
-                      placeholder="株式会社〇〇"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>スポット名 <span style={{ color: "#c0385a" }}>*</span></label>
-                  <input
-                    value={featuredForm.spot_name}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, spot_name: e.target.value }))}
-                    placeholder="〇〇カフェ"
-                    style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>キャッチコピー</label>
-                  <input
-                    value={featuredForm.catch_copy}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, catch_copy: e.target.value }))}
-                    placeholder="都会の中の隠れ家カフェ"
-                    style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>説明文</label>
-                  <textarea
-                    value={featuredForm.description}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, description: e.target.value }))}
-                    placeholder="スポットの詳しい説明を入力..."
-                    rows={5}
-                    style={{ ...inputBase, width: "100%", boxSizing: "border-box", resize: "vertical" }}
-                  />
-                </div>
-
-                {/* アクセス・基本情報 */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>住所</label>
-                    <input
-                      value={featuredForm.address}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, address: e.target.value }))}
-                      placeholder="東京都渋谷区..."
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>アクセス</label>
-                    <input
-                      value={featuredForm.access}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, access: e.target.value }))}
-                      placeholder="渋谷駅から徒歩5分"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>電話番号</label>
-                    <input
-                      value={featuredForm.phone}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder="03-XXXX-XXXX"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>営業時間</label>
-                    <input
-                      value={featuredForm.business_hours}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, business_hours: e.target.value }))}
-                      placeholder="10:00〜22:00 (月曜定休)"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>ウェブサイト</label>
-                    <input
-                      value={featuredForm.website}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, website: e.target.value }))}
-                      placeholder="https://example.com"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>Instagram</label>
-                    <input
-                      value={featuredForm.instagram}
-                      onChange={(e) => setFeaturedForm(f => ({ ...f, instagram: e.target.value }))}
-                      placeholder="@example_cafe"
-                      style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                    />
-                  </div>
-                </div>
-
-                {/* カバー画像 */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>カバー画像URL</label>
-                  <input
-                    value={featuredForm.cover_image_url}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, cover_image_url: e.target.value }))}
-                    placeholder="https://..."
-                    style={{ ...inputBase, width: "100%", boxSizing: "border-box" }}
-                  />
-                  {featuredForm.cover_image_url && (
-                    <img src={featuredForm.cover_image_url} alt="カバー" style={{ marginTop: "8px", height: "120px", objectFit: "cover", borderRadius: "8px", width: "100%" }} />
-                  )}
-                </div>
-
-                {/* ギャラリー */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>ギャラリー画像URL（複数追加可）</label>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input
-                      value={featuredGalleryInput}
-                      onChange={(e) => setFeaturedGalleryInput(e.target.value)}
-                      placeholder="https://..."
-                      style={{ ...inputBase, flex: 1 }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (!featuredGalleryInput.trim()) return;
-                        setFeaturedForm(f => ({ ...f, gallery_image_urls: [...f.gallery_image_urls, featuredGalleryInput.trim()] }));
-                        setFeaturedGalleryInput("");
-                      }}
-                      style={{ ...btnBase, padding: "8px 16px", background: "#4a3034", color: "#fff", fontSize: "13px" }}
-                    >追加</button>
-                  </div>
-                  {featuredForm.gallery_image_urls.length > 0 && (
-                    <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
-                      {featuredForm.gallery_image_urls.map((url, i) => (
-                        <div key={i} style={{ position: "relative" }}>
-                          <img src={url} alt="" style={{ width: "64px", height: "64px", objectFit: "cover", borderRadius: "8px" }} />
-                          <button
-                            onClick={() => setFeaturedForm(f => ({ ...f, gallery_image_urls: f.gallery_image_urls.filter((_, idx) => idx !== i) }))}
-                            style={{ position: "absolute", top: "-6px", right: "-6px", background: "#c0385a", border: "none", color: "#fff", borderRadius: "50%", width: "18px", height: "18px", fontSize: "10px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                          >✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 特徴 */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>特徴・こだわり</label>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input
-                      value={featuredFeatureInput}
-                      onChange={(e) => setFeaturedFeatureInput(e.target.value)}
-                      placeholder="例: 全席禁煙・ペット可"
-                      style={{ ...inputBase, flex: 1 }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && featuredFeatureInput.trim()) {
-                          setFeaturedForm(f => ({ ...f, features: [...f.features, featuredFeatureInput.trim()] }));
-                          setFeaturedFeatureInput("");
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (!featuredFeatureInput.trim()) return;
-                        setFeaturedForm(f => ({ ...f, features: [...f.features, featuredFeatureInput.trim()] }));
-                        setFeaturedFeatureInput("");
-                      }}
-                      style={{ ...btnBase, padding: "8px 16px", background: "#4a3034", color: "#fff", fontSize: "13px" }}
-                    >追加</button>
-                  </div>
-                  {featuredForm.features.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
-                      {featuredForm.features.map((f, i) => (
-                        <span key={i} style={{ background: "#fff3e0", color: "#e65100", fontSize: "12px", fontWeight: 700, padding: "4px 10px", borderRadius: "999px", display: "flex", alignItems: "center", gap: "6px" }}>
-                          {f}
-                          <button onClick={() => setFeaturedForm(ff => ({ ...ff, features: ff.features.filter((_, idx) => idx !== i) }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#e65100", padding: 0, fontSize: "12px" }}>✕</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 混雑状況 */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>混雑状況</label>
-                  <textarea
-                    value={featuredForm.congestion_info}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, congestion_info: e.target.value }))}
-                    placeholder={"平日昼: 空いている\n土日: 混雑しやすい\nピーク: 12〜14時"}
-                    rows={3}
-                    style={{ ...inputBase, width: "100%", boxSizing: "border-box", resize: "vertical" }}
-                  />
-                </div>
-
-                {/* おすすめ商品 */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "8px" }}>おすすめ商品・メニュー</label>
-                  <div style={{ background: "#fafafa", borderRadius: "12px", padding: "14px", display: "grid", gap: "10px" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                      <input value={featuredItemForm.name} onChange={(e) => setFeaturedItemForm(f => ({ ...f, name: e.target.value }))} placeholder="商品名 *" style={{ ...inputBase }} />
-                      <input value={featuredItemForm.price} onChange={(e) => setFeaturedItemForm(f => ({ ...f, price: e.target.value }))} placeholder="価格（例: ¥980）" style={{ ...inputBase }} />
-                    </div>
-                    <input value={featuredItemForm.description} onChange={(e) => setFeaturedItemForm(f => ({ ...f, description: e.target.value }))} placeholder="説明" style={{ ...inputBase, width: "100%", boxSizing: "border-box" }} />
-                    <input value={featuredItemForm.image_url} onChange={(e) => setFeaturedItemForm(f => ({ ...f, image_url: e.target.value }))} placeholder="画像URL（任意）" style={{ ...inputBase, width: "100%", boxSizing: "border-box" }} />
-                    <button
-                      onClick={() => {
-                        if (!featuredItemForm.name.trim()) return;
-                        setFeaturedForm(f => ({ ...f, recommended_items: [...f.recommended_items, { ...featuredItemForm }] }));
-                        setFeaturedItemForm({ name: "", description: "", price: "", image_url: "" });
-                      }}
-                      style={{ ...btnBase, padding: "8px 16px", background: "#ff8f7f", color: "#fff", fontSize: "13px" }}
-                    >+ 商品を追加</button>
-                  </div>
-                  {featuredForm.recommended_items.length > 0 && (
-                    <div style={{ display: "grid", gap: "8px", marginTop: "8px" }}>
-                      {featuredForm.recommended_items.map((item, i) => (
-                        <div key={i} style={{ background: "#fff", borderRadius: "10px", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", fontSize: "13px" }}>
-                          <div>
-                            <span style={{ fontWeight: 800 }}>{item.name}</span>
-                            {item.price && <span style={{ color: "#ff8f7f", marginLeft: "8px" }}>{item.price}</span>}
-                            {item.description && <div style={{ color: "#888", marginTop: "2px" }}>{item.description}</div>}
-                          </div>
-                          <button onClick={() => setFeaturedForm(f => ({ ...f, recommended_items: f.recommended_items.filter((_, idx) => idx !== i) }))} style={{ background: "none", border: "none", color: "#c0385a", cursor: "pointer", fontSize: "14px" }}>✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* タグ */}
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>タグ</label>
-                  {/* アプリタブ振り分けボタン（全国 / 地方 / 県） */}
-                  {(() => {
-                    const toggle = (tab: string) => setFeaturedForm(f => ({
-                      ...f,
-                      tags: f.tags.includes(tab) ? f.tags.filter(t => t !== tab) : [...f.tags, tab],
-                    }));
-                    const chip = (tab: string, opts?: { wide?: boolean; small?: boolean }) => {
-                      const active = featuredForm.tags.includes(tab);
-                      return (
-                        <button
-                          key={tab}
-                          onClick={() => toggle(tab)}
-                          style={{
-                            padding: opts?.small ? "5px 11px" : "7px 15px",
-                            borderRadius: "999px",
-                            fontSize: opts?.small ? "12px" : "13px",
-                            fontWeight: 700,
-                            border: active ? "2px solid #e87020" : "2px solid #e2e2e2",
-                            background: active ? "#e87020" : "#fff",
-                            color: active ? "#fff" : "#777",
-                            cursor: "pointer",
-                            flex: opts?.wide ? 1 : undefined,
-                            transition: "all 0.12s",
-                          }}
-                        >
-                          {active ? "✓ " : ""}{tab}
-                        </button>
-                      );
-                    };
-                    const selectedPrefs = featuredForm.tags.filter(t =>
-                      Object.values(FEATURE_REGION_PREFS).some(arr => arr.includes(t))
-                    );
-                    return (
-                      <div style={{ background: "#fff8f0", border: "1px solid #ffd0a0", borderRadius: "12px", padding: "14px", marginBottom: "8px" }}>
-                        <div style={{ fontSize: "12px", fontWeight: 900, color: "#c06020", marginBottom: "10px" }}>
-                          📌 どこに転載しますか？（複数選択可）
-                        </div>
-
-                        {/* 全国 */}
-                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>① 全国トップ</div>
-                        <div style={{ display: "flex", marginBottom: "12px" }}>
-                          {chip("全国", { wide: true })}
-                        </div>
-
-                        {/* 地方 */}
-                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>② 地方</div>
-                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
-                          {FEATURE_REGIONS.map((r) => chip(r))}
-                        </div>
-
-                        {/* 県 */}
-                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#9a6a30", marginBottom: "5px" }}>
-                          ③ 都道府県{selectedPrefs.length > 0 && <span style={{ color: "#e87020" }}>（{selectedPrefs.length}件選択中）</span>}
-                        </div>
-                        {/* 地方タブ → 県を展開 */}
-                        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginBottom: "8px" }}>
-                          {FEATURE_REGIONS.map((r) => {
-                            const open = featuredPrefRegionOpen === r;
-                            const cntInRegion = FEATURE_REGION_PREFS[r].filter(p => featuredForm.tags.includes(p)).length;
-                            return (
-                              <button
-                                key={r}
-                                onClick={() => setFeaturedPrefRegionOpen(open ? null : r)}
-                                style={{
-                                  padding: "5px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 700,
-                                  border: open ? "2px solid #c06020" : "1px solid #e2c8a8",
-                                  background: open ? "#ffe9d4" : "#fff",
-                                  color: "#9a6a30", cursor: "pointer",
-                                }}
-                              >
-                                {r}{cntInRegion > 0 ? ` (${cntInRegion})` : ""} {open ? "▲" : "▾"}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {featuredPrefRegionOpen && (
-                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", background: "#fff", borderRadius: "10px", padding: "10px", border: "1px dashed #e2c8a8" }}>
-                            {FEATURE_REGION_PREFS[featuredPrefRegionOpen].map((p) => chip(p, { small: true }))}
-                          </div>
-                        )}
-
-                        <div style={{ fontSize: "11px", color: "#999", marginTop: "10px", lineHeight: 1.5 }}>
-                          選んだ場所のタブに、このスポットが「今月のおすすめ」ヒーローカードとして表示されます。
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <input
-                      value={featuredTagInput}
-                      onChange={(e) => setFeaturedTagInput(e.target.value)}
-                      placeholder="例: カフェ・ペット可"
-                      style={{ ...inputBase, flex: 1 }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && featuredTagInput.trim()) {
-                          setFeaturedForm(f => ({ ...f, tags: [...f.tags, featuredTagInput.trim()] }));
-                          setFeaturedTagInput("");
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (!featuredTagInput.trim()) return;
-                        setFeaturedForm(f => ({ ...f, tags: [...f.tags, featuredTagInput.trim()] }));
-                        setFeaturedTagInput("");
-                      }}
-                      style={{ ...btnBase, padding: "8px 16px", background: "#4a3034", color: "#fff", fontSize: "13px" }}
-                    >追加</button>
-                  </div>
-                  {featuredForm.tags.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
-                      {featuredForm.tags.map((tag, i) => (
-                        <span key={i} style={{ background: "#e8f4f8", color: "#1a6a8a", fontSize: "12px", fontWeight: 700, padding: "4px 10px", borderRadius: "999px", display: "flex", alignItems: "center", gap: "6px" }}>
-                          {tag}
-                          <button onClick={() => setFeaturedForm(f => ({ ...f, tags: f.tags.filter((_, idx) => idx !== i) }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#1a6a8a", padding: 0, fontSize: "12px" }}>✕</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 契約期間 */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>契約開始日</label>
-                    <input type="date" value={featuredForm.contract_start} onChange={(e) => setFeaturedForm(f => ({ ...f, contract_start: e.target.value }))} style={{ ...inputBase, width: "100%", boxSizing: "border-box" }} />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 800, color: "#4a3034", marginBottom: "4px" }}>契約終了日</label>
-                    <input type="date" value={featuredForm.contract_end} onChange={(e) => setFeaturedForm(f => ({ ...f, contract_end: e.target.value }))} style={{ ...inputBase, width: "100%", boxSizing: "border-box" }} />
-                  </div>
-                </div>
-
-                {/* 公開設定 */}
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f9f9f9", padding: "14px 16px", borderRadius: "12px" }}>
-                  <input
-                    type="checkbox"
-                    id="featured-published"
-                    checked={featuredForm.is_published}
-                    onChange={(e) => setFeaturedForm(f => ({ ...f, is_published: e.target.checked }))}
-                    style={{ width: "18px", height: "18px", cursor: "pointer" }}
-                  />
-                  <label htmlFor="featured-published" style={{ fontSize: "14px", fontWeight: 800, color: "#4a3034", cursor: "pointer" }}>
-                    🌐 公開する（チェックするとユーザーに表示されます）
-                  </label>
-                </div>
-
-                {/* 送信ボタン */}
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    onClick={handleFeaturedSubmit}
-                    disabled={featuredSubmitting}
-                    style={{ ...btnBase, flex: 1, padding: "14px", background: "linear-gradient(135deg, #ffbf67, #ff8f7f)", color: "#fff", fontWeight: 900, fontSize: "15px" }}
-                  >
-                    {featuredSubmitting ? "保存中..." : editingFeaturedId ? "✅ 更新する" : "⭐ 特集ページを作成"}
-                  </button>
-                  {editingFeaturedId && (
-                    <button
-                      onClick={() => { setFeaturedForm(emptyFeaturedForm); setEditingFeaturedId(null); setFeaturedError(""); }}
-                      style={{ ...btnBase, padding: "14px 20px", background: "#eee", color: "#4a3034", fontSize: "14px" }}
-                    >キャンセル</button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 特集ページ一覧 */}
-            <div style={card}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <div style={titleStyle}>📋 特集ページ一覧</div>
-                <button onClick={loadFeaturedPages} style={{ ...btnBase, padding: "8px 16px", background: "#f0f0f0", color: "#4a3034", fontSize: "13px" }}>
-                  🔄 更新
-                </button>
-              </div>
-
-              {featuredLoading ? (
-                <div style={{ textAlign: "center", padding: "30px", opacity: 0.6 }}>読み込み中...</div>
-              ) : featuredPages.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "30px", opacity: 0.5, fontSize: "14px" }}>
-                  まだ特集ページがありません。上のフォームから作成してください。
-                </div>
-              ) : (
-                <div style={{ display: "grid", gap: "14px" }}>
-                  {featuredPages.map((p) => (
-                    <div key={p.id} style={{ background: "#fafafa", borderRadius: "14px", padding: "16px 20px", display: "flex", gap: "16px", alignItems: "flex-start" }}>
-                      {p.cover_image_url && (
-                        <img src={p.cover_image_url} alt="" style={{ width: "80px", height: "80px", objectFit: "cover", borderRadius: "10px", flexShrink: 0 }} />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 900, fontSize: "16px", color: "#4a3034" }}>{p.spot_name}</span>
-                          <span style={{
-                            background: p.is_published ? "#e6f7ee" : "#f5f5f5",
-                            color: p.is_published ? "#18794e" : "#999",
-                            fontSize: "11px", fontWeight: 800, padding: "3px 8px", borderRadius: "999px"
-                          }}>
-                            {p.is_published ? "🌐 公開中" : "🔒 非公開"}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: "12px", color: "#888", marginBottom: "6px" }}>
-                          <span>📁 /feature/{p.slug}</span>
-                          {p.partner_name && <span style={{ marginLeft: "10px" }}>🤝 {p.partner_name}</span>}
-                          {p.contract_end && <span style={{ marginLeft: "10px" }}>📅 〜{p.contract_end}</span>}
-                        </div>
-                        {p.catch_copy && <div style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>{p.catch_copy}</div>}
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          <a
-                            href={`/feature/${p.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ ...btnBase, padding: "6px 14px", background: "#fff3e0", color: "#e65100", fontSize: "12px", fontWeight: 700, textDecoration: "none" }}
-                          >👁 プレビュー</a>
-                          <button
-                            onClick={() => startEditFeatured(p)}
-                            style={{ ...btnBase, padding: "6px 14px", background: "#e8f0fe", color: "#1a73e8", fontSize: "12px", fontWeight: 700 }}
-                          >✏️ 編集</button>
-                          <button
-                            onClick={() => handleFeaturedDelete(p.id)}
-                            disabled={deletingFeaturedId === p.id}
-                            style={{ ...btnBase, padding: "6px 14px", background: "#fce8e6", color: "#c0385a", fontSize: "12px", fontWeight: 700 }}
-                          >{deletingFeaturedId === p.id ? "削除中..." : "🗑 削除"}</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -7785,7 +7169,7 @@ export default function AdminPage() {
                     const res = await fetch("/api/admin/retag-all", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ secret: "moodgoadmin123", overwrite: retagAllOverwrite }),
+                      body: JSON.stringify({ secret: adminSecret, overwrite: retagAllOverwrite }),
                     });
                     const d = await res.json();
                     if (d.ok) {
