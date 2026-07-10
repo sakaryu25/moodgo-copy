@@ -6,7 +6,7 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { MessageCirclePlus, ThumbsUp, Repeat2, Sparkles, Flag } from 'lucide-react-native';
+import { MessageCirclePlus, ThumbsUp, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { useSettings } from '@/lib/settingsStore';
@@ -22,7 +22,6 @@ const T = {
     matchesPhoto: '写真どおり',
     like: 'いいね',
     helpful: '参考',
-    revisit: 'また',
     reportTitle: 'この投稿を通報',
     reportMsg: '不適切・無断転載・関係ない写真などの場合に通報できます。',
     cancel: 'キャンセル',
@@ -46,7 +45,6 @@ const T = {
     matchesPhoto: 'Matches photo',
     like: 'Like',
     helpful: 'Helpful',
-    revisit: 'Revisit',
     reportTitle: 'Report this post',
     reportMsg: 'Report posts that are inappropriate, reposted without permission, or use unrelated photos.',
     cancel: 'Cancel',
@@ -202,10 +200,8 @@ export default function MoodLogSection(
           <Sparkles size={12} color={post.myHelpful ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
           <Text style={[s.reactText, post.myHelpful && s.reactTextOn]}>{t.helpful} {post.helpfulCount || ''}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.reactBtn, post.myRevisit && s.reactOn]} onPress={() => react(post, 'revisit')} activeOpacity={0.7}>
-          <Repeat2 size={12} color={post.myRevisit ? '#fff' : '#A78BCA'} strokeWidth={2.2} />
-          <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>{t.revisit} {post.revisitCount || ''}</Text>
-        </TouchableOpacity>
+        {/* 「また」ボタンは廃止（いいね/参考の2つに集約・2026-07-10ユーザー指示）。
+            サーバーのrevisit集計は既存データのため残る（表示しないだけ）。 */}
       </View>
     </TouchableOpacity>
   );
