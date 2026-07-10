@@ -284,7 +284,10 @@ export default function PostScreen() {
 
   const existingPlaceId = paramPlaceId || pickedId;  // 既存(param or 検索選択)
   const isExisting = !!existingPlaceId;
-  const lockedFromParam = !!paramPlaceId || editMode;   // 編集時もスポット名は固定（場所は変えない）
+  // 場所詳細から来た投稿はスポット名を固定（placeId無しのユーザー作成スポットでも
+  // placeNameパラメータで判定＝この場所への投稿なので名前は変更させない）。編集時も固定。
+  const paramPlaceName = (params.placeName ?? '').toString().trim();
+  const lockedFromParam = !!paramPlaceId || !!paramPlaceName || editMode;
 
   // 編集モード: 自分の投稿を読み込んでプレフィル（本文・気分タグ・評価・値段）。写真/場所は変更しない。
   useEffect(() => {

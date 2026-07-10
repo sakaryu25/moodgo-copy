@@ -112,6 +112,10 @@ export default function MoodLogSection(
   // 新規ルート（expo-routerの型は次回生成で解決・実行時はファイルベースで有効）→ unknown経由でHrefにキャスト
   const goPost = () => router.push({ pathname: '/post', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
 
+  // カードタップ → そのMoodログの投稿詳細（community-spotはml-プレフィックスで両対応）
+  const openDetail = (post: MoodPost) =>
+    router.push({ pathname: '/community-spot', params: { id: `ml-${post.id}` } } as unknown as Href);
+
   const react = async (post: MoodPost, rtype: 'like' | 'helpful' | 'revisit') => {
     // #13: 既に押していたら解除(undo)、でなければ付与＝トグル。以前は if(mine) return で解除不可だった。
     const mine = rtype === 'like' ? post.myLike : rtype === 'helpful' ? post.myHelpful : post.myRevisit;
@@ -156,8 +160,10 @@ export default function MoodLogSection(
   };
 
   // 1枚のMoodログカード（2カラム配置で左右どちらの列にも描画する）
+  // カード全体タップで投稿詳細へ（内側のリアクション/通報ボタンはそれぞれのタップを優先）
   const renderPost = (post: MoodPost) => (
-    <View key={post.id} style={s.card}>
+    <TouchableOpacity key={post.id} style={s.card} onPress={() => openDetail(post)} activeOpacity={0.85}
+      accessibilityRole="button" accessibilityLabel={`${post.author}のMoodログ詳細を見る`}>
       <View style={s.cardTop}>
         <Text style={s.author} numberOfLines={1}>{post.author}{post.isOwn ? t.you : ''}</Text>
         <Text style={s.time}>{timeAgo(post.createdAt, t)}</Text>
@@ -201,7 +207,7 @@ export default function MoodLogSection(
           <Text style={[s.reactText, post.myRevisit && s.reactTextOn]}>{t.revisit} {post.revisitCount || ''}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
