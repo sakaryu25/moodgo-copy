@@ -678,12 +678,15 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
-      {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存 */}
-      <TouchableOpacity onPress={onHeartPress} style={[s.favFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
-        accessibilityRole="button" accessibilityLabel={(liked || faved) ? t.likeRemove : t.likeAdd}>
-        <Heart size={22} color={PINK} fill={(liked || faved) ? PINK : 'transparent'} strokeWidth={2.4} />
-        <Text style={s.favFabCount}>{likeCount}</Text>
+      {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存。
+          未いいねはグレー輪郭＋グレー数字（数字=みんなの合計）・押すとピンク塗り＋ピンク数字＝状態を明確化 */}
+      {(() => { const hOn = liked || faved; return (
+      <TouchableOpacity onPress={onHeartPress} style={[s.favFab, hOn && s.favFabOn, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityState={{ selected: hOn }} accessibilityLabel={hOn ? t.likeRemove : t.likeAdd}>
+        <Heart size={22} color={hOn ? PINK : '#B9B3C8'} fill={hOn ? PINK : 'transparent'} strokeWidth={2.4} />
+        <Text style={[s.favFabCount, !hOn && s.favFabCountOff]}>{likeCount}</Text>
       </TouchableOpacity>
+      ); })()}
 
     </View>
   );
@@ -899,10 +902,15 @@ const s = StyleSheet.create({
 
   // いいねFAB（ハート＋みんなのいいね数）
   favFab: {
+    // 未いいね: グレー枠・無彩色の影（押していない状態が一目で分かるように）
     position: 'absolute', right: 18, width: 58, height: 66, borderRadius: 29,
     backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingTop: 2,
-    borderWidth: 2, borderColor: '#FCE7F3',
-    shadowColor: PINK, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+    borderWidth: 2, borderColor: '#E7E4EE',
+    shadowColor: '#1A1330', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 10, elevation: 6,
   },
+  // いいね済み: ピンク枠＋ピンクの影
+  favFabOn: { borderColor: '#FCE7F3', shadowColor: PINK, shadowOpacity: 0.3 },
   favFabCount: { fontSize: 12, fontWeight: '800', color: PINK, marginTop: 1 },
+  // 未いいね時の数字はグレー＝「みんなの合計数」であって自分が押した印ではないことを明確に
+  favFabCountOff: { color: '#8B88A6' },
 });
