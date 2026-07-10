@@ -78,6 +78,15 @@ export async function POST(req: Request) {
       if (isMissingTable(error)) return NextResponse.json({ ok: false, tableMissing: true, error: "評価は準備中です（DB更新待ち）" }, { status: 400 });
       throw error;
     }
+    // 同一人物の重複票を掃除: 同じ場所でもページ経路によって識別キーが違うことがある
+    // （場所詳細=supabaseId / 投稿詳細=placeId / どちらも無ければ場所名）。同じ端末＋同じ
+    // 場所名で「今回と別キー」の行が残っていると、評価し直すたびに件数が二重に数えられる
+    // ため、今回の票だけ残して古いキーの自分の行を削除する（他人の票には触れない）。
+    if (placeName) {
+      await supabase.from("spot_ratings")
+        .delete().eq("device_id", deviceId).eq("place_name", placeName).neq("place_id", key)
+        .then(() => {}, () => {});   // 掃除失敗は無害（次回送信で再試行される）
+    }
     // 集計を返す（★＋投稿おすすめ度を統合）。自分の票は今送信した stars。
     const agg = await aggregate(supabase, placeId, placeName, deviceId);
     return NextResponse.json({ ok: true, avg: agg.avg, count: agg.count, myStars: stars });

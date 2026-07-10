@@ -38,6 +38,7 @@ import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
 import CommentsSection from '@/components/CommentsSection';
 import SpotRating from '@/components/SpotRating';
+import PhotoViewer from '@/components/PhotoViewer';
 
 // この場所のコメント欄を出せるのは Supabase の場所ID(UUID)を持つスポットのみ
 // （Google専用スポットは安定した恒久IDが無いためコメントを紐づけない）。
@@ -500,6 +501,7 @@ export default function PlaceDetailPage() {
     pushServerFavorites(next);   // 行きたいリストのサーバー同期
   };
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);   // 写真タップで全画面ビューア
   // API削減: 1枚目だけ即読込み、残りは到達ページまで読み込む（未到達はImage描画せず=Google解決を遅延）
   const [maxLoaded, setMaxLoaded] = useState(0);
   const [photoWidth, setPhotoWidth] = useState(0);
@@ -825,8 +827,11 @@ export default function PlaceDetailPage() {
             >
               {photos.map((uri, i) => (
                 i <= maxLoaded ? (
-                  <Image key={i} source={{ uri }}
-                    style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
+                  // タップで全画面ビューア（スワイプ切替・ピンチズーム）
+                  <TouchableOpacity key={i} activeOpacity={0.95} onPress={() => setViewerOpen(true)}>
+                    <Image source={{ uri }}
+                      style={{ width: photoWidth, height: 300 }} contentFit="cover" transition={200} />
+                  </TouchableOpacity>
                 ) : (
                   // 未到達ページ: 画像を読み込まずプレースホルダ（スクロールで読み込む＝API削減）
                   <View key={i} style={{ width: photoWidth, height: 300, backgroundColor: '#EFEAF7' }} />
@@ -1139,6 +1144,11 @@ export default function PlaceDetailPage() {
 
         </View>
       </Animated.ScrollView>
+
+      {/* 写真タップの全画面ビューア（スワイプ切替・ピンチズーム・カウンター）*/}
+      {viewerOpen && photos.length > 0 && (
+        <PhotoViewer photos={photos} initialIdx={Math.min(photoIdx, photos.length - 1)} onClose={() => setViewerOpen(false)} />
+      )}
 
       {/* お気に入りハート（右下フローティング・投稿詳細と同様）
           未保存はグレー輪郭＋グレー数字・保存済みはピンク塗り＋ピンク数字。

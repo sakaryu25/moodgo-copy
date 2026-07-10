@@ -7,6 +7,7 @@ import { Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, N
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
+import PhotoViewer from './PhotoViewer';   // 全画面フォトビューア（場所詳細/投稿詳細と共通）
 import { shareSpotToGroup } from '@/lib/groupShare';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
@@ -153,73 +154,6 @@ const T = {
     moodQuestion:     (mood: string) => `How is this place for "${mood}"?`,
   },
 };
-
-// ── 全画面フォトビューア ──────────────────────────────────────────────────
-// タップで拡大表示。横スワイプで写真切替、ピンチでズーム（iOS）
-function PhotoViewer({ photos, initialIdx, onClose }: {
-  photos: string[]; initialIdx: number; onClose: () => void;
-}) {
-  const { width: SW, height: SH } = Dimensions.get('window');
-  const [idx, setIdx] = useState(initialIdx);
-  // ⚠ New Arch(Fabric)の <Modal transparent> は中身を描画せず透明のままタッチを奪う不具合がある
-  //   （ConsentGate で実証・c5adb7c）。このビューアは viewerIdx をセットした瞬間に visible=true で
-  //   マウントされる同じ発火パターンなので transparent を避ける。背景はほぼ不透明な黒なので、
-  //   ネイティブの不透明フルスクリーンModal（＝onboarding/quizと同じ実績のある描画経路）に変更。
-  return (
-    <Modal visible animationType="fade" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <View style={pv.root}>
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          contentOffset={{ x: initialIdx * SW, y: 0 }}
-          onMomentumScrollEnd={e => setIdx(Math.round(e.nativeEvent.contentOffset.x / SW))}
-        >
-          {photos.map((uri, i) => (
-            <ScrollView
-              key={uri + i}
-              style={{ width: SW, height: SH }}
-              contentContainerStyle={{ width: SW, height: SH }}
-              maximumZoomScale={3}
-              minimumZoomScale={1}
-              bouncesZoom
-              centerContent
-            >
-              <Image source={{ uri }} style={{ width: SW, height: SH }} contentFit="contain" transition={150} />
-            </ScrollView>
-          ))}
-        </ScrollView>
-        {/* 閉じる */}
-        <TouchableOpacity onPress={onClose} style={pv.closeBtn} activeOpacity={0.8}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <X size={22} color="#fff" strokeWidth={2.5} />
-        </TouchableOpacity>
-        {/* カウンター */}
-        {photos.length > 1 && (
-          <View style={pv.counter}>
-            <Text style={pv.counterText}>{idx + 1} / {photos.length}</Text>
-          </View>
-        )}
-      </View>
-    </Modal>
-  );
-}
-
-const pv = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
-  closeBtn: {
-    position: 'absolute', top: 56, right: 18,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  counter: {
-    position: 'absolute', top: 64, alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 999,
-    paddingHorizontal: 12, paddingVertical: 4,
-  },
-  counterText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-});
 
 type Props = {
   item: Recommendation;

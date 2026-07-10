@@ -31,6 +31,8 @@ import MoodLogSection from '@/components/MoodLogSection';
 import SpotRating from '@/components/SpotRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
+import { setSelectedPlace } from '@/lib/selectedPlace';
+import PhotoViewer from '@/components/PhotoViewer';
 import type { FavoriteItem } from '@/types/app';
 
 const PINK = '#F56CB3';
@@ -69,6 +71,7 @@ const T = {
     userPhotos: '利用者の写真',
     map: 'マップ',
     profileA11y: (name: string) => `${name}のプロフィールを見る`,
+    placeDetailA11y: (name: string) => `${name}の場所詳細を見る`,
     defaultUser: 'MoodGoユーザー',
     poster: '投稿者',
     anonymousPost: '匿名の投稿',
@@ -117,6 +120,7 @@ const T = {
     userPhotos: 'User photos',
     map: 'Map',
     profileA11y: (name: string) => `View ${name}'s profile`,
+    placeDetailA11y: (name: string) => `View place details for ${name}`,
     defaultUser: 'MoodGo user',
     poster: 'Posted by',
     anonymousPost: 'Anonymous post',
@@ -198,6 +202,7 @@ export default function CommunitySpotScreen() {
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [isMine, setIsMine] = useState(false);   // 自分の投稿なら編集/削除を出す（moodログのみ）
+  const [viewerOpen, setViewerOpen] = useState(false);   // 写真タップで全画面ビューア
   // 総合評価（この場所のみんなの★の平均）。SpotRatingが取得→onAvgで受け取りバーに表示
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
@@ -317,6 +322,27 @@ export default function CommunitySpotScreen() {
     const tag = (spot.placeName || spot.userTitle).replace(/\s+/g, '');
     Linking.openURL(`https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`).catch(() => {});
   };
+  // 場所名タップ → 場所詳細ページ（投稿が紐づく場所そのものを見る。営業時間/住所等は同じ情報源）
+  const openPlaceDetail = () => {
+    if (!spot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedPlace({
+      title: spot.placeName || spot.userTitle,
+      vibe: '',
+      address: spot.address || undefined,
+      mapUrl: spot.googleMapsUri || undefined,
+      photoUrl: spot.imageUrls[0], photoUrls: spot.imageUrls.length > 0 ? spot.imageUrls : undefined,
+      openingHoursText: spot.openingHoursText || undefined,
+      stationText: spot.stationText || undefined,
+      phone: spot.phone || undefined,
+      website: spot.website || undefined,
+      placeId: spot.placeId || undefined,
+      lat: spot.lat, lng: spot.lng,
+      hasUserPhotos: spot.hasUserPhotos,
+      isUserSpot: true,
+    });
+    router.push('/place');
+  };
   const onShare = () => {
     if (!spot) return;
     // OGP付き共有ページ(/s/[id])のリンクを送る＝LINE/X等で写真付きカードが展開される
@@ -402,7 +428,10 @@ export default function CommunitySpotScreen() {
           {photos.length > 0 && photoW > 0 ? (
             <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} decelerationRate="fast" onMomentumScrollEnd={onPhotoScroll}>
               {photos.map((uri, i) => (
-                <Image key={i} source={{ uri }} style={{ width: photoW, height: 340 }} contentFit="cover" transition={250} />
+                // タップで全画面ビューア（場所詳細と共通のPhotoViewer）
+                <TouchableOpacity key={i} activeOpacity={0.95} onPress={() => setViewerOpen(true)}>
+                  <Image source={{ uri }} style={{ width: photoW, height: 340 }} contentFit="cover" transition={250} />
+                </TouchableOpacity>
               ))}
             </ScrollView>
           ) : (
@@ -452,9 +481,9 @@ export default function CommunitySpotScreen() {
             </View>
           ) : null}
 
-          {/* タイトル行 + マップピル（同じ高さで中央揃え）*/}
+          {/* タイトル行 + マップピル（同じ高さで中央揃え）。場所名タップで場所詳細ページへ */}
           <View style={s.titleRow}>
-            <Text style={s.title}>{spot.userTitle || spot.placeName}</Text>
+            <Text style={s.title} onPress={openPlaceDetail} suppressHighlighting>{spot.userTitle || spot.placeName}</Text>
             <TouchableOpacity onPress={openMap} activeOpacity={0.85}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.mapPill}>
                 <MapPin size={15} color="#fff" strokeWidth={2.5} />
@@ -462,7 +491,13 @@ export default function CommunitySpotScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-          {spot.placeName && spot.placeName !== spot.userTitle ? <Text style={s.placeName}>{spot.placeName}</Text> : null}
+          {spot.placeName && spot.placeName !== spot.userTitle ? (
+            <TouchableOpacity onPress={openPlaceDetail} activeOpacity={0.7} style={s.placeNameRow}
+              accessibilityRole="button" accessibilityLabel={t.placeDetailA11y(spot.placeName)}>
+              <Text style={s.placeName}>{spot.placeName}</Text>
+              <ChevronRight size={14} color="#9B96A6" strokeWidth={2.4} />
+            </TouchableOpacity>
+          ) : null}
 
           {/* 場所エリアチップ */}
           {spot.address ? (
@@ -678,6 +713,11 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
+      {/* 写真タップの全画面ビューア（場所詳細と共通・スワイプ切替/ピンチズーム）*/}
+      {viewerOpen && photos.length > 0 && (
+        <PhotoViewer photos={photos} initialIdx={Math.min(photoIdx, photos.length - 1)} onClose={() => setViewerOpen(false)} />
+      )}
+
       {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存。
           未いいねはグレー輪郭＋グレー数字（数字=みんなの合計）・押すとピンク塗り＋ピンク数字＝状態を明確化 */}
       {(() => { const hOn = liked || faved; return (
@@ -772,7 +812,9 @@ const s = StyleSheet.create({
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   pref: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
   title: { flex: 1, fontSize: 21, fontWeight: '800', color: '#1A0A2E', lineHeight: 28, letterSpacing: -0.3 },
-  placeName: { fontSize: 13, color: '#6B7280', marginTop: -2, marginBottom: 12, fontWeight: '600' },
+  // 場所名（タップで場所詳細へ・ChevronRightで導線を明示）
+  placeNameRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginTop: -2, marginBottom: 12 },
+  placeName: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
   mapPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
     shadowColor: PURPLE, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
