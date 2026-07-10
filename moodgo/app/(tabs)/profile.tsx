@@ -533,12 +533,17 @@ export default function ProfileTab() {
                   </TouchableOpacity>
                 )}
               </View>
-              {/* 一言（自己紹介）＋在住地(県)を同じ行に続けて表示（例: よろしくお願いします　神奈川）*/}
+              {/* 一言（自己紹介）＋在住地(県)を同じ行に続けて表示（例: よろしくお願いします　📍神奈川相当）。
+                  県の前には元々あった場所ピン(MapPin)をインラインで付ける */}
               {(settings.profileBio || (settings.showPrefecture && settings.profilePrefecture)) ? (
                 <Text style={s.bioText} numberOfLines={3}>
                   {settings.profileBio}
                   {settings.showPrefecture && settings.profilePrefecture ? (
-                    <Text style={s.prefInline}>{settings.profileBio ? '　' : ''}{settings.profilePrefecture}</Text>
+                    <Text style={s.prefInline}>
+                      {settings.profileBio ? '　' : ''}
+                      <MapPin size={11} color="#8B88A6" strokeWidth={2.4} />
+                      {' '}{settings.profilePrefecture}
+                    </Text>
                   ) : null}
                 </Text>
               ) : null}
