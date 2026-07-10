@@ -37,9 +37,27 @@ async function aggregate(
     }
   } catch { /* spot_posts未作成は★のみで集計 */ }
 
-  // device_id ごとに統合。まず投稿おすすめ度、その上に★セレクタを上書き（同一人物の最新意思＝★優先）。
+  // 旧形式の投稿(suggestions)のおすすめ度も合算。こちらはratingカラムが無く、説明文の
+  // 【おすすめ度】★N マーカーに埋め込まれているため正規表現で取り出す（承認済みのみ）。
+  //   ※これが無いと suggestions 由来の投稿（例: 富士見浜）は投稿者が★5を付けていても
+  //     総合評価が「—」のままになる。
+  let sRows: Array<{ rating: number; device_id: string }> = [];
+  try {
+    if (placeName && !/[,()]/.test(placeName)) {
+      const { data } = await db.from("suggestions")
+        .select("description, device_id").eq("spot_name", placeName).eq("status", "approved");
+      for (const s of (data ?? []) as Array<{ description?: string | null; device_id?: string | null }>) {
+        const m = (s.description ?? "").match(/【おすすめ度】\s*★?\s*(\d)/);
+        const v = m ? Number(m[1]) : 0;
+        if (v >= 1 && v <= 5) sRows.push({ rating: v, device_id: String(s.device_id ?? "") });
+      }
+    }
+  } catch { /* suggestions無しでも安全 */ }
+
+  // device_id ごとに統合。まず投稿おすすめ度（新旧）、その上に★セレクタを上書き（同一人物の最新意思＝★優先）。
   const byDevice = new Map<string, number>();
   for (const p of pRows) { const d = String(p.device_id ?? ""); const v = Number(p.rating); if (d && v >= 1) byDevice.set(d, v); }
+  for (const p of sRows) { const d = p.device_id; if (d && !byDevice.has(d)) byDevice.set(d, p.rating); }
   const anon: number[] = [];
   for (const r of rRows) {
     const d = String(r.device_id ?? ""); const v = Number(r.stars);
@@ -51,7 +69,8 @@ async function aggregate(
   const avg = count > 0 ? Math.round((stars.reduce((a, b) => a + b, 0) / count) * 10) / 10 : null;
   const rSelf = deviceId ? rRows.find(r => r.device_id === deviceId)?.stars : undefined;
   const pSelf = deviceId ? pRows.find(p => p.device_id === deviceId)?.rating : undefined;
-  const myStars = Number(rSelf ?? pSelf ?? 0) || 0;
+  const sSelf = deviceId ? sRows.find(p => p.device_id === deviceId)?.rating : undefined;
+  const myStars = Number(rSelf ?? pSelf ?? sSelf ?? 0) || 0;
   return { avg, count, myStars };
 }
 
