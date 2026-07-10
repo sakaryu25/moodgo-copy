@@ -316,7 +316,8 @@ export default function FavoritesView({
                   containerStyle={{ flex: 1 }}
                 >
                   {visitedTitles.has(item.title) ? (
-                    <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={s.visitedBtnText}>{t.visitedDone}</Text></>
+                    // 済: 緑塗り＋白文字（未押下の薄緑輪郭と一目で区別できるように）
+                    <><Check size={13} color="#fff" strokeWidth={2.8} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
                   ) : (
                     <><Footprints size={13} color="#10B981" strokeWidth={2.2} /><Text style={s.visitedBtnText}>{t.visited}</Text></>
                   )}
@@ -515,15 +516,16 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#DDD6FE',
   },
   groupBtnText: { fontSize: 12, fontWeight: '700', color: '#7C3AED' },
-  // 行った！（検索結果カードと同トーン・押済みは薄く）
+  // 行った！: 未＝薄緑の輪郭＋緑文字（押す前の誘い）/ 済＝緑塗り＋白文字（押した状態が一目で分かる）
   visitedBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: 7, borderRadius: 10,
     backgroundColor: '#ECFDF5',
     borderWidth: 1, borderColor: '#A7F3D0',
   },
-  visitedBtnDone: { backgroundColor: '#F6FEFA', borderColor: '#D1FAE5', opacity: 0.85 },
+  visitedBtnDone: { backgroundColor: '#10B981', borderColor: '#10B981' },
   visitedBtnText: { fontSize: 12, fontWeight: '700', color: '#10B981' },
+  visitedBtnTextDone: { color: '#fff', fontWeight: '800' },
   // 右上のハート（お気に入り解除）
   heartRemove: { position: 'absolute', top: 10, right: 12 },
 });

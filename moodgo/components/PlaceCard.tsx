@@ -615,7 +615,7 @@ export default function PlaceCard({
               style={[s.visitedBtn, darkTheme && s.visitedBtnDark, isVisited && s.visitedBtnDone]}
             >
               {isVisited
-                ? <><Check size={13} color="#10B981" strokeWidth={2.5} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
+                ? <><Check size={13} color="#fff" strokeWidth={2.8} /><Text style={[s.visitedBtnText, s.visitedBtnTextDone]}>{t.visitedDone}</Text></>
                 : <><Map size={13} color={darkTheme ? '#B7A8D9' : '#6B7280'} strokeWidth={2} /><Text style={[s.visitedBtnText, darkTheme && s.textDimDark]}>{t.visited}</Text></>}
             </PuniPressable>
           ) : null}
@@ -857,9 +857,10 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: 'rgba(192,132,252,0.35)',
   },
-  visitedBtnDone:     { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
+  // 済は緑塗り＋白文字（お気に入りカードと統一・未押下と一目で区別）
+  visitedBtnDone:     { backgroundColor: '#10B981', borderColor: '#10B981' },
   visitedBtnText:     { fontSize: 13, fontWeight: '600', color: '#374151' },
-  visitedBtnTextDone: { color: '#10B981' },
+  visitedBtnTextDone: { color: '#fff', fontWeight: '700' },
   hotpepperBtn: {
     paddingHorizontal: 12, height: 48, borderRadius: 14,
     backgroundColor: '#FFF5F5',
