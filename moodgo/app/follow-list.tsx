@@ -12,6 +12,7 @@ import AppBackground from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { useSettings } from '@/lib/settingsStore';
+import { registerForPushNotificationsAsync } from '@/lib/push';
 
 const T = {
   ja: {
@@ -91,6 +92,8 @@ export default function FollowListScreen() {
         body: JSON.stringify({ action: 'follow', deviceId, targetId: hash }),
       }).then((r) => r.json());
       if (!d?.ok) throw new Error('follow失敗');
+      // フォロー成功＝明示的なSNS利用の文脈なのでプッシュ通知の許可＋トークン登録（no-op安全）
+      registerForPushNotificationsAsync().catch(() => {});
     } catch {
       setFollowed((prev) => { const n = new Set(prev); n.delete(hash); return n; });   // 失敗はロールバック
     }

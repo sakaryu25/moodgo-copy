@@ -12,7 +12,7 @@ import ConsentGate from '@/components/ConsentGate';
 import CopyToast from '@/components/CopyToast';
 import { setupGlobalErrorHandlers } from '@/lib/crashReporting';
 import { initSentry } from '@/lib/sentry';
-// プッシュ通知の権限要求は起動時に行わない（審査対策）。配信実装後に明示opt-inから @/lib/push を呼ぶ。
+// プッシュ通知の権限要求は起動時に行わない（審査対策）。opt-in導線から @/lib/push を呼ぶ（下記コメント参照）。
 
 // 起動時に一度だけ：グローバルなJSエラー捕捉＋（DSNがあれば）Sentry初期化
 setupGlobalErrorHandlers();
@@ -22,8 +22,9 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
 
   // プッシュ通知トークンの登録は「起動直後の無文脈な権限ダイアログ」を避けるため起動時には行わない
-  //   （App Store審査 4.5.4 / 5.1.1 対策＋UX）。配信実装後に、設定トグルや初お気に入り/グループ参加などの
-  //   明示的なopt-in導線から registerForPushNotificationsAsync()（@/lib/push）を呼ぶこと。
+  //   （App Store審査 4.5.4 / 5.1.1 対策＋UX）。registerForPushNotificationsAsync()（@/lib/push）は
+  //   明示的なopt-in導線＝通知一覧を開いた時(notifications.tsx)・フォロー成功時(user/[id]・follow-list)・
+  //   投稿成功時(post.tsx) から呼ばれる（2026-07-11配線）。ここには追加しないこと。
 
   if (!ready) {
     return (

@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
+import { sendPushToDevice } from "@/lib/push-send";
 
 const BUCKET = "spot-photos";
 const REPORT_HIDE_THRESHOLD = 3;
@@ -97,6 +98,16 @@ export async function POST(req: Request) {
           const cur = (data as Record<string, number> | null)?.[col] ?? 0;
           await db.from("spot_posts").update({ [col]: cur + 1 }).eq("id", postId).then(() => {}, () => {});
         });
+        // 新規いいね時のみ投稿者へプッシュ（/api/spot-like と同一挙動に統一。自分の投稿は除く）
+        if (rtype === "like") {
+          try {
+            const { data: owner } = await db.from("spot_posts").select("device_id").eq("id", postId).maybeSingle();
+            const ownerId = (owner as { device_id?: string } | null)?.device_id;
+            if (ownerId && ownerId !== deviceId) {
+              await sendPushToDevice(ownerId, { title: "MoodGo", body: "あなたの投稿にいいねがつきました", data: { type: "like", postId: `ml-${postId}` } });
+            }
+          } catch { /* 通知失敗は無視 */ }
+        }
         return NextResponse.json({ ok: true });
       }
       // report

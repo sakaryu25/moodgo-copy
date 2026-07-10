@@ -13,6 +13,7 @@ import AppBackground from '@/components/AppBackground';
 import MyPostsHeader from '@/components/myposts/MyPostsHeader';
 import { MP } from '@/components/myposts/types';
 import { fetchNotifications, getLastSeen, markSeen, type Notice } from '@/lib/notifications';
+import { registerForPushNotificationsAsync } from '@/lib/push';
 import { relativeTime } from '@/lib/spotLog';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { useSettings } from '@/lib/settingsStore';
@@ -59,6 +60,10 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     isMounted.current = true;
+    // 通知一覧を開いた＝通知に関心がある明示的な文脈なので、ここでプッシュ通知の
+    // 許可リクエスト＋トークン登録を行う（起動時の無文脈ダイアログを避ける審査対策方針）。
+    // 拒否済み/シミュレータ/Expo Goでは内部で無害にno-op。
+    registerForPushNotificationsAsync().catch(() => {});
     (async () => {
       const [list, seen] = await Promise.all([fetchNotifications(50), getLastSeen()]);
       if (!isMounted.current) return;

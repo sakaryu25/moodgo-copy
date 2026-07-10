@@ -31,13 +31,18 @@ export async function POST(req: Request) {
 
   try {
     // token をユニークキーに upsert（端末の再インストールで新トークンになっても重複しない）
-    await supabase.from("push_tokens").upsert(
+    // ⚠ supabase-js は失敗しても throw せず { error } を返す。未チェックだと push-tokens.sql
+    //   未適用（テーブル/device_hash列なし）が無音で握りつぶされ配信不能に気付けない。
+    const { error } = await supabase.from("push_tokens").upsert(
       { token, device_id: deviceId, device_hash: deviceHash(deviceId), platform, updated_at: new Date().toISOString() },
       { onConflict: "token" },
     );
-    return NextResponse.json({ ok: true });
+    if (error) {
+      // SQL未適用でもアプリは壊さない（ok:true）。診断用に stored:false と理由を返す
+      return NextResponse.json({ ok: true, stored: false, note: "push_tokens 未適用の可能性: " + error.message });
+    }
+    return NextResponse.json({ ok: true, stored: true });
   } catch (e) {
-    // テーブル未作成（SQL未適用）でもアプリを壊さない
-    return NextResponse.json({ ok: true, note: "push_tokens 未作成かもしれません: " + String(e) });
+    return NextResponse.json({ ok: true, stored: false, note: "push_tokens 未作成かもしれません: " + String(e) });
   }
 }

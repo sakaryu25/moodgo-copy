@@ -26,6 +26,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 import { useSettings } from '@/lib/settingsStore';
 import { useBlocks, blockUser, muteUser, unblockUser } from '@/lib/blockStore';
+import { registerForPushNotificationsAsync } from '@/lib/push';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
@@ -225,6 +226,9 @@ export default function UserProfileScreen() {
         throw new Error('follow失敗');
       }
       if (isMounted.current && typeof d.followerCount === 'number') setFollowerCount(d.followerCount);
+      // フォローした＝SNS的な関わりを持った明示的な文脈なので、ここでプッシュ通知の
+      // 許可＋トークン登録を行う（フォロー返し等の通知を受け取れるように）。no-op安全。
+      if (next) registerForPushNotificationsAsync().catch(() => {});
     } catch {
       if (isMounted.current) {
         setFollowing(!next);

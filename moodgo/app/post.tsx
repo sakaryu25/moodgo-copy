@@ -25,6 +25,7 @@ import { showToast } from '@/lib/toast';
 import { markFeedStale } from '@/lib/feedRefresh';
 import { DEEP_DIVE } from '@/components/QuizFlow';
 import { useSettings } from '@/lib/settingsStore';
+import { registerForPushNotificationsAsync } from '@/lib/push';
 
 // 画面の表示文言（値・キーは含めない＝MOODS/PRICE_CHIPS/タグ等は翻訳しない）
 const T = {
@@ -506,6 +507,9 @@ export default function PostScreen() {
       if (!d?.ok) { showToast(t.tPostFailTitle, d?.error ?? t.tRetrySub); setSubmitting(false); return; }
       setSubmitting(false);
       markFeedStale();   // 新規投稿をフィードに反映（次のフィード表示で再取得）
+      // 投稿した＝いいね/行った！の通知を受け取る側になる文脈なので、ここで
+      // プッシュ通知の許可＋トークン登録を行う（拒否済み/シミュレータはno-op）
+      registerForPushNotificationsAsync().catch(() => {});
       setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast(t.tPostFailSub2Title, t.tPostFailSub2); setSubmitting(false); }
   };
