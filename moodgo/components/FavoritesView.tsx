@@ -413,6 +413,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
     overflow: 'hidden',
+    // 下端は横線ではなく角丸（穴場/特集の帯と統一）
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   decoCircle1: {
     position: 'absolute', width: 180, height: 180, borderRadius: 90,

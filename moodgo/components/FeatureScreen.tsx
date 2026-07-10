@@ -1608,6 +1608,9 @@ const s = StyleSheet.create({
     paddingBottom: 20,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+    // 下端は横線ではなく角丸（穴場/お気に入りの帯と統一）
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
   },
   decoCircle1: {
     position: 'absolute',

@@ -771,7 +771,8 @@ const s = StyleSheet.create({
   // 帯高はお気に入り基準で統一(HERO_BAND_H=139: 12+タイトル57+10+検索40+20)・下端寄せ
   // スクロール格納のためabsolute overlay化（リストは contentPaddingTop=headerH で逃がす）
   heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
-  hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end' },
+  // 下端は横線ではなく角丸（コンテンツに浮かぶカード風・お気に入り/特集と統一）
+  hero: { paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', justifyContent: 'flex-end', borderBottomLeftRadius: 26, borderBottomRightRadius: 26 },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroTitle: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
