@@ -56,9 +56,15 @@ async function aggregate(
 
   // device_id ごとに統合。まず投稿おすすめ度（新旧）、その上に★セレクタを上書き（同一人物の最新意思＝★優先）。
   const byDevice = new Map<string, number>();
-  for (const p of pRows) { const d = String(p.device_id ?? ""); const v = Number(p.rating); if (d && v >= 1) byDevice.set(d, v); }
-  for (const p of sRows) { const d = p.device_id; if (d && !byDevice.has(d)) byDevice.set(d, p.rating); }
   const anon: number[] = [];
+  for (const p of pRows) { const d = String(p.device_id ?? ""); const v = Number(p.rating); if (d && v >= 1) byDevice.set(d, v); }
+  for (const p of sRows) {
+    const d = p.device_id;
+    if (d) { if (!byDevice.has(d)) byDevice.set(d, p.rating); }
+    // 旧suggestionsはdevice_idがNULLの行が多い（富士見浜等）→ 識別できないが投稿者の
+    // 正当な1票なので匿名票として数える（0票扱いより正確・★セレクタとの重複統合は不可）
+    else anon.push(p.rating);
+  }
   for (const r of rRows) {
     const d = String(r.device_id ?? ""); const v = Number(r.stars);
     if (!(v >= 1)) continue;
