@@ -306,6 +306,8 @@ export default function UserProfileScreen() {
   const tabW = (SCREEN_W - SIDE * 2) / 2;
   // 一言メッセージ: サーバー(公開)優先。自分のページはローカル設定にもフォールバック。
   const bioText = (profile?.bio?.trim() || (isMe ? (localSettings.profileBio ?? '').trim() : '') || '');
+  // 在住地(県)はローカル保存のみ（サーバー未同期）→ 本人閲覧時だけプロフィールタブと同様に表示
+  const prefText = isMe && localSettings.showPrefecture ? (localSettings.profilePrefecture ?? '').trim() : '';
   const visitedSpots = profile?.visitedSpots ?? [];
 
   return (
@@ -353,23 +355,34 @@ export default function UserProfileScreen() {
               {handleText
                 ? <Text style={s.handle} numberOfLines={1}>@{handleText}</Text>
                 : <Text style={s.handleMuted} numberOfLines={1}>@MoodGoユーザー</Text>}
+              {/* 一言＋在住地(県): プロフィールタブと全く同じ配置（@IDの下・ピン付きで行末に県）。
+                  県はローカル保存のみのため本人閲覧時だけ表示（他人の県はサーバー未同期） */}
+              {(bioText || prefText) ? (
+                <Text style={s.bioInline} numberOfLines={3}>
+                  {bioText}
+                  {prefText ? (
+                    <Text style={s.prefInline}>
+                      {bioText ? '　' : ''}
+                      <MapPin size={11} color="#8B88A6" strokeWidth={2.4} />
+                      {' '}{prefText}
+                    </Text>
+                  ) : null}
+                </Text>
+              ) : null}
             </View>
           </View>
 
-          {/* ── 一言メッセージ ── */}
-          {bioText ? <Text style={s.bio}>{bioText}</Text> : null}
-
-          {/* ── 統計 5列（カード無し・背景直載せ）── */}
+          {/* ── 統計 5列（プロフィールタブと同じ順: 投稿/行った/フォロー中/フォロワー/いいね）── */}
           <View style={s.statsRow}>
             <Stat num={profile?.postCount ?? 0} label="投稿" />
+            <View style={s.statDivider} />
+            <Stat num={profile?.visitedCount ?? 0} label="行った" />
             <View style={s.statDivider} />
             <Stat num={profile?.followingCount ?? 0} label="フォロー中" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'following' } })} />
             <View style={s.statDivider} />
             <Stat num={followerCount} label="フォロワー" onPress={() => router.push({ pathname: '/follow-list', params: { id: posterId, kind: 'followers' } })} />
             <View style={s.statDivider} />
             <Stat num={profile?.likeCount ?? 0} label="いいね" />
-            <View style={s.statDivider} />
-            <Stat num={profile?.visitedCount ?? 0} label="行った" />
           </View>
 
           {/* ── フォローボタン（自分のページでは出さない）── */}
@@ -505,8 +518,9 @@ const s = StyleSheet.create({
   cardStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   cardStatText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  // 一言メッセージ
-  bio: { fontSize: 14, fontWeight: '500', color: '#3A3348', lineHeight: 21, paddingHorizontal: SIDE, marginTop: 14 },
+  // 一言メッセージ＋在住地（プロフィールタブと同じ配置・配色: 右カラム内・県は薄グレー＋ピン）
+  bioInline: { fontSize: 13.5, color: '#5B5470', lineHeight: 19, marginTop: 7 },
+  prefInline: { color: '#8B88A6', fontWeight: '700' },
 
   // 行ったスポットの勲章バッジ（2列×N・少数は中央揃え）
   medalGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: GAP, paddingHorizontal: SIDE, marginTop: 18 },
