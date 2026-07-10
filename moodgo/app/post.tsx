@@ -4,7 +4,7 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -47,7 +47,7 @@ const T = {
     captionPh: 'どんな場所？何が良い？雰囲気やおすすめポイントを自由に',
     moodLabel: '合う気分 ',
     moodLabelSuffix: '（1つ以上）',
-    autoTagPre: '🏷 この投稿には ',
+    autoTagPre: 'この投稿には ',
     autoTagMid: ' と ',
     autoTagPost: ' が自動で付きます',
     genreLabel: '詳しいジャンル（任意・当てはまるものをタップ）',
@@ -67,7 +67,7 @@ const T = {
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
     editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
-    photoLabel: '写真（1〜3枚・必須）',
+    photoLabel: '写真（1〜3枚）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！',
     addPhoto: '追加',
     contactLabel: '連絡先（任意）',
@@ -145,7 +145,7 @@ const T = {
     captionPh: 'What kind of place is it? What\'s good about it? Share the vibe and highlights',
     moodLabel: 'Matching moods ',
     moodLabelSuffix: ' (pick 1 or more)',
-    autoTagPre: '🏷 This post is automatically tagged ',
+    autoTagPre: 'This post is automatically tagged ',
     autoTagMid: ' and ',
     autoTagPost: '',
     genreLabel: 'More detail (optional — tap any that fit)',
@@ -165,7 +165,7 @@ const T = {
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
     editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
-    photoLabel: 'Photos (1–3, required)',
+    photoLabel: 'Photos (1–3)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe!',
     addPhoto: 'Add',
     contactLabel: 'Contact (optional)',
@@ -597,7 +597,10 @@ export default function PostScreen() {
             ))}
           </View>
           {/* 全投稿に自動で付く共通タグ（サーバーが必ず付与）。透明性のため明示。 */}
-          <Text style={s.autoTagHint}>{t.autoTagPre}<Text style={s.autoTagStrong}>#穴場スポット</Text>{t.autoTagMid}<Text style={s.autoTagStrong}>#時間潰し</Text>{t.autoTagPost}</Text>
+          <View style={s.autoTagRow}>
+            <Tag size={11} color="#7A5CFF" strokeWidth={2.4} />
+            <Text style={[s.autoTagHint, { marginTop: 0, flex: 1 }]}>{t.autoTagPre}<Text style={s.autoTagStrong}>#穴場スポット</Text>{t.autoTagMid}<Text style={s.autoTagStrong}>#時間潰し</Text>{t.autoTagPost}</Text>
+          </View>
           {deepDiveOptions.length > 0 && (
             <>
               <Text style={s.label}>{t.genreLabel}</Text>
@@ -682,7 +685,7 @@ export default function PostScreen() {
             <Text style={s.note}>{t.editNote}</Text>
           ) : (
             <>
-              <Text style={s.label}>{t.photoLabel}</Text>
+              <Text style={s.label}>{t.photoLabel}<Text style={s.req}>*</Text></Text>
               <Text style={s.hint}>{t.photoHint}</Text>
               <View style={s.photoGrid}>
                 {images.map((im, i) => (
@@ -854,6 +857,7 @@ const s = StyleSheet.create({
   leadText: { fontSize: 13, color: '#4A2D7E', fontWeight: '700', lineHeight: 20 },
   req: { color: '#F56CB3' },
   hint: { fontSize: 11.5, color: '#9B89BE', marginBottom: 8, lineHeight: 16 },
+  autoTagRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 8 },
   autoTagHint: { fontSize: 11.5, color: '#7A5CFF', marginTop: 8, lineHeight: 16, fontWeight: '600' },
   autoTagStrong: { fontWeight: '800', color: '#7C3AED' },
   gotLoc: { fontSize: 12, color: '#16A34A', fontWeight: '700', marginTop: 8 },
