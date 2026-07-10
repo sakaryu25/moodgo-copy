@@ -66,13 +66,17 @@ function compact(n: number): string {
 
 // ── 統計1列（数字大・ラベル小・中央・カード無し）──────────────────────────────
 function Stat({ num, label, onPress }: { num: number; label: string; onPress?: () => void }) {
+  // ルート自身に statCol(flex:1) を当てる。以前はタップ可能な時だけ Pressable が
+  // flex 無しで挟まり、その列だけ内容幅に潰れて5列が不均等になっていた。
   const inner = (
-    <View style={s.statCol}>
+    <>
       <Text style={s.statNum} numberOfLines={1}>{compact(num)}</Text>
       <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
-    </View>
+    </>
   );
-  return onPress ? <Pressable onPress={onPress} hitSlop={6}>{inner}</Pressable> : inner;
+  return onPress
+    ? <Pressable onPress={onPress} hitSlop={6} style={s.statCol}>{inner}</Pressable>
+    : <View style={s.statCol}>{inner}</View>;
 }
 
 // ── 投稿カード（Pinterest風・画像いっぱい＋下部に黒グラデ＋タイトル/♥/📍）──────
