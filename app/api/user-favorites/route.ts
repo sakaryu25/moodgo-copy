@@ -26,6 +26,24 @@ export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: "JSONが不正です" }, { status: 400 }); }
   const action = String(body?.action ?? "");
+
+  // ── 集計（この場所を保存している端末数）── deviceId不要・匿名の総数のみ返す
+  //   場所詳細のハートに「何人が保存したか」を出すため。fav_keyはクライアントの
+  //   favKey.tsと同じ優先度（supabaseId→placeId→title）で作られた保存キー。
+  if (action === "count") {
+    if (!rateLimit(`favcnt:${clientIp(req)}`, 60, 60_000)) {
+      return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+    }
+    const favKey = String(body?.favKey ?? "").trim().slice(0, 300);
+    if (!favKey) return NextResponse.json({ ok: false, error: "favKeyが必要です" }, { status: 400 });
+    try {
+      const { count, error } = await db.from("user_favorites")
+        .select("*", { count: "exact", head: true }).eq("fav_key", favKey);
+      if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, count: 0 }); throw error; }
+      return NextResponse.json({ ok: true, count: count ?? 0 });
+    } catch { return NextResponse.json({ ok: true, count: 0 }); }
+  }
+
   const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
   if (!deviceId) return NextResponse.json({ ok: false, error: "deviceIdが必要です" }, { status: 400 });
   const hash = deviceHash(deviceId);

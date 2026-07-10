@@ -463,11 +463,27 @@ export default function PlaceDetailPage() {
     });
   }, [rec?.title]);
 
+  // この場所を保存している人数（みんなの合計）。ハート下に表示＝押した分がカウントされるのを可視化。
+  const [favCount, setFavCount] = useState(0);
+  const favKey = String(rec?.supabaseId ?? rec?.placeId ?? rec?.title ?? '').trim();   // サーバーのfav_keyと同じ優先度
+  useEffect(() => {
+    if (!favKey) return;
+    let alive = true;
+    apiFetch('/api/user-favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'count', favKey }),
+    }).then((r) => r.json())
+      .then((d) => { if (alive && typeof d?.count === 'number') setFavCount(d.count); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [favKey]);
+
   const toggleFav = async () => {
     if (!rec) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const nextFaved = !faved;
     setFaved(nextFaved);   // 楽観的に即トグル（ハートは押した瞬間に反映・ストレージ整合は後追い）
+    setFavCount((c) => Math.max(0, c + (nextFaved ? 1 : -1)));   // カウントも即±1（サーバー集計は後追い）
     const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
     const next: FavoriteItem[] = nextFaved
       ? (faves.some((f) => sameFav(f, rec)) ? faves : [{
@@ -1125,10 +1141,12 @@ export default function PlaceDetailPage() {
       </Animated.ScrollView>
 
       {/* お気に入りハート（右下フローティング・投稿詳細と同様）
-          未保存はグレー輪郭・保存済みだけピンク塗り＝押していないのに色付きに見えないよう明確化 */}
+          未保存はグレー輪郭＋グレー数字・保存済みはピンク塗り＋ピンク数字。
+          数字=この場所を保存した人数（押すと即±1で「カウントされた」ことが分かる） */}
       <TouchableOpacity onPress={toggleFav} style={[s.favFab, faved && s.favFabOn, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
         accessibilityRole="button" accessibilityState={{ selected: faved }}>
-        <Heart size={24} color={faved ? '#F56CB3' : '#B9B3C8'} fill={faved ? '#F56CB3' : 'transparent'} strokeWidth={2.4} />
+        <Heart size={22} color={faved ? '#F56CB3' : '#B9B3C8'} fill={faved ? '#F56CB3' : 'transparent'} strokeWidth={2.4} />
+        <Text style={[s.favFabCount, !faved && s.favFabCountOff]}>{favCount}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1396,12 +1414,15 @@ const s = StyleSheet.create({
   // お気に入りハート（右下フローティング）
   favFab: {
     // 未保存: グレー枠・無彩色の影（押していない状態が一目で分かるように）
-    position: 'absolute', right: 18, width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute', right: 18, width: 58, height: 66, borderRadius: 29,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', paddingTop: 2,
     borderWidth: 2, borderColor: '#E7E4EE',
     shadowColor: '#1A1330', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.14, shadowRadius: 10, elevation: 6,
   },
   // 保存済み: ピンク枠＋ピンクの影（塗りハートとセットで「押した」状態を明示）
   favFabOn: { borderColor: '#FCE7F3', shadowColor: '#F56CB3', shadowOpacity: 0.3 },
+  favFabCount: { fontSize: 12, fontWeight: '800', color: '#F56CB3', marginTop: 1 },
+  // 未保存時の数字はグレー＝みんなの合計数（自分の押下印ではない）
+  favFabCountOff: { color: '#8B88A6' },
 });
