@@ -1,6 +1,7 @@
 // ── /notifications ────────────────────────────────────────────────────────────
-// アプリ内通知: 自分の投稿への いいね/行った！ ＋ 新しいフォロワー を新着順で表示。
-// 開いた時点で既読（lastSeenをローカル更新）。タップで対象の投稿/相手のプロフィールへ。
+// アプリ内通知: 自分の投稿への いいね/行った！/コメント/返信/メンション ＋ 新しいフォロワー を新着順で表示。
+// コメント系は本文を引用表示。開いた時点で表示分を既読化（per-通知 readMap）＝既読から3日で一覧から消える。
+// タップで対象の投稿/相手のプロフィールへ。
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { AtSign, Bell, Footprints, Heart, MessageCircle, Reply, UserPlus, UserRound } from 'lucide-react-native';
@@ -12,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import MyPostsHeader from '@/components/myposts/MyPostsHeader';
 import { MP } from '@/components/myposts/types';
-import { fetchNotifications, getLastSeen, markSeen, type Notice } from '@/lib/notifications';
+import { loadNotifications, noticeKey, type Notice } from '@/lib/notifications';
 import { registerForPushNotificationsAsync } from '@/lib/push';
 import { relativeTime } from '@/lib/spotLog';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
@@ -62,7 +63,7 @@ export default function NotificationsScreen() {
   const { lang } = useSettings();
   const t = T[lang];
   const [items, setItems] = useState<Notice[]>([]);
-  const [lastSeen, setLastSeen] = useState('');
+  const [unread, setUnread] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [scrolled, setScrolled] = useState(false);
   const isMounted = useRef(true);
@@ -74,12 +75,12 @@ export default function NotificationsScreen() {
     // 拒否済み/シミュレータ/Expo Goでは内部で無害にno-op。
     registerForPushNotificationsAsync().catch(() => {});
     (async () => {
-      const [list, seen] = await Promise.all([fetchNotifications(50), getLastSeen()]);
+      // 取得＋既読管理（今回未表示分は unread に入り、その場だけドット表示。既読3日超は除外済み）
+      const { items: list, unread: fresh } = await loadNotifications(50);
       if (!isMounted.current) return;
       setItems(list);
-      setLastSeen(seen);
+      setUnread(fresh);
       setLoading(false);
-      markSeen();   // 開いた時点で既読
     })();
     return () => { isMounted.current = false; };
   }, []);
@@ -118,7 +119,7 @@ export default function NotificationsScreen() {
         ) : (
           items.map((n, i) => {
             const st = TYPE_STYLE[n.type];
-            const unread = !!n.at && (!lastSeen || n.at > lastSeen);
+            const isUnread = unread.has(noticeKey(n));
             const who = n.actorHandle ? `@${n.actorHandle}` : t.someone;
             const spot = n.spotName ?? t.spot;
             const text = n.type === 'follow' ? t.followText(who)
@@ -127,10 +128,12 @@ export default function NotificationsScreen() {
               : n.type === 'reply' ? t.replyText(who)
               : n.type === 'mention' ? t.mentionText(who)
               : t.likeText(who, spot);
+            // コメント/返信/メンションは「何とコメントしたか」を引用して2行目に出す
+            const quote = (n.type === 'comment' || n.type === 'reply' || n.type === 'mention') ? n.commentText : undefined;
             return (
-              <TouchableOpacity key={`${n.type}-${n.at}-${i}`} style={[s.row, unread && s.rowUnread]}
+              <TouchableOpacity key={`${n.type}-${n.at}-${i}`} style={[s.row, isUnread && s.rowUnread]}
                 onPress={() => openNotice(n)} activeOpacity={0.75}
-                accessibilityRole="button" accessibilityLabel={text}>
+                accessibilityRole="button" accessibilityLabel={quote ? `${text}: ${quote}` : text}>
                 <View style={[s.iconCircle, { backgroundColor: st.bg }]}>
                   <st.Icon size={16} color={st.tint} strokeWidth={2.2} />
                 </View>
@@ -139,10 +142,13 @@ export default function NotificationsScreen() {
                 ) : (
                   <View style={[s.avatar, s.avatarPh]}><UserRound size={15} color={MP.MAIN} strokeWidth={1.8} /></View>
                 )}
-                <Text style={s.text} numberOfLines={2}>{text}</Text>
+                <View style={s.body}>
+                  <Text style={s.text} numberOfLines={2}>{text}</Text>
+                  {quote ? <Text style={s.quote} numberOfLines={2}>“{quote}”</Text> : null}
+                </View>
                 <View style={s.rightCol}>
                   <Text style={s.time}>{relativeTime(n.at, lang)}</Text>
-                  {unread && <View style={s.unreadDot} />}
+                  {isUnread && <View style={s.unreadDot} />}
                 </View>
               </TouchableOpacity>
             );
@@ -182,7 +188,12 @@ const s = StyleSheet.create({
   iconCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0EBFF' },
   avatarPh: { alignItems: 'center', justifyContent: 'center' },
-  text: { flex: 1, fontSize: 12.5, fontWeight: '600', color: MP.INK, lineHeight: 18 },
+  body: { flex: 1, gap: 3 },
+  text: { fontSize: 12.5, fontWeight: '600', color: MP.INK, lineHeight: 18 },
+  quote: {
+    fontSize: 12, fontWeight: '500', color: MP.SUB, lineHeight: 17, fontStyle: 'italic',
+    backgroundColor: 'rgba(139,107,242,0.06)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+  },
   rightCol: { alignItems: 'flex-end', gap: 4 },
   time: { fontSize: 10.5, fontWeight: '500', color: MP.SUB },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#F06292' },

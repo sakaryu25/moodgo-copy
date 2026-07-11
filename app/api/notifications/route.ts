@@ -28,6 +28,7 @@ type Notice = {
   actorId?: string | null;    // 押した人の公開ハッシュ
   actorHandle?: string | null;
   actorIcon?: string | null;
+  commentText?: string;       // コメント/返信/メンションの本文（何とコメントしたか・140字まで）
 };
 
 export async function POST(req: Request) {
@@ -87,21 +88,21 @@ export async function POST(req: Request) {
     const myHandle = (await handlesByDevice(db, [deviceId])).get(deviceId) ?? null;
     const [cmRowsRaw, myCmRows, mnRowsAll] = await Promise.all([
       myPostIds.length > 0
-        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, body, created_at")
             .in("post_id", myPostIds).is("parent_id", null).eq("status", "visible")
             .order("created_at", { ascending: false }).limit(limit))
         : Promise.resolve([] as Row[]),
       safeRows(db.from("spot_comments").select("id").eq("device_id", deviceId)
         .order("created_at", { ascending: false }).limit(200)),
       myHandle
-        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, body, created_at")
             .ilike("body", `%@${myHandle}%`).eq("status", "visible")
             .order("created_at", { ascending: false }).limit(limit))
         : Promise.resolve([] as Row[]),
     ]);
     const myCmIds = myCmRows.map((r) => String(r.id));
     const rpRowsRaw = myCmIds.length > 0
-      ? await safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+      ? await safeRows(db.from("spot_comments").select("id, post_id, device_id, body, created_at")
           .in("parent_id", myCmIds).eq("status", "visible")
           .order("created_at", { ascending: false }).limit(limit))
       : [];
@@ -147,6 +148,7 @@ export async function POST(req: Request) {
         actorId: dev ? deviceHash(dev) : null,
         actorHandle: dev ? (handleMap.get(dev) ?? null) : null,
         actorIcon: dev ? iconFor(dev) : null,
+        commentText: String(r.body ?? "").replace(/\s+/g, " ").trim().slice(0, 140) || undefined,
       };
     };
 
