@@ -59,6 +59,91 @@ function isCompanyJunk(name: string, sourceType?: string | null): "corp" | "safe
   return SAFE_RE.test(stripped) ? "safe" : "corp";
 }
 
+// ── 公共施設ノイズ（お出かけ先ではない公共・生活インフラ）の判定 ─────────────────
+// 2026-07-11全域監査で確定した6カテゴリ。カテゴリごとに一致条件＋固有ガードを持つ。
+//   ⚠実データで確認済みの罠: ドトール○○病院店(店舗)・旧○○小学校(廃校=探訪先)・
+//   ○○中学校グラウンド(スポーツ開放)・学校近くの幽霊トンネル(心霊)・JAL/JAXAi(JA誤爆)・
+//   JA前橋ちびっこ広場(遊び場)・風屋貯水池(ダム湖景勝→貯水池はそもそも対象外)・
+//   公会堂(歴史建築→対象外)・今町集会所前人道橋(本体は橋)。
+type FacilityCat = { key: string; label: string; match: RegExp; guard?: RegExp };
+const FACILITY_CATS: FacilityCat[] = [
+  {
+    key: "school", label: "現役の学校・保育園",
+    match: /(小学校|中学校|高等学校|高校|保育園|保育所|幼稚園|こども園)/,
+    // 「○○学校前」等の位置表現・乗馬/教習系・園庭開放
+    guard: /(校庭|遊園場|馬の|自動車|教習|分室)/,
+  },
+  {
+    key: "medical", label: "現役の病院・医院",
+    match: /(病院|クリニック|診療所|医院|歯科|整骨院|接骨院|鍼灸|調剤|薬局)/,
+    // 「洋服の病院」「きものクリニック」=リペア店。動物病院はお出かけ先でないので対象のまま
+    guard: /(きもの|着物|洋服|リペア|おもちゃ)/,
+  },
+  {
+    key: "transit", label: "踏切・バス停",
+    match: /(踏切|バス停|停留所|料金所|検問所)/,
+    // 国鉄=廃止路線の遺構系（鬼死骸停留所等の珍名観光ネタを含む）
+    guard: /(国鉄)/,
+  },
+  {
+    key: "agri", label: "農協・組合の事務所",
+    // JAは「単語頭のJA」のみ（CHIFAJA/NINJA/PUJA/JAL/JAXA等の語中・英字続きを除外）
+    match: /(農協|漁協|森林組合|土地改良|生産組合|農業協同組合|(?<![A-Za-z0-9ぁ-んァ-ヶ一-龥])JA(?![A-Za-z]))/,
+    // JA系は直売・観光施設が多い: ファーマーズ/特産/産直/即売/レストハウス/醸造ファクトリー/憩い系は残す
+    guard: /(ファーマーズ|特産|産直|即売|アンテナ|ふれあい|レストハウス|ファクトリー|の森|の郷|の里|いこい|夢|みのり|茶|田んぼ|アート|フィッシャリーナ|水産センター|農業センター|牡蠣|焼き|Aコープ|コープ)/,
+  },
+  {
+    key: "infra", label: "インフラ設備",
+    // 貯水池はダム湖景勝がありうるので対象外。併設の運動施設/温浴/学習施設はガードで保護
+    match: /(変電所|配水場|配水池|浄水場|下水処理|水再生センター|ポンプ場|処理場|処分場|クリーンセンター|清掃工場|焼却場|中継所|電話局|揚水機場|排水機場|受水場|調整池)/,
+  },
+  {
+    key: "community", label: "自治会館・集会所",
+    // 公会堂は歴史建築(旭川市公会堂等)があるため対象外
+    match: /(自治会館|集会所|町内会館)/,
+    // 「集会所前○○」は本体が別物・「;○○荘」は宿の可能性・キリスト集会所=教会・猫の集会所=保護猫カフェ
+    guard: /(前|橋|荘|キリスト|猫)/,
+  },
+];
+// 全カテゴリ共通ガード: 探訪価値(旧・跡・廃・遺構・心霊)/文化施設/社寺/店舗・飲食/
+// 公園/駅/併設スポーツ施設(病院体育館・浄水場テニスコート・学校野球場等の公開施設)は残す
+const FACILITY_GLOBAL_GUARD = new RegExp([
+  // 探訪価値（廃・遺構・史跡・心霊・戦争遺構）
+  "旧", "跡", "址", "廃", "遺構", "震災", "メモリアル", "幽霊", "心霊", "お化け", "おばけ", "首吊", "壕",
+  // 文化・記念
+  "記念", "紀念", "碑", "発祥", "校歌", "資料", "史料", "展示", "見学", "学習", "観光", "文化財", "博物館", "美術館", "ミュージアム",
+  "科学館", "水族館", "動物園", "植物園", "図書", "ガーデン", "庭園", "講堂",
+  // 社寺・宗教
+  "神社", "神宮", "大社", "稲荷", "八幡", "天満宮", "寺", "地蔵", "観音", "教会", "聖堂",
+  // 公共空間・ランドマーク
+  "公園", "緑地", "広場", "公開空地", "桜", "紅葉", "展望", "遊歩道", "駅", "ランド", "パーク", "の森",
+  "かわうそ", "カワウソ",
+  // スポーツ・レジャー併設（表記揺れ含む）
+  "グラウンド", "グランド", "コート", "庭球", "アリーナ", "スタジアム", "競技場", "球場", "体育館", "プール",
+  "サッカー", "野球", "テニス", "バレー", "バスケ", "陸上", "馬術", "馬場", "弓道", "柔道", "剣道", "ラグビー",
+  "ソフトボール", "ホッケー", "フットサル", "武道", "運動", "練習場", "ジム", "フィットネス", "パーソナル",
+  "水泳", "フィールド", "field", "stadium", "baseball", "soccer", "court",
+  // 店舗・飲食・温浴
+  "(?<!支)店", "カフェ", "cafe", "coffee", "珈琲", "喫茶", "レストラン", "食堂", "うどん", "そば", "寿司",
+  "ラーメン", "らーめん", "焼肉", "売店", "市場", "マルシェ", "直売",
+  "温泉", "サウナ", "スパ", "銭湯", "ホテル", "旅館", "キャンプ",
+].join("|"), "i");
+
+function facilityJunkCat(name: string, sourceType: string | null | undefined, enabled: Set<string>): string | null {
+  const n = (name ?? "").trim();
+  if (!n) return null;
+  // 心霊スポット(ghostmap由来)は無条件で残す（廃校・旧病院・事故物件系の本体）
+  if ((sourceType ?? "").toLowerCase().includes("ghost")) return null;
+  for (const c of FACILITY_CATS) {
+    if (!enabled.has(c.key)) continue;
+    if (!c.match.test(n)) continue;
+    if (FACILITY_GLOBAL_GUARD.test(n)) return null;
+    if (c.guard && c.guard.test(n)) return null;
+    return c.key;
+  }
+  return null;
+}
+
 function isSubFacility(address: string): boolean {
   // 商業・エンタメ系の大型施設に限定して「〇〇内」を検出
   // 公園・センター・ガーデン等の公共施設は除外（広場・展望台等は独立スポットとして有効）
@@ -137,6 +222,64 @@ export async function POST(req: NextRequest) {
       count: corp.length, deleted, excludedSafe, scanned, complete,
       nextCursor: complete ? null : cursorId,
       names: corp.slice(0, 200).map(r => r.name), safeSamples: sampleSafe,
+    });
+  }
+
+  // ── 公共施設ノイズモード: 学校/病院/踏切/農協/インフラ/集会所を全域走査で抽出して削除 ──
+  //   走査方式はcompaniesOnlyと同じ（id昇順主キー走査＋カーソル継続・判定は全てJS）。
+  //   body.cats で対象カテゴリを絞れる（省略時は全6カテゴリ）。プレビューはカテゴリ別内訳を返す。
+  if (body.facilitiesOnly === true) {
+    const startedAt = Date.now();
+    const TIME_BUDGET_MS = 35_000;
+    let cursorId = typeof body.cursor === "string" ? body.cursor : "";
+    const enabled = new Set<string>(
+      Array.isArray(body.cats) && body.cats.length > 0
+        ? body.cats.filter((c: unknown) => typeof c === "string")
+        : FACILITY_CATS.map(c => c.key),
+    );
+    const found: { id: string; name: string; cat: string }[] = [];
+    let scanned = 0;
+    let complete = false;
+
+    while (Date.now() - startedAt < TIME_BUDGET_MS) {
+      let q = supabase.from("places").select("id, name, source_type").order("id", { ascending: true }).limit(1000);
+      if (cursorId) q = q.gt("id", cursorId);
+      const { data, error } = await q;
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      const rows = (data ?? []) as { id: string; name: string; source_type?: string | null }[];
+      if (rows.length === 0) { complete = true; break; }
+      scanned += rows.length;
+      for (const r of rows) {
+        const cat = facilityJunkCat(r.name, r.source_type, enabled);
+        if (cat) found.push({ id: r.id, name: r.name, cat });
+      }
+      cursorId = rows[rows.length - 1].id;
+      if (rows.length < 1000) { complete = true; break; }
+    }
+
+    let deleted = 0;
+    if (!dryRun && found.length > 0) {
+      for (let i = 0; i < found.length; i += 1000) {
+        const chunk = found.slice(i, i + 1000).map(r => r.id);
+        const { error: delErr } = await supabase.from("places").delete().in("id", chunk);
+        if (delErr) return NextResponse.json({ ok: false, error: delErr.message, deleted }, { status: 500 });
+        deleted += chunk.length;
+      }
+    }
+
+    // カテゴリ別内訳（プレビュー表示用）
+    const byCat: Record<string, { label: string; count: number; names: string[] }> = {};
+    for (const c of FACILITY_CATS) byCat[c.key] = { label: c.label, count: 0, names: [] };
+    for (const f of found) {
+      byCat[f.cat].count++;
+      if (byCat[f.cat].names.length < 120) byCat[f.cat].names.push(f.name);
+    }
+
+    return NextResponse.json({
+      ok: true, dryRun, mode: "facilities",
+      count: found.length, deleted, scanned, complete,
+      nextCursor: complete ? null : cursorId,
+      byCat,
     });
   }
 

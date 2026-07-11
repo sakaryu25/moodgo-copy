@@ -363,6 +363,21 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
   // 会社・事業所（お店でないもの）の一括削除
   type CorpPreview = { count: number; excludedSafe: number; complete: boolean; names: string[]; safeSamples: string[] };
   type CorpResp = { ok?: boolean; error?: string; complete?: boolean; nextCursor?: string | null; scanned?: number; count?: number; deleted?: number; excludedSafe?: number; names?: string[]; safeSamples?: string[] };
+  // 公共施設ノイズ（学校/病院/踏切/農協/インフラ/集会所）の一括削除
+  const FAC_CATS = [
+    { key: "school", label: "現役の学校・保育園" },
+    { key: "medical", label: "現役の病院・医院" },
+    { key: "transit", label: "踏切・バス停" },
+    { key: "agri", label: "農協・組合の事務所" },
+    { key: "infra", label: "インフラ設備" },
+    { key: "community", label: "自治会館・集会所" },
+  ] as const;
+  type FacByCat = Record<string, { label: string; count: number; names: string[] }>;
+  type FacResp = { ok?: boolean; error?: string; complete?: boolean; nextCursor?: string | null; scanned?: number; count?: number; deleted?: number; byCat?: FacByCat };
+  const [facCats, setFacCats] = useState<Set<string>>(new Set(FAC_CATS.map(c => c.key)));
+  const [facPreview, setFacPreview] = useState<{ total: number; byCat: FacByCat } | null>(null);
+  const [facRunning, setFacRunning] = useState(false);
+  const [facResult, setFacResult] = useState("");
   const [corpPreview, setCorpPreview] = useState<CorpPreview | null>(null);
   const [corpRunning, setCorpRunning] = useState(false);
   const [corpResult, setCorpResult] = useState("");
@@ -598,6 +613,111 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
                 除外して残す例: {corpPreview.safeSamples.slice(0, 6).join(" / ")}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 公共施設ノイズ（学校/病院/踏切/農協/インフラ/集会所）の一括削除 */}
+      <div style={{ ...cardStyle, border: "1.5px solid #F6AD55" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "8px" }}>🏫 公共施設ノイズを一括削除</h3>
+        <p style={{ fontSize: "12.5px", opacity: 0.75, lineHeight: 1.7, marginBottom: "10px" }}>
+          お出かけ先ではない公共・生活施設を全域から探して削除します。
+          廃校・震災遺構・心霊由来・学校の野球場/プール（開放施設）・病院内の店やミュージアム・JA直売所・
+          国鉄の珍名バス停などは自動で残します。<b>削除は元に戻せません。</b>
+        </p>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+          {FAC_CATS.map(c => (
+            <label key={c.key} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12.5px", fontWeight: 700, background: facCats.has(c.key) ? "#FEEBC8" : "#F7FAFC", border: "1px solid #F6AD55", borderRadius: "8px", padding: "5px 10px", cursor: "pointer" }}>
+              <input type="checkbox" checked={facCats.has(c.key)}
+                onChange={() => setFacCats(prev => { const n = new Set(prev); if (n.has(c.key)) n.delete(c.key); else n.add(c.key); return n; })} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            disabled={facRunning || facCats.size === 0}
+            onClick={async () => {
+              setFacRunning(true); setFacPreview(null); setFacResult("");
+              const byCat: FacByCat = {};
+              let total = 0, scanned = 0;
+              let cursor: string | null = null;
+              try {
+                for (let i = 0; i < 30; i++) {
+                  const d: FacResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, facilitiesOnly: true, dryRun: true, cats: [...facCats], cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("プレビュー失敗: " + (d.error ?? "不明")); return; }
+                  total += d.count ?? 0; scanned += d.scanned ?? 0;
+                  for (const [k, v] of Object.entries(d.byCat ?? {})) {
+                    if (!byCat[k]) byCat[k] = { label: v.label, count: 0, names: [] };
+                    byCat[k].count += v.count;
+                    for (const n of v.names) { if (byCat[k].names.length < 150) byCat[k].names.push(n); }
+                  }
+                  setFacResult(`分析中… ${scanned.toLocaleString()}件走査 / 削除対象 ${total}件`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setFacPreview({ total, byCat });
+                setFacResult("");
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setFacRunning(false); }
+            }}
+            style={{ ...btnBase3, background: "#fff", border: "1.5px solid #F6AD55", color: "#C05621" }}
+          >
+            🔍 プレビュー（削除対象を確認）
+          </button>
+          <button
+            disabled={facRunning || !facPreview || facPreview.total === 0}
+            onClick={async () => {
+              if (!facPreview) return;
+              if (!confirm(`公共施設ノイズ ${facPreview.total}件を完全に削除します。\nこの操作は元に戻せません。よろしいですか？`)) return;
+              setFacRunning(true); setFacResult("");
+              let deleted = 0, scanned = 0;
+              let cursor: string | null = null;
+              try {
+                for (let i = 0; i < 30; i++) {
+                  const d: FacResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, facilitiesOnly: true, dryRun: false, cats: [...facCats], cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("エラー: " + (d.error ?? "不明")); break; }
+                  deleted += d.deleted ?? 0; scanned += d.scanned ?? 0;
+                  setFacResult(`削除中… ${scanned.toLocaleString()}件走査 / ${deleted}件削除済み`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setFacResult(`✅ 公共施設ノイズ ${deleted}件を削除しました`);
+                setFacPreview(null);
+                loadStats();
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setFacRunning(false); }
+            }}
+            style={{ ...btnBase3, background: (!facPreview || facPreview.total === 0) ? "#EDF2F7" : "#DD6B20", color: (!facPreview || facPreview.total === 0) ? "#A0AEC0" : "#fff" }}
+          >
+            🗑 削除を実行
+          </button>
+          {facRunning && <span style={{ fontSize: "13px", fontWeight: 700, color: "#C05621" }}>{facResult || "処理中…"}</span>}
+        </div>
+        {facResult && !facRunning && (
+          <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 800, color: "#276749" }}>{facResult}</div>
+        )}
+        {facPreview && (
+          <div style={{ marginTop: "12px", padding: "12px 14px", background: "#FFFAF0", border: "1px solid #FBD38D", borderRadius: "10px", fontSize: "13px" }}>
+            <div style={{ fontWeight: 800, marginBottom: "6px" }}>削除対象: 合計{facPreview.total.toLocaleString()}件</div>
+            {Object.entries(facPreview.byCat).filter(([, v]) => v.count > 0).map(([k, v]) => (
+              <details key={k} style={{ marginBottom: "6px" }}>
+                <summary style={{ fontWeight: 700, cursor: "pointer" }}>{v.label}: {v.count}件</summary>
+                <div style={{ maxHeight: "160px", overflowY: "auto", color: "#555", lineHeight: 1.8, paddingLeft: "12px", marginTop: "4px" }}>
+                  {v.names.map((n, i) => <div key={i}>・{n}</div>)}
+                  {v.count > v.names.length && <div style={{ color: "#999" }}>…ほか {v.count - v.names.length}件</div>}
+                </div>
+              </details>
+            ))}
+            {facPreview.total === 0 && <div style={{ color: "#68D391", fontWeight: 700 }}>削除対象はありません</div>}
           </div>
         )}
       </div>
