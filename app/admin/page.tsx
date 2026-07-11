@@ -8,7 +8,6 @@ import ReviewQueuePanel from "./_components/ReviewQueuePanel";
 // サブ管理ページを取り込み、タブとして1ページに集約（各ページは localStorage の moodgo-admin-secret で自動認証）
 import MetricsAdmin from "./metrics/MetricsAdmin";
 import MoodLogAdmin from "./mood-logs/MoodLogAdmin";
-import BlogPostsAdmin from "./blog-posts/BlogPostsAdmin";
 import ServerErrorsAdmin from "./server-errors/page";
 
 // admin secret はクライアントにハードコードしない。ログイン入力→サーバ検証→localStorageで保持(adminSecret state)。
@@ -885,7 +884,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "blog-posts" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2984,7 +2983,6 @@ export default function AdminPage() {
             { key: "review-queue", label: "✅ タグ検証" },
             { key: "metrics", label: "📈 検索メトリクス" },
             { key: "mood-logs", label: "📝 moodログ管理" },
-            { key: "blog-posts", label: "📰 投稿承認" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
             { key: "address-fill", label: "住所補完" },
@@ -7269,7 +7267,6 @@ export default function AdminPage() {
         )}
         {tab === "metrics" && <MetricsAdmin secret={adminSecret} />}
         {tab === "mood-logs" && <MoodLogAdmin secret={adminSecret} />}
-        {tab === "blog-posts" && <BlogPostsAdmin secret={adminSecret} />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
         {tab === "pending-spots" && <PendingSpotsPanel secret={adminSecret} />}
         {tab === "address-fill" && <AddressFillPanel secret={adminSecret} />}
