@@ -223,7 +223,12 @@ export default function ProfileTab() {
     try {
       const hash = await getMyHash();
       if (!hash) return;
-      const d = await apiFetch(`/api/user-profile?id=${encodeURIComponent(hash)}`).then((r) => r.json());
+      // ⚠/api/user-profileはPOST専用（GETは405）。GETで呼んでいたため公式/店舗バッジ種別が
+      //   プロフィールタブだけ読めていなかった（2026-07-11修正・/user/[id]と同じ呼び方に統一）
+      const d = await apiFetch('/api/user-profile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: hash }),
+      }).then((r) => r.json());
       const p = d?.profile;
       if (!p) return;
       setAccountType(typeof p.accountType === 'string' ? p.accountType : '');
