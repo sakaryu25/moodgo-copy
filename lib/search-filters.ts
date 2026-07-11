@@ -494,6 +494,11 @@ export const DEEPDIVE_SEARCH_KEYWORDS: Record<string, string[]> = {
 export const FOOD_OK_DEEPDIVE_RE = /カフェ|喫茶|スイーツ|パフェ|フルーツ|グルメ|ご当地|道の駅|食べ歩き|ファミレス|パンケーキ|ブランチ|ランチ|ディナー/i;
 export function isFoodAllowedContext(mood: string | undefined, deepDive: string | undefined): boolean {
   if ((mood ?? "") === "お腹すいた") return true;        // 食事気分は常に飲食OK
+  // 集中(focus)=「カフェで作業・勉強」が主目的。カフェは #お腹すいた も併記されるため、
+  //   飲食除外フィルタ(nonFoodSanitize)が全カフェを落とし新宿等で結果が2件に枯れていた(2026-07-12実測)。
+  //   集中のSB候補は #集中したい タグ済み・Google検索は includedTypes=[library,cafe] 限定なので、
+  //   飲食コンテキストを許可してもラーメン/居酒屋は入らずカフェ/図書館だけが通る＝安全。
+  if (moodGroup(mood) === "focus") return true;
   const dd = canonDeepDive(deepDive ?? "");
   return FOOD_OK_DEEPDIVE_RE.test(dd);                    // カフェ/グルメ系の深掘りのみ飲食OK
 }

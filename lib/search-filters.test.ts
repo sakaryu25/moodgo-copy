@@ -25,10 +25,15 @@ describe("isFoodAllowedContext", () => {
     expect(isFoodAllowedContext(undefined, "グルメ")).toBe(true);
     expect(isFoodAllowedContext(undefined, "道の駅")).toBe(true);
   });
+  it("focus mood allows cafes (working at a cafe is the core use case)", () => {
+    // 集中=カフェ作業が主目的なのでカフェ(#お腹すいた併記)を除外しない（2026-07-12・新宿で枯れる不具合の修正）
+    expect(isFoodAllowedContext("集中", undefined)).toBe(true);
+    expect(isFoodAllowedContext("集中したい", "図書館")).toBe(true);
+  });
   it("non-food contexts exclude food", () => {
     expect(isFoodAllowedContext("自然感じたい", "温泉")).toBe(false);
     expect(isFoodAllowedContext(undefined, undefined)).toBe(false);
-    expect(isFoodAllowedContext("集中したい", "図書館")).toBe(false);
+    expect(isFoodAllowedContext("まったり", undefined)).toBe(false);   // まったり(relax)は従来通り飲食NG
   });
 });
 
