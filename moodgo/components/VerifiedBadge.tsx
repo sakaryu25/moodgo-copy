@@ -10,11 +10,13 @@ import { Badge, BadgeCheck, Store } from 'lucide-react-native';
 export default function VerifiedBadge({ type, size = 15 }: { type?: string | null; size?: number }) {
   if (type === 'official') return <BadgeCheck size={size} color="#fff" fill="#1D9BF0" strokeWidth={2.4} />;
   if (type === 'store') {
+    // 中に店舗グリフを重ねる分、同じsizeだと公式チェックより小さく見える → 15%拡大して視覚サイズを揃える
+    const s = size * 1.15;
     return (
-      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
         {/* 公式(BadgeCheck)と同じシール外形。fillで金色に塗り、白の店舗グリフを中央に重ねる */}
-        <Badge size={size} color="#fff" fill="#F59E0B" strokeWidth={2.4} />
-        <Store size={size * 0.48} color="#fff" strokeWidth={3.2} style={{ position: 'absolute' }} />
+        <Badge size={s} color="#fff" fill="#F59E0B" strokeWidth={2.4} />
+        <Store size={s * 0.52} color="#fff" strokeWidth={3} style={{ position: 'absolute' }} />
       </View>
     );
   }
