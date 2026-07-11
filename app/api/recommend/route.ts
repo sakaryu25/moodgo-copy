@@ -6057,15 +6057,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
           + ((isCurated(r.source) && !overCap(r)) ? 8 : 0)  // 領域1: 手動追加は近距離キャップ以内のみ満額昇格
           + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
       }))
-      // 領域1: cap以内(band0)を必ず上位、cap外(band1)は後方。
-      // #距離逆転: 非食は従来スコア(aiRankBoost+random)が距離を無視し、AIが気に入った遠い店が
-      //   近い店を埋めていた(本番実測: 王道で遊ぶで700m店がrank9・6.4km店がrank1を3都市で再現)。
-      //   食のsortOrShuffle同様に粗い距離バンド(2.5km)を主キーにし、近いバンドを必ず上位化。
-      //   バンド内では従来スコア(AI判別順+多様性)が決める＝関連性・埋もれ防止は維持。
+      // 領域1: cap以内(band0)を必ず上位、cap外(band1)は後方。同バンドはscore降順、cap外は近い順タイブレーク。
       .sort((a, b) => {
         if (a.over !== b.over) return a.over ? 1 : -1;
-        const bandA = Math.floor(a.km / 2.5), bandB = Math.floor(b.km / 2.5);
-        if (bandA !== bandB) return bandA - bandB;   // 近い距離バンド優先
         const ds = b.score - a.score;
         if (Math.abs(ds) > 0.0001) return ds;
         return a.km - b.km;
