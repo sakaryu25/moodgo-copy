@@ -19,6 +19,16 @@ import { relativeTime } from '@/lib/spotLog';
 import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { useSettings } from '@/lib/settingsStore';
 
+// アクターのアイコン（未アップロード＝ファイル404 の人が多いので onError で必ずプレースホルダへ）。
+// 旧実装は actorIcon が常に truthy なURLのため、404時に空の丸だけ出て「アイコンが出ない」状態だった。
+function NotifAvatar({ uri }: { uri?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return <View style={[s.avatar, s.avatarPh]}><UserRound size={15} color={MP.MAIN} strokeWidth={1.8} /></View>;
+  }
+  return <Image source={{ uri }} style={s.avatar} contentFit="cover" onError={() => setFailed(true)} />;
+}
+
 const TYPE_STYLE = {
   like:    { Icon: Heart,         tint: '#F06292', bg: '#FDEBF2' },
   visited: { Icon: Footprints,    tint: '#F5A623', bg: '#FDF3E1' },
@@ -137,11 +147,7 @@ export default function NotificationsScreen() {
                 <View style={[s.iconCircle, { backgroundColor: st.bg }]}>
                   <st.Icon size={16} color={st.tint} strokeWidth={2.2} />
                 </View>
-                {n.actorIcon ? (
-                  <Image source={{ uri: n.actorIcon }} style={s.avatar} contentFit="cover" />
-                ) : (
-                  <View style={[s.avatar, s.avatarPh]}><UserRound size={15} color={MP.MAIN} strokeWidth={1.8} /></View>
-                )}
+                <NotifAvatar key={n.actorIcon || 'ph'} uri={n.actorIcon} />
                 <View style={s.body}>
                   <Text style={s.text} numberOfLines={2}>{text}</Text>
                   {quote ? <Text style={s.quote} numberOfLines={2}>“{quote}”</Text> : null}

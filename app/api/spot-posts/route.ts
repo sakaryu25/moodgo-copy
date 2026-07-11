@@ -207,6 +207,55 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── add-photo（本人の投稿に写真を1枚追記）──────────────────────────────────────
+  //   画像上限なし対応: create は1枚だけ送り、残りはこのアクションで1枚ずつ追記する
+  //   （全画像を1リクエストのbase64で送るとVercelのボディ上限を超えるため分割）。本人のみ。
+  if (action === "add-photo") {
+    if (!rateLimit(`spot-post-photo:${clientIp(req)}`, 120, 60_000)) {
+      return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
+    }
+    const postId = String(body?.postId ?? "").trim().replace(/^ml-/, "");
+    const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
+    if (!UUID_RE.test(postId) || !deviceId) return NextResponse.json({ ok: false, error: "パラメータが不正です" }, { status: 400 });
+    const image = typeof body?.image === "string" ? body.image : "";
+    const thumb = typeof body?.thumbImage === "string" ? body.thumbImage : "";
+    if (!image || image.length > 4_000_000 || !isValidImageBase64(image)) {
+      return NextResponse.json({ ok: false, error: "画像の形式が不正です" }, { status: 400 });
+    }
+    try {
+      // 所有者確認＋追記に必要な投稿属性を取得（本人のみ・生device_idは返さない）
+      const { data: post } = await db.from("spot_posts")
+        .select("device_id, place_id, place_name, visibility, status").eq("id", postId).maybeSingle();
+      if (!post) return NextResponse.json({ ok: false, error: "投稿が見つかりません" }, { status: 404 });
+      const p = post as { device_id?: string; place_id?: string | null; place_name?: string | null; visibility?: string; status?: string };
+      if (String(p.device_id ?? "") !== deviceId) return NextResponse.json({ ok: false, error: "権限がありません" }, { status: 403 });
+
+      if (!bucketEnsured) { await db.storage.createBucket(BUCKET, { public: true }).then(() => {}, () => {}); bucketEnsured = true; }
+      const safe = String(p.place_id ?? p.place_name ?? "spot").replace(/[^0-9a-zA-Z]/g, "").slice(0, 24) || "spot";
+      const rand = Math.abs(deviceId.split("").reduce((a, c) => a + c.charCodeAt(0), 0));
+      const path = `${safe}/post-${rand}-${image.length}-x${Date.now()}.jpg`;
+      const payload = image.includes(",") ? image.slice(image.indexOf(",") + 1) : image;
+      const { error: upErr } = await db.storage.from(BUCKET).upload(path, Buffer.from(payload, "base64"), { contentType: "image/jpeg", upsert: true });
+      if (upErr) return NextResponse.json({ ok: false, error: "画像の保存に失敗しました" }, { status: 500 });
+      if (thumb && isValidImageBase64(thumb)) {
+        const thPayload = thumb.includes(",") ? thumb.slice(thumb.indexOf(",") + 1) : thumb;
+        await db.storage.from(BUCKET).upload(path.replace(/\.jpg$/, "_thumb.jpg"), Buffer.from(thPayload, "base64"), { contentType: "image/jpeg", upsert: true }).then(() => {}, () => {});
+      }
+      const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path);
+      const url = `${pub.publicUrl}?v=${Buffer.from(path).length}`;
+      const reuseOk = p.visibility === "spot_public_anonymous" || p.visibility === "public";
+      await db.from("spot_photos").insert({
+        post_id: postId, place_id: p.place_id ?? null, place_name: p.place_name ?? null,
+        image_url: url, storage_path: path, device_id: deviceId,
+        photo_source: "user_uploaded", can_use_as_spot_photo: reuseOk,
+        license_declared: true, moderation_status: p.status ?? "approved", is_primary: false, score: 0,
+      }).then(() => {}, () => {});
+      return NextResponse.json({ ok: true, url });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    }
+  }
+
   // ── create（投稿作成）────────────────────────────────────────────────────────
   if (!rateLimit(`spot-post:${clientIp(req)}`, 6, 60_000)) {
     return NextResponse.json({ ok: false, error: "しばらく時間をおいて再度お試しください" }, { status: 429 });

@@ -72,8 +72,8 @@ const T = {
     hours24: '24時間営業',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
     editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
-    photoLabel: '写真（1〜3枚）',
-    photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！',
+    photoLabel: '写真（1枚以上）',
+    photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！何枚でもOK',
     addPhoto: '追加',
     contactLabel: '連絡先（任意）',
     contactHint: '掲載された場合に特典をお送りするため、LINEのIDやメールアドレスを教えていただけると助かります。',
@@ -116,7 +116,7 @@ const T = {
     tPlaceTitle: '場所を教えてください',
     tPlaceSub: '「現在地」タップ or 住所・エリアを入力',
     tPhotoTitle: '写真を1枚以上追加してください',
-    tPhotoSub: '雰囲気が伝わる写真が投稿の主役です（最大3枚）',
+    tPhotoSub: '雰囲気が伝わる写真が投稿の主役です',
     tLicenseTitle: '権利確認が必要です',
     tLicenseSub: '「自分で撮影／使用許可あり」にチェック',
     tPostFailTitle: '投稿できませんでした',
@@ -174,8 +174,8 @@ const T = {
     hours24: 'Open 24h',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
     editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
-    photoLabel: 'Photos (1–3)',
-    photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe!',
+    photoLabel: 'Photos (1+)',
+    photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe! Add as many as you like.',
     addPhoto: 'Add',
     contactLabel: 'Contact (optional)',
     contactHint: 'So we can send a reward if your post gets featured, it helps to share your LINE ID or email address.',
@@ -218,7 +218,7 @@ const T = {
     tPlaceTitle: 'Please tell us the location',
     tPlaceSub: 'Tap "Current location" or enter an address/area',
     tPhotoTitle: 'Please add at least one photo',
-    tPhotoSub: 'Photos are the star of your post (up to 3)',
+    tPhotoSub: 'Photos are the star of your post',
     tLicenseTitle: 'Rights confirmation needed',
     tLicenseSub: 'Check "Shot by me / have permission"',
     tPostFailTitle: 'Couldn\'t post',
@@ -249,6 +249,9 @@ type PlaceHit = { id: string; name: string; address?: string };
 
 // 目安の値段チップ（独立カラムで保存・説明文には埋め込まない）
 const PRICE_CHIPS = ['無料', '〜¥500', '〜¥1,000', '〜¥3,000', '¥3,000〜'];
+
+// 投稿の下書き保存キー（自由入力の新スポット投稿のみ）。誤って戻る/アプリ終了でも入力を失わず続きから。
+const POST_DRAFT_KEY = 'moodgo-post-draft-v1';
 
 export default function PostScreen() {
   const insets = useSafeAreaInsets();
@@ -332,6 +335,65 @@ export default function PostScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
+  // ── 下書き保存（自由入力の新スポット投稿のみ）: 誤って戻る/アプリ終了でも続きから ──
+  //   編集モードや場所詳細からの投稿(params固定)は対象外＝別スポットの下書きと混ざらない。
+  const draftEnabled = !editMode && !lockedFromParam;
+  const draftRestored = useRef(false);
+  const clearDraft = () => { AsyncStorage.removeItem(POST_DRAFT_KEY).catch(() => {}); };
+
+  // 復元（初回のみ）。base64はメモリ節約で保存しない＝画像はuriのみ（送信時にuriから再生成）。
+  useEffect(() => {
+    if (!draftEnabled) { draftRestored.current = true; return; }
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(POST_DRAFT_KEY);
+        const d = raw ? JSON.parse(raw) : null;
+        if (d && typeof d === 'object') {
+          if (typeof d.spotName === 'string') setSpotName(d.spotName);
+          if (typeof d.address === 'string') setAddress(d.address);
+          if (typeof d.lat === 'number') setLat(d.lat);
+          if (typeof d.lng === 'number') setLng(d.lng);
+          if (Array.isArray(d.images)) setImages(d.images.filter((x: unknown) => !!x && typeof (x as { uri?: unknown }).uri === 'string').map((x: { uri: string }) => ({ uri: x.uri })));
+          if (Array.isArray(d.moodTags)) setMoodTags(d.moodTags.filter((x: unknown) => typeof x === 'string'));
+          if (typeof d.caption === 'string') setCaption(d.caption);
+          if (typeof d.rating === 'number') setRating(d.rating);
+          if (typeof d.availFrom === 'string') setAvailFrom(d.availFrom);
+          if (typeof d.availUntil === 'string') setAvailUntil(d.availUntil);
+          if (typeof d.station === 'string') setStation(d.station);
+          if (typeof d.openTime === 'string') setOpenTime(d.openTime);
+          if (typeof d.closeTime === 'string') setCloseTime(d.closeTime);
+          if (typeof d.is24h === 'boolean') setIs24h(d.is24h);
+          if (typeof d.priceChip === 'string') setPriceChip(d.priceChip);
+          if (typeof d.priceNote === 'string') setPriceNote(d.priceNote);
+          if (typeof d.contact === 'string') setContact(d.contact);
+          if (d.vis === 'public' || d.vis === 'anon' || d.vis === 'private') setVis(d.vis);
+        }
+      } catch { /* 破損した下書きは無視 */ }
+      draftRestored.current = true;
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 保存（復元完了後、入力変更のたびに軽くデバウンス）。内容が空になったら下書きを消す。
+  useEffect(() => {
+    if (!draftEnabled || !draftRestored.current) return;
+    const hasContent = !!(spotName || caption || moodTags.length || images.length || address ||
+      rating || priceChip || priceNote || contact || station || availFrom || availUntil ||
+      openTime || closeTime || is24h);
+    const h = setTimeout(() => {
+      if (hasContent) {
+        AsyncStorage.setItem(POST_DRAFT_KEY, JSON.stringify({
+          spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri })),
+          moodTags, caption, rating, availFrom, availUntil, station,
+          openTime, closeTime, is24h, priceChip, priceNote, contact, vis,
+        })).catch(() => {});
+      } else {
+        AsyncStorage.removeItem(POST_DRAFT_KEY).catch(() => {});
+      }
+    }, 400);
+    return () => clearTimeout(h);
+  }, [draftEnabled, spotName, address, lat, lng, images, moodTags, caption, rating, availFrom, availUntil, station, openTime, closeTime, is24h, priceChip, priceNote, contact, vis]);
+
   // スポット名を打つたびに既存placeを検索（被り候補を出す）。空/1文字なら候補クリア。
   const onNameChange = (text: string) => {
     setSpotName(text);
@@ -362,10 +424,12 @@ export default function PostScreen() {
           { text: t.cancel, style: 'cancel' }, { text: t.aOpenSettings, onPress: () => Linking.openSettings() },
         ]); return;
       }
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 3, quality: 0.6, base64: true, exif: false });
+      // 上限なし（selectionLimit:0）。多数選択時のメモリ節約でpickerからはbase64を取らず、
+      // 送信時に uri から縮小して生成する（submit の ImageManipulator）。
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 0, quality: 0.6, exif: false });
       if (!r.canceled && r.assets.length > 0) {
-        const add = r.assets.slice(0, 3 - images.length).map(a => ({ uri: a.uri, base64: a.base64 ?? undefined }));
-        setImages(prev => [...prev, ...add].slice(0, 3));
+        const add = r.assets.map(a => ({ uri: a.uri }));
+        setImages(prev => [...prev, ...add]);
       }
     } catch { showToast(t.aErrorTitle, t.aPhotoPickFail); }   // 結果通知はトーストに統一
   };
@@ -504,8 +568,10 @@ export default function PostScreen() {
         }
       }));
       const valid = prepared.filter(p2 => p2.main);
-      const imgs = valid.map(p2 => p2.main);
-      const thumbImgs = valid.map(p2 => p2.thumb);
+      if (valid.length === 0) { showToast(t.tPhotoTitle, t.tPhotoSub); setSubmitting(false); return; }
+      // 画像上限なし対応: create は1枚だけ送り（Vercelのボディ上限回避）、残りは add-photo で1枚ずつ追記。
+      const first = valid[0];
+      const rest = valid.slice(1);
       // 投稿は全て spot-posts に一本化。新スポット(placeId無し)はAPI側でplacesに仮登録され、admin承認で検索に出る。
       // ⚠ 価格/おすすめ度は独立フィールドで送る（captionへの【目安価格】【おすすめ度】埋め込みは廃止＝
       //    検索カードの説明が汚れない・除去処理も不要）。
@@ -517,7 +583,7 @@ export default function PostScreen() {
           lat: lat ?? undefined, lng: lng ?? undefined,
           // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
           caption: caption.trim(), moodTags, visibility: visServer,
-          canUseAsSpotPhoto: true, licenseDeclared: true, images: imgs, thumbImages: thumbImgs,
+          canUseAsSpotPhoto: true, licenseDeclared: true, images: [first.main], thumbImages: [first.thumb],
           priceChip: priceChip || undefined,
           priceNote: priceNote.trim() || undefined,
           rating: rating > 0 ? rating : undefined,
@@ -531,7 +597,20 @@ export default function PostScreen() {
       });
       const d = await res.json();
       if (!d?.ok) { showToast(t.tPostFailTitle, d?.error ?? t.tRetrySub); setSubmitting(false); return; }
+      // 残りの写真を1枚ずつ追記（本人のみ・各リクエストは軽量）。失敗しても1枚は保存済で投稿は成立。
+      const newPostId = String(d.id ?? '');
+      if (newPostId && rest.length > 0) {
+        for (const p2 of rest) {
+          try {
+            await apiFetch('/api/spot-posts', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
+              body: JSON.stringify({ action: 'add-photo', deviceId, postId: newPostId, image: p2.main, thumbImage: p2.thumb }),
+            });
+          } catch { /* best-effort: 追記失敗は投稿全体を失敗にしない */ }
+        }
+      }
       setSubmitting(false);
+      clearDraft();      // 投稿成功＝下書きを破棄
       markFeedStale();   // 新規投稿をフィードに反映（次のフィード表示で再取得）
       // 投稿した＝いいね/行った！の通知を受け取る側になる文脈なので、ここで
       // プッシュ通知の許可＋トークン登録を行う（拒否済み/シミュレータはno-op）
@@ -754,11 +833,10 @@ export default function PostScreen() {
                     <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
                   </View>
                 ))}
-                {images.length < 3 && (
-                  <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8}>
-                    <Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text>
-                  </TouchableOpacity>
-                )}
+                {/* 枚数上限なし＝追加ボタンは常時表示 */}
+                <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8}>
+                  <Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text>
+                </TouchableOpacity>
               </View>
             </>
           )}

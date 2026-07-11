@@ -168,7 +168,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
 
   // 初回ロード（再試行ボタンからも呼ぶ）。エラーは空状態と区別して loadError に立てる。
   //   前回の先頭ページ(端末キャッシュ)があれば即表示し、裏で最新を取得して置き換える。
-  const loadInitial = useCallback(async () => {
+  const loadInitial = useCallback(async (fresh = false) => {
     setLoading(true);
     setLoadError(false);
     let hadCache = false;
@@ -181,7 +181,9 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
           setLoading(false);   // スピナーを出さず前回結果を即表示
         }
       }
-      const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=0`);
+      // fresh=true（投稿直後など）は CDN の s-maxage=60 キャッシュを避けて即時反映させる
+      const bust = fresh ? `&_=${Date.now()}` : '';
+      const res = await apiFetch(`/api/community-feed?limit=${PAGE}&offset=0${bust}`);
       const data = await res.json();
       if (!res.ok || data?.ok === false) throw new Error('community-feed error');
       if (isMounted.current) {
@@ -210,9 +212,10 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     return () => { isMounted.current = false; };
   }, [loadInitial]);
 
-  // 投稿の作成/編集/削除でフィードが古くなった時だけ、次のフォーカスで再取得（公開範囲/名前の変更を反映）
+  // 投稿の作成/編集/削除でフィードが古くなった時だけ、次のフォーカスで再取得（公開範囲/名前の変更を反映）。
+  // 投稿直後はキャッシュバスターで即時反映（CDNの60秒キャッシュで新規投稿が出ない問題の解消）。
   useFocusEffect(useCallback(() => {
-    if (consumeFeedStale()) loadInitial();
+    if (consumeFeedStale()) loadInitial(true);
   }, [loadInitial]));
 
   // タブ再タップ（親がrefreshKeyを+1）→ 最新を再取得。初回マウントのloadInitialとは重複させない。
@@ -412,7 +415,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
       {showError && (
         <View style={s.loadingWrap}>
           <Text style={{ color: '#9CA3AF', fontSize: 13, marginBottom: 12 }}>読み込めませんでした</Text>
-          <TouchableOpacity style={s.retryBtn} activeOpacity={0.7} onPress={loadInitial}>
+          <TouchableOpacity style={s.retryBtn} activeOpacity={0.7} onPress={() => loadInitial(true)}>
             <Text style={s.retryText}>再試行</Text>
           </TouchableOpacity>
         </View>

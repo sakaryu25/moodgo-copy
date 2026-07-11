@@ -137,6 +137,7 @@ export default function SettingsView({
   const [saved, setSaved]                     = useState(false);
   // アイコンと名前
   const [nameInput, setNameInput] = useState('');
+  const [initialName, setInitialName] = useState('');   // 変更検出用（完了時の未保存確認）
   const [iconUrl, setIconUrl]     = useState('');
   const [iconBusy, setIconBusy]   = useState(false);
   // ユーザーID（@ハンドル）: 半角英数_のみ3〜20・小文字。一意性はサーバー(user_handles PK)が保証
@@ -163,7 +164,7 @@ export default function SettingsView({
       setSaved(false);
       setShowPrefPicker(false);
       // 保存済みの名前・アイコンを読み込み
-      AsyncStorage.getItem(NICKNAME_KEY).then(v => setNameInput(v ?? '')).catch(() => {});
+      AsyncStorage.getItem(NICKNAME_KEY).then(v => { setNameInput(v ?? ''); setInitialName(v ?? ''); }).catch(() => {});
       AsyncStorage.getItem(USER_ICON_KEY).then(v => setIconUrl(v ?? '')).catch(() => {});
       // ユーザーID: ローカルキャッシュ→サーバーの順で読込（サーバーが真実）
       setHandleStatus('idle'); setHandleReason('');
@@ -279,8 +280,8 @@ export default function SettingsView({
     }, 500);
   };
 
-  // 保存本体。ID変更の確認は handleSave（ラッパー）で先に行う。
-  const doSave = async () => {
+  // 保存本体。ID変更の確認は handleSave（ラッパー）で先に行う。closeAfter=保存成功後に画面を閉じる（完了時の「保存」）。
+  const doSave = async (closeAfter = false) => {
     onSaveProfile(ageInput, genderInput, prefectureInput);
     const bio = bioInput.trim().slice(0, 40);
     saveProfileExtras(bio, showPrefInput);
@@ -339,12 +340,13 @@ export default function SettingsView({
         return;
       }
     }
+    if (closeAfter) { onClose(); return; }   // 完了時の「保存」→保存できたら閉じる
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   };
 
   // 保存の入口: ID「変更」（初回設定ではない）のときは2週間ロックの確認を挟む
-  const handleSave = () => {
+  const handleSave = (closeAfter = false) => {
     const h = handleInput.trim();
     const isHandleChange = !!h && h !== savedHandle && !!savedHandle;
     if (isHandleChange) {
@@ -355,12 +357,37 @@ export default function SettingsView({
           : `@${savedHandle} → @${h}\n\n⚠️ After changing, you can't change it again for 14 days.`,
         [
           { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
-          { text: lang === 'ja' ? '変更する' : 'Change', style: 'destructive', onPress: () => { void doSave(); } },
+          { text: lang === 'ja' ? '変更する' : 'Change', style: 'destructive', onPress: () => { void doSave(closeAfter); } },
         ],
       );
       return;
     }
-    void doSave();
+    void doSave(closeAfter);
+  };
+
+  // 未保存の変更があるか（＝完了ボタンで「保存しますか？」を出す条件）。
+  // 言語/位置情報/写真許可は即時反映のため対象外。プロフィール項目だけを見る。
+  const isDirty =
+    ageInput !== profileAge ||
+    genderInput !== profileGender ||
+    prefectureInput !== profilePrefecture ||
+    bioInput.trim() !== (storeSettings.profileBio ?? '').trim() ||
+    showPrefInput !== storeSettings.showPrefecture ||
+    nameInput.trim() !== initialName.trim() ||
+    (!!handleInput.trim() && handleInput.trim() !== savedHandle);
+
+  // 完了ボタン: 未保存の変更があれば「保存しますか？」を出す（保存し忘れて閉じるのを防ぐ）
+  const handleClose = () => {
+    if (!isDirty) { onClose(); return; }
+    Alert.alert(
+      lang === 'ja' ? '変更を保存しますか？' : 'Save changes?',
+      lang === 'ja' ? '保存していない変更があります。' : 'You have unsaved changes.',
+      [
+        { text: lang === 'ja' ? '保存しない' : "Don't save", style: 'destructive', onPress: onClose },
+        { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        { text: lang === 'ja' ? '保存' : 'Save', onPress: () => handleSave(true) },
+      ],
+    );
   };
 
   const handleClearHistory = () => {
@@ -438,7 +465,7 @@ export default function SettingsView({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={[s.root, { paddingTop: insets.top || 20 }]}>
         <AppBackground />
@@ -446,7 +473,7 @@ export default function SettingsView({
         {/* ── Header ── */}
         <View style={s.header}>
           <GradientLogo />
-          <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleClose} style={s.closeBtn} activeOpacity={0.7}>
             <Text style={s.closeBtnText}>{lang === 'ja' ? '完了' : 'Done'}</Text>
           </TouchableOpacity>
         </View>
@@ -490,6 +517,8 @@ export default function SettingsView({
             style={s.flex}
             contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40 }]}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets   // キーボードで下部の入力(一言メッセージ等)が隠れないよう自動でインセット
           >
             {/* タイトル */}
             <Text style={s.pageTitle}>
@@ -652,7 +681,7 @@ export default function SettingsView({
             </View>
 
             {/* 保存ボタン */}
-            <PuniPressable onPress={handleSave} style={s.saveWrap}>
+            <PuniPressable onPress={() => handleSave()} style={s.saveWrap}>
               <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.saveBtn}>
                 {saved
                   ? <Check size={22} color="#fff" strokeWidth={2.5} />
