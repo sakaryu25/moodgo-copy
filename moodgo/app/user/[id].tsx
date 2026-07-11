@@ -5,7 +5,7 @@
 //        → グラデ フォローボタン → タブ(投稿/保存) → Pinterest2列3:4グリッド。
 //   Apple的な余白・薄い影・線少なめ・白ベース。背景はアプリ共通のM透かし(AppBackground)。
 //   スマホ(iPhone)専用・レスポンシブ不要。新ライブラリ追加なし。
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -27,6 +27,7 @@ import { showToast } from '@/lib/toast';
 import { useSettings } from '@/lib/settingsStore';
 import { useBlocks, blockUser, muteUser, unblockUser } from '@/lib/blockStore';
 import { registerForPushNotificationsAsync } from '@/lib/push';
+import { feedStaleVersion } from '@/lib/feedRefresh';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
@@ -170,28 +171,41 @@ export default function UserProfileScreen() {
   const fade = useRef(new Animated.Value(0)).current;
   const underline = useRef(new Animated.Value(0)).current;
 
+  const loadProfile = useCallback(async () => {
+    if (!posterId) { setLoading(false); return; }
+    try {
+      const viewerDeviceId = await getDeviceId();
+      const res = await apiFetch('/api/user-profile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: posterId, viewerDeviceId }),
+      });
+      const d = await res.json();
+      if (isMounted.current && d?.ok && d.profile) {
+        setProfile(d.profile);
+        setFollowing(!!d.profile.isFollowing);
+        setFollowerCount(d.profile.followerCount ?? 0);
+        setIsMe(!!d.profile.isMe);
+      }
+    } catch { /* 空表示 */ }
+    finally { if (isMounted.current) setLoading(false); }
+  }, [posterId]);
+
   useEffect(() => {
     isMounted.current = true;
-    if (!posterId) { setLoading(false); return; }
-    (async () => {
-      try {
-        const viewerDeviceId = await getDeviceId();
-        const res = await apiFetch('/api/user-profile', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetId: posterId, viewerDeviceId }),
-        });
-        const d = await res.json();
-        if (isMounted.current && d?.ok && d.profile) {
-          setProfile(d.profile);
-          setFollowing(!!d.profile.isFollowing);
-          setFollowerCount(d.profile.followerCount ?? 0);
-          setIsMe(!!d.profile.isMe);
-        }
-      } catch { /* 空表示 */ }
-      finally { if (isMounted.current) setLoading(false); }
-    })();
+    loadProfile();
     return () => { isMounted.current = false; };
-  }, [posterId]);
+  }, [loadProfile]);
+
+  // 子画面(投稿詳細)でいいね/行った/コメント等をして戻った時に、投稿カードのカウントと
+  // ヘッダー統計を最新化（マウント時のみ取得だとずっと古いままになる問題の解消）。
+  const lastVer = useRef(feedStaleVersion());
+  useFocusEffect(useCallback(() => {
+    isMounted.current = true;
+    if (feedStaleVersion() !== lastVer.current) {
+      lastVer.current = feedStaleVersion();
+      loadProfile();
+    }
+  }, [loadProfile]));
 
   // 読み込み完了でふわっと表示
   useEffect(() => {

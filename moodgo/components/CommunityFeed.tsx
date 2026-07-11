@@ -107,27 +107,26 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   const [fItems, setFItems] = useState<FeedItem[]>([]);
   const [fLoading, setFLoading] = useState(false);
   const [followingCount, setFollowingCount] = useState<number | null>(null);
+  const loadFollowing = useCallback(async () => {
+    setFLoading(true);
+    try {
+      const deviceId = await getDeviceId();
+      const res = await apiFetch('/api/following-feed', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, limit: 60 }),
+      });
+      const d = await res.json();
+      if (isMounted.current) {
+        setFItems(Array.isArray(d?.items) ? d.items : []);
+        setFollowingCount(typeof d?.following === 'number' ? d.following : null);
+      }
+    } catch { if (isMounted.current) setFItems([]); }
+    finally { if (isMounted.current) setFLoading(false); }
+  }, []);
   useEffect(() => {
     if (!followingMode) { setFItems([]); setFLoading(false); return; }
-    let cancelled = false;
-    setFLoading(true);
-    (async () => {
-      try {
-        const deviceId = await getDeviceId();
-        const res = await apiFetch('/api/following-feed', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceId, limit: 60 }),
-        });
-        const d = await res.json();
-        if (!cancelled && isMounted.current) {
-          setFItems(Array.isArray(d?.items) ? d.items : []);
-          setFollowingCount(typeof d?.following === 'number' ? d.following : null);
-        }
-      } catch { if (!cancelled && isMounted.current) setFItems([]); }
-      finally { if (!cancelled && isMounted.current) setFLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [followingMode]);
+    loadFollowing();
+  }, [followingMode, loadFollowing]);
 
   // キーワード検索（full: サーバー側でスポット名/本文の部分一致）
   const kw = (searchQuery ?? '').trim();
@@ -208,7 +207,9 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
 
   useEffect(() => {
     isMounted.current = true;
-    loadInitial();
+    // このセッションで投稿/いいね等があれば、初回マウントでもCDNキャッシュを避けて新鮮に取る
+    // （みんなタブを初めて開いた時などに、直前の自分の投稿が抜ける60秒キャッシュ問題を解消）。
+    loadInitial(feedStaleVersion() > 0);
     return () => { isMounted.current = false; };
   }, [loadInitial]);
 
@@ -217,18 +218,19 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   //   投稿/いいね直後はキャッシュバスターで即時反映（CDNの60秒キャッシュを回避）。
   const lastFeedVersion = useRef(feedStaleVersion());
   useFocusEffect(useCallback(() => {
-    if (feedStaleVersion() !== lastFeedVersion.current) {
-      lastFeedVersion.current = feedStaleVersion();
-      loadInitial(true);
-    }
-  }, [loadInitial]));
+    if (feedStaleVersion() === lastFeedVersion.current) return;
+    lastFeedVersion.current = feedStaleVersion();
+    // 表示中のモードに応じて最新化（フォロー中/通常フィード）。検索・特定投稿者表示は対象外。
+    if (followingMode) loadFollowing();
+    else if (!kw && !posterHandle) loadInitial(true);
+  }, [loadInitial, loadFollowing, followingMode, kw, posterHandle]));
 
   // タブ再タップ（親がrefreshKeyを+1）→ 最新を再取得。初回マウントのloadInitialとは重複させない。
   const prevRefreshRef = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey === undefined || refreshKey === prevRefreshRef.current) return;
     prevRefreshRef.current = refreshKey;
-    loadInitial();
+    loadInitial(true);   // タブ再タップは明示的な更新＝CDNを避けて最新を取る
   }, [refreshKey, loadInitial]);
 
   // 無限スクロール（full時・親のloadMoreKeyが増えたら次ページ）

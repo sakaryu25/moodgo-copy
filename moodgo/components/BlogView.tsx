@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, Bookmark, ChevronLeft, Clock3, Flag, Flame, Heart, MapPin, MessageCircle, Navigation, Search, Sparkles, UserRound, Users, Wallet, X } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { GlassView } from 'expo-glass-effect';
@@ -156,7 +156,8 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const [moodTag, setMoodTag] = useState('');
   // ベルの未読ドット（通知画面を開くと消える・profileタブと同じ方式）
   const [notifUnread, setNotifUnread] = useState(false);
-  useEffect(() => { hasUnread().then(setNotifUnread).catch(() => {}); }, []);
+  // フォーカス毎に未読を再チェック（通知画面を開いて戻ったらドットが消える・profileと同方式）
+  useFocusEffect(useCallback(() => { hasUnread().then(setNotifUnread).catch(() => {}); }, []));
   // 無限スクロール: 末尾接近でキーを増やして CommunityFeed に次ページ取得を促す
   const [loadMoreKey, setLoadMoreKey] = useState(0);
   const nearEndRef = useRef(false);

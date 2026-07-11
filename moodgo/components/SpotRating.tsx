@@ -46,15 +46,14 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
 
   const load = useCallback(async () => {
     try {
-      // 既に評価済みなら端末キャッシュを使い、サーバー取得しない
+      // まずキャッシュを即表示（自分の評価＋前回の平均）。onAvgは呼ばない（バーは親がライブ取得）。
       const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
       if (cached) {
         const c = JSON.parse(cached);
         setSubmitted(c.myStars ?? 0); setSelected(c.myStars ?? 0);
         setAvg(c.avg ?? null); setCount(c.count ?? 0);
-        // onAvgは呼ばない（キャッシュは古い可能性＝バーは親がライブ取得する。送信時のみ通知）
-        return;
       }
+      // 評価済みでも裏で最新の平均/件数を取り直す（他の人の評価を反映＝SWR。以前は再取得せず古いままだった）。
       const did = await getDeviceId().catch(() => '');
       const qs = new URLSearchParams();
       if (placeId) qs.set('placeId', placeId);
