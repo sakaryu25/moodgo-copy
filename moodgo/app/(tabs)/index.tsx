@@ -1236,6 +1236,14 @@ export default function Home() {
         {renderContent()}
       </Animated.View>
 
+      {/* /place へ遷移中(navAway)は結果Modalが退避し、裏のホーム画面が一瞬見えてしまう。
+          同じ背景グラデーションで覆って隠す＝検索結果→場所詳細の遷移をシームレスにする。*/}
+      {navAway && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 200 }]} pointerEvents="none">
+          <AppBackground />
+        </View>
+      )}
+
       {/* AI相談 入力画面（最前面オーバーレイ・TabBarより上に重ねて下部バーを隠す）*/}
       {aiChatOpen && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 300, elevation: 300 }]}>

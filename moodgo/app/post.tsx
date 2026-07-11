@@ -71,7 +71,7 @@ const T = {
     hoursClose: '閉店',
     hours24: '24時間営業',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
-    editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
+    editNote: '※ 写真以外は編集できます（自分で作った穴場は住所・営業時間・最寄駅・公開期間も）。',
     photoLabel: '写真（1枚以上）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！何枚でもOK',
     addPhoto: '追加',
@@ -173,7 +173,7 @@ const T = {
     hoursClose: 'Close',
     hours24: 'Open 24h',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
-    editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
+    editNote: '※ Everything except photos is editable (address, hours, station and availability too for spots you created).',
     photoLabel: 'Photos (1+)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe! Add as many as you like.',
     addPhoto: 'Add',
@@ -278,6 +278,7 @@ export default function PostScreen() {
   const [openTime, setOpenTime] = useState('');    // 開店時刻 HH:MM（営業時間ピッカー）
   const [closeTime, setCloseTime] = useState('');  // 閉店時刻 HH:MM
   const [is24h, setIs24h] = useState(false);       // 24時間営業
+  const [placeEditable, setPlaceEditable] = useState(false);  // 編集時: 自分で作った穴場なら場所情報も編集可
   const [licenseOk, setLicenseOk] = useState(false);
   // 公開範囲: false=名前を出して公開(デフォルト・プロフィール/フォロー対象) / true=匿名で公開
   const [vis, setVis] = useState<'public' | 'anon' | 'private'>('public');   // 公開範囲: 名前/匿名/非公開
@@ -303,7 +304,8 @@ export default function PostScreen() {
   const paramPlaceName = (params.placeName ?? '').toString().trim();
   const lockedFromParam = !!paramPlaceId || !!paramPlaceName || editMode;
 
-  // 編集モード: 自分の投稿を読み込んでプレフィル（本文・気分タグ・評価・値段）。写真/場所は変更しない。
+  // 編集モード: 自分の投稿を読み込んでプレフィル（本文・気分タグ・評価・値段＋自分で作った穴場は
+  //   住所/営業時間/最寄駅/期間も）。写真は変更しない。
   useEffect(() => {
     if (!editId) return;
     let active = true;
@@ -325,6 +327,19 @@ export default function PostScreen() {
           setPriceNote(String(d.post.priceNote ?? ''));
           setContact(String(d.post.contact ?? ''));
           setVis(d.post.visibility === 'private' ? 'private' : d.post.visibility === 'public' ? 'public' : 'anon');
+          // 場所情報（住所/営業時間/最寄駅/期間）＝自分で作った穴場(placeEditable)のみ編集可
+          setPlaceEditable(!!d.post.placeEditable);
+          setAddress(String(d.post.address ?? ''));
+          setStation(String(d.post.station ?? ''));
+          setAvailFrom(String(d.post.availableFrom ?? '').slice(0, 10));
+          setAvailUntil(String(d.post.availableUntil ?? '').slice(0, 10));
+          // 営業時間文字列をピッカーへ復元（"HH:MM〜HH:MM" / "24時間営業"。旧・自由入力形式は空＝再設定）
+          const oh = String(d.post.openingHours ?? '').trim();
+          if (oh === '24時間営業') { setIs24h(true); }
+          else {
+            const m = oh.match(/^(\d{1,2}:\d{2})\s*[〜~]\s*(\d{1,2}:\d{2})$/);
+            if (m) { setOpenTime(m[1]); setCloseTime(m[2]); }
+          }
         } else {
           showToast(t.tCannotEditTitle, d?.error ?? t.tCannotEditSub);
           router.back();
@@ -521,6 +536,14 @@ export default function PostScreen() {
             priceChip: priceChip || undefined,
             priceNote: priceNote.trim() || undefined,
             contact: contact.trim() || undefined,
+            // 自分で作った穴場のみ場所情報も更新（サーバー側で source_type=user を確認）
+            ...(placeEditable ? {
+              address: address.trim(),
+              openingHours: composedHours,
+              station: station.trim(),
+              availableFrom: availFrom.trim(),
+              availableUntil: availUntil.trim(),
+            } : {}),
           }),
         }).then((r) => r.json());
         setSubmitting(false);
@@ -743,7 +766,7 @@ export default function PostScreen() {
           <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={priceNote} onChangeText={setPriceNote} placeholder={t.priceNotePh} placeholderTextColor="#B9ABD2" maxLength={120} />
 
           {/* ⑤ 掲載期間（任意・新スポットのみ・編集では非表示） */}
-          {!isExisting && !editMode && (
+          {!isExisting && (!editMode || placeEditable) && (
             <>
               <Text style={s.label}>{t.periodLabel}</Text>
               <Text style={s.hint}>{t.periodHint}</Text>
@@ -774,7 +797,7 @@ export default function PostScreen() {
           </View>
 
           {/* ⑦ 場所・住所（新スポットのみ必須: 現在地 or 住所・編集では非表示） */}
-          {!isExisting && !editMode && (
+          {!isExisting && (!editMode || placeEditable) && (
             <>
               <Text style={s.label}>{t.addrLabel}<Text style={s.req}>*</Text></Text>
               <View style={s.addrRow}>

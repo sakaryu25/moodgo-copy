@@ -154,8 +154,26 @@ export async function POST(req: Request) {
           .neq("moderation_status", "hidden").neq("moderation_status", "rejected");
         const photos = ((phs ?? []) as Array<{ image_url?: string }>).map((x) => String(x.image_url ?? "")).filter(Boolean);
         const row = (p ?? {}) as Record<string, unknown>;
+        // 紐づく場所(places)の住所/営業時間/最寄駅/期間も返す（ユーザー作成スポットのみ編集可）。
+        const placeId = row.place_id ? String(row.place_id) : "";
+        let address = "", openingHours = "", station = "", availableFrom = "", availableUntil = "", placeEditable = false;
+        if (placeId) {
+          const PLFULL = "address, open_hours, nearest_station, source_type, available_from, available_until";
+          let plq = await db.from("places").select(PLFULL).eq("id", placeId).maybeSingle();
+          if (plq.error && (plq.error as { code?: string }).code === "42703") {
+            plq = await db.from("places").select("address, open_hours, nearest_station, source_type").eq("id", placeId).maybeSingle();
+          }
+          const plr = (plq.data ?? {}) as Record<string, unknown>;
+          address = String(plr.address ?? "");
+          openingHours = String(plr.open_hours ?? "");
+          station = String(plr.nearest_station ?? "");
+          availableFrom = String(plr.available_from ?? "").slice(0, 10);
+          availableUntil = String(plr.available_until ?? "").slice(0, 10);
+          placeEditable = String(plr.source_type ?? "") === "user";   // 自分で作った穴場だけ場所情報を編集可
+        }
         return NextResponse.json({ ok: true, mine: true, post: {
           id: postId,
+          placeId,
           placeName: String(row.place_name ?? ""),
           caption: String(row.caption ?? ""),
           moodTags: Array.isArray(row.mood_tags) ? row.mood_tags : [],
@@ -164,6 +182,7 @@ export async function POST(req: Request) {
           priceChip: (row.price_chip as string | null) ?? "",
           priceNote: (row.price_note as string | null) ?? "",
           contact: (row.contact as string | null) ?? "",
+          address, openingHours, station, availableFrom, availableUntil, placeEditable,
           photos,
         } });
       }
@@ -201,6 +220,35 @@ export async function POST(req: Request) {
         ({ error } = await db.from("spot_posts").update(base).match({ id: postId, device_id: deviceId }));
       }
       if (error) throw error;
+
+      // ── 紐づく場所(places)の 住所/営業時間/最寄駅/期間 も更新（自分で作った穴場=source_type:user のみ）──
+      //   共有の既存place(Google/admin)は壊さないため source_type を確認してから更新する。
+      const newAddress = body?.address != null ? String(body.address).trim().slice(0, 300) : null;
+      const newHours = body?.openingHours != null ? String(body.openingHours).trim().slice(0, 400) : null;
+      const newStation = body?.station != null ? String(body.station).trim().slice(0, 100) : null;
+      const newAvailFrom = body?.availableFrom != null ? String(body.availableFrom).trim().slice(0, 20) : null;
+      const newAvailUntil = body?.availableUntil != null ? String(body.availableUntil).trim().slice(0, 20) : null;
+      if (newAddress !== null || newHours !== null || newStation !== null || newAvailFrom !== null || newAvailUntil !== null) {
+        const { data: post2 } = await db.from("spot_posts").select("place_id").eq("id", postId).maybeSingle();
+        const pid = (post2 as { place_id?: string } | null)?.place_id;
+        if (pid) {
+          const { data: pl } = await db.from("places").select("source_type").eq("id", pid).maybeSingle();
+          if (String((pl as { source_type?: string } | null)?.source_type ?? "") === "user") {
+            const placePatch: Record<string, unknown> = {};
+            if (newAddress !== null) placePatch.address = newAddress || "日本";
+            if (newHours !== null) placePatch.open_hours = newHours || null;
+            if (newStation !== null) placePatch.nearest_station = newStation || null;
+            if (Object.keys(placePatch).length > 0) await db.from("places").update(placePatch).eq("id", pid).then(() => {}, () => {});
+            // 期間(available_from/until)は列未適用でも投稿更新は失敗させない
+            if (newAvailFrom !== null || newAvailUntil !== null) {
+              const periodPatch: Record<string, unknown> = {};
+              if (newAvailFrom !== null) periodPatch.available_from = newAvailFrom || null;
+              if (newAvailUntil !== null) periodPatch.available_until = newAvailUntil || null;
+              await db.from("places").update(periodPatch).eq("id", pid).then(() => {}, () => {});
+            }
+          }
+        }
+      }
       return NextResponse.json({ ok: true, updated: true });
     } catch (e) {
       return NextResponse.json({ ok: false, error: String((e as { message?: string })?.message ?? e) }, { status: 500 });
