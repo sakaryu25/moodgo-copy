@@ -69,6 +69,8 @@ const T = {
     seeAll: (t: string) => `${t}をすべて見る`,
     followersA11y: 'フォロワー一覧を見る',
     followingA11y: 'フォロー中一覧を見る',
+    postsA11y: '投稿一覧を見る',
+    visitedA11y: '行った！一覧を見る',
     achieved: '達成',
     spotFallback: 'スポット',
     postFallback: '投稿',
@@ -103,6 +105,8 @@ const T = {
     seeAll: (t: string) => `See all ${t}`,
     followersA11y: 'View followers',
     followingA11y: 'View following',
+    postsA11y: 'View posts',
+    visitedA11y: 'View been-here list',
     achieved: 'earned',
     spotFallback: 'Spot',
     postFallback: 'Post',
@@ -557,15 +561,19 @@ export default function ProfileTab() {
 
           {/* 統計 5列（投稿 / 行った / フォロー中 / フォロワー / いいね）: フル幅 */}
           <View style={s.statsRow}>
-            <View style={s.statCol}>
+            <TouchableOpacity style={s.statCol} activeOpacity={0.7}
+              onPress={() => setSubView('posts')}
+              accessibilityRole="button" accessibilityLabel={t.postsA11y}>
               <Text style={s.statNum}>{posts.length}</Text>
               <Text style={s.statLabel}>{t.statPosts}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={s.statDivider} />
-            <View style={s.statCol}>
+            <TouchableOpacity style={s.statCol} activeOpacity={0.7}
+              onPress={() => setSubView('badges')}
+              accessibilityRole="button" accessibilityLabel={t.visitedA11y}>
               <Text style={s.statNum}>{badges.length}</Text>
               <Text style={s.statLabel}>{t.statVisited}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={s.statDivider} />
             <TouchableOpacity style={s.statCol} activeOpacity={0.7}
               onPress={() => goFollowList('following')}
