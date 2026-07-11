@@ -778,7 +778,8 @@ const s = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 4 },
   pref: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  title: { flex: 1, fontSize: 21, fontWeight: '800', color: '#1A0A2E', lineHeight: 28, letterSpacing: -0.3 },
+  // 場所名はタップで場所詳細へ＝リンクと分かるよう下線を付ける（押せるか分からない問題の解消）
+  title: { flex: 1, fontSize: 21, fontWeight: '800', color: '#1A0A2E', lineHeight: 28, letterSpacing: -0.3, textDecorationLine: 'underline', textDecorationColor: '#B7A0F0' },
   // 場所名（タップで場所詳細へ・ChevronRightで導線を明示）
   placeNameRow: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', marginTop: -2, marginBottom: 12 },
   placeName: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
