@@ -13,7 +13,7 @@ import { useSettings } from '@/lib/settingsStore';
 import type { Post } from './postTypes';
 
 const COL = 3;      // Instagram発見タブと同じ3列
-const GAP = 6;      // タイル間（角丸タイルが映える最小限の隙間・端の余白を詰めてギチギチ寄りに）
+const GAP = 4;      // タイル間（さらに詰めてギチギチに）
 
 // 画像タイルの高さ比率（幅×ratio）。単調にならないようカード順に巡回＝Masonryの段差。
 const RATIOS = [1.3, 1.02, 1.5, 1.16, 1.42, 1.08];

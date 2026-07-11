@@ -348,7 +348,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
       </LinearGradient>
       </Animated.View>
       {/* 背景はタブ側の AppBackground(ホームと同じM透かし)を透過で見せる */}
-      <Animated.ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 8, paddingTop: collapse.headerH + 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={collapse.onScroll} scrollEventThrottle={16}>
+      <Animated.ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 4, paddingTop: collapse.headerH + 14, paddingBottom: 130 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScroll={collapse.onScroll} scrollEventThrottle={16}>
         <CommunityFeed full sortMode={sortMode} coords={coords} posterHandle={uActive?.handle ?? null} searchQuery={uActive ? null : (kw || null)} feedScope={feedScope} loadMoreKey={loadMoreKey} moodTag={moodTag || null} refreshKey={resetKey} />
       </Animated.ScrollView>
       {/* ＋投稿（現状はブログ投稿フォーム。将来1つの投稿フローに統合予定）*/}
