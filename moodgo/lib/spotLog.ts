@@ -89,7 +89,9 @@ export async function addViewedLog(item: Omit<SpotLogItem, 'at'>): Promise<void>
   } catch { /* noop */ }
 }
 
-/** 「3分前」「昨日」等の相対表記（プロフィール表示用） */
+/** 相対時刻の唯一の実装（「たった今」「5分前」「昨日」「3週間前」「6/12」）。
+ *  全画面共通（通知/フィード/コメント/Moodログ/グループ）＝同じ投稿の時刻表記が
+ *  画面によって変わらないよう、独自実装を作らずこれを使うこと（2026-07-11統一）。 */
 export function relativeTime(iso: string, lang: 'ja' | 'en' = 'ja'): string {
   const t = new Date(iso).getTime();
   if (!isFinite(t)) return '';
@@ -103,6 +105,8 @@ export function relativeTime(iso: string, lang: 'ja' | 'en' = 'ja'): string {
   const day = Math.floor(hr / 24);
   if (day === 1) return en ? 'yesterday' : '昨日';
   if (day < 7) return en ? `${day}d ago` : `${day}日前`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return en ? `${wk}w ago` : `${wk}週間前`;
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }

@@ -4,55 +4,35 @@
 // また行きたい・リアクション（いいね/参考になった/また行きたい）・通報を表示。
 // 「Moodログを投稿」ボタンは mood-log 画面へ遷移（スポット情報をparamsで渡す）。
 import React, { useCallback, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { useSettings } from '@/lib/settingsStore';
+import { relativeTime } from '@/lib/spotLog';
+import ReportModal from '@/components/ReportModal';
 
 const T = {
   ja: {
-    minAgo: (n: number) => `${n}分前`,
-    hourAgo: (n: number) => `${n}時間前`,
-    dayAgo: (n: number) => `${n}日前`,
-    monthAgo: (n: number) => `${n}ヶ月前`,
     you: '（あなた）',
     wantRevisit: 'また行きたい',
     matchesPhoto: '写真どおり',
     like: 'いいね',
     helpful: '参考',
     reportTitle: 'この投稿を通報',
-    reportMsg: '不適切・無断転載・関係ない写真などの場合に通報できます。',
-    cancel: 'キャンセル',
-    reportConfirm: '通報する',
-    reportOkTitle: '通報を受け付けました',
-    reportOkMsg: 'ご協力ありがとうございます。',
-    reportFailTitle: '通報を送信できませんでした',
-    reportFailMsg: '通信環境を確認して再度お試しください。',
     sectionTitle: 'みんなのMoodログ',
     count: (n: number) => `${n}件`,
     postBtn: '投稿する',
     empty: 'まだMoodログがありません。\nこの場所の最初のMoodログを投稿しませんか？',
   },
   en: {
-    minAgo: (n: number) => `${n}m ago`,
-    hourAgo: (n: number) => `${n}h ago`,
-    dayAgo: (n: number) => `${n}d ago`,
-    monthAgo: (n: number) => `${n}mo ago`,
     you: ' (You)',
     wantRevisit: 'Want to revisit',
     matchesPhoto: 'Matches photo',
     like: 'Like',
     helpful: 'Helpful',
     reportTitle: 'Report this post',
-    reportMsg: 'Report posts that are inappropriate, reposted without permission, or use unrelated photos.',
-    cancel: 'Cancel',
-    reportConfirm: 'Report',
-    reportOkTitle: 'Report received',
-    reportOkMsg: 'Thanks for helping out.',
-    reportFailTitle: 'Couldn’t send report',
-    reportFailMsg: 'Check your connection and try again.',
     sectionTitle: 'Everyone’s Mood logs',
     count: (n: number) => `${n}`,
     postBtn: 'Post',
@@ -70,15 +50,6 @@ export type MoodPost = {
   createdAt?: string;
 };
 
-function timeAgo(iso: string | undefined, t: (typeof T)['ja' | 'en']): string {
-  if (!iso) return '';
-  const ms = new Date(iso).getTime(); if (isNaN(ms)) return '';
-  const d = Math.floor((Date.now() - ms) / 1000);
-  if (d < 3600) return t.minAgo(Math.max(1, Math.floor(d / 60)));
-  if (d < 86400) return t.hourAgo(Math.floor(d / 3600));
-  if (d < 2592000) return t.dayAgo(Math.floor(d / 86400));
-  return t.monthAgo(Math.floor(d / 2592000));
-}
 
 export default function MoodLogSection(
   { placeId, placeName, address, excludePostId }:
@@ -141,21 +112,8 @@ export default function MoodLogSection(
     }
   };
 
-  const report = (post: MoodPost) => {
-    Alert.alert(t.reportTitle, t.reportMsg, [
-      { text: t.cancel, style: 'cancel' },
-      { text: t.reportConfirm, style: 'destructive', onPress: async () => {
-        try {
-          const did = await getDeviceId();
-          await apiFetch('/api/spot-posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', postId: post.id, deviceId: did, reason: 'user_report' }) });
-          setPosts(prev => prev.filter(p => p.id !== post.id));
-          Alert.alert(t.reportOkTitle, t.reportOkMsg);
-        } catch {
-          Alert.alert(t.reportFailTitle, t.reportFailMsg);
-        }
-      } },
-    ]);
-  };
+  // 通報は全画面共通のReportModal（理由選択・adminログ＋自動非表示カウント）に統一（2026-07-11）
+  const [reportTarget, setReportTarget] = useState<MoodPost | null>(null);
 
   // 1枚のMoodログカード（2カラム配置で左右どちらの列にも描画する）
   // カード全体タップで投稿詳細へ（内側のリアクション/通報ボタンはそれぞれのタップを優先）
@@ -164,8 +122,9 @@ export default function MoodLogSection(
       accessibilityRole="button" accessibilityLabel={`${post.author}のMoodログ詳細を見る`}>
       <View style={s.cardTop}>
         <Text style={s.author} numberOfLines={1}>{post.author}{post.isOwn ? t.you : ''}</Text>
-        <Text style={s.time}>{timeAgo(post.createdAt, t)}</Text>
-        <TouchableOpacity onPress={() => report(post)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Text style={s.time}>{relativeTime(post.createdAt ?? '', lang)}</Text>
+        <TouchableOpacity onPress={() => setReportTarget(post)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button" accessibilityLabel={t.reportTitle}>
           <Flag size={13} color="#C4B5D6" strokeWidth={2} />
         </TouchableOpacity>
       </View>
@@ -230,6 +189,17 @@ export default function MoodLogSection(
           <View style={s.col}>{posts.filter((_, i) => i % 2 === 1).map(renderPost)}</View>
         </View>
       )}
+
+      {/* 通報（フィード/投稿詳細と同じReportModal・受付後はこの一覧から対象を隠す）
+          ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避） */}
+      <ReportModal
+        visible={!!reportTarget}
+        spotName={placeName || reportTarget?.author || '投稿'}
+        spotAddress={address ?? ''}
+        suggestionId={reportTarget ? `ml-${reportTarget.id}` : undefined}
+        onReported={() => { const id = reportTarget?.id; if (id) setPosts(prev => prev.filter(p => p.id !== id)); }}
+        onClose={() => setReportTarget(null)}
+      />
     </View>
   );
 }

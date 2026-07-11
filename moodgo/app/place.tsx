@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace, getSelectedContext } from '@/lib/selectedPlace';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
+import { showToast } from '@/lib/toast';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
 import CommentsSection from '@/components/CommentsSection';
@@ -579,11 +580,12 @@ export default function PlaceDetailPage() {
       addSpotPhoto(rec.supabaseId, rec.title, data.url);  // 共有ストアへ→一覧にも即反映
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // 一番乗り（写真ゼロだった場所）への投稿だけ、達成感を言語化して次の投稿動機に
+      // 結果通知はトーストに統一（確認ダイアログのみAlert・2026-07-11）
       if (userPhotos.length === 0 && !isSpooky) {
-        Alert.alert(t.firstThanksTitle, t.firstThanksMsg);
+        showToast(t.firstThanksTitle, t.firstThanksMsg);
       }
     } catch (e) {
-      Alert.alert(t.errorTitle, e instanceof Error ? e.message : t.photoUploadFailed);
+      showToast(t.errorTitle, e instanceof Error ? e.message : t.photoUploadFailed);
     } finally { setUploadingPhoto(false); }
   };
 

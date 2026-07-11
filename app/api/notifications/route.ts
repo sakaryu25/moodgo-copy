@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
  *   - like    … 自分の投稿への いいね（spot_post_reactions rtype=like）
  *   - visited … 自分の投稿への 行った！（rtype=visited）
  *   - follow  … 新しいフォロワー（user_follows）
+ *   - comment … 自分の投稿への コメント（spot_comments・2026-07-11追加=プッシュと同じイベントをベルにも）
+ *   - reply   … 自分のコメントへの 返信（spot_comments.parent_id）
+ *   - mention … コメント本文での @自分 メンション
  * 未読管理はクライアントが lastSeen をローカル保持して比較する（サーバー状態なし）。
  * ⚠アクター（押した人）は deviceHash と @handle のみ返す。自分自身のリアクションは除外。
  */
@@ -18,7 +21,7 @@ import { handlesByDevice } from "@/lib/user-handles";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 type Notice = {
-  type: "like" | "visited" | "follow";
+  type: "like" | "visited" | "follow" | "comment" | "reply" | "mention";
   at: string;                 // 発生時刻
   spotName?: string;          // 対象投稿名（like/visited）
   targetId?: string;          // 投稿詳細への遷移用（suggestions=UUID / moodlog=ml-UUID）
@@ -76,13 +79,75 @@ export async function POST(req: Request) {
       })(),
     ]);
 
-    // アクターの@handle（リアクションは生device_idを持つのでサーバー内でだけ解決）
-    const rx = ((rxRes.data ?? []) as Row[]).filter(r => String(r.device_id ?? "") !== deviceId);  // 自分の操作は除外
-    const handleMap = await handlesByDevice(db, rx.map(r => String(r.device_id ?? "")));
+    // ── コメント/返信/メンションも導出（プッシュ配信と同じイベントをベルにも出す・2026-07-11統一）──
+    //   parent_id/status 列が未適用の環境でも安全（supabaseはエラーをthrowせずdata=nullで返す→空扱い）。
+    const safeRows = async (q: PromiseLike<{ data: unknown }>): Promise<Row[]> => {
+      try { const { data } = await q; return (data ?? []) as Row[]; } catch { return []; }
+    };
+    const myHandle = (await handlesByDevice(db, [deviceId])).get(deviceId) ?? null;
+    const [cmRowsRaw, myCmRows, mnRowsAll] = await Promise.all([
+      myPostIds.length > 0
+        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+            .in("post_id", myPostIds).is("parent_id", null).eq("status", "visible")
+            .order("created_at", { ascending: false }).limit(limit))
+        : Promise.resolve([] as Row[]),
+      safeRows(db.from("spot_comments").select("id").eq("device_id", deviceId)
+        .order("created_at", { ascending: false }).limit(200)),
+      myHandle
+        ? safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+            .ilike("body", `%@${myHandle}%`).eq("status", "visible")
+            .order("created_at", { ascending: false }).limit(limit))
+        : Promise.resolve([] as Row[]),
+    ]);
+    const myCmIds = myCmRows.map((r) => String(r.id));
+    const rpRowsRaw = myCmIds.length > 0
+      ? await safeRows(db.from("spot_comments").select("id, post_id, device_id, created_at")
+          .in("parent_id", myCmIds).eq("status", "visible")
+          .order("created_at", { ascending: false }).limit(limit))
+      : [];
+    const notMe = (r: Row) => String(r.device_id ?? "") !== deviceId;
+    const cm = cmRowsRaw.filter(notMe);
+    const rp = rpRowsRaw.filter(notMe);
+    // comment/replyとして出す行はmentionから省く（同じコメントの二重通知防止）
+    const seenCmIds = new Set([...cm, ...rp].map((r) => String(r.id)));
+    const mn = mnRowsAll.filter(notMe).filter((r) => !seenCmIds.has(String(r.id)));
+
+    // 返信/メンション先の投稿名（自分の投稿以外にも付くので不足分だけ名前を引く）
+    const unknownPostIds = [...new Set([...rp, ...mn].map((r) => String(r.post_id ?? "")).filter((pid) => pid && !nameById.has(pid)))];
+    if (unknownPostIds.length > 0) {
+      const [spRows, sgRows] = await Promise.all([
+        safeRows(db.from("spot_posts").select("id, place_name").in("id", unknownPostIds)),
+        safeRows(db.from("suggestions").select("id, spot_name, google_place_name").in("id", unknownPostIds)),
+      ]);
+      for (const m of spRows) nameById.set(String(m.id), { name: String(m.place_name ?? "スポット"), targetId: `ml-${m.id}` });
+      for (const sgr of sgRows) {
+        if (!nameById.has(String(sgr.id))) nameById.set(String(sgr.id), { name: String(sgr.spot_name ?? sgr.google_place_name ?? "スポット"), targetId: String(sgr.id) });
+      }
+    }
+
+    // アクターの@handle（リアクション/コメントは生device_idを持つのでサーバー内でだけ解決）
+    const rx = ((rxRes.data ?? []) as Row[]).filter(notMe);  // 自分の操作は除外
+    const actorDevices = [...new Set([...rx, ...cm, ...rp, ...mn].map(r => String(r.device_id ?? "")).filter(Boolean))];
+    const handleMap = await handlesByDevice(db, actorDevices);
     const vHour = Math.floor(Date.now() / 3_600_000);
     const iconFor = (dev: string): string => {
       const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
       return `${pub.publicUrl}?v=${vHour}`;
+    };
+
+    // コメント系(comment/reply/mention)をNoticeへ（アクター解決はリアクションと同じ流儀）
+    const commentNotice = (type: Notice["type"]) => (r: Row): Notice => {
+      const dev = String(r.device_id ?? "");
+      const post = nameById.get(String(r.post_id ?? ""));
+      return {
+        type,
+        at: String(r.created_at ?? ""),
+        spotName: post?.name,
+        targetId: post?.targetId,
+        actorId: dev ? deviceHash(dev) : null,
+        actorHandle: dev ? (handleMap.get(dev) ?? null) : null,
+        actorIcon: dev ? iconFor(dev) : null,
+      };
     };
 
     const items: Notice[] = [
@@ -99,6 +164,9 @@ export async function POST(req: Request) {
           actorIcon: dev ? iconFor(dev) : null,
         };
       }),
+      ...cm.map(commentNotice("comment")),
+      ...rp.map(commentNotice("reply")),
+      ...mn.map(commentNotice("mention")),
       ...(((flRes.data ?? []) as Row[])
         .filter(f => String(f.follower_hash ?? "") !== myHash)
         .map((f): Notice => ({

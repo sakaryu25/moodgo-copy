@@ -2,7 +2,9 @@
  * ReportModal.tsx
  * 不適切な内容の報告モーダル（共通コンポーネント・2026-07-08 最適化）
  * - 理由チップ（アイコン付き2列）＋詳細入力 → /api/reports に送信（adminが確認・削除できる）
- * - コミュニティフィード・履歴・結果のどこからでも使える
+ * - コミュニティフィード・投稿詳細・Moodログ節・履歴のどこからでも使える＝通報の唯一の入口
+ * - suggestionId が投稿ID（"ml-"+UUID=Moodログ / 生UUID=旧穴場投稿）の時は post_id/post_kind も
+ *   送信し、サーバー側でid基準の自動非表示カウント（3件でhidden）が効く（2026-07-11統一）
  */
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,6 +16,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
+import { getDeviceId } from '@/lib/abtest';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const RED = '#EF4444';
 const REASONS: { label: string; Icon: typeof Info }[] = [
@@ -33,10 +38,12 @@ type Props = {
   posterId?: string;
   /** 任意: 投稿者ブロック時のコールバック（公開IDを渡す。生device_idは扱わない） */
   onBlockUser?: (posterId: string) => void;
+  /** 任意: 通報が受け付けられた時（リストから対象を消す等・閉じる前に呼ばれる） */
+  onReported?: () => void;
   onClose: () => void;
 };
 
-export default function ReportModal({ visible, spotName, spotAddress, suggestionId, posterId, onBlockUser, onClose }: Props) {
+export default function ReportModal({ visible, spotName, spotAddress, suggestionId, posterId, onBlockUser, onReported, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -70,6 +77,12 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
     setSubmitting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
+      // 対象が投稿なら種別を判別して post_id/post_kind を添える（サーバーの自動非表示カウント用）
+      const rawId = (suggestionId ?? '').trim();
+      const isMoodlog = rawId.startsWith('ml-');
+      const postUuid = isMoodlog ? rawId.slice(3) : rawId;
+      const isPost = UUID_RE.test(postUuid);
+      const deviceId = await getDeviceId().catch(() => '');
       const d = await apiFetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,9 +91,13 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
           spot_address: spotAddress ?? '',
           reason,
           note: [suggestionId ? `[id:${suggestionId}]` : '', note].filter(Boolean).join(' '),
+          device_id: deviceId || undefined,
+          post_id: isPost ? postUuid : undefined,
+          post_kind: isPost ? (isMoodlog ? 'moodlog' : 'suggestion') : undefined,
         }),
       }).then((r) => r.json());
       if (d?.ok) {
+        onReported?.();
         setDone(true);
         setTimeout(close, 1400);
       } else {

@@ -357,7 +357,7 @@ export default function PostScreen() {
         const add = r.assets.slice(0, 3 - images.length).map(a => ({ uri: a.uri, base64: a.base64 ?? undefined }));
         setImages(prev => [...prev, ...add].slice(0, 3));
       }
-    } catch { Alert.alert(t.aErrorTitle, t.aPhotoPickFail); }
+    } catch { showToast(t.aErrorTitle, t.aPhotoPickFail); }   // 結果通知はトーストに統一
   };
 
   const useLocation = async () => {

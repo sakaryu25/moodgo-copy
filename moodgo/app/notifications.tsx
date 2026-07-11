@@ -3,7 +3,7 @@
 // 開いた時点で既読（lastSeenをローカル更新）。タップで対象の投稿/相手のプロフィールへ。
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
-import { Bell, Footprints, Heart, UserPlus, UserRound } from 'lucide-react-native';
+import { AtSign, Bell, Footprints, Heart, MessageCircle, Reply, UserPlus, UserRound } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, View,
@@ -19,32 +19,41 @@ import { useCollapsibleHeader } from '@/lib/useCollapsibleHeader';
 import { useSettings } from '@/lib/settingsStore';
 
 const TYPE_STYLE = {
-  like:    { Icon: Heart,      tint: '#F06292', bg: '#FDEBF2' },
-  visited: { Icon: Footprints, tint: '#F5A623', bg: '#FDF3E1' },
-  follow:  { Icon: UserPlus,   tint: '#8B6BF2', bg: '#F1EBFF' },
+  like:    { Icon: Heart,         tint: '#F06292', bg: '#FDEBF2' },
+  visited: { Icon: Footprints,    tint: '#F5A623', bg: '#FDF3E1' },
+  follow:  { Icon: UserPlus,      tint: '#8B6BF2', bg: '#F1EBFF' },
+  comment: { Icon: MessageCircle, tint: '#0EA5A4', bg: '#E6F7F7' },
+  reply:   { Icon: Reply,         tint: '#4FA3FF', bg: '#EAF3FF' },
+  mention: { Icon: AtSign,        tint: '#9B6BFF', bg: '#F1EBFF' },
 } as const;
 
 const T = {
   ja: {
     title: '通知',
     emptyTitle: '通知はまだありません',
-    emptySub: '投稿にいいねや行った！が付くとここに届きます',
+    emptySub: '投稿へのいいね・コメント・行った！やフォローがここに届きます',
     someone: '誰か',
     spot: 'スポット',
     // 表示専用のメッセージ組み立て（type値そのものは翻訳しない）
     followText: (who: string) => `${who}があなたをフォローしました`,
     likeText: (who: string, spot: string) => `${who}があなたの「${spot}」にいいねしました`,
     visitedText: (who: string, spot: string) => `${who}があなたの「${spot}」に行った！しました`,
+    commentText: (who: string, spot: string) => `${who}があなたの「${spot}」にコメントしました`,
+    replyText: (who: string) => `${who}があなたのコメントに返信しました`,
+    mentionText: (who: string) => `${who}がコメントであなたをメンションしました`,
   },
   en: {
     title: 'Notifications',
     emptyTitle: 'No notifications yet',
-    emptySub: "You'll be notified here when someone likes or marks your posts as been here",
+    emptySub: "Likes, comments, been-heres and follows will show up here",
     someone: 'Someone',
     spot: 'spot',
     followText: (who: string) => `${who} followed you`,
     likeText: (who: string, spot: string) => `${who} liked your "${spot}"`,
     visitedText: (who: string, spot: string) => `${who} marked your "${spot}" as been here`,
+    commentText: (who: string, spot: string) => `${who} commented on your "${spot}"`,
+    replyText: (who: string) => `${who} replied to your comment`,
+    mentionText: (who: string) => `${who} mentioned you in a comment`,
   },
 } as const;
 
@@ -112,11 +121,12 @@ export default function NotificationsScreen() {
             const unread = !!n.at && (!lastSeen || n.at > lastSeen);
             const who = n.actorHandle ? `@${n.actorHandle}` : t.someone;
             const spot = n.spotName ?? t.spot;
-            const text = n.type === 'follow'
-              ? t.followText(who)
-              : n.type === 'visited'
-                ? t.visitedText(who, spot)
-                : t.likeText(who, spot);
+            const text = n.type === 'follow' ? t.followText(who)
+              : n.type === 'visited' ? t.visitedText(who, spot)
+              : n.type === 'comment' ? t.commentText(who, spot)
+              : n.type === 'reply' ? t.replyText(who)
+              : n.type === 'mention' ? t.mentionText(who)
+              : t.likeText(who, spot);
             return (
               <TouchableOpacity key={`${n.type}-${n.at}-${i}`} style={[s.row, unread && s.rowUnread]}
                 onPress={() => openNotice(n)} activeOpacity={0.75}

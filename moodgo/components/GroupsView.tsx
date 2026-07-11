@@ -5,6 +5,7 @@
  * - 15秒ごとにフィード自動更新＋新着で自動スクロール
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { relativeTime } from '@/lib/spotLog';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -158,11 +159,6 @@ const T = {
     // 招待共有メッセージ（Share.share）
     inviteShare: (name: string, code: string) => `MoodGoのグループ「${name}」に招待！\n招待コード: ${code}`,
     // 相対時刻
-    now: 'たった今',
-    minAgo: (n: number) => `${n}分前`,
-    hourAgo: (n: number) => `${n}時間前`,
-    yesterday: '昨日',
-    dayAgo: (n: number) => `${n}日前`,
   },
   en: {
     // 一覧
@@ -274,11 +270,6 @@ const T = {
     // 招待共有メッセージ（Share.share）
     inviteShare: (name: string, code: string) => `Join my MoodGo group “${name}”!\nInvite code: ${code}`,
     // 相対時刻
-    now: 'just now',
-    minAgo: (n: number) => `${n}m ago`,
-    hourAgo: (n: number) => `${n}h ago`,
-    yesterday: 'yesterday',
-    dayAgo: (n: number) => `${n}d ago`,
   },
 } as const;
 type Lang = keyof typeof T;
@@ -366,22 +357,6 @@ const REACTIONS: { key: string; Icon: RIcon; color: string; fill?: string }[] = 
 ];
 const reactionDef = (key: string) => REACTIONS.find(r => r.key === key);
 
-// 相対時刻（たった今 / 3分前 / 2時間前 / 昨日 / 6/8）
-function timeAgo(iso: string, lang: Lang = 'ja'): string {
-  const tr = T[lang];
-  const t = new Date(iso).getTime();
-  const diff = Date.now() - t;
-  const min = Math.floor(diff / 60000);
-  if (min < 1)  return tr.now;
-  if (min < 60) return tr.minAgo(min);
-  const h = Math.floor(min / 60);
-  if (h < 24) return tr.hourAgo(h);
-  const d = Math.floor(h / 24);
-  if (d === 1) return tr.yesterday;
-  if (d < 7)   return tr.dayAgo(d);
-  const dt = new Date(t);
-  return `${dt.getMonth() + 1}/${dt.getDate()}`;
-}
 
 type Props = {
   /** アクティブタブ再タップでチャットを閉じて一覧に戻す */
@@ -1302,7 +1277,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                 // 自分: 右側の紫グラデバブル（長押しでインスタ風リアクション）
                 return (
                   <View key={p.id} style={s.rowMine}>
-                    <Text style={s.bubbleTime}>{timeAgo(p.created_at, lang)}</Text>
+                    <Text style={s.bubbleTime}>{relativeTime(p.created_at, lang)}</Text>
                     <Pressable
                       ref={(r) => { bubbleRefs.current[p.id] = r; }}
                       onLongPress={() => openReactions(p.id)}
@@ -1340,7 +1315,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                       >
                         {bubbleInner(p)}
                       </Pressable>
-                      <Text style={s.bubbleTime}>{timeAgo(p.created_at, lang)}</Text>
+                      <Text style={s.bubbleTime}>{relativeTime(p.created_at, lang)}</Text>
                     </View>
                   </View>
                 </View>
@@ -1895,7 +1870,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
                     {g.name}
                     <Text style={s.groupCount}>（{g.member_count ?? 1}）</Text>
                   </Text>
-                  {lp ? <Text style={s.groupTime}>{timeAgo(lp.created_at, lang)}</Text> : null}
+                  {lp ? <Text style={s.groupTime}>{relativeTime(lp.created_at, lang)}</Text> : null}
                 </View>
                 <Text style={[s.groupPreview, !lp && s.groupPreviewEmpty]} numberOfLines={1}>
                   {preview}

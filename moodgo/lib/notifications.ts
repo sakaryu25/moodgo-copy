@@ -7,7 +7,7 @@ import { getDeviceId } from '@/lib/abtest';
 const LAST_SEEN_KEY = 'moodgo-notif-last-seen';
 
 export type Notice = {
-  type: 'like' | 'visited' | 'follow';
+  type: 'like' | 'visited' | 'follow' | 'comment' | 'reply' | 'mention';
   at: string;
   spotName?: string;
   targetId?: string;

@@ -1,9 +1,8 @@
 // ── BlogView ─────────────────────────────────────────────────────────────────
-// ユーザーおすすめブログ：①Insta風3列グリッド一覧 ②詳細 ③投稿フォーム を内部モードで切替。
-// 承認済み(approved)のみ一覧/詳細に出る。投稿は pending で保存され管理者承認後に公開。
+// 「全国みんなの穴場」ページ本体: グラデヘッダー＋検索/絞り込みチップ＋統一フィード(CommunityFeed)。
+// 投稿は post.tsx(spot_posts・即時公開)。旧blog_posts系の一覧/投稿フォームは撤去済みで、
+// 過去のブログ投稿の閲覧だけ DetailView(export・app/blog-post.tsx から利用)が残る。
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Linking,
@@ -11,7 +10,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, Bookmark, Check, ChevronLeft, Clock3, Flag, Flame, Heart, MapPin, MessageCircle, Navigation, Search, Sparkles, UserRound, Users, Wallet, X } from 'lucide-react-native';
+import { Bell, Bookmark, ChevronLeft, Clock3, Flag, Flame, Heart, MapPin, MessageCircle, Navigation, Search, Sparkles, UserRound, Users, Wallet, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
@@ -51,8 +50,6 @@ const MOODS: { label: string; tag: string }[] = [
   { label: '運動', tag: '#体動かしたい' }, { label: '旅行', tag: '#遠くに行きたい' },
   { label: '買い物', tag: '#ショッピング' }, { label: 'スリル', tag: '#スリル味わいたい' },
 ];
-const COMPANIONS = ['#1人', '#友達', '#恋人', '#家族', '#大人数'];
-const BUDGETS = ['#無料', '#〜3000', '#〜5000', '#〜10000', '#10000〜'];
 
 const T = {
   ja: {
@@ -81,32 +78,6 @@ const T = {
     cancel: 'キャンセル',
     doReport: '通報する',
     recommendedBy: (name: string) => `${name}さんのおすすめ`,
-    postRecommend: 'おすすめを投稿',
-    photoPermTitle: '写真へのアクセスが許可されていません。\n設定アプリ →（MoodGo/Expo Go）→ 写真 で「すべての写真」または「選択した写真」を許可してください。',
-    photoLoadError: (e: string) => `写真の読み込みでエラーが発生しました: ${e}`,
-    needTitle: 'タイトルを入力してください',
-    needPlace: '場所名/お店名を入力してください',
-    needLicense: '写真の権利確認にチェックしてください',
-    postedOk: '投稿しました！運営の承認後に公開されます。',
-    postFailed: (e: string) => `投稿に失敗しました: ${e}`,
-    networkError: '通信エラー',
-    addPhoto: '＋ 写真を追加（1〜10枚）',
-    fieldTitle: 'タイトル *',
-    fieldTitlePh: '例: 夕方に行きたい静かな散歩スポット',
-    fieldPlace: '場所名 / お店名 *',
-    fieldPlacePh: '例: 称名寺市民の森',
-    fieldAddress: '住所・エリア',
-    fieldAddressPh: '例: 横浜市金沢区',
-    moodTags: '気分タグ',
-    withWhom: '誰と',
-    budgetFeel: '予算感',
-    bio: 'ひとこと',
-    bioPh: 'どんな気分の日におすすめ？',
-    bodyLabel: '本文',
-    bodyPh: 'どんな場所か、行った感想など',
-    licenseText: '自分で撮影した、または使用許可のある写真です（Google画像/マップ/他サイトの転載ではありません）',
-    posting: '投稿中…',
-    submit: '投稿する（承認後に公開）',
     moodLabels: {
       '#自然感じたい': '自然', '#まったりしたい': 'まったり', '#わいわい楽しみたい': 'わいわい',
       '#お腹すいた': 'お腹すいた', '#ドライブしたい': 'ドライブ', '#集中したい': '集中',
@@ -140,32 +111,6 @@ const T = {
     cancel: 'Cancel',
     doReport: 'Report',
     recommendedBy: (name: string) => `Recommended by ${name}`,
-    postRecommend: 'Share a recommendation',
-    photoPermTitle: 'Photo access is not allowed.\nOpen Settings → (MoodGo/Expo Go) → Photos and allow "All Photos" or "Selected Photos".',
-    photoLoadError: (e: string) => `Something went wrong loading the photo: ${e}`,
-    needTitle: 'Please enter a title',
-    needPlace: 'Please enter a place or business name',
-    needLicense: 'Please confirm the photo rights',
-    postedOk: 'Posted! It will go live after our team approves it.',
-    postFailed: (e: string) => `Failed to post: ${e}`,
-    networkError: 'Connection error',
-    addPhoto: '＋ Add photos (1–10)',
-    fieldTitle: 'Title *',
-    fieldTitlePh: 'e.g. A quiet stroll for the evening',
-    fieldPlace: 'Place / business name *',
-    fieldPlacePh: 'e.g. Shomyoji Community Forest',
-    fieldAddress: 'Address / area',
-    fieldAddressPh: 'e.g. Kanazawa Ward, Yokohama',
-    moodTags: 'Mood tags',
-    withWhom: 'With whom',
-    budgetFeel: 'Budget',
-    bio: 'Bio',
-    bioPh: 'What kind of mood is it good for?',
-    bodyLabel: 'Details',
-    bodyPh: "What's the place like, how was your visit…",
-    licenseText: 'This photo is one I took myself or have permission to use (not reposted from Google Images/Maps or other sites).',
-    posting: 'Posting…',
-    submit: 'Post (goes live after approval)',
     moodLabels: {
       '#自然感じたい': 'Nature', '#まったりしたい': 'Relax', '#わいわい楽しみたい': 'Lively',
       '#お腹すいた': 'Hungry', '#ドライブしたい': 'Drive', '#集中したい': 'Focus',
@@ -187,7 +132,6 @@ function formatNum(n: number, lang: 'ja' | 'en' = 'ja'): string {
   return String(n);
 }
 
-type GridItem = { id: string; title: string; placeName: string | null; moodTags: string[]; photo: string; helpfulCount: number };
 export type Detail = {
   id: string; title: string; caption: string | null; body: string | null; place_name: string | null;
   address: string | null; mood_tags: string[] | null; scene_tags: string[] | null; companion_tags: string[] | null;
@@ -202,12 +146,6 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   const settings = useSettings();
   const { lang } = settings;
   const t = T[lang];
-  const [mode, setMode] = useState<'list' | 'detail' | 'create'>('list');
-  const [items, setItems] = useState<GridItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [moodFilter, setMoodFilter] = useState<string>('');
-  const [q, setQ] = useState('');
-  const [detail, setDetail] = useState<Detail | null>(null);
   const scrollRef = useRef<ScrollView>(null);   // 再タップで先頭へ戻す用
   // ── ヘッダー内コントロール（人気/近く・@ID検索）: 見栄え改善でグラデ帯へ移設 ──
   // 人気/近くは「トグル」: 選択中をもう一度押すと解除され新着順(new)に戻る
@@ -287,42 +225,16 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   };
   const clearUser = () => { setUActive(null); setUq(''); setUUsers([]); setKw(''); };
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
-    try {
-      const p = new URLSearchParams();
-      p.set('list', '1');
-      if (moodFilter) p.set('mood', moodFilter);
-      if (q.trim()) p.set('q', q.trim());
-      const res = await apiFetch(`/api/blog-posts?${p.toString()}`, { timeoutMs: 15000 });
-      const d = await res.json();
-      setItems(d?.posts ?? []);
-    } catch { setItems([]); } finally { setLoading(false); }
-  }, [moodFilter, q]);
-
-  useEffect(() => { if (mode === 'list') loadList(); }, [mode, moodFilter, resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // 下部バー再タップ: 詳細/投稿フォームを閉じ、気分・キーワード絞り込みも解除して振り出しの一覧へ
+  // 下部バー再タップ: 気分・キーワード絞り込みを解除して振り出しの一覧へ
   useEffect(() => {
     if (resetKey === undefined) return;
-    setMode('list'); setMoodFilter(''); setQ(''); setDetail(null);
     setSortMode('popular'); setFeedScope('all'); setMoodTag(''); clearUser();
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [resetKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openDetail = async (id: string) => {
-    setLoading(true);
-    try {
-      const did = await getDeviceId();
-      const res = await apiFetch(`/api/blog-posts?id=${id}&deviceId=${encodeURIComponent(did)}`);
-      const d = await res.json();
-      if (d?.ok && d.post) { setDetail(d.post); setMode('detail'); }
-    } catch { /* noop */ } finally { setLoading(false); }
-  };
-
-  if (mode === 'create') return <CreateForm onDone={() => { setMode('list'); loadList(); }} onCancel={() => setMode('list')} />;
-  if (mode === 'detail' && detail) return <DetailView post={detail} onBack={() => setMode('list')} onSearchMood={(t) => { setMoodFilter(t); setMode('list'); }} />;
-
-  // ── 統一フィード（穴場＋moodログ＋ブログを1つに）──
+  // ── 統一フィード（穴場＋moodログ）──
+  //   旧blog_posts系の一覧取得/詳細/投稿フォームはここから撤去済み（作成導線が無い遺構。
+  //   過去のブログ投稿の閲覧は my-posts/profile → app/blog-post.tsx(DetailView) が担う）
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       {/* グラデ帯ヘッダー（タブ見出し）: 下スクロールで上に格納・上スクロールで復帰 */}
@@ -449,14 +361,6 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         </LinearGradient>
       </PuniPressable>
     </View>
-  );
-}
-
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[s.chip, active && s.chipActive]}>
-      <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
-    </TouchableOpacity>
   );
 }
 
@@ -636,134 +540,6 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
   );
 }
 
-// ── 投稿フォーム ──
-function CreateForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
-  const insets = useSafeAreaInsets();
-  const { lang } = useSettings();
-  const t = T[lang];
-  const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
-  const [title, setTitle] = useState('');
-  const [placeName, setPlaceName] = useState('');
-  const [address, setAddress] = useState('');
-  const [caption, setCaption] = useState('');
-  const [body, setBody] = useState('');
-  const [moods, setMoods] = useState<string[]>([]);
-  const [companions, setCompanions] = useState<string[]>([]);
-  const [budget, setBudget] = useState('');
-  const [license, setLicense] = useState(false);
-  const [posting, setPosting] = useState(false);
-
-  const pick = async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        alert(t.photoPermTitle);
-        return;
-      }
-      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 10, quality: 1, exif: false });
-      if (!r.canceled && r.assets && r.assets.length > 0) {
-        const slots = Math.max(0, 10 - images.length);
-        // 送信前に1080pxへリサイズ＋圧縮してbase64化（4MB制限・本文サイズ超過を防ぐ）
-        const resized = await Promise.all(r.assets.slice(0, slots).map(async (a) => {
-          try {
-            const small = await ImageManipulator.manipulateAsync(a.uri, [{ resize: { width: 1080 } }],
-              { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true });
-            return { uri: small.uri, base64: small.base64 ?? undefined };
-          } catch { return { uri: a.uri, base64: a.base64 ?? undefined }; }
-        }));
-        setImages(prev => [...prev, ...resized].slice(0, 10));
-      }
-    } catch (e) {
-      alert(t.photoLoadError(String(e).slice(0, 150)));
-    }
-  };
-  const toggle = (arr: string[], setArr: (v: string[]) => void, t: string) => setArr(arr.includes(t) ? arr.filter(x => x !== t) : [...arr, t]);
-
-  const submit = async () => {
-    if (!title.trim()) return alert(t.needTitle);
-    if (!placeName.trim()) return alert(t.needPlace);
-    if (!license) return alert(t.needLicense);
-    setPosting(true);
-    try {
-      const deviceId = await getDeviceId();
-      const imgs = images.map(i => i.base64 ? `data:image/jpeg;base64,${i.base64}` : '').filter(Boolean);
-      const res = await apiFetch('/api/blog-posts', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
-        body: JSON.stringify({
-          action: 'create', deviceId, title: title.trim(), placeName: placeName.trim(), address: address.trim(),
-          caption: caption.trim(), body: body.trim(), moodTags: moods, companionTags: companions,
-          budgetLevel: budget || undefined, licenseDeclared: license, images: imgs,
-        }),
-      });
-      const d = await res.json();
-      if (d?.ok) { alert(t.postedOk); onDone(); }
-      else alert(t.postFailed(d?.error ?? ''));
-    } catch { alert(t.networkError); } finally { setPosting(false); }
-  };
-
-  return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ padding: 16, paddingTop: insets.top + 8, paddingBottom: 140 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-        <TouchableOpacity onPress={onCancel}><Text style={s.backText}>{t.cancel}</Text></TouchableOpacity>
-        <Text style={[s.headerTitle, { flex: 1, textAlign: 'center' }]}>{t.postRecommend}</Text>
-        <View style={{ width: 60 }} />
-      </View>
-
-      <TouchableOpacity onPress={pick} style={s.photoAdd}>
-        <Text style={s.photoAddText}>{t.addPhoto}</Text>
-      </TouchableOpacity>
-      {images.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 8 }}>
-          {images.map((im, i) => (
-            <View key={i}>
-              <Image source={{ uri: im.uri }} style={{ width: 92, height: 92, borderRadius: 10 }} contentFit="cover" />
-              <TouchableOpacity onPress={() => setImages(images.filter((_, j) => j !== i))} style={s.imgDel}><Text style={{ color: '#fff', fontWeight: '700' }}>×</Text></TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
-      )}
-
-      <Field label={t.fieldTitle} value={title} onChange={setTitle} placeholder={t.fieldTitlePh} />
-      <Field label={t.fieldPlace} value={placeName} onChange={setPlaceName} placeholder={t.fieldPlacePh} />
-      <Field label={t.fieldAddress} value={address} onChange={setAddress} placeholder={t.fieldAddressPh} />
-
-      <Text style={s.fLabel}>{t.moodTags}</Text>
-      <View style={s.tagWrap}>{MOODS.map(m => <Toggle key={m.tag} label={t.moodLabels[m.tag] ?? m.label} on={moods.includes(m.tag)} onPress={() => toggle(moods, setMoods, m.tag)} />)}</View>
-      <Text style={s.fLabel}>{t.withWhom}</Text>
-      <View style={s.tagWrap}>{COMPANIONS.map(c => <Toggle key={c} label={c.replace('#', '')} on={companions.includes(c)} onPress={() => toggle(companions, setCompanions, c)} />)}</View>
-      <Text style={s.fLabel}>{t.budgetFeel}</Text>
-      <View style={s.tagWrap}>{BUDGETS.map(b => <Toggle key={b} label={b.replace('#', '')} on={budget === b} onPress={() => setBudget(budget === b ? '' : b)} />)}</View>
-
-      <Field label={t.bio} value={caption} onChange={setCaption} placeholder={t.bioPh} />
-      <Field label={t.bodyLabel} value={body} onChange={setBody} placeholder={t.bodyPh} multiline />
-
-      <TouchableOpacity onPress={() => setLicense(!license)} style={s.checkRow}>
-        <View style={[s.checkbox, license && s.checkboxOn]}>{license && <Check size={13} color="#fff" strokeWidth={3} />}</View>
-        <Text style={s.checkText}>{t.licenseText}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={submit} disabled={posting} activeOpacity={0.9} style={{ marginTop: 18 }}>
-        <LinearGradient colors={[COLORS.gradStart, COLORS.gradEnd]} style={s.submitBtn}>
-          <Text style={s.submitText}>{posting ? t.posting : t.submit}</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, multiline }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; multiline?: boolean }) {
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={s.fLabel}>{label}</Text>
-      <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={COLORS.textMuted}
-        multiline={multiline} style={[s.input, multiline && { height: 110, textAlignVertical: 'top' }]} />
-    </View>
-  );
-}
-function Toggle({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
-  return <TouchableOpacity onPress={onPress} style={[s.toggle, on && s.toggleOn]}><Text style={[s.toggleText, on && s.toggleTextOn]}>{label}</Text></TouchableOpacity>;
-}
-
 const s = StyleSheet.create({
   csPosterHandle: { fontSize: 11.5, fontWeight: '600', color: '#8B88A6', marginTop: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 6 },
@@ -840,10 +616,6 @@ const s = StyleSheet.create({
   searchWrap: { paddingHorizontal: 16, paddingTop: 12 },
   search: { marginTop: 8, backgroundColor: COLORS.muted, borderRadius: 11, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, color: COLORS.text },
   chipRow: { height: 54, marginTop: 6, marginBottom: 8 },
-  chip: { height: 38, justifyContent: 'center', paddingHorizontal: 16, borderRadius: 19, backgroundColor: COLORS.muted },
-  chipActive: { backgroundColor: COLORS.primary },
-  chipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700', includeFontPadding: false, textAlignVertical: 'center' },
-  chipTextActive: { color: '#fff' },
   // 丸みのあるカード（外: 影 / 内: 角丸クリップ）
   card: { borderRadius: 16, backgroundColor: '#fff', shadowColor: '#1A0A2E', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 5 },
   cardInner: { flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: COLORS.muted },
@@ -892,12 +664,6 @@ const s = StyleSheet.create({
   photoAdd: { borderWidth: 1.5, borderColor: COLORS.borderRose, borderStyle: 'dashed', borderRadius: 12, paddingVertical: 22, alignItems: 'center', marginBottom: 12 },
   photoAddText: { color: COLORS.primary, fontWeight: '700', fontSize: 15 },
   imgDel: { position: 'absolute', top: -6, right: -6, backgroundColor: COLORS.error, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  fLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textSub, marginBottom: 6 },
-  input: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, color: COLORS.text },
-  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  toggle: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: COLORS.muted },
-  toggleOn: { backgroundColor: COLORS.primary },
-  toggleText: { fontSize: 13, color: COLORS.textSub, fontWeight: '700' }, toggleTextOn: { color: '#fff' },
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8 },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: COLORS.borderRose, alignItems: 'center', justifyContent: 'center' },
   checkboxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

@@ -21,9 +21,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { useSettings } from '@/lib/settingsStore';
 import { getDeviceId } from '@/lib/abtest';
-import { loadJSON, saveJSON, FAVORITES_KEY } from '@/lib/storage';
-import { pushServerFavorites } from '@/lib/favoritesServer';
-import { sameFav } from '@/lib/favKey';
 import { openInGoogleMaps } from '@/lib/openMaps';
 import { showToast } from '@/lib/toast';
 import CommentsSection from '@/components/CommentsSection';
@@ -33,7 +30,8 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import PhotoViewer from '@/components/PhotoViewer';
-import type { FavoriteItem } from '@/types/app';
+import ReportModal from '@/components/ReportModal';
+import { blockUser } from '@/lib/blockStore';
 
 const PINK = '#F56CB3';
 const PURPLE = '#9B6BFF';
@@ -106,10 +104,6 @@ const T = {
     deleteFailed: '削除できませんでした',
     deleteFailedRetry: '時間をおいてお試しください',
     deleteFailedNet: '通信に失敗しました',
-    reported: '通報しました',
-    reportFailed: '通報できませんでした',
-    reportThanks: 'ご協力ありがとうございます',
-    reportRetry: '時間をおいてお試しください',
     fromNow: '即日',
     noEnd: '無期限',
   },
@@ -155,10 +149,6 @@ const T = {
     deleteFailed: "Couldn't delete",
     deleteFailedRetry: 'Please try again later',
     deleteFailedNet: 'Connection failed',
-    reported: 'Reported',
-    reportFailed: "Couldn't report",
-    reportThanks: 'Thanks for your help',
-    reportRetry: 'Please try again later',
     fromNow: 'Today',
     noEnd: 'No end date',
   },
@@ -196,13 +186,13 @@ export default function CommunitySpotScreen() {
   const [loading, setLoading] = useState(true);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoW, setPhotoW] = useState(0);
-  const [faved, setFaved] = useState(false);
   // 投稿へのいいね＋投稿者プロフィールシート
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
   const [isMine, setIsMine] = useState(false);   // 自分の投稿なら編集/削除を出す（moodログのみ）
   const [viewerOpen, setViewerOpen] = useState(false);   // 写真タップで全画面ビューア
+  const [reportOpen, setReportOpen] = useState(false);   // 通報モーダル（全画面共通のReportModal）
   // 総合評価（この場所のみんなの★の平均）。SpotRatingが取得→onAvgで受け取りバーに表示
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
@@ -228,8 +218,6 @@ export default function CommunitySpotScreen() {
               if (rr?.ok) { setAvgRating(rr.avg ?? null); setRatingCount(rr.count ?? 0); }
             } catch { /* noop */ }
           })();
-          const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-          setFaved(faves.some((f) => sameFav(f, { title: d.spot.placeName || d.spot.userTitle, placeId: d.spot.placeId })));
           // 自分がいいね済みか（失敗しても未押下扱いで続行）
           try {
             const deviceId = await getDeviceId();
@@ -259,16 +247,16 @@ export default function CommunitySpotScreen() {
     })();
   }, [id]));
 
-  // 右下ハート＝いいね（サーバーカウント）＋お気に入り保存を1タップで。
-  //   楽観更新・失敗時はいいねのみロールバック（お気に入りはローカルなので成功扱い）。
+  // 右下ハート＝この投稿への「いいね」専用（楽観更新・失敗時ロールバック）。
+  //   場所の保存（お気に入り）は場所詳細のハートに分離＝ハートの意味を画面間で統一（2026-07-11）。
+  //   投稿♥=いいね(数字=いいね数) / 場所♥=保存(数字=保存人数)。
   const onHeartPress = async () => {
     if (!spot || likeBusy) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = !(liked || faved);
+    const next = !liked;
     setLiked(next);
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
     setLikeBusy(true);
-    setFavTo(next).catch(() => {});
     try {
       const deviceId = await getDeviceId();
       const likeTarget = spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id;
@@ -282,24 +270,6 @@ export default function CommunitySpotScreen() {
       setLiked(!next);
       setLikeCount((c) => Math.max(0, c + (next ? -1 : 1)));
     } finally { setLikeBusy(false); }
-  };
-
-  // お気に入り保存/解除（ローカル）を目標状態に合わせる
-  const setFavTo = async (on: boolean) => {
-    if (!spot) return;
-    setFaved(on);   // 楽観的に即反映（ハートは押した瞬間に反映）
-    const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
-    const title = spot.placeName || spot.userTitle;
-    const target = { title, placeId: spot.placeId };  // sameFav: ID優先の同一判定
-    const has = faves.some((f) => sameFav(f, target));
-    let next: FavoriteItem[] | null = null;
-    if (!on && has) next = faves.filter((f) => !sameFav(f, target));
-    if (on && !has) {
-      next = [{ title, area: spot.prefecture, vibe: '', photoUrl: spot.imageUrls[0] ?? '', mapUrl: spot.googleMapsUri,
-        createdAt: new Date().toISOString(), placeId: spot.placeId, address: spot.address, rating: spot.googleRating,
-        kind: 'post', spotId: id || spot.id }, ...faves];
-    }
-    if (next) { await saveJSON(FAVORITES_KEY, next); pushServerFavorites(next); }
   };
 
   const onPhotoScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -390,16 +360,8 @@ export default function CommunitySpotScreen() {
         ]
       : [
           { text: t.share, onPress: onShare },
-          { text: t.report, style: 'destructive' as const, onPress: async () => {
-            try {
-              const deviceId = await getDeviceId();
-              const d = await apiFetch('/api/reports', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ spot_name: spot?.placeName || spot?.userTitle || '投稿', spot_address: spot?.address ?? null, reason: '不適切な投稿', note: `postId=${spot?.id ?? ''} kind=${spot?.kind ?? ''} poster=${spot?.posterId ?? ''}`, device_id: deviceId }),
-              }).then((r) => r.json());
-              showToast(d?.ok ? t.reported : t.reportFailed, d?.ok ? t.reportThanks : t.reportRetry);
-            } catch { showToast(t.reportFailed, t.reportRetry); }
-          } },
+          // 通報は全画面共通のReportModal（理由選択つき・投稿は自動非表示カウントも効く）に統一
+          { text: t.report, style: 'destructive' as const, onPress: () => setReportOpen(true) },
           { text: t.cancel, style: 'cancel' as const },
         ];
     Alert.alert(t.menu, undefined, opts);
@@ -718,15 +680,26 @@ export default function CommunitySpotScreen() {
         <PhotoViewer photos={photos} initialIdx={Math.min(photoIdx, photos.length - 1)} onClose={() => setViewerOpen(false)} />
       )}
 
-      {/* いいね（右下フローティング）: 押すとみんなのいいねにカウント＋お気に入り保存。
-          未いいねはグレー輪郭＋グレー数字（数字=みんなの合計）・押すとピンク塗り＋ピンク数字＝状態を明確化 */}
-      {(() => { const hOn = liked || faved; return (
-      <TouchableOpacity onPress={onHeartPress} style={[s.favFab, hOn && s.favFabOn, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
-        accessibilityRole="button" accessibilityState={{ selected: hOn }} accessibilityLabel={hOn ? t.likeRemove : t.likeAdd}>
-        <Heart size={22} color={hOn ? PINK : '#B9B3C8'} fill={hOn ? PINK : 'transparent'} strokeWidth={2.4} />
-        <Text style={[s.favFabCount, !hOn && s.favFabCountOff]}>{likeCount}</Text>
+      {/* 通報（フィードと同じReportModal＝理由選択・投稿者ブロック・自動非表示カウント統一）
+          ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
+      <ReportModal
+        visible={reportOpen}
+        spotName={spot.placeName || spot.userTitle || '投稿'}
+        spotAddress={spot.address ?? ''}
+        suggestionId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id}
+        posterId={!isMine ? (spot.posterId ?? undefined) : undefined}
+        onBlockUser={(pid) => { blockUser(pid); router.back(); }}
+        onClose={() => setReportOpen(false)}
+      />
+
+      {/* いいね（右下フローティング）: この投稿への「いいね」専用（数字=みんなのいいね数）。
+          場所の保存は場所詳細のハート＝ハートの意味を画面間で統一（2026-07-11）。
+          未いいねはグレー輪郭＋グレー数字・押すとピンク塗り＋ピンク数字＝状態を明確化 */}
+      <TouchableOpacity onPress={onHeartPress} style={[s.favFab, liked && s.favFabOn, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityState={{ selected: liked }} accessibilityLabel={liked ? t.likeRemove : t.likeAdd}>
+        <Heart size={22} color={liked ? PINK : '#B9B3C8'} fill={liked ? PINK : 'transparent'} strokeWidth={2.4} />
+        <Text style={[s.favFabCount, !liked && s.favFabCountOff]}>{likeCount}</Text>
       </TouchableOpacity>
-      ); })()}
 
     </View>
   );
