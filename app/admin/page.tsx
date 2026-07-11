@@ -953,6 +953,12 @@ export default function AdminPage() {
   const [mergeProcessing, setMergeProcessing] = useState<number | null>(null);
   const [mergeKeep, setMergeKeep] = useState<Record<number, string>>({});
   const [mergeResult, setMergeResult] = useState("");
+  // 一括統合（同名×近接300mのクラスタだけ自動統合・チェーン店等の離れた同名は対象外）
+  type BulkPreview = { clusters: number; willDelete: number; skippedFarGroups: number; samples: { name: string; deleteCount: number; keepAddress: string }[] };
+  type BulkResp = { ok?: boolean; error?: string; done?: boolean; nextCursor?: string | null; scanned?: number; merged?: number; deleted?: number; failed?: number; skippedFarGroups?: number; samples?: { name: string; deleteCount: number; keepAddress: string }[] };
+  const [bulkPreview, setBulkPreview] = useState<BulkPreview | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState("");
 
   // 座標登録タブ
   const [geoPlaces, setGeoPlaces] = useState<{ id: string; name: string; address: string; lat: number | null; lng: number | null }[]>([]);
@@ -6833,6 +6839,104 @@ export default function AdminPage() {
               >
                 🔄 再読み込み
               </button>
+            </div>
+
+            {/* ── 一括統合（同名×近接のみ・チェーン店保護）── */}
+            <div style={{ marginBottom: "20px", padding: "16px 18px", background: "#fffaf0", border: "1.5px solid #f6ad55", borderRadius: "14px" }}>
+              <div style={{ fontWeight: 900, fontSize: "15px", marginBottom: "6px" }}>⚡ 同名スポットを一括統合</div>
+              <p style={{ margin: "0 0 12px", fontSize: "12.5px", color: "#7a5860", lineHeight: 1.7 }}>
+                同じ名前で<b>300m以内</b>（または住所が一致）のスポットだけを自動統合します。タグは合算・写真は引き継ぎ・重複は非表示化（is_active=false）。<br />
+                離れた場所にある同名スポット（チェーン店の別店舗など）は<b>対象外</b>なので安全です。まずプレビューで件数を確認してください。
+              </p>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  disabled={bulkRunning}
+                  onClick={async () => {
+                    setBulkRunning(true); setBulkPreview(null); setMergeResult("");
+                    // 45万行をname順にストリーム分析（1回=約40秒分・doneまでカーソル継続）
+                    const acc = { clusters: 0, willDelete: 0, skippedFarGroups: 0, samples: [] as { name: string; deleteCount: number; keepAddress: string }[] };
+                    let cursor: string | null = null;
+                    let scanned = 0;
+                    try {
+                      for (let i = 0; i < 60; i++) {
+                        const d: BulkResp = await fetch("/api/admin/merge-duplicates", {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ secret: adminSecret, action: "bulk", dryRun: true, cursor: cursor ?? undefined }),
+                        }).then(r => r.json());
+                        if (!d.ok) { alert("プレビュー失敗: " + (d.error ?? "不明")); return; }
+                        acc.clusters += d.merged ?? 0; acc.willDelete += d.deleted ?? 0; acc.skippedFarGroups += d.skippedFarGroups ?? 0;
+                        for (const s2 of d.samples ?? []) { if (acc.samples.length < 20) acc.samples.push(s2); }
+                        scanned += d.scanned ?? 0;
+                        setBulkProgress(`分析中… ${scanned.toLocaleString()}件走査 / 統合候補 ${acc.clusters}グループ`);
+                        if (d.done) break;
+                        cursor = d.nextCursor ?? null;
+                        if (!cursor) break;
+                      }
+                      setBulkPreview(acc);
+                    } catch (e) { alert("通信エラー: " + String(e)); }
+                    finally { setBulkRunning(false); setBulkProgress(""); }
+                  }}
+                  style={{ padding: "10px 18px", borderRadius: "10px", border: "1.5px solid #f6ad55", background: "#fff", fontWeight: 800, cursor: bulkRunning ? "default" : "pointer", fontSize: "13px", opacity: bulkRunning ? 0.6 : 1 }}
+                >
+                  🔍 プレビュー（何が統合されるか確認）
+                </button>
+                <button
+                  disabled={bulkRunning || !bulkPreview || bulkPreview.clusters === 0}
+                  onClick={async () => {
+                    if (!bulkPreview) return;
+                    if (!confirm(`${bulkPreview.clusters}グループ（${bulkPreview.willDelete}件の重複）を一括統合します。よろしいですか？\n※重複側は非表示化(is_active=false)なので後から戻せます`)) return;
+                    setBulkRunning(true); setMergeResult("");
+                    const total = { merged: 0, deleted: 0, failed: 0, scanned: 0 };
+                    let cursor: string | null = null;
+                    try {
+                      // 時間ガードで打ち切られたら done までカーソル継続で呼ぶ（1回=約40秒分）
+                      for (let i = 0; i < 60; i++) {
+                        const d: BulkResp = await fetch("/api/admin/merge-duplicates", {
+                          method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ secret: adminSecret, action: "bulk", cursor: cursor ?? undefined }),
+                        }).then(r => r.json());
+                        if (!d.ok) { alert("エラー: " + (d.error ?? "不明")); break; }
+                        total.merged += d.merged ?? 0; total.deleted += d.deleted ?? 0; total.failed += d.failed ?? 0; total.scanned += d.scanned ?? 0;
+                        setBulkProgress(`統合中… ${total.scanned.toLocaleString()}件走査 / ${total.merged}グループ・${total.deleted}件統合済み`);
+                        if (d.done) break;
+                        cursor = d.nextCursor ?? null;
+                        if (!cursor) break;
+                      }
+                      setMergeResult(`一括統合完了: ${total.merged}グループを統合し ${total.deleted}件を非表示化しました${total.failed > 0 ? `（失敗${total.failed}）` : ""}`);
+                      setBulkPreview(null);
+                      // 一覧を再読込（残った同名＝別地点のグループだけになる）
+                      setMergeLoading(true);
+                      fetch("/api/admin/merge-duplicates", { headers: { "x-admin-secret": adminSecret } })
+                        .then(r => r.json())
+                        .then(d => { if (d.ok) setMergeGroups(d.groups ?? []); })
+                        .finally(() => setMergeLoading(false));
+                    } catch (e) { alert("通信エラー: " + String(e)); }
+                    finally { setBulkRunning(false); setBulkProgress(""); }
+                  }}
+                  style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: (!bulkPreview || bulkPreview.clusters === 0) ? "#eee" : "linear-gradient(135deg, #ffbf67 0%, #ff8f7f 100%)", color: (!bulkPreview || bulkPreview.clusters === 0) ? "#aaa" : "#fff", fontWeight: 900, cursor: bulkRunning || !bulkPreview ? "default" : "pointer", fontSize: "13px" }}
+                >
+                  ⚡ 一括統合を実行
+                </button>
+                {bulkProgress && <span style={{ fontSize: "13px", fontWeight: 700, color: "#c05621" }}>{bulkProgress}</span>}
+              </div>
+              {bulkPreview && (
+                <div style={{ marginTop: "12px", padding: "12px 14px", background: "#fff", border: "1px solid #fbd38d", borderRadius: "10px", fontSize: "13px" }}>
+                  <div style={{ fontWeight: 800, marginBottom: "6px" }}>
+                    統合対象: {bulkPreview.clusters}グループ / 非表示化される重複: {bulkPreview.willDelete}件
+                    <span style={{ fontWeight: 600, color: "#888" }}>（同名でも離れているため対象外: {bulkPreview.skippedFarGroups}グループ）</span>
+                  </div>
+                  {bulkPreview.clusters === 0 ? (
+                    <div style={{ color: "#68d391", fontWeight: 700 }}>近接する同名重複はありません（残っている同名は別地点＝統合しないのが正解です）</div>
+                  ) : (
+                    <ul style={{ margin: 0, paddingLeft: "18px", color: "#555", lineHeight: 1.8 }}>
+                      {bulkPreview.samples.map((s2, i) => (
+                        <li key={i}>{s2.name} <span style={{ color: "#999" }}>（{s2.deleteCount}件を統合・{s2.keepAddress || "住所なし"}）</span></li>
+                      ))}
+                      {bulkPreview.clusters > bulkPreview.samples.length && <li style={{ color: "#999" }}>…ほか {bulkPreview.clusters - bulkPreview.samples.length} グループ</li>}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             {mergeResult && (
