@@ -610,9 +610,27 @@ export default function CommunitySpotScreen() {
             {spot.stationText ? <InfoRow Icon={Train} value={spot.stationText} border={!!(spot.priceText || spot.address)} /> : null}
             {spot.phone ? <InfoRow Icon={Phone} value={spot.phone} link onPress={() => Linking.openURL(`tel:${spot.phone}`)} border={!!(spot.priceText || spot.address || spot.stationText)} /> : null}
             {spot.website ? <InfoRow Icon={Globe} value={spot.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} link onPress={() => Linking.openURL(spot.website)} border={!!(spot.priceText || spot.address || spot.stationText || spot.phone)} /> : null}
+            {/* 営業時間（Googleが補完する位置と同じ情報カード内・Instagramの上）。
+                ⚠ 曜日:時刻でsplitしない（「10:00〜23:00」を「10」「00〜23:00」に割る旧バグの回避）＝行そのまま表示 */}
+            {spot.openingHoursText ? (
+              <View style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
+                <View style={s.infoIconWrap}><Clock size={15} color="#C084FC" strokeWidth={2} /></View>
+                <View style={{ flex: 1 }}>
+                  {spot.openingHoursText.split('\n').map((line, i) => (
+                    <Text key={i} style={[s.infoText, { paddingTop: i === 0 ? 0 : 2 }]}>{line}</Text>
+                  ))}
+                </View>
+                {spot.openNow != null && (
+                  <View style={[s.openBadge, !spot.openNow && s.closedBadge]}>
+                    <View style={[s.openDot, !spot.openNow && { backgroundColor: '#EF4444' }]} />
+                    <Text style={[s.openText, !spot.openNow && { color: '#EF4444' }]}>{spot.openNow ? t.open : t.closed}</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
             {/* Instagram検索 */}
             <TouchableOpacity onPress={openInstagram} activeOpacity={0.7}
-              style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
+              style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website || spot.openingHoursText) ? s.infoRowBorder : null]}>
               <View style={s.infoIconWrap}>
                 <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
                   <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>
@@ -625,33 +643,7 @@ export default function CommunitySpotScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── 営業時間カード ── */}
-          {spot.openingHoursText ? (
-            <View style={s.hoursCard}>
-              <View style={s.hoursHead}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <Clock size={16} color={PURPLE} strokeWidth={2.2} />
-                  <Text style={s.hoursTitle}>{t.hours}</Text>
-                </View>
-                {spot.openNow != null && (
-                  <View style={[s.openBadge, !spot.openNow && s.closedBadge]}>
-                    <View style={[s.openDot, !spot.openNow && { backgroundColor: '#EF4444' }]} />
-                    <Text style={[s.openText, !spot.openNow && { color: '#EF4444' }]}>{spot.openNow ? t.open : t.closed}</Text>
-                  </View>
-                )}
-              </View>
-              {spot.openingHoursText.split('\n').map((line, i) => {
-                const [day, ...rest] = line.split(/:\s*/);
-                return (
-                  <View key={i} style={s.hoursLine}>
-                    <View style={s.hoursBullet} />
-                    <Text style={s.hoursDay}>{day}</Text>
-                    <Text style={s.hoursTime}>{rest.join(': ')}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
+          {/* 営業時間は上の情報カード内(Instagramの上)に移設済み。旧・別枠カードは廃止(表示バグの温床だった) */}
 
           {/* ── 口コミ（ためになった順）── */}
           {spot.reviews && spot.reviews.length > 0 && (

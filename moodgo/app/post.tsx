@@ -4,7 +4,7 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Camera, Check, MapPin, Search, Send, Star, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Check, Clock, MapPin, Search, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -66,6 +66,10 @@ const T = {
     locate: '現在地',
     gotLoc: (addr: string) => `📍 位置を取得しました${addr ? `（${addr}）` : ''}`,
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
+    hoursLabel: '営業時間（任意）',
+    hoursOpen: '開店',
+    hoursClose: '閉店',
+    hours24: '24時間営業',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
     editNote: '※ 写真の変更はできません。名前・紹介文・気分タグ・公開範囲・おすすめ度・値段・連絡先を編集できます。',
     photoLabel: '写真（1〜3枚）',
@@ -164,6 +168,10 @@ const T = {
     locate: 'Current location',
     gotLoc: (addr: string) => `📍 Location captured${addr ? ` (${addr})` : ''}`,
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
+    hoursLabel: 'Opening hours (optional)',
+    hoursOpen: 'Open',
+    hoursClose: 'Close',
+    hours24: 'Open 24h',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
     editNote: '※ Photos can\'t be changed. You can edit the name, text, mood tags, visibility, rating, price and contact.',
     photoLabel: 'Photos (1–3)',
@@ -261,10 +269,12 @@ export default function PostScreen() {
   const [rating, setRating] = useState(0);
   const [availFrom, setAvailFrom] = useState('');   // 期間限定(任意・新スポットのみ)
   const [availUntil, setAvailUntil] = useState('');
-  const [openingHours, setOpeningHours] = useState('');  // 営業時間(任意・新スポット)
   const [station, setStation] = useState('');            // 最寄駅(任意・新スポット)
-  const [showPicker, setShowPicker] = useState<null | 'from' | 'until'>(null);  // 公開期間のカレンダー
+  const [showPicker, setShowPicker] = useState<null | 'from' | 'until' | 'open' | 'close'>(null);  // 期間カレンダー＋営業時間の時刻ピッカー
   const [tempDate, setTempDate] = useState(new Date());
+  const [openTime, setOpenTime] = useState('');    // 開店時刻 HH:MM（営業時間ピッカー）
+  const [closeTime, setCloseTime] = useState('');  // 閉店時刻 HH:MM
+  const [is24h, setIs24h] = useState(false);       // 24時間営業
   const [licenseOk, setLicenseOk] = useState(false);
   // 公開範囲: false=名前を出して公開(デフォルト・プロフィール/フォロー対象) / true=匿名で公開
   const [vis, setVis] = useState<'public' | 'anon' | 'private'>('public');   // 公開範囲: 名前/匿名/非公開
@@ -392,6 +402,22 @@ export default function PostScreen() {
     const st = fmtDate(d);
     if (showPicker === 'from') setAvailFrom(st); else if (showPicker === 'until') setAvailUntil(st);
   };
+  // 営業時間の時刻ピッカー（開店/閉店）。日付ピッカーと同じ tempDate/showPicker を流用（mode=time）
+  const fmtTime = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const openTimePicker = (which: 'open' | 'close') => {
+    const cur = which === 'open' ? openTime : closeTime;
+    const base = new Date();
+    if (cur) { const [h, m] = cur.split(':').map(Number); base.setHours(h || 0, m || 0, 0, 0); }
+    else base.setHours(which === 'open' ? 10 : 18, 0, 0, 0);   // 既定: 開店10時/閉店18時
+    setTempDate(base);
+    setShowPicker(which);
+  };
+  const applyPickedTime = (d: Date) => {
+    const tt = fmtTime(d);
+    if (showPicker === 'open') setOpenTime(tt); else if (showPicker === 'close') setCloseTime(tt);
+  };
+  // 送信用の営業時間文字列（24時間営業 or 「開店〜閉店」・未入力は空）
+  const composedHours = is24h ? '24時間営業' : (openTime && closeTime ? `${openTime}〜${closeTime}` : '');
 
   // 選んだ気分の深掘り(サブジャンル)タグを L1＋L2 フラットで出す（重複排除）
   const deepDiveOptions = useMemo(() => {
@@ -497,7 +523,7 @@ export default function PostScreen() {
           rating: rating > 0 ? rating : undefined,
           contact: contact.trim() || undefined,
           // 新スポット(穴場)の詳細。既存スポットへの投稿(moodログ)では送らない＝既存placeを上書きしない
-          openingHours: !isExisting ? (openingHours.trim() || undefined) : undefined,
+          openingHours: !isExisting ? (composedHours || undefined) : undefined,
           station: !isExisting ? (station.trim() || undefined) : undefined,
           availableFrom: !isExisting ? (availFrom.trim() || undefined) : undefined,
           availableUntil: !isExisting ? (availUntil.trim() || undefined) : undefined,
@@ -682,8 +708,35 @@ export default function PostScreen() {
               {lat != null && lng != null && (
                 <Text style={s.gotLoc}>{t.gotLoc(address)}</Text>
               )}
-              <TextInput style={[s.input, { marginTop: 8 }]} value={openingHours} onChangeText={setOpeningHours} placeholder={t.openingHoursPh} placeholderTextColor="#B9ABD2" multiline />
-              <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
+              {/* 営業時間: 開店/閉店の時刻ピッカー＋24時間トグル（自由入力の表示崩れを根絶し統一） */}
+              <Text style={[s.label, { marginTop: 14 }]}>{t.hoursLabel}</Text>
+              {is24h ? (
+                <TouchableOpacity style={[s.input, s.dateBtn, { minHeight: 48, marginTop: 8 }]} onPress={() => setIs24h(false)} activeOpacity={0.8}>
+                  <Clock size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, { flex: 1 }]}>{t.hours24}</Text>
+                  <X size={14} color="#B9ABD2" />
+                </TouchableOpacity>
+              ) : (
+                <View style={s.periodRow}>
+                  <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openTimePicker('open')} activeOpacity={0.8}>
+                    <Clock size={15} color="#9B6BFF" strokeWidth={2.2} />
+                    <Text style={[s.dateBtnText, !openTime && s.dateBtnPh, { flex: 1 }]} numberOfLines={1}>{openTime || t.hoursOpen}</Text>
+                    {openTime ? <TouchableOpacity onPress={() => setOpenTime('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                  </TouchableOpacity>
+                  <Text style={s.periodTilde}>〜</Text>
+                  <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openTimePicker('close')} activeOpacity={0.8}>
+                    <Clock size={15} color="#9B6BFF" strokeWidth={2.2} />
+                    <Text style={[s.dateBtnText, !closeTime && s.dateBtnPh, { flex: 1 }]} numberOfLines={1}>{closeTime || t.hoursClose}</Text>
+                    {closeTime ? <TouchableOpacity onPress={() => setCloseTime('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                  </TouchableOpacity>
+                </View>
+              )}
+              {!is24h && (
+                <TouchableOpacity onPress={() => { setIs24h(true); setOpenTime(''); setCloseTime(''); }} activeOpacity={0.7} style={{ alignSelf: 'flex-start', marginTop: 8 }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9B6BFF' }}>＋ {t.hours24}</Text>
+                </TouchableOpacity>
+              )}
+              <TextInput style={[s.input, { marginTop: 12, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
             </>
           )}
 
@@ -762,15 +815,22 @@ export default function PostScreen() {
           ⚠ New Arch(Fabric)の <Modal transparent> は中身を描画せず透明のままタッチを奪う不具合が
              あるため（ConsentGate で実証・c5adb7c）、showPickerセット時に即マウントされる本Modalを
              やめ、post画面（Stackルート＝ネイティブタブバー無し）内の絶対配置オーバーレイに置換。 */}
-      {showPicker !== null && (Platform.OS === 'ios' ? (
-        <View style={s.pickerOverlay}>
-          <View style={s.pickerSheet}>
-              <Text style={s.pickerTitle}>{showPicker === 'from' ? t.pickerFromTitle : t.pickerUntilTitle}</Text>
+      {showPicker !== null && (() => {
+        const isTime = showPicker === 'open' || showPicker === 'close';
+        const commit = (d: Date) => { if (isTime) applyPickedTime(d); else applyPickedDate(d); };
+        const title = showPicker === 'from' ? t.pickerFromTitle
+          : showPicker === 'until' ? t.pickerUntilTitle
+          : showPicker === 'open' ? t.hoursOpen : t.hoursClose;
+        return Platform.OS === 'ios' ? (
+          <View style={s.pickerOverlay}>
+            <View style={s.pickerSheet}>
+              <Text style={s.pickerTitle}>{title}</Text>
               <DateTimePicker
                 value={tempDate}
-                mode="date"
-                display="inline"
+                mode={isTime ? 'time' : 'date'}
+                display={isTime ? 'spinner' : 'inline'}
                 locale="ja-JP"
+                minuteInterval={isTime ? 5 : undefined}
                 onChange={(_e, d) => { if (d) setTempDate(d); }}
                 style={{ alignSelf: 'stretch' }}
                 accentColor="#9B6BFF"
@@ -779,19 +839,21 @@ export default function PostScreen() {
                 <TouchableOpacity onPress={() => setShowPicker(null)} style={s.pickerCancel} activeOpacity={0.8}>
                   <Text style={s.pickerCancelText}>{t.cancel}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { applyPickedDate(tempDate); setShowPicker(null); }} style={s.pickerOk} activeOpacity={0.8}>
+                <TouchableOpacity onPress={() => { commit(tempDate); setShowPicker(null); }} style={s.pickerOk} activeOpacity={0.8}>
                   <Text style={s.pickerOkText}>{t.pickerOk}</Text>
                 </TouchableOpacity>
               </View>
             </View>
-        </View>
-      ) : (
-        <DateTimePicker
-          value={tempDate}
-          mode="date"
-          onChange={(e, d) => { if (e.type === 'set' && d) applyPickedDate(d); setShowPicker(null); }}
-        />
-      ))}
+          </View>
+        ) : (
+          <DateTimePicker
+            value={tempDate}
+            mode={isTime ? 'time' : 'date'}
+            minuteInterval={isTime ? 5 : undefined}
+            onChange={(e, d) => { if (e.type === 'set' && d) commit(d); setShowPicker(null); }}
+          />
+        );
+      })()}
     </View>
   );
 }
