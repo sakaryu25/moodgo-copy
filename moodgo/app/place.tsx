@@ -80,6 +80,8 @@ const T = {
     inviteTitle: 'あなたが「最初の1枚」の主に',
     inviteSub: 'ここを探す次の人の、いちばんの手がかりになります',
     addFirstPhoto: '一番乗りで写真を追加',
+    contributeMoreTitle: 'あなたの1枚も、この場所に',
+    contributeMoreSub: '違う角度・季節・時間帯の写真が、魅力をもっと伝えます',
     map: 'マップ',
     overallRating: '総合評価',
     overallRatingCount: (n: number) => `総合評価（${n}）`,
@@ -116,6 +118,8 @@ const T = {
     inviteTitle: 'Be the first to add a photo',
     inviteSub: 'It becomes the best clue for the next person looking for this spot',
     addFirstPhoto: 'Be the first to add a photo',
+    contributeMoreTitle: 'Add your shot to this place',
+    contributeMoreSub: 'A different angle, season or time of day shows off the vibe',
     map: 'Map',
     overallRating: 'Overall',
     overallRatingCount: (n: number) => `Overall (${n})`,
@@ -530,7 +534,8 @@ export default function PlaceDetailPage() {
   // 通常スポットの写真ゼロ時の招待枠用: タグ→ジャンル絵文字/淡グラデ（null=汎用）
   const ph = genrePlaceholder(rec?.tags);
   // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
-  const showContribute = isSpooky && photos.length > 0;
+  // 写真がある全スポットで、ヒーロー末尾に「写真を追加」ページを常に出す（何枚あっても募集を継続）。
+  const showContribute = photos.length > 0;
   const heroPageCount = photos.length + (showContribute ? 1 : 0);
 
   // 投稿写真の取得＋心霊判定。
@@ -839,7 +844,7 @@ export default function PlaceDetailPage() {
                   <View key={i} style={{ width: photoWidth, height: 300, backgroundColor: '#EFEAF7' }} />
                 )
               ))}
-              {showContribute && (
+              {showContribute && (isSpooky ? (
                 <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
                   style={[s.heroPlaceholder, { width: photoWidth, height: 300 }]}>
                   <Moon size={44} color="rgba(180,160,255,0.55)" strokeWidth={1.3} />
@@ -851,7 +856,24 @@ export default function PlaceDetailPage() {
                       : <><Camera size={16} color="#fff" strokeWidth={2.2} /><Text style={s.heroSpookyBtnText}>{t.addPhoto}</Text></>}
                   </TouchableOpacity>
                 </LinearGradient>
-              )}
+              ) : (
+                // 通常スポット: 写真がすでにあっても末尾に明るい「写真を追加」ページを出す（何枚でも募集継続）
+                <LinearGradient colors={ph ? ph.colors : ['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
+                  style={[s.heroPlaceholder, { width: photoWidth, height: 300 }]}>
+                  <View style={s.heroGenreIconWrap}>
+                    <Camera size={28} color="#8A6BF0" strokeWidth={1.9} />
+                  </View>
+                  <Text style={s.heroInviteTitle}>{t.contributeMoreTitle}</Text>
+                  <Text style={s.heroInviteSub}>{t.contributeMoreSub}</Text>
+                  <TouchableOpacity onPress={handleAddSpotPhoto} disabled={uploadingPhoto} activeOpacity={0.85} style={s.heroInviteBtnWrap}>
+                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroInviteBtn}>
+                      {uploadingPhoto
+                        ? <ActivityIndicator color="#fff" size="small" />
+                        : <><Camera size={16} color="#fff" strokeWidth={2.4} /><Text style={s.heroInviteBtnText}>{t.addPhoto}</Text></>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </LinearGradient>
+              ))}
             </ScrollView>
           ) : isSpooky ? (
             <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={s.heroPlaceholder}>
