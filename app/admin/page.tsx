@@ -1032,13 +1032,14 @@ function AccountTypePanel({ secret }: { secret: string }) {
 
 // 住所補完パネル: 住所が「日本」/都道府県だけ/空 で位置特定できないspotを補充する
 function AddressFillPanel({ secret }: { secret: string }) {
-  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null };
+  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null };
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [sugBusy, setSugBusy] = useState<string | null>(null);
+  const [delBusy, setDelBusy] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -1074,6 +1075,22 @@ function AddressFillPanel({ secret }: { secret: string }) {
       setRows(prev => prev.filter(r => r.id !== id));   // 保存したら一覧から即除去
     } catch { alert("通信エラー"); } finally { setBusy(null); }
   };
+  // スポット削除（お店ではない/不要なスポットをその場で消す）。元に戻せない。
+  const removePlace = async (id: string, name: string) => {
+    if (!confirm(`「${name}」を完全に削除します。元に戻せません。よろしいですか？`)) return;
+    setDelBusy(id);
+    try {
+      const res = await fetch("/api/admin/delete-place", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, id }) });
+      const d = await res.json();
+      if (!d?.ok) { alert(d?.error ?? "削除に失敗"); setDelBusy(null); return; }
+      setRows(prev => prev.filter(r => r.id !== id));   // 削除したら一覧から即除去
+    } catch { alert("通信エラー"); } finally { setDelBusy(null); }
+  };
+  // 名前タップ → 「住所 場所名」でGoogle検索（別タブ）。どんな場所か素早く確認する。
+  const searchOnGoogle = (name: string, address: string | null) => {
+    const q2 = [address && address !== "日本" ? address : "", name].filter(Boolean).join(" ");
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(q2)}`, "_blank", "noopener");
+  };
 
   const inputStyle: React.CSSProperties = { border: "1px solid #DDD6FE", borderRadius: 8, padding: "6px 10px", fontSize: 13, width: "100%" };
   return (
@@ -1090,8 +1107,26 @@ function AddressFillPanel({ secret }: { secret: string }) {
       {!loading && rows.length === 0 && <p style={{ color: "#9CA3AF" }}>対象のスポットはありません。</p>}
       {rows.map(p => (
         <div key={p.id} style={{ border: "1px solid #E5E0F5", borderRadius: 12, padding: 14, marginBottom: 12, background: "#FCFBFF" }}>
-          <div style={{ fontWeight: 800, color: "#1A0A2E", fontSize: 15 }}>{p.name}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            {/* 名前タップ → 「住所 場所名」でGoogle検索（どんな場所か確認） */}
+            <button onClick={() => searchOnGoogle(p.name, p.address)} title="Googleで検索"
+              style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 800, color: "#4338CA", fontSize: 15, textDecoration: "underline", textDecorationColor: "#C7D2FE" }}>
+              {p.name} 🔎
+            </button>
+            <button onClick={() => removePlace(p.id, p.name)} disabled={delBusy === p.id}
+              style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+              {delBusy === p.id ? "削除中…" : "🗑 削除"}
+            </button>
+          </div>
           <div style={{ fontSize: 11.5, color: "#9CA3AF", marginTop: 3 }}>現在: {p.address || "（空）"} ／ 座標: {p.lat != null && p.lng != null ? `${p.lat}, ${p.lng}` : "なし"}</div>
+          {/* この場所に付いている#タグ（お出かけ先として妥当か・不要スポットの判断に使う） */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {(p.tags ?? []).length === 0
+              ? <span style={{ fontSize: 11, color: "#CBD5E1" }}>タグなし</span>
+              : (p.tags ?? []).map(t => (
+                  <span key={t} style={{ fontSize: 11, fontWeight: 700, color: "#6D28D9", background: "#F3E8FF", border: "1px solid #E9D5FF", borderRadius: 999, padding: "2px 9px" }}>{t}</span>
+                ))}
+          </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
             <input value={draft[p.id] ?? ""} onChange={e => setDraft(prev => ({ ...prev, [p.id]: e.target.value }))} placeholder="住所を入力…" style={{ ...inputStyle, flex: 1, minWidth: 200 }} />
             <button onClick={() => suggest(p.id)} disabled={sugBusy === p.id || p.lat == null || p.lng == null} style={{ background: "#EDE9FE", color: "#7C3AED", border: 0, borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: p.lat == null ? "not-allowed" : "pointer", whiteSpace: "nowrap", opacity: p.lat == null ? 0.5 : 1 }}>{sugBusy === p.id ? "取得中…" : "候補(逆引き)"}</button>

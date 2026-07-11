@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from("places")
-    .select("id, name, address, lat, lng")
+    .select("id, name, address, lat, lng, tags")
     .eq("is_active", true)
     .or(incompleteOrFilter());
   if (q) query = query.ilike("name", `%${q}%`);
