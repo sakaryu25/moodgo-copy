@@ -7000,7 +7000,9 @@ async function handleRecommend(request: Request) {
             ...r,
             _niceScore: (r.tags ?? []).filter(t => sbNiceTags.includes(t)).length
               + wilsonLower(r.rating, r.reviewCount) * 2  // Wilson: 最大約2点加算
-              + (isCuratedSource(r.source) ? 5 : 0)        // 手動追加スポットを大きく優先
+              // 手動追加スポットを大きく優先。ただしタグ空(null/[])は「埋もれ防止すべきジャンル信号」を
+              //   持たないデータ外れ値(実測: PACHA CRAFT BEER TACOS等がtags=nullで全ジャンルrank2固定)なので加点しない。
+              + (isCuratedSource(r.source) && (r.tags?.length ?? 0) > 0 ? 5 : 0)
               + ((r as { semanticSim?: number | null }).semanticSim ?? 0) * 3  // ③ 意味一致が強い候補を上位化(AI失敗時の表示8件/写真補完先に確実に乗せる)
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
