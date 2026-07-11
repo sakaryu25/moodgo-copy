@@ -360,6 +360,12 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
   const [log, setLog] = useState<string[]>([]);
   const [autoLoop, setAutoLoop] = useState(false);
   const abortRef = useRef(false);
+  // 会社・事業所（お店でないもの）の一括削除
+  type CorpPreview = { count: number; excludedSafe: number; complete: boolean; names: string[]; safeSamples: string[] };
+  type CorpResp = { ok?: boolean; error?: string; complete?: boolean; nextCursor?: string | null; scanned?: number; count?: number; deleted?: number; excludedSafe?: number; names?: string[]; safeSamples?: string[] };
+  const [corpPreview, setCorpPreview] = useState<CorpPreview | null>(null);
+  const [corpRunning, setCorpRunning] = useState(false);
+  const [corpResult, setCorpResult] = useState("");
 
   const cardStyle: React.CSSProperties = {
     background: "#fff",
@@ -492,6 +498,108 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
             PostGIS 空間インデックスと <code>last_checked_at</code> カラムが追加されます。
           </p>
         </div>
+      </div>
+
+      {/* 会社・事業所（お店でないもの）の一括削除 */}
+      <div style={{ ...cardStyle, border: "1.5px solid #FC8181" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "8px" }}>🏢 会社・事業所を一括削除</h3>
+        <p style={{ fontSize: "12.5px", opacity: 0.75, lineHeight: 1.7, marginBottom: "12px" }}>
+          「株式会社／（株）／営業所／事業所／事務所／本社・支社／商事・工務店・建設」など<b>お店ではない事業体</b>を全域から探して削除します。<br />
+          カフェ・見学・直売・記念館・酒蔵など「行ける場所」の可能性がある名前は自動で除外して残します（プレビューで確認可）。<b>削除は元に戻せません。</b>
+        </p>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            disabled={corpRunning}
+            onClick={async () => {
+              setCorpRunning(true); setCorpPreview(null); setCorpResult("");
+              // 45万行をid順に走査（1回≈35秒・completeまでカーソル継続）
+              const acc = { count: 0, excludedSafe: 0, names: [] as string[], safeSamples: [] as string[] };
+              let cursor: string | null = null;
+              let scanned = 0;
+              try {
+                for (let i = 0; i < 30; i++) {
+                  const d: CorpResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, companiesOnly: true, dryRun: true, cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("プレビュー失敗: " + (d.error ?? "不明")); return; }
+                  acc.count += d.count ?? 0; acc.excludedSafe += d.excludedSafe ?? 0;
+                  for (const n of d.names ?? []) { if (acc.names.length < 400) acc.names.push(n); }
+                  for (const n of d.safeSamples ?? []) { if (acc.safeSamples.length < 15) acc.safeSamples.push(n); }
+                  scanned += d.scanned ?? 0;
+                  setCorpResult(`分析中… ${scanned.toLocaleString()}件走査 / 削除対象 ${acc.count.toLocaleString()}件`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setCorpPreview({ ...acc, complete: true });
+                setCorpResult("");
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setCorpRunning(false); }
+            }}
+            style={{ ...btnBase3, background: "#fff", border: "1.5px solid #FC8181", color: "#C53030" }}
+          >
+            🔍 プレビュー（削除対象を確認）
+          </button>
+          <button
+            disabled={corpRunning || !corpPreview || corpPreview.count === 0}
+            onClick={async () => {
+              if (!corpPreview) return;
+              if (!confirm(`会社・事業所らしきスポット ${corpPreview.count}件を完全に削除します。\nこの操作は元に戻せません。よろしいですか？`)) return;
+              setCorpRunning(true); setCorpResult("");
+              let deleted = 0;
+              let cursor: string | null = null;
+              let scanned = 0;
+              try {
+                // completeまでカーソル継続（1回≈35秒。走査しながら見つけた対象をその場で削除）
+                for (let i = 0; i < 30; i++) {
+                  const d: CorpResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, companiesOnly: true, dryRun: false, cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("エラー: " + (d.error ?? "不明")); break; }
+                  deleted += d.deleted ?? 0;
+                  scanned += d.scanned ?? 0;
+                  setCorpResult(`削除中… ${scanned.toLocaleString()}件走査 / ${deleted.toLocaleString()}件削除済み`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setCorpResult(`✅ 会社・事業所 ${deleted}件を削除しました`);
+                setCorpPreview(null);
+                loadStats();
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setCorpRunning(false); }
+            }}
+            style={{ ...btnBase3, background: (!corpPreview || corpPreview.count === 0) ? "#EDF2F7" : "#E53E3E", color: (!corpPreview || corpPreview.count === 0) ? "#A0AEC0" : "#fff" }}
+          >
+            🗑 削除を実行
+          </button>
+          {corpRunning && <span style={{ fontSize: "13px", fontWeight: 700, color: "#C53030" }}>{corpResult || "処理中…"}</span>}
+        </div>
+        {corpResult && !corpRunning && (
+          <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 800, color: "#276749" }}>{corpResult}</div>
+        )}
+        {corpPreview && (
+          <div style={{ marginTop: "12px", padding: "12px 14px", background: "#FFF5F5", border: "1px solid #FEB2B2", borderRadius: "10px", fontSize: "13px" }}>
+            <div style={{ fontWeight: 800, marginBottom: "6px" }}>
+              削除対象: {corpPreview.count.toLocaleString()}件
+              <span style={{ fontWeight: 600, color: "#888" }}>（店舗・観光の可能性があり除外: {corpPreview.excludedSafe}件）</span>
+              {!corpPreview.complete && <span style={{ color: "#C05621" }}>　⚠時間内に全域を走査できず＝部分結果（実行時は自動で続きます）</span>}
+            </div>
+            {corpPreview.names.length > 0 && (
+              <div style={{ maxHeight: "180px", overflowY: "auto", color: "#555", lineHeight: 1.8 }}>
+                {corpPreview.names.map((n, i) => <div key={i}>・{n}</div>)}
+                {corpPreview.count > corpPreview.names.length && <div style={{ color: "#999" }}>…ほか {(corpPreview.count - corpPreview.names.length).toLocaleString()}件</div>}
+              </div>
+            )}
+            {corpPreview.safeSamples.length > 0 && (
+              <div style={{ marginTop: "8px", color: "#2F855A", fontSize: "12px" }}>
+                除外して残す例: {corpPreview.safeSamples.slice(0, 6).join(" / ")}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 実行コントロール */}
