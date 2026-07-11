@@ -6370,12 +6370,16 @@ async function handleRecommend(request: Request) {
     const { context: globalStatsContext, engagedPlaces, goodVisitedPlaces, badVisitedPlaces } = await fetchGlobalStats(answers);
 
     // 承認済みユーザー投稿スポット＋タグ別キュレーションスポット＋フィードバック集計を取得
-    const [approvedSuggestions, curatedSpots, moodRatingAgg, engagementAgg] = await Promise.all([
+    const [approvedSuggestionsRaw, curatedSpots, moodRatingAgg, engagementAgg] = await Promise.all([
       fetchApprovedSuggestions(),
       fetchCuratedSpots(),
       fetchMoodRatingAgg(),
       fetchEngagementAgg(),
     ]);
+    // 管理者の動作確認用テスト投稿(消し忘れ)を検索結果から常に除外。source=adminで優先注入されるため入口で弾く。
+    //   例:「【テスト投稿】動作確認用・すぐ消します」。データは消さず表示だけ抑止(admin画面には残る)。
+    const TEST_POST_RE = /テスト投稿|すぐ消します|動作確認用|【テスト】|テスト用/;
+    const approvedSuggestions = approvedSuggestionsRaw.filter((s) => !TEST_POST_RE.test(s.spot_name ?? ""));
     // 自己改善ループ: 👎除外/降格 ＋ 👍&エンゲージメント昇格(learnScore) の判定器
     const ratingJudge = buildRatingJudge(moodRatingAgg, answers.mood, engagementAgg);
 
