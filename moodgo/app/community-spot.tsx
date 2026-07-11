@@ -29,6 +29,7 @@ import SpotRating from '@/components/SpotRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
 import { setSelectedPlace } from '@/lib/selectedPlace';
+import { markFeedStale } from '@/lib/feedRefresh';
 import PhotoViewer from '@/components/PhotoViewer';
 import ReportModal from '@/components/ReportModal';
 import { blockUser } from '@/lib/blockStore';
@@ -256,6 +257,7 @@ export default function CommunitySpotScreen() {
     const next = !liked;
     setLiked(next);
     setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
+    markFeedStale();   // フィード/プロフィールのいいね数を次のフォーカスで再取得（すぐ反映）
     setLikeBusy(true);
     try {
       const deviceId = await getDeviceId();
@@ -340,7 +342,7 @@ export default function CommunitySpotScreen() {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'delete', postId: spot.id, deviceId }),
             }).then((r) => r.json());
-            if (d?.ok) { showToast(t.deleted); router.back(); }
+            if (d?.ok) { markFeedStale(); showToast(t.deleted); router.back(); }   // 削除をフィード/プロフィールに即反映
             else showToast(t.deleteFailed, d?.error ?? t.deleteFailedRetry);
           } catch { showToast(t.deleteFailed, t.deleteFailedNet); }
         },

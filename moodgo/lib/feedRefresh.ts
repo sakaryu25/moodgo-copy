@@ -1,11 +1,13 @@
 // ── feedRefresh ───────────────────────────────────────────────────────────────
-// 投稿の作成/編集/削除で「みんなの穴場フィード」が古くなるので、次にフィードが
-// フォーカスされた時だけ再取得させるための軽量シグナル（毎フォーカス再取得＝スクロール
-// リセットを避けるため、変更があった時のみ立てる）。
-let dirty = false;
+// 投稿の作成/編集/削除・いいね等で「みんなの穴場フィード」やカード上のカウントが古くなる。
+// ⚠ フィードの実体は同時に複数存在する（ホーム埋め込み HomeView + みんなタブ BlogView）。
+//   旧実装は単一の消費フラグ(consumeFeedStale)で、最初にフォーカスした1つが消費すると
+//   もう片方はずっと古いまま更新されなかった（＝投稿/いいねがホームに出ない主因）。
+// → バージョン番号にして、各フィードが「前回見た版と違えば再取得」を独立に判定する。
+let version = 0;
 
-/** 投稿を作成/編集/削除したら呼ぶ。次のフィード表示で再取得される。 */
-export function markFeedStale(): void { dirty = true; }
+/** 投稿の作成/編集/削除・いいね等でフィードを古くしたら呼ぶ。全フィードが次のフォーカスで再取得。 */
+export function markFeedStale(): void { version += 1; }
 
-/** フィードのフォーカス時に呼ぶ。stale なら true を返しフラグを消す（=再取得のトリガ）。 */
-export function consumeFeedStale(): boolean { const d = dirty; dirty = false; return d; }
+/** 現在のフィード世代。各フィードはこれを ref に保持し、変化していたら再取得する。 */
+export function feedStaleVersion(): number { return version; }

@@ -9,7 +9,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { ChevronDown, Map } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { consumeFeedStale } from '@/lib/feedRefresh';
+import { feedStaleVersion } from '@/lib/feedRefresh';
 import * as Location from 'expo-location';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { apiFetch } from '@/lib/api';
@@ -212,10 +212,15 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     return () => { isMounted.current = false; };
   }, [loadInitial]);
 
-  // 投稿の作成/編集/削除でフィードが古くなった時だけ、次のフォーカスで再取得（公開範囲/名前の変更を反映）。
-  // 投稿直後はキャッシュバスターで即時反映（CDNの60秒キャッシュで新規投稿が出ない問題の解消）。
+  // 投稿の作成/編集/削除・いいねでフィードが古くなった時だけ、次のフォーカスで再取得。
+  // ⚠ バージョン方式＝この実体が前回見た版と違えば再取得（複数フィードが各々独立に更新される）。
+  //   投稿/いいね直後はキャッシュバスターで即時反映（CDNの60秒キャッシュを回避）。
+  const lastFeedVersion = useRef(feedStaleVersion());
   useFocusEffect(useCallback(() => {
-    if (consumeFeedStale()) loadInitial(true);
+    if (feedStaleVersion() !== lastFeedVersion.current) {
+      lastFeedVersion.current = feedStaleVersion();
+      loadInitial(true);
+    }
   }, [loadInitial]));
 
   // タブ再タップ（親がrefreshKeyを+1）→ 最新を再取得。初回マウントのloadInitialとは重複させない。
