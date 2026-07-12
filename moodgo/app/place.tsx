@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
-  ArrowLeft, Camera, ChevronDown, ChevronUp, Clock, Footprints, Globe, Heart,
+  ArrowLeft, CalendarClock, Camera, ChevronDown, ChevronRight, ChevronUp, Clock, Footprints, Globe, Heart,
   MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -83,6 +83,8 @@ const T = {
     contributeMoreTitle: 'あなたの1枚も、この場所に',
     contributeMoreSub: '違う角度・季節・時間帯の写真が、魅力をもっと伝えます',
     map: 'マップ',
+    eventOngoing: '開催中',
+    eventUpcoming: '開催予定',
     overallRating: '総合評価',
     overallRatingCount: (n: number) => `総合評価（${n}）`,
     visited: '行った！',
@@ -121,6 +123,8 @@ const T = {
     contributeMoreTitle: 'Add your shot to this place',
     contributeMoreSub: 'A different angle, season or time of day shows off the vibe',
     map: 'Map',
+    eventOngoing: 'Now on',
+    eventUpcoming: 'Upcoming',
     overallRating: 'Overall',
     overallRatingCount: (n: number) => `Overall (${n})`,
     visited: 'Been here!',
@@ -416,6 +420,8 @@ export default function PlaceDetailPage() {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
   const [placeVisited, setPlaceVisited] = useState(0);
+  // この場所で開催中/開催予定の「期間限定イベント派生スポット」への導線
+  const [placeEvents, setPlaceEvents] = useState<Array<{ targetId: string; eventName: string; until: string | null; upcoming: boolean }>>([]);
   useEffect(() => {
     const pid = rec?.supabaseId ?? rec?.placeId;
     const name = rec?.title;
@@ -561,6 +567,18 @@ export default function PlaceDetailPage() {
       .catch(() => {});
     return () => { active = false; };
   }, [tagShinrei, rec?.placeId, rec?.supabaseId, rec?.title]);
+
+  // この場所で開催中/開催予定の「期間限定イベント派生スポット」を取得（元スポット→イベントへの導線）。
+  useEffect(() => {
+    const name = rec?.title?.trim();
+    if (!name || name.length < 2) { setPlaceEvents([]); return; }
+    let active = true;
+    apiFetch(`/api/place-events?placeName=${encodeURIComponent(name)}`)
+      .then(r => r.json())
+      .then(d => { if (active && d?.ok && Array.isArray(d.events)) setPlaceEvents(d.events.filter((e: { targetId?: string }) => !!e.targetId)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [rec?.title]);
 
   // 写真を提供（誰でも追加可・削除は管理者のみ）
   const handleAddSpotPhoto = async () => {
@@ -985,6 +1003,27 @@ export default function PlaceDetailPage() {
             ) : null}
           </View>
 
+          {/* この場所で開催中/開催予定の期間限定イベントへの導線（派生スポット「◯◯＠この場所」へ遷移） */}
+          {placeEvents.length > 0 && (
+            <View style={s.eventWrap}>
+              {placeEvents.map((ev, i) => (
+                <TouchableOpacity key={i} style={s.eventRow} activeOpacity={0.85}
+                  onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
+                  accessibilityRole="button" accessibilityLabel={ev.eventName}>
+                  <View style={s.eventIcon}><CalendarClock size={15} color="#fff" strokeWidth={2.2} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.eventName} numberOfLines={1}>{ev.eventName}</Text>
+                    <Text style={s.eventDate}>
+                      {ev.upcoming ? t.eventUpcoming : t.eventOngoing}
+                      {ev.until ? ` 〜${ev.until.split('-').slice(1).map(Number).join('/')}` : ''}
+                    </Text>
+                  </View>
+                  <ChevronRight size={16} color="#B7A0F0" strokeWidth={2.4} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* ── 総合評価バー（投稿詳細ページと統一: 総合評価 / 行った!）── */}
           <View style={s.voiceBar}>
             <View style={s.voiceCell}>
@@ -1347,6 +1386,20 @@ const s = StyleSheet.create({
     paddingHorizontal: 11, paddingVertical: 7,
   },
   mapPillText: { fontSize: 11, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+
+  // 開催中イベント導線（元スポット→派生イベント）
+  eventWrap: { gap: 8, marginBottom: 4 },
+  eventRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#F6F0FF', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#E7DBFB',
+  },
+  eventIcon: {
+    width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#9B6BFF',
+  },
+  eventName: { fontSize: 14, fontWeight: '800', color: '#3B2A63' },
+  eventDate: { fontSize: 11.5, fontWeight: '700', color: '#8B6BF2', marginTop: 1 },
 
   // 総合評価バー（投稿詳細ページと統一）
   voiceBar: {
