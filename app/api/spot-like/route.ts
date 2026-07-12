@@ -34,6 +34,30 @@ export async function POST(req: Request) {
 
   const action = String(body?.action ?? "");
   const deviceId = String(body?.deviceId ?? "").trim().slice(0, 100);
+
+  // ── liked-set: 複数投稿のうち「自分がいいね済み」のtargetIdだけ返す ──
+  //   フィードのカードで、自分が押した投稿にだけハートを出すために使う（他人のいいね数では点けない）。
+  if (action === "liked-set") {
+    if (!deviceId) return NextResponse.json({ ok: true, liked: [] });
+    if (!rateLimit(`spot-like-set:${clientIp(req)}`, 60, 60_000)) return NextResponse.json({ ok: true, liked: [] });
+    const targetIds = Array.isArray(body?.targetIds) ? body.targetIds.map((x: unknown) => String(x)).slice(0, 120) : [];
+    const idToTarget = new Map<string, string>();   // postId(UUID) → 元のtargetId(ml-付き含む)
+    for (const tid of targetIds) {
+      const pid = tid.startsWith("ml-") ? tid.slice(3) : tid;
+      if (UUID_RE.test(pid)) idToTarget.set(pid, tid);
+    }
+    if (idToTarget.size === 0) return NextResponse.json({ ok: true, liked: [] });
+    try {
+      const { data } = await db.from("spot_post_reactions")
+        .select("post_id").eq("device_id", deviceId).eq("rtype", "like").in("post_id", [...idToTarget.keys()]);
+      const liked = ((data ?? []) as Array<{ post_id?: string }>)
+        .map((r) => idToTarget.get(String(r.post_id ?? ""))).filter((x): x is string => !!x);
+      return NextResponse.json({ ok: true, liked });
+    } catch {
+      return NextResponse.json({ ok: true, liked: [] });
+    }
+  }
+
   const rawTarget = String(body?.targetId ?? "").trim();
   const isMoodlog = rawTarget.startsWith("ml-");
   const postId = isMoodlog ? rawTarget.slice(3) : rawTarget;

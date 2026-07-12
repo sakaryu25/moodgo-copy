@@ -39,9 +39,9 @@ function fmtCount(n: number, en: boolean): string {
   return n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + '万' : String(n);
 }
 
-type TileProps = { post: Post; ratio: number; index: number; lang: 'ja' | 'en'; onPress: () => void; onMenu: () => void };
+type TileProps = { post: Post; ratio: number; index: number; lang: 'ja' | 'en'; liked: boolean; onPress: () => void; onMenu: () => void };
 
-function ExploreTile({ post, ratio, index, lang, onPress, onMenu }: TileProps) {
+function ExploreTile({ post, ratio, index, lang, liked, onPress, onMenu }: TileProps) {
   const { Icon, color, bg, tag } = post.category;
   const label = (tag ? MOOD_LABEL[tag] : null) ?? FALLBACK_LABEL;
   const scale = useRef(new Animated.Value(1)).current;
@@ -84,7 +84,7 @@ function ExploreTile({ post, ratio, index, lang, onPress, onMenu }: TileProps) {
                     <Text style={s.locText} numberOfLines={1}>{loc}</Text>
                   </View>
                 )}
-                {likes > 0 && (
+                {liked && (
                   <View style={s.likeRow}>
                     <Heart size={9} color="#fff" fill="#fff" strokeWidth={0} />
                     <Text style={s.likeText}>{fmtCount(likes, lang === 'en')}</Text>
@@ -109,7 +109,7 @@ function ExploreTile({ post, ratio, index, lang, onPress, onMenu }: TileProps) {
                     <Text style={[s.locText, s.locTextDark]} numberOfLines={1}>{loc}</Text>
                   </View>
                 )}
-                {likes > 0 && (
+                {liked && (
                   <View style={s.likeRow}>
                     <Heart size={9} color="#E0559B" fill="#E0559B" strokeWidth={0} />
                     <Text style={[s.likeText, { color: '#8B88A6' }]}>{fmtCount(likes, lang === 'en')}</Text>
@@ -130,10 +130,11 @@ function ExploreTile({ post, ratio, index, lang, onPress, onMenu }: TileProps) {
 }
 
 export default function ExploreGrid({
-  posts, containerWidth, onPressPost, onMenuPost,
+  posts, containerWidth, likedIds, onPressPost, onMenuPost,
 }: {
   posts: Post[];
   containerWidth: number;
+  likedIds?: Set<string>;   // 自分がいいね済みの targetId(=post.id) 集合。ハートはこれに含まれる投稿だけ表示
   onPressPost: (p: Post) => void;
   onMenuPost: (p: Post) => void;
 }) {
@@ -167,6 +168,7 @@ export default function ExploreGrid({
               ratio={ratio}
               index={index}
               lang={lang}
+              liked={!!likedIds?.has(post.id)}
               onPress={() => onPressPost(post)}
               onMenu={() => onMenuPost(post)}
             />

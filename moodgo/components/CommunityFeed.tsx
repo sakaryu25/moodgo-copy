@@ -334,6 +334,26 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     () => (full && moodTag ? gridPosts.filter((p) => p.raw.auto_tags?.includes(moodTag)) : gridPosts),
     [full, moodTag, gridPosts],
   );
+
+  // 「自分がいいね済み」の投稿だけカードにハートを出すための集合（他人のいいね数では点けない）。
+  //   表示中の投稿ID(=いいねtargetId: ml-付き/生UUID)をまとめて問い合わせ、自分の押下分だけ返す。
+  const [likedSet, setLikedSet] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const ids = displayPosts.map((p) => p.id).filter(Boolean).slice(0, 120);
+    if (ids.length === 0) { setLikedSet(new Set()); return; }
+    let active = true;
+    (async () => {
+      try {
+        const deviceId = await getDeviceId();
+        const d = await apiFetch('/api/spot-like', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'liked-set', deviceId, targetIds: ids }),
+        }).then((r) => r.json());
+        if (active && d?.ok && Array.isArray(d.liked)) setLikedSet(new Set(d.liked.map(String)));
+      } catch { /* 取得失敗時はハート無しでOK */ }
+    })();
+    return () => { active = false; };
+  }, [displayPosts]);
   // 気分絞り込みだけで0件（投稿自体はある）→ 専用の空メッセージ
   const moodEmpty = full && !!moodTag && gridPosts.length > 0 && displayPosts.length === 0;
   // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
@@ -388,6 +408,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
               <ExploreGrid
                 posts={displayPosts}
                 containerWidth={width}
+                likedIds={likedSet}
                 onPressPost={(p) => openSpot(p.raw as FeedItem)}
                 onMenuPost={(p) => setReportTarget(p.raw as FeedItem)}
               />
