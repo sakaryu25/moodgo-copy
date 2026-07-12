@@ -649,21 +649,33 @@ export default function SettingsView({
                 <ChevronRight size={15} color="#A78BFA" strokeWidth={2} />
               </TouchableOpacity>
 
-              {/* 在住地の表示有無（自分の投稿ページの「◯◯在住」）*/}
-              <View style={s.togglePrefRow}>
+              {/* 在住地の表示有無（自分の投稿ページの「◯◯在住」）。
+                  行全体をタップで切替＝「押せる」ことが分かりやすい。スイッチは状態表示のみ。 */}
+              <TouchableOpacity style={s.togglePrefRow} activeOpacity={0.6}
+                onPress={() => setShowPrefInput((v) => !v)}
+                accessibilityRole="switch" accessibilityState={{ checked: showPrefInput }}
+                accessibilityLabel={lang === 'ja' ? '在住地を表示' : 'Show prefecture'}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.togglePrefLabel}>{lang === 'ja' ? '在住地を表示' : 'Show prefecture'}</Text>
                   <Text style={s.togglePrefHint}>
                     {lang === 'ja' ? '自分の投稿ページに「◯◯在住」を表示します' : 'Shows "Lives in ..." on your posts page'}
                   </Text>
                 </View>
-                <Switch
-                  value={showPrefInput}
-                  onValueChange={setShowPrefInput}
-                  trackColor={{ false: '#E4E0EE', true: '#C4B5FD' }}
-                  thumbColor={showPrefInput ? PURPLE : '#f4f3f4'}
-                />
-              </View>
+                {/* 状態バッジ＋スイッチ（タップは行全体で受けるので switch は非interactive）*/}
+                <View style={[s.toggleState, showPrefInput ? s.toggleStateOn : s.toggleStateOff]}>
+                  <Text style={[s.toggleStateText, showPrefInput ? s.toggleStateTextOn : s.toggleStateTextOff]}>
+                    {showPrefInput ? 'ON' : 'OFF'}
+                  </Text>
+                </View>
+                <View pointerEvents="none">
+                  <Switch
+                    value={showPrefInput}
+                    trackColor={{ false: '#E4E0EE', true: PURPLE }}
+                    thumbColor="#fff"
+                    ios_backgroundColor="#E4E0EE"
+                  />
+                </View>
+              </TouchableOpacity>
 
               {/* 一言メッセージ */}
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '一言メッセージ' : 'Bio'}</Text>
@@ -992,9 +1004,15 @@ const s = StyleSheet.create({
   },
   prefBtnText:       { flex: 1, fontSize: 14, color: '#C4B5FD', fontWeight: '500' },
   togglePrefRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16,
-    paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(155,107,255,0.1)',
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16,
+    paddingTop: 14, paddingBottom: 4, borderTopWidth: 1, borderTopColor: 'rgba(155,107,255,0.1)',
   },
+  toggleState: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, minWidth: 38, alignItems: 'center' },
+  toggleStateOn: { backgroundColor: '#EDE9FE' },
+  toggleStateOff: { backgroundColor: '#F1F0F5' },
+  toggleStateText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  toggleStateTextOn: { color: '#7C3AED' },
+  toggleStateTextOff: { color: '#9CA3AF' },
   togglePrefLabel: { fontSize: 13.5, fontWeight: '700', color: '#3B2A63' },
   togglePrefHint: { fontSize: 11, color: '#8B7BB8', marginTop: 2 },
   prefBtnTextFilled: { color: '#1E0753', fontWeight: '700' },
