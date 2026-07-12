@@ -562,7 +562,7 @@ export default function ProfileTab() {
           {/* 統計 5列（投稿 / 行った / フォロー中 / フォロワー / いいね）: フル幅 */}
           <View style={s.statsRow}>
             <TouchableOpacity style={s.statCol} activeOpacity={0.7}
-              onPress={() => setSubView('posts')}
+              onPress={() => router.push('/my-posts')}
               accessibilityRole="button" accessibilityLabel={t.postsA11y}>
               <Text style={s.statNum}>{posts.length}</Text>
               <Text style={s.statLabel}>{t.statPosts}</Text>
