@@ -59,6 +59,15 @@ const T = {
     periodHint: '期間限定スポットの場合に設定。空欄なら常時公開です。',
     dateFrom: '開始日',
     dateUntil: '終了日',
+    // 既存スポットへの「期間限定イベント/ポップアップ」投稿
+    eventLabel: '期間限定イベント・ポップアップ（任意）',
+    eventHint: 'この場所で期間限定の催し（コラボ/ポップアップ等）があれば、開催期間を設定してください。',
+    eventNameLabel: 'イベント名',
+    eventNamePh: '例: ちいかわコラボの水族館',
+    eventNamePreview: (name: string, base: string) => `「${name}＠${base}」として新しいスポットになります（写真もそちらだけに付き、元の場所には入りません）。`,
+    tEventNameTitle: 'イベント名を入力してください',
+    tEventNameSub: '期間を設定した場合、何の期間限定かの名前が必須です',
+    eventEndNote: '※ 開催期間が過ぎると、この期間限定スポットは自動で削除されます。',
     ratingLabel: 'おすすめ度（任意）',
     addrLabel: '場所・住所 ',
     addrPh: '住所・エリア名を入力（例: 神奈川県横浜市…）',
@@ -161,6 +170,14 @@ const T = {
     periodHint: 'Set this for limited-time spots. Leave blank for always available.',
     dateFrom: 'Start date',
     dateUntil: 'End date',
+    eventLabel: 'Limited-time event / popup (optional)',
+    eventHint: 'If there is a limited-time event (collab/popup) at this place, set its dates.',
+    eventNameLabel: 'Event name',
+    eventNamePh: 'e.g. Chiikawa Collab Aquarium',
+    eventNamePreview: (name: string, base: string) => `Will be created as a new spot "${name}＠${base}" (photos go only there, not to the original place).`,
+    tEventNameTitle: 'Please enter an event name',
+    tEventNameSub: 'When you set dates, a name for the limited event is required',
+    eventEndNote: '※ This limited-time spot is deleted automatically once the event period ends.',
     ratingLabel: 'Rating (optional)',
     addrLabel: 'Location / address ',
     addrPh: 'Enter address or area (e.g. Yokohama, Kanagawa…)',
@@ -279,6 +296,7 @@ export default function PostScreen() {
   const [closeTime, setCloseTime] = useState('');  // 閉店時刻 HH:MM
   const [is24h, setIs24h] = useState(false);       // 24時間営業
   const [placeEditable, setPlaceEditable] = useState(false);  // 編集時: 自分で作った穴場なら場所情報も編集可
+  const [eventName, setEventName] = useState('');  // 期間限定イベント名（既存スポットに期間を設定した時のみ必須）
   const [licenseOk, setLicenseOk] = useState(false);
   // 公開範囲: false=名前を出して公開(デフォルト・プロフィール/フォロー対象) / true=匿名で公開
   const [vis, setVis] = useState<'public' | 'anon' | 'private'>('public');   // 公開範囲: 名前/匿名/非公開
@@ -565,6 +583,10 @@ export default function PostScreen() {
     // 写真は1枚以上必須（最大3枚は据え置き）。画像中心のフィードの主役なので空投稿を防ぐ。
     if (images.length === 0) { showToast(t.tPhotoTitle, t.tPhotoSub); return; }
     if (!licenseOk) { showToast(t.tLicenseTitle, t.tLicenseSub); return; }
+    // 期間限定イベント派生スポット: 既存スポットに期間を設定したら「イベント名＠元スポット」を新スポット化。
+    //   期間を入れたのにイベント名が空なら必須エラー。
+    const isEventPost = isExisting && !editMode && !!(availFrom.trim() || availUntil.trim());
+    if (isEventPost && !eventName.trim()) { showToast(t.tEventNameTitle, t.tEventNameSub); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
@@ -595,6 +617,8 @@ export default function PostScreen() {
       // 画像上限なし対応: create は1枚だけ送り（Vercelのボディ上限回避）、残りは add-photo で1枚ずつ追記。
       const first = valid[0];
       const rest = valid.slice(1);
+      // 期間限定イベントは「イベント名＠元スポット」を新スポットとして作る（元の場所は無変更・写真も分離）。
+      const derivedName = isEventPost ? `${eventName.trim()}＠${spotName}`.slice(0, 190) : spotName;
       // 投稿は全て spot-posts に一本化。新スポット(placeId無し)はAPI側でplacesに仮登録され、admin承認で検索に出る。
       // ⚠ 価格/おすすめ度は独立フィールドで送る（captionへの【目安価格】【おすすめ度】埋め込みは廃止＝
       //    検索カードの説明が汚れない・除去処理も不要）。
@@ -602,7 +626,10 @@ export default function PostScreen() {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
         body: JSON.stringify({
           action: 'create', deviceId, posterName,
-          placeId: existingPlaceId || undefined, placeName: spotName, address,
+          // イベント: placeId無し(=新スポット化)＋parentPlaceIdで元スポットの位置を継承。写真は新スポットに紐づく。
+          placeId: isEventPost ? undefined : (existingPlaceId || undefined),
+          parentPlaceId: isEventPost ? (existingPlaceId || undefined) : undefined,
+          placeName: derivedName, address,
           lat: lat ?? undefined, lng: lng ?? undefined,
           // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
           caption: caption.trim(), moodTags, visibility: visServer,
@@ -611,11 +638,12 @@ export default function PostScreen() {
           priceNote: priceNote.trim() || undefined,
           rating: rating > 0 ? rating : undefined,
           contact: contact.trim() || undefined,
-          // 新スポット(穴場)の詳細。既存スポットへの投稿(moodログ)では送らない＝既存placeを上書きしない
-          openingHours: !isExisting ? (composedHours || undefined) : undefined,
+          // 新スポット(穴場)＝営業時間/最寄駅/期間を送る。既存スポットへのmoodログでは送らない(既存placeを上書きしない)。
+          //   イベント派生スポットは新スポット扱いなので営業時間・期間を送る。
+          openingHours: (!isExisting || isEventPost) ? (composedHours || undefined) : undefined,
           station: !isExisting ? (station.trim() || undefined) : undefined,
-          availableFrom: !isExisting ? (availFrom.trim() || undefined) : undefined,
-          availableUntil: !isExisting ? (availUntil.trim() || undefined) : undefined,
+          availableFrom: (!isExisting || isEventPost) ? (availFrom.trim() || undefined) : undefined,
+          availableUntil: (!isExisting || isEventPost) ? (availUntil.trim() || undefined) : undefined,
         }),
       });
       const d = await res.json();
@@ -795,6 +823,36 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* ⑥.5 期間限定イベント・ポップアップ（既存スポットへの投稿時のみ）。
+              期間を設定すると「イベント名＠元スポット」を新スポット化＝写真も分離・期限で自動削除。 */}
+          {isExisting && !editMode && (
+            <>
+              <Text style={s.label}>{t.eventLabel}</Text>
+              <Text style={s.hint}>{t.eventHint}</Text>
+              <View style={s.periodRow}>
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('from')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availFrom && s.dateBtnPh]} numberOfLines={1}>{availFrom || t.dateFrom}</Text>
+                  {availFrom ? <TouchableOpacity onPress={() => setAvailFrom('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
+                <Text style={s.periodTilde}>〜</Text>
+                <TouchableOpacity style={[s.input, s.dateBtn, { flex: 1, minHeight: 48 }]} onPress={() => openPicker('until')} activeOpacity={0.8}>
+                  <Calendar size={15} color="#9B6BFF" strokeWidth={2.2} />
+                  <Text style={[s.dateBtnText, !availUntil && s.dateBtnPh]} numberOfLines={1}>{availUntil || t.dateUntil}</Text>
+                  {availUntil ? <TouchableOpacity onPress={() => setAvailUntil('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
+                </TouchableOpacity>
+              </View>
+              {(availFrom || availUntil) ? (
+                <>
+                  <Text style={[s.label, { marginTop: 14 }]}>{t.eventNameLabel}<Text style={s.req}>*</Text></Text>
+                  <TextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.eventNamePh} placeholderTextColor="#B9ABD2" maxLength={60} />
+                  {eventName.trim() ? <Text style={s.note}>{t.eventNamePreview(eventName.trim(), spotName)}</Text> : null}
+                  <Text style={[s.note, { color: '#C2410C' }]}>{t.eventEndNote}</Text>
+                </>
+              ) : null}
+            </>
+          )}
 
           {/* ⑦ 場所・住所（新スポットのみ必須: 現在地 or 住所・編集では非表示） */}
           {!isExisting && (!editMode || placeEditable) && (

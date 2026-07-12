@@ -356,6 +356,9 @@ export async function POST(req: Request) {
     };
     const newAvailFrom = dateOrNull(body?.availableFrom);
     const newAvailUntil = dateOrNull(body?.availableUntil);
+    // 限定イベント派生スポット: 「イベント名＠元スポット」を元スポットと同じ場所に作る際、
+    //   位置(住所/座標)を継承する親スポットID。元データ(親)は一切変更しない。
+    const parentPlaceId = body?.parentPlaceId ? String(body.parentPlaceId).trim().slice(0, 200) : null;
 
     const images: string[] = Array.isArray(body?.images) ? body.images.filter((s: unknown) => typeof s === "string").slice(0, 3) : [];
     // フィード用サムネイル（クライアントが400px縮小して送る・任意・imagesと同順）
@@ -397,10 +400,21 @@ export async function POST(req: Request) {
     // 新スポット投稿(place_id無し)は places に仮登録(is_active=false=承認待ち)。admin承認で検索に出る＝穴場の役割を吸収。
     let effectivePlaceId = placeId;
     if (!placeId && placeName) {
+      // 限定イベント派生スポットは親スポットの位置を継承（クライアントは座標を持たないため）。
+      let insLat = newLat, insLng = newLng, insAddr = newAddress;
+      if (parentPlaceId) {
+        const { data: pp } = await db.from("places").select("address, lat, lng").eq("id", parentPlaceId).maybeSingle();
+        const p2 = pp as { address?: string | null; lat?: number | null; lng?: number | null } | null;
+        if (p2) {
+          if (insLat == null) insLat = p2.lat ?? null;
+          if (insLng == null) insLng = p2.lng ?? null;
+          if (!insAddr) insAddr = p2.address ?? null;
+        }
+      }
       const { data: place } = await db.from("places").insert({
-        name: placeName, address: newAddress || "日本", tags: moodTags,
+        name: placeName, address: insAddr || "日本", tags: moodTags,
         area: null, nearest_station: newStation, source_type: "user", is_active: false,
-        lat: newLat, lng: newLng, open_hours: newOpenHours,
+        lat: insLat, lng: insLng, open_hours: newOpenHours,
       }).select("id").single();
       if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
       // 期間限定(公開期間): available_from/until 列が未作成でも投稿は成功させる（列があれば保存）。

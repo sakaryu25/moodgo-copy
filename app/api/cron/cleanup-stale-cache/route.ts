@@ -94,9 +94,50 @@ export async function GET(req: NextRequest) {
     console.error("[cron/cleanup-stale-cache] api_cache 掃除エラー", e);
   }
 
+  // ── 期間限定イベント派生スポット: 開催期間(available_until)が過ぎたものを完全削除 ──
+  //   「イベント名＠元スポット」を新スポット化したもの(source_type=user・name に全角＠を含む)。
+  //   親(元スポット)は別レコードなので消えない。写真(ストレージ含む)・投稿・コメント・評価・
+  //   リアクションごと丸ごとハード削除する。列(available_until)未適用環境では try/catch でスキップ。
+  let eventsDeleted = 0;
+  try {
+    const today = startedAt.slice(0, 10);   // YYYY-MM-DD（available_until は YYYY-MM-DD 保存）
+    const { data: expired, error: exErr } = await supabase
+      .from("places")
+      .select("id")
+      .eq("source_type", "user")
+      .like("name", "%＠%")
+      .not("available_until", "is", null)
+      .lt("available_until", today);
+    if (exErr) throw exErr;
+    const ids = ((expired ?? []) as Array<{ id: string }>).map((r) => String(r.id));
+    if (ids.length > 0) {
+      // 写真ストレージ（本体＋_thumb）を先に削除
+      const { data: phs } = await supabase.from("spot_photos").select("storage_path").in("place_id", ids);
+      const paths = ((phs ?? []) as Array<{ storage_path?: string | null }>).map((p) => p.storage_path).filter(Boolean) as string[];
+      if (paths.length > 0) {
+        const allPaths = paths.flatMap((p) => [p, p.replace(/\.jpg$/, "_thumb.jpg")]);
+        await supabase.storage.from("spot-photos").remove(allPaths).then(() => {}, () => {});
+      }
+      // 派生スポットに紐づく投稿→そのリアクション/コメントを削除
+      const { data: posts } = await supabase.from("spot_posts").select("id").in("place_id", ids);
+      const postIds = ((posts ?? []) as Array<{ id: string }>).map((p) => String(p.id));
+      if (postIds.length > 0) {
+        await supabase.from("spot_post_reactions").delete().in("post_id", postIds).then(() => {}, () => {});
+        await supabase.from("spot_comments").delete().in("post_id", postIds).then(() => {}, () => {});
+      }
+      await supabase.from("spot_photos").delete().in("place_id", ids).then(() => {}, () => {});
+      await supabase.from("spot_posts").delete().in("place_id", ids).then(() => {}, () => {});
+      await supabase.from("spot_ratings").delete().in("place_id", ids).then(() => {}, () => {});
+      const { data: del } = await supabase.from("places").delete().in("id", ids).select("id");
+      eventsDeleted = del?.length ?? ids.length;
+    }
+  } catch (e) {
+    console.error("[cron/cleanup-stale-cache] 期間限定イベント掃除エラー", e);
+  }
+
   const finishedAt = new Date().toISOString();
   console.log(
-    `[cron/cleanup-stale-cache] 完了: rating=${ratingCleared}, open_hours=${hoursCleared}, api_cache=${cacheCleared}`,
+    `[cron/cleanup-stale-cache] 完了: rating=${ratingCleared}, open_hours=${hoursCleared}, api_cache=${cacheCleared}, events=${eventsDeleted}`,
   );
 
   return NextResponse.json({
@@ -108,5 +149,6 @@ export async function GET(req: NextRequest) {
     ratingCleared,
     hoursCleared,
     cacheCleared,
+    eventsDeleted,
   });
 }
