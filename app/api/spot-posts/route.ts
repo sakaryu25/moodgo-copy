@@ -411,9 +411,14 @@ export async function POST(req: Request) {
           if (!insAddr) insAddr = p2.address ?? null;
         }
       }
+      // 通常の新スポットは admin 承認まで is_active=false。
+      // 期間限定イベント派生スポット(parentPlaceId＋終了日あり)は承認なしで期間中だけ検索に出す＝is_active=true。
+      //   recommend が is_active=true かつ available_from<=今日<=available_until のみ採用し、
+      //   期間が過ぎたら cron/cleanup-stale-cache が完全削除する＝自己完結（永続化しない）。
+      const eventActive = !!(parentPlaceId && newAvailUntil);
       const { data: place } = await db.from("places").insert({
         name: placeName, address: insAddr || "日本", tags: moodTags,
-        area: null, nearest_station: newStation, source_type: "user", is_active: false,
+        area: null, nearest_station: newStation, source_type: "user", is_active: eventActive,
         lat: insLat, lng: insLng, open_hours: newOpenHours,
       }).select("id").single();
       if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;

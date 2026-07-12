@@ -67,7 +67,9 @@ const T = {
     eventNamePreview: (name: string, base: string) => `「${name}＠${base}」として新しいスポットになります（写真もそちらだけに付き、元の場所には入りません）。`,
     tEventNameTitle: 'イベント名を入力してください',
     tEventNameSub: '期間を設定した場合、何の期間限定かの名前が必須です',
-    eventEndNote: '※ 開催期間が過ぎると、この期間限定スポットは自動で削除されます。',
+    tEventEndTitle: '終了日を入れてください',
+    tEventEndSub: '期間限定イベントには終了日が必要です（終了日を過ぎると自動で削除されます）',
+    eventEndNote: '※ 開催期間中は検索にも表示され、終了日を過ぎるとこの期間限定スポットは自動で削除されます。',
     ratingLabel: 'おすすめ度（任意）',
     addrLabel: '場所・住所 ',
     addrPh: '住所・エリア名を入力（例: 神奈川県横浜市…）',
@@ -177,7 +179,9 @@ const T = {
     eventNamePreview: (name: string, base: string) => `Will be created as a new spot "${name}＠${base}" (photos go only there, not to the original place).`,
     tEventNameTitle: 'Please enter an event name',
     tEventNameSub: 'When you set dates, a name for the limited event is required',
-    eventEndNote: '※ This limited-time spot is deleted automatically once the event period ends.',
+    tEventEndTitle: 'Please set an end date',
+    tEventEndSub: 'A limited-time event needs an end date (it is deleted automatically after it ends)',
+    eventEndNote: '※ Shown in search during the event, and deleted automatically once the end date passes.',
     ratingLabel: 'Rating (optional)',
     addrLabel: 'Location / address ',
     addrPh: 'Enter address or area (e.g. Yokohama, Kanagawa…)',
@@ -587,6 +591,7 @@ export default function PostScreen() {
     //   期間を入れたのにイベント名が空なら必須エラー。
     const isEventPost = isExisting && !editMode && !!(availFrom.trim() || availUntil.trim());
     if (isEventPost && !eventName.trim()) { showToast(t.tEventNameTitle, t.tEventNameSub); return; }
+    if (isEventPost && !availUntil.trim()) { showToast(t.tEventEndTitle, t.tEventEndSub); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
