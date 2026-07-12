@@ -22,6 +22,7 @@ import { useSettings, saveProfileExtras, saveNickname, saveIconUrl, saveHandle }
 import { apiFetch } from '@/lib/api';
 import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
 import AppBackground from './AppBackground';
+import AppActionSheet from './AppActionSheet';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
 import PuniPressable from './PuniPressable';
 
@@ -376,18 +377,12 @@ export default function SettingsView({
     nameInput.trim() !== initialName.trim() ||
     (!!handleInput.trim() && handleInput.trim() !== savedHandle);
 
-  // 完了ボタン: 未保存の変更があれば「保存しますか？」を出す（保存し忘れて閉じるのを防ぐ）
+  // 完了ボタン: 未保存の変更があれば「保存しますか？」を出す（保存し忘れて閉じるのを防ぐ）。
+  //   ダイアログはアプリ共通の AppActionSheet（ネイティブAlertの置き換え）。
+  const [unsavedConfirm, setUnsavedConfirm] = useState(false);
   const handleClose = () => {
     if (!isDirty) { onClose(); return; }
-    Alert.alert(
-      lang === 'ja' ? '変更を保存しますか？' : 'Save changes?',
-      lang === 'ja' ? '保存していない変更があります。' : 'You have unsaved changes.',
-      [
-        { text: lang === 'ja' ? '保存しない' : "Don't save", style: 'destructive', onPress: onClose },
-        { text: lang === 'ja' ? 'キャンセル' : 'Cancel', style: 'cancel' },
-        { text: lang === 'ja' ? '保存' : 'Save', onPress: () => handleSave(true) },
-      ],
-    );
+    setUnsavedConfirm(true);
   };
 
   const handleClearHistory = () => {
@@ -903,6 +898,18 @@ export default function SettingsView({
             </>)}
           </ScrollView>
         )}
+
+        {/* 未保存の変更確認（アプリ共通のアクションシート・pageSheet Modal内でも安全なオーバーレイ実装）*/}
+        <AppActionSheet
+          visible={unsavedConfirm}
+          title={lang === 'ja' ? '変更を保存しますか？' : 'Save changes?'}
+          message={lang === 'ja' ? '保存していない変更があります。' : 'You have unsaved changes.'}
+          onClose={() => setUnsavedConfirm(false)}
+          options={[
+            { label: lang === 'ja' ? '保存する' : 'Save', onPress: () => handleSave(true) },
+            { label: lang === 'ja' ? '保存しない' : "Don't save", destructive: true, onPress: onClose },
+          ]}
+        />
       </View>
     </Modal>
   );

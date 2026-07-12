@@ -14,7 +14,7 @@ import {
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Linking, NativeScrollEvent, NativeSyntheticEvent,
+  ActivityIndicator, Linking, NativeScrollEvent, NativeSyntheticEvent,
   Share, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,7 @@ import { setSelectedPlace } from '@/lib/selectedPlace';
 import { markFeedStale } from '@/lib/feedRefresh';
 import PhotoViewer from '@/components/PhotoViewer';
 import ReportModal from '@/components/ReportModal';
+import AppActionSheet from '@/components/AppActionSheet';
 import { blockUser } from '@/lib/blockStore';
 
 const PINK = '#F56CB3';
@@ -194,6 +195,8 @@ export default function CommunitySpotScreen() {
   const [isMine, setIsMine] = useState(false);   // 自分の投稿なら編集/削除を出す（moodログのみ）
   const [viewerOpen, setViewerOpen] = useState(false);   // 写真タップで全画面ビューア
   const [reportOpen, setReportOpen] = useState(false);   // 通報モーダル（全画面共通のReportModal）
+  const [menuOpen, setMenuOpen] = useState(false);       // 右上「…」メニュー（アプリ共通のAppActionSheet）
+  const [deleteConfirm, setDeleteConfirm] = useState(false);   // 投稿削除の確認シート
   // 総合評価（この場所のみんなの★の平均）。SpotRatingが取得→onAvgで受け取りバーに表示
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
@@ -328,45 +331,25 @@ export default function CommunitySpotScreen() {
     if (!spot) return;
     router.push({ pathname: '/post', params: { editId: spot.id } });
   };
-  // 自分の投稿を削除（確認 → サーバー削除 → 戻る）
-  const onDelete = () => {
+  // 自分の投稿を削除（確認シート → サーバー削除 → 戻る）。確認はアプリ共通のAppActionSheet。
+  const onDelete = () => { if (spot) setDeleteConfirm(true); };
+  const doDelete = async () => {
     if (!spot) return;
-    Alert.alert(t.deleteConfirmTitle, t.deleteConfirmMsg, [
-      { text: t.cancel, style: 'cancel' },
-      {
-        text: t.deleteAction, style: 'destructive',
-        onPress: async () => {
-          try {
-            const deviceId = await getDeviceId();
-            const d = await apiFetch('/api/spot-posts', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'delete', postId: spot.id, deviceId }),
-            }).then((r) => r.json());
-            if (d?.ok) { markFeedStale(); showToast(t.deleted); router.back(); }   // 削除をフィード/プロフィールに即反映
-            else showToast(t.deleteFailed, d?.error ?? t.deleteFailedRetry);
-          } catch { showToast(t.deleteFailed, t.deleteFailedNet); }
-        },
-      },
-    ]);
+    try {
+      const deviceId = await getDeviceId();
+      const d = await apiFetch('/api/spot-posts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', postId: spot.id, deviceId }),
+      }).then((r) => r.json());
+      if (d?.ok) { markFeedStale(); showToast(t.deleted); router.back(); }   // 削除をフィード/プロフィールに即反映
+      else showToast(t.deleteFailed, d?.error ?? t.deleteFailedRetry);
+    } catch { showToast(t.deleteFailed, t.deleteFailedNet); }
   };
-  // 右上「…」メニュー: 自分の投稿は 編集/削除/共有、他人は 共有/通報
+  // 右上「…」メニュー: 自分の投稿は 編集/削除/共有、他人は 共有/通報（アプリ共通のAppActionSheet）
   const openMenu = () => {
     if (!spot) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const opts = isMine
-      ? [
-          { text: t.editPost, onPress: onEdit },
-          { text: t.deletePost, style: 'destructive' as const, onPress: onDelete },
-          { text: t.share, onPress: onShare },
-          { text: t.cancel, style: 'cancel' as const },
-        ]
-      : [
-          { text: t.share, onPress: onShare },
-          // 通報は全画面共通のReportModal（理由選択つき・投稿は自動非表示カウントも効く）に統一
-          { text: t.report, style: 'destructive' as const, onPress: () => setReportOpen(true) },
-          { text: t.cancel, style: 'cancel' as const },
-        ];
-    Alert.alert(t.menu, undefined, opts);
+    setMenuOpen(true);
   };
 
   if (loading) {
@@ -684,6 +667,32 @@ export default function CommunitySpotScreen() {
         posterId={!isMine ? (spot.posterId ?? undefined) : undefined}
         onBlockUser={(pid) => { blockUser(pid); router.back(); }}
         onClose={() => setReportOpen(false)}
+      />
+
+      {/* 右上「…」メニュー（アプリ共通のアクションシート・常時マウント+visibleトグル）*/}
+      <AppActionSheet
+        visible={menuOpen}
+        title={t.menu}
+        onClose={() => setMenuOpen(false)}
+        options={isMine
+          ? [
+              { label: t.editPost, onPress: onEdit },
+              { label: t.deletePost, destructive: true, onPress: onDelete },
+              { label: t.share, onPress: onShare },
+            ]
+          : [
+              { label: t.share, onPress: onShare },
+              { label: t.report, destructive: true, onPress: () => setReportOpen(true) },
+            ]}
+      />
+
+      {/* 投稿削除の確認（アプリ共通のアクションシート・常時マウント）*/}
+      <AppActionSheet
+        visible={deleteConfirm}
+        title={t.deleteConfirmTitle}
+        message={t.deleteConfirmMsg}
+        onClose={() => setDeleteConfirm(false)}
+        options={[{ label: t.deleteAction, destructive: true, onPress: doDelete }]}
       />
 
       {/* いいね（右下フローティング）: この投稿への「いいね」専用（数字=みんなのいいね数）。
