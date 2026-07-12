@@ -298,10 +298,19 @@ export default function SettingsView({
     saveNickname(name);   // ストア＋AsyncStorageへ即時反映（プロフィールの名前が即更新）
     if (name) {
       getDeviceId()
-        .then(id => apiFetch('/api/mood-groups', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'set_nickname', deviceId: id, nickname: name }),
-        }))
+        .then(id => Promise.all([
+          // トークのニックネーム（参加中グループのメンバー名）も同期
+          apiFetch('/api/mood-groups', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'set_nickname', deviceId: id, nickname: name }),
+          }),
+          // 表示名を自分の全投稿(poster_name)へ反映＋アイコン版数をbump＝他人のフィード/投稿詳細/
+          //   プロフィールでも名前・アイコンが即最新化される（denormalizeされた過去投稿を更新）。
+          apiFetch('/api/user-handle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'sync-profile', deviceId: id, nickname: name }),
+          }),
+        ]))
         .catch(() => {});
     }
     // ユーザーIDの確定（変更がある時だけ）。一意性はサーバー(user_handles PK)が最終保証＝

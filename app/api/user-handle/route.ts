@@ -106,6 +106,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, saved: Array.isArray(data) && data.length > 0 });
     }
 
+    // ── 表示名(nickname)を自分の全投稿へ反映＋プロフィール版数(updated_at)を更新 ──────
+    //   名前は投稿作成時に poster_name として各行へフリーズ(denormalize)されるため、編集しても
+    //   他人が見るフィード/投稿詳細/プロフィールに反映されない。ここで自分の投稿の poster_name を
+    //   一括更新し（＝実データ側を最新化）、user_handles.updated_at も進めてアイコン版数を上げる。
+    //   ⚠device_id一致（＝本人）の行だけ更新＝他人の投稿には触れない。匿名投稿は名前を出さない設計
+    //   なので poster_name を書き込まない（読み側の取りこぼしがあっても名前が漏れないように）。
+    if (action === "sync-profile") {
+      const deviceId = String(body?.deviceId ?? "").trim();
+      if (!deviceId) return NextResponse.json({ ok: false, error: "deviceId必須" }, { status: 400 });
+      const nickname = String(body?.nickname ?? "").trim().slice(0, 40);
+      let suggestions = 0, posts = 0;
+      try {
+        const r1 = await db.from("suggestions").update({ poster_name: nickname }).eq("device_id", deviceId).select("id");
+        suggestions = Array.isArray(r1.data) ? r1.data.length : 0;
+      } catch { /* 列/テーブル未適用は無視 */ }
+      try {
+        // 匿名(spot_public_anonymous)以外＝公開/非公開/グループ。visibilityがNULLの行も含める。
+        const r2 = await db.from("spot_posts").update({ poster_name: nickname })
+          .eq("device_id", deviceId).or("visibility.is.null,visibility.neq.spot_public_anonymous").select("id");
+        posts = Array.isArray(r2.data) ? r2.data.length : 0;
+      } catch { /* noop */ }
+      // アイコン/名前の版数を進める（他人の画面のアイコン ?v= が変わり即再取得される）
+      try { await db.from("user_handles").update({ updated_at: new Date().toISOString() }).eq("device_id", deviceId); } catch { /* 行なしは無視 */ }
+      return NextResponse.json({ ok: true, suggestions, posts });
+    }
+
     // ── 空きチェック（入力中のリアルタイム判定用）───────────────────────────
     if (action === "check") {
       const handle = normalize(body?.handle);

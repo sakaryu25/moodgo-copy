@@ -29,6 +29,11 @@ export async function POST(req: Request) {
       .upload(path, Buffer.from(imageBase64, "base64"), { contentType: "image/jpeg", upsert: true });
     if (error) throw error;
 
+    // 他人の画面でもアイコンが即差し替わるよう、プロフィール版数(updated_at)を進める。
+    //   フィード/投稿詳細/プロフィールのアイコンURLは この updated_at を ?v= に使うため、
+    //   ここを更新すると次回取得で新URL→CDN再取得となる（行が無い＝ID未設定なら無視）。
+    try { await supabase.from("user_handles").update({ updated_at: new Date().toISOString() }).eq("device_id", deviceId); } catch { /* noop */ }
+
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
     return NextResponse.json({ ok: true, icon: `${pub.publicUrl}?v=${Date.now()}` });
   } catch (e) {

@@ -129,13 +129,13 @@ export async function POST(req: Request) {
       dev = String(newest.device_id);
       name = (newest.poster_name as string | null) ?? null;
       handle = (await handlesByDevice(db, [dev])).get(dev) ?? null;
-      const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
-      icon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
-      // 一言メッセージ(bio)＋種別(account_type)。列未適用[42703]は基本列で再取得し、無ければ既定のまま。
+      // 一言(bio)＋種別(account_type)＋アイコン版数(updated_at)をまとめて取得。列未適用[42703]は基本列で再取得。
+      //   名前は poster_name の一括更新(sync-profile)で最新化されるため newest.poster_name で最新。
+      let iconVer = String(Math.floor(Date.now() / 3_600_000));   // 既定=時間バケット（列未適用フォールバック）
       try {
-        type UH = { bio?: string; account_type?: string };
+        type UH = { bio?: string; account_type?: string; updated_at?: string };
         let uhData: UH | null = null;
-        const full = await db.from("user_handles").select("bio, account_type").eq("device_id", dev).maybeSingle();
+        const full = await db.from("user_handles").select("bio, account_type, updated_at").eq("device_id", dev).maybeSingle();
         if (full.error && (full.error as { code?: string }).code === "42703") {
           const basic = await db.from("user_handles").select("bio").eq("device_id", dev).maybeSingle();
           uhData = (basic.data ?? null) as UH | null;
@@ -144,7 +144,11 @@ export async function POST(req: Request) {
         if (typeof b === "string" && b.trim()) bio = b.trim().slice(0, 80);
         const at = uhData?.account_type;
         if (at === "store" || at === "official") accountType = at;
+        const ms = uhData?.updated_at ? Date.parse(uhData.updated_at) : NaN;
+        if (Number.isFinite(ms)) iconVer = String(ms);
       } catch { /* 未適用は既定のまま */ }
+      const { data: pub } = db.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
+      icon = `${pub.publicUrl}?v=${iconVer}`;
     }
 
     // ── 行ったスポット（この人が「行った！」を押した場所＝勲章バッジ用）──

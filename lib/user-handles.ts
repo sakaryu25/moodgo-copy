@@ -37,6 +37,28 @@ export async function accountTypesByDevice(
   return map;
 }
 
+/** device_id[] → Map<device_id, iconVer>（=user_handles.updated_at のepoch文字列）。
+ *  名前/アイコン更新時に updated_at を bump するので、これをアイコンURLの ?v= に使うと
+ *  「変更した時だけ」URLが変わり、他人の画面でも即再取得される（時間バケットの1hラグを解消）。
+ *  列/テーブル未適用・行なしは空Map＝呼び出し側は時間バケットにフォールバック。 */
+export async function iconVersionsByDevice(
+  db: SupabaseClient, deviceIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const ids = [...new Set(deviceIds.filter(Boolean))];
+  if (ids.length === 0) return map;
+  try {
+    const { data, error } = await db.from("user_handles").select("device_id, updated_at").in("device_id", ids);
+    if (error) return map;
+    for (const r of data ?? []) {
+      const u = (r as { updated_at?: string }).updated_at;
+      const ms = u ? Date.parse(u) : NaN;
+      if (Number.isFinite(ms)) map.set((r as { device_id: string }).device_id, String(ms));
+    }
+  } catch { /* noop */ }
+  return map;
+}
+
 /** handle → device_id（ユーザー検索/フィルタ用。見つからなければ null） */
 export async function deviceByHandle(db: SupabaseClient, handle: string): Promise<string | null> {
   const h = String(handle ?? "").trim().toLowerCase().replace(/^@+/, "");

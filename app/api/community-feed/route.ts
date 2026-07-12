@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, anonPosterId, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice, deviceByHandle, accountTypesByDevice } from "@/lib/user-handles";
+import { handlesByDevice, deviceByHandle, accountTypesByDevice, iconVersionsByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -41,10 +41,12 @@ export async function GET(request: Request) {
     // 投稿者アイコン: user-icons/{deviceHash}.jpg の公開URLを導出（写真未設定なら404→アプリ側でフォールバック）
     //   ⚠ device_id は「ベアラ資格情報」なので生値をURL/レスポンスに出さない（2026-07-05監査対応）。
     const vHour = Math.floor(Date.now() / 3_600_000);
-    const iconFor = (deviceId: unknown): string | null => {
+    // ver 省略時は時間バケット(1h)にフォールバック。ver = user_handles.updated_at のepoch（名前/
+    // アイコン変更でbumpされる）を渡すと、変更した時だけURLが変わり他人の画面でも即差し替わる。
+    const iconFor = (deviceId: unknown, ver?: string): string | null => {
       if (typeof deviceId !== "string" || !deviceId) return null;
       const { data: pub } = supabase!.storage.from("user-icons").getPublicUrl(iconPathFor(deviceId));
-      return `${pub.publicUrl}?v=${vHour}`;
+      return `${pub.publicUrl}?v=${ver || vHour}`;
     };
 
     // ── みんなのMoodログ(spot_posts)も全国穴場フィードに合流 ────────────────────
@@ -100,7 +102,7 @@ export async function GET(request: Request) {
         };
         // 写真・places(id/name)・@ハンドルの4系統を並列取得（従来は直列で最も遅い区間だった）
         const nonAnonDevs = plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? ""));
-        const [phsRes, plsIdRes, plsNameRes, handleMap, acctMap] = await Promise.all([
+        const [phsRes, plsIdRes, plsNameRes, handleMap, acctMap, verMap] = await Promise.all([
           supabase.from("spot_photos").select("post_id, image_url")
             .in("post_id", postIds).neq("moderation_status", "hidden").neq("moderation_status", "rejected"),
           placeIds.length > 0
@@ -111,6 +113,7 @@ export async function GET(request: Request) {
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
           handlesByDevice(supabase, nonAnonDevs),
           accountTypesByDevice(supabase, nonAnonDevs),
+          iconVersionsByDevice(supabase, nonAnonDevs),
         ]);
         const photoByPost = new Map<string, string[]>();
         for (const ph of (phsRes.data ?? []) as Array<Record<string, unknown>>) {
@@ -148,7 +151,7 @@ export async function GET(request: Request) {
             poster_name: anon ? null : ((p.poster_name as string | null) ?? null),
             poster_handle: anon ? null : (handleMap.get(String(p.device_id ?? "")) ?? null),
             poster_type: anon ? null : (acctMap.get(String(p.device_id ?? "")) ?? null),
-            poster_icon: anon ? null : iconFor(p.device_id),
+            poster_icon: anon ? null : iconFor(p.device_id, verMap.get(String(p.device_id ?? ""))),
             // ブロック用の公開識別子。生device_id(=これを知られると本人として全操作可能)は返さずハッシュ。
             //   匿名投稿は deviceHash とは別名前空間の anonPosterId を使う（公開投稿/プロフィールへの
             //   逆引きを遮断・ブロックは不透明ハッシュ一致なので維持）。
@@ -193,6 +196,7 @@ export async function GET(request: Request) {
         const sDevs = slist.map(s => String(s.device_id ?? ""));
         const sHandleMap = await handlesByDevice(supabase, sDevs);
         const sAcctMap = await accountTypesByDevice(supabase, sDevs);
+        const sVerMap = await iconVersionsByDevice(supabase, sDevs);
         suggestionItems = slist.filter(inPeriod).map(s => {
           const rawImgs = (s.image_urls ?? []) as string[];
           const imgs = Array.isArray(rawImgs) ? rawImgs.filter(u => typeof u === "string" && !isLegacyPhotoUrl(u)) : [];
@@ -213,7 +217,7 @@ export async function GET(request: Request) {
             poster_name: (s.poster_name as string | null) ?? null,
             poster_handle: dev ? (sHandleMap.get(dev) ?? null) : null,
             poster_type: dev ? (sAcctMap.get(dev) ?? null) : null,
-            poster_icon: dev ? iconFor(dev) : null,
+            poster_icon: dev ? iconFor(dev, sVerMap.get(dev)) : null,
             poster_id: dev ? deviceHash(dev) : null,
           };
         });

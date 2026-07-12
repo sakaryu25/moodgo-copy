@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice } from "@/lib/user-handles";
+import { handlesByDevice, iconVersionsByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -120,8 +120,9 @@ export async function GET(request: Request) {
         if (post.visibility !== "spot_public_anonymous" || isMine) {
           posterName = (post.poster_name as string | null) ?? null;
           posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
+          const iconVer = (await iconVersionsByDevice(supabase, [post.device_id])).get(post.device_id);
           const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
-          posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+          posterIcon = `${pub.publicUrl}?v=${iconVer || Math.floor(Date.now() / 3_600_000)}`;
           posterId = deviceHash(post.device_id);
         }
       }
@@ -179,8 +180,9 @@ export async function GET(request: Request) {
         const dev = String((s as Record<string, unknown>).device_id);
         posterName = ((s as Record<string, unknown>).poster_name as string | null) ?? null;
         posterHandle = (await handlesByDevice(supabase, [dev])).get(dev) ?? null;
+        const iconVer = (await iconVersionsByDevice(supabase, [dev])).get(dev);
         const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
-        posterIcon = `${pub.publicUrl}?v=${Math.floor(Date.now() / 3_600_000)}`;
+        posterIcon = `${pub.publicUrl}?v=${iconVer || Math.floor(Date.now() / 3_600_000)}`;
         posterId = deviceHash(dev);
       }
       respId = String(s.id);
