@@ -7108,8 +7108,8 @@ export default function AdminPage() {
             <div style={{ marginBottom: "20px", padding: "16px 18px", background: "#fffaf0", border: "1.5px solid #f6ad55", borderRadius: "14px" }}>
               <div style={{ fontWeight: 900, fontSize: "15px", marginBottom: "6px" }}>⚡ 同名スポットを一括統合</div>
               <p style={{ margin: "0 0 12px", fontSize: "12.5px", color: "#7a5860", lineHeight: 1.7 }}>
-                同じ名前で<b>300m以内</b>（または住所が一致）のスポットだけを自動統合します。タグは合算・写真は引き継ぎ・重複は非表示化（is_active=false）。<br />
-                離れた場所にある同名スポット（チェーン店の別店舗など）は<b>対象外</b>なので安全です。まずプレビューで件数を確認してください。
+                同じ名前で<b>約40m以内＝ほぼ同一座標</b>（または具体的な住所が完全一致）のスポットだけを自動統合します。タグは合算・写真は引き継ぎ・重複は非表示化（is_active=false）。<br />
+                <b>チェーン店・汎用名（吉野家/スタバ/体育館等）は別支店を誤統合しないよう更に厳格（約25m以内）</b>。少しでも離れた同名や「日本/県名だけ」の住所一致は<b>対象外</b>なので安全です。まずプレビューで件数を確認してください。
               </p>
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                 <button

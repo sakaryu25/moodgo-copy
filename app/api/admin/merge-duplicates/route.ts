@@ -29,20 +29,35 @@ function distM(a: Row, b: Row): number | null {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+// 汎用すぎる住所を弾く。座標欠損時の住所フォールバックで「日本」「日本国」「都道府県名だけ」を
+//   同一の根拠にすると、離れた別物の同名を誤統合する（実データに address="日本" が22万件ある）。
+const PREF_ONLY_RE = /^(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県)$/;
+function isSpecificAddr(s: string | null | undefined): boolean {
+  const raw = (s ?? "").trim();
+  if (!raw) return false;
+  const n = normAddr(raw);
+  if (n === "日本" || n === "日本国" || n === "japan") return false;
+  if (PREF_ONLY_RE.test(raw)) return false;
+  return true;
+}
+
 // 同名グループを「本当に同じ場所」の近接クラスタに分割する。
 //   ⚠同名＝同一店舗ではない（チェーン店は同名で全国に散在。例: スターバックス同名1218件）。
-//   radiusM以内 or 正規化住所が一致するものだけを同一とみなし、離れた同名は触らない。
+//   ⚠“近い別店舗”も同一ではない（渋谷の吉野家が150〜300m間隔で複数＝別物）。実データ監査では
+//     旧300mの統合対象1859グループが全て150〜300m離れ＝ほぼチェーンの別支店の誤統合だった。
+//     → radiusは実質「同一座標のズレ」だけを吸収する狭さにし、住所フォールバックも具体住所限定にする。
+//   完全連結（クラスタ全員と近接）で判定＝単連結の推移ドリフト（A-B-C で A-C が半径超過）を防ぐ。
 function clusterGroup(group: Row[], radiusM: number): Row[][] {
   const clusters: Row[][] = [];
   for (const p of group) {
     let placed = false;
     for (const c of clusters) {
-      const near = c.some(q => {
+      // クラスタの全員と近接している場合だけ同一クラスタに入れる（clique的＝直径を半径内に保つ）
+      const near = c.every(q => {
         const d = distM(p, q);
         if (d != null) return d <= radiusM;
-        // 片方でも座標が無い場合は住所一致のみ許可（空住所同士は不一致扱い＝安全側）
-        const ap = normAddr(p.address), aq = normAddr(q.address);
-        return !!ap && ap === aq;
+        // 座標が無い場合のみ住所一致で救済。ただし“具体的な住所”に限る（日本/県だけは不可）
+        return isSpecificAddr(p.address) && normAddr(p.address) === normAddr(q.address);
       });
       if (near) { c.push(p); placed = true; break; }
     }
@@ -127,10 +142,18 @@ async function fetchRestOfName(name: string, afterId: string): Promise<Row[]> {
 
 type GroupStat = { clusters: { keeper: Row; dupes: Row[] }[]; skippedFar: boolean };
 
+// 同名がDB内でこの数以上＝チェーン/汎用名（吉野家/スターバックス/体育館/テニスコート等）。
+//   別店舗・別施設が近接しうるので、ほぼ同一座標(<=CHAIN_RADIUS_M)でないと統合しない。
+//   run（=このnameの全件・境界跨ぎ込みで集めきったもの）の件数でチェーン判定できる。
+const CHAIN_MIN = 8;
+const CHAIN_RADIUS_M = 25;
+
 // 同名ラン（name完全一致・trim比較）→ 統合対象クラスタへ
 function planGroup(run: Row[], radiusM: number): GroupStat {
   if (run.length < 2) return { clusters: [], skippedFar: false };
-  const clusters = clusterGroup(run, radiusM).filter(c => c.length >= 2);
+  // チェーン/汎用名はさらに厳しい半径に絞る（別支店の誤統合を防ぐ最重要ガード）
+  const eff = run.length >= CHAIN_MIN ? Math.min(radiusM, CHAIN_RADIUS_M) : radiusM;
+  const clusters = clusterGroup(run, eff).filter(c => c.length >= 2);
   if (clusters.length === 0) return { clusters: [], skippedFar: true };
   return {
     clusters: clusters.map(c => { const k = pickKeeper(c); return { keeper: k, dupes: c.filter(r => r.id !== k.id) }; }),
@@ -179,7 +202,7 @@ export async function GET(req: NextRequest) {
 // POST:
 //   単体統合: { keepId, deleteIds, mergedTags } … 従来のグループ個別統合
 //   一括統合: { action: "bulk", dryRun?, radiusM?, cursor? }
-//     name昇順ストリームで同名ランを検出し、radiusM(既定300m)以内 or 住所一致のクラスタだけ統合。
+//     name昇順ストリームで同名ランを検出し、radiusM(既定40m＝実質同一座標のみ)以内 or 具体住所一致のクラスタだけ統合。
 //     離れた同名（チェーン店の別店舗）は触らない。時間ガードで打ち切り nextCursor を返すので、
 //     クライアントは done:true まで cursor を渡して再呼び出しする。dryRun=trueは件数集計のみ。
 export async function POST(request: NextRequest) {
@@ -191,7 +214,7 @@ export async function POST(request: NextRequest) {
     const startedAt = Date.now();
     const TIME_BUDGET_MS = 40_000;
     const dryRun = body?.dryRun === true;
-    const radiusM = Math.min(Math.max(Number(body?.radiusM) || 300, 50), 2000);
+    const radiusM = Math.min(Math.max(Number(body?.radiusM) || 40, 10), 2000);
     let cursor = typeof body?.cursor === "string" ? body.cursor : "";
 
     let scanned = 0, mergedClusters = 0, deleted = 0, failed = 0, skippedFarGroups = 0;
