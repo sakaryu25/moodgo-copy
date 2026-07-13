@@ -162,7 +162,7 @@ export async function POST(req: Request) {
         const vids = [...new Set(((vis ?? []) as Array<{ post_id?: string }>).map((v) => String(v.post_id)).filter(Boolean))];
         if (vids.length > 0) {
           const [mlR, sgR, phR] = await Promise.all([
-            db.from("spot_posts").select("id, place_name").in("id", vids),
+            db.from("spot_posts").select("id, place_name").in("id", vids).in("visibility", ["public", "spot_public_anonymous"]),   // 非公開(private)の場所名を他人に出さない
             db.from("suggestions").select("id, spot_name, google_place_name, image_urls").in("id", vids),
             db.from("spot_photos").select("post_id, image_url").in("post_id", vids).neq("moderation_status", "hidden").neq("moderation_status", "rejected"),
           ]);

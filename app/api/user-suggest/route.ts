@@ -27,6 +27,7 @@ export async function POST(req: Request) {
     const posters = new Set<string>();
     try {
       const { data } = await db.from("spot_posts").select("device_id").eq("status", "approved")
+        .in("visibility", ["public", "spot_public_anonymous"])   // 非公開投稿だけのユーザーを「おすすめ」に出さない
         .order("created_at", { ascending: false }).limit(300);
       for (const r of (data ?? []) as Array<{ device_id?: string }>) if (r.device_id) posters.add(String(r.device_id));
     } catch { /* 未適用は無視 */ }

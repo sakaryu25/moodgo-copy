@@ -39,7 +39,8 @@ export async function GET(req: Request) {
     const ids = rows.map((r) => r.id);
     const { data: posts } = await db.from("spot_posts")
       .select("id, place_id, created_at").in("place_id", ids)
-      .eq("status", "approved").order("created_at", { ascending: true });
+      .eq("status", "approved").in("visibility", ["public", "spot_public_anonymous"])   // 非公開投稿を代表(遷移リンク)にしない
+      .order("created_at", { ascending: true });
     const postByPlace = new Map<string, string>();
     for (const p of (posts ?? []) as Array<{ id: string; place_id: string }>) {
       if (!postByPlace.has(String(p.place_id))) postByPlace.set(String(p.place_id), String(p.id));

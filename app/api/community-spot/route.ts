@@ -115,17 +115,25 @@ export async function GET(request: Request) {
       else if (typeof post.price_chip === "string" && post.price_chip) priceText = post.price_chip;
       if (typeof post.rating === "number" && post.rating >= 1 && post.rating <= 5) rating = post.rating;
       postVisibility = String(post.visibility ?? "");
-      if (typeof post.device_id === "string" && post.device_id) {
-        isMine = !!viewerHash && deviceHash(post.device_id) === viewerHash;
+      const mlDevId = typeof post.device_id === "string" ? post.device_id : "";
+      isMine = !!viewerHash && !!mlDevId && deviceHash(mlDevId) === viewerHash;
+      // ── 非公開ガード（不変条件: private/group は投稿者本人以外に一切返さない）──────────
+      //   community-spot は id 直引きのため、ここで弾かないと非公開投稿の本文/写真/場所/投稿者
+      //   情報（実名/@ID/アイコン/deviceHash）が誰にでも漏れる。本人(isMine)以外には「存在しない」
+      //   扱い(404)で返す。公開(public)・匿名公開(spot_public_anonymous)だけが他人に見られる。
+      if (postVisibility !== "public" && postVisibility !== "spot_public_anonymous" && !isMine) {
+        return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+      }
+      if (mlDevId) {
         // 匿名投稿は他者には出さないが、本人(isMine)には自分のプロフィール表示を出す
         if (post.visibility !== "spot_public_anonymous" || isMine) {
           posterName = (post.poster_name as string | null) ?? null;
-          posterHandle = (await handlesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
-          const iconVer = (await iconVersionsByDevice(supabase, [post.device_id])).get(post.device_id);
-          const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
+          posterHandle = (await handlesByDevice(supabase, [mlDevId])).get(mlDevId) ?? null;
+          const iconVer = (await iconVersionsByDevice(supabase, [mlDevId])).get(mlDevId);
+          const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(mlDevId));
           posterIcon = `${pub.publicUrl}?v=${iconVer || Math.floor(Date.now() / 3_600_000)}`;
-          posterId = deviceHash(post.device_id);
-          posterType = (await accountTypesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
+          posterId = deviceHash(mlDevId);
+          posterType = (await accountTypesByDevice(supabase, [mlDevId])).get(mlDevId) ?? null;
         }
       }
       respId = String(post.id);

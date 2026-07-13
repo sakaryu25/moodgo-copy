@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     // ── spot_posts: place_id(UUID/GoogleID) または place_name の一致 ──
     try {
-      let q = db.from("spot_posts").select("id, place_id, place_name").eq("status", "approved").limit(50);
+      let q = db.from("spot_posts").select("id, place_id, place_name").eq("status", "approved").in("visibility", ["public", "spot_public_anonymous"]).limit(50);   // 非公開投稿を公開集計に含めない
       const ors: string[] = [];
       if (UUID_RE.test(supabaseId)) ors.push(`place_id.eq.${supabaseId}`);
       if (placeId && !placeId.includes(",")) ors.push(`place_id.eq.${placeId}`);

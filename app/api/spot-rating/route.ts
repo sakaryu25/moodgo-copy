@@ -33,7 +33,9 @@ async function aggregate(
     if (placeName && !/[,()]/.test(placeName)) ors.push(`place_name.eq.${placeName}`);
     if (ors.length) {
       const { data } = await db.from("spot_posts")
-        .select("rating, device_id, price_chip").eq("status", "approved").or(ors.join(","));
+        .select("rating, device_id, price_chip").eq("status", "approved")
+        .in("visibility", ["public", "spot_public_anonymous"])   // 非公開投稿の★/価格を公開平均に混ぜない
+        .or(ors.join(","));
       pRows = (data ?? []) as Array<{ rating: number; device_id: string; price_chip?: string | null }>;
     }
   } catch { /* spot_posts未作成は★のみで集計 */ }
