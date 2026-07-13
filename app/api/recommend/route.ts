@@ -5623,6 +5623,28 @@ async function applyUserPhotos(recs: UserPhotoRec[]): Promise<void> {
 //   先頭(最良)は維持しつつ、2番目以降を別カテゴリと交互に。要素の増減はなし(並べ替えのみ・in-place)。
 //   1カテゴリのみ(例:ラーメン検索)は並べ替え不要でそのまま。
 type DivRec = { category?: string; tags?: string[] };
+// ── 地味な小さい公園を最終出力の最後尾へ（安定移動）──────────────────────────────
+//   diversifyByCategory/finalizeAssembled の“後”に適用＝並べ替えが最終出力に確実に残る
+//   （sortOrShuffleで下げてもdiversifyのラウンドロビンで中位へ戻る問題への最終ガード）。
+//   除外でなく後方化（データ非削除・0件回避＝地味公園も末尾に必ず残る）。タグ付き絶景/
+//   有名・大型・花・記念公園、及び「散歩/芝生/森」等 公園目的の深掘りは対象外。
+const FILLER_SCENIC_TAGS = new Set(["#絶景スポット", "#展望台", "#夜景", "#岬", "#灯台", "#滝", "#湖", "#庭園", "#花畑", "#絶景"]);
+const FILLER_APPEALING_PARK_RE = /国営|国立|海浜|臨海|花|バラ|ローズ|チューリップ|ラベンダー|コスモス|芝桜|紅葉|桜|展望|絶景|パノラマ|夜景|記念|歴史|城|庭園|森林|渓谷|湖畔|湖|大通|中央公園|総合公園|運動公園|自然公園|県立|府立|フラワー|ガーデン|高原|牧場|オアシス|ふれあい/i;
+const FILLER_GENERIC_PARK_RE = /公園|緑地|広場|遊具|ちびっこ/;
+const FILLER_PARKSEEK_RE = /散歩|芝生|ゴロゴロ|ひろびろ|広々|森|ピクニック|深呼吸|自然の中|公園/;
+function demoteFillerParks<T extends { title?: string; tags?: string[] }>(recs: T[], deepDive?: string): T[] {
+  if (FILLER_PARKSEEK_RE.test(deepDive || "")) return recs;   // 公園目的の深掘りは沈めない
+  const isFiller = (r: T): boolean => {
+    const n = r.title ?? "";
+    if ((r.tags ?? []).some(t => FILLER_SCENIC_TAGS.has(t))) return false;   // タグ付き絶景/映えは残す
+    if (FILLER_APPEALING_PARK_RE.test(n)) return false;                      // 有名/大型/花/記念公園は残す
+    return FILLER_GENERIC_PARK_RE.test(n);                                   // 地味な○○公園/緑地/広場/遊具
+  };
+  const keep: T[] = [], parks: T[] = [];
+  for (const r of recs) (isFiller(r) ? parks : keep).push(r);
+  return parks.length ? [...keep, ...parks] : recs;   // 地味な公園を安定的に末尾へ
+}
+
 function diversifyByCategory(recs: DivRec[]): void {
   if (!recs || recs.length <= 4) return;
   const catOf = (r: DivRec) =>
@@ -8238,6 +8260,8 @@ async function handleRecommend(request: Request) {
         //     diversifyByCategory のラウンドロビンで cap 超過要素が中位へ繰り上がり cap が無効化されるため
         //     （カラオケ同チェーンが再び上位に並ぶ）。最後に置くことで cap 並びが最終出力に確実に残る。
         recommendations = finalizeAssembled(recommendations);
+        // 地味な小さい公園を最終出力の最後尾へ（diversify/assembleの後＝並べ替えが確実に残る）。
+        recommendations = demoteFillerParks(recommendations, effectiveDeepDive);
         // 期間限定の最終保証: places本体の期間外スポットを除外（RPC/意味検索/名前救済など
         //   全SB経路をここで一括ガード。2026-07-06検証: RPCが期間外を返すことを実証→修正）。
         try {
