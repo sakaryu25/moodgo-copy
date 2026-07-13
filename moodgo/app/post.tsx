@@ -83,7 +83,8 @@ const T = {
     hoursClose: '閉店',
     hours24: '24時間営業',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
-    editNote: '※ 写真以外は編集できます（自分で作った穴場は住所・営業時間・最寄駅・公開期間も）。',
+    editNote: '※ 自分で作った穴場は住所・営業時間・最寄駅・公開期間も編集できます。',
+    editPhotoHint: '写真の追加・削除ができます（×で削除・「追加」で選択）。最低1枚は必要です',
     photoLabel: '写真（1枚以上）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！何枚でもOK',
     addPhoto: '追加',
@@ -195,7 +196,8 @@ const T = {
     hoursClose: 'Close',
     hours24: 'Open 24h',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
-    editNote: '※ Everything except photos is editable (address, hours, station and availability too for spots you created).',
+    editNote: '※ Address, hours, station and availability are also editable for spots you created.',
+    editPhotoHint: 'Add or remove photos (× to remove, “Add” to pick). At least one is required.',
     photoLabel: 'Photos (1+)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe! Add as many as you like.',
     addPhoto: 'Add',
@@ -288,7 +290,8 @@ export default function PostScreen() {
   const [address, setAddress] = useState((params.address ?? '').toString());
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
-  const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
+  const [images, setImages] = useState<{ uri: string; base64?: string; existing?: boolean }[]>([]);   // existing=既存(サーバ済)写真＝再アップロードしない
+  const originalPhotos = useRef<string[]>([]);   // 編集時の元写真URL（削除差分の算出用）
   const [thumbLoaded, setThumbLoaded] = useState<Record<string, boolean>>({});   // 写真サムネの読込完了（未完了はスピナー表示）
   const [pickBusy, setPickBusy] = useState(false);   // 写真選択の処理中（追加ボタンにスピナー）
   const [moodTags, setMoodTags] = useState<string[]>([]);
@@ -365,6 +368,10 @@ export default function PostScreen() {
             const m = oh.match(/^(\d{1,2}:\d{2})\s*[〜~]\s*(\d{1,2}:\d{2})$/);
             if (m) { setOpenTime(m[1]); setCloseTime(m[2]); }
           }
+          // 既存の写真をプレフィル（編集で削除／追加できる）。uri=リモートURL・existing=trueで再アップロードしない
+          const ph = Array.isArray(d.photos) ? (d.photos as unknown[]).filter((u): u is string => typeof u === 'string') : [];
+          originalPhotos.current = ph;
+          if (ph.length > 0) setImages(ph.map((u) => ({ uri: u, existing: true })));
           if (active) setEditLoaded(true);   // 元投稿の反映完了→この後に下書きを上書き適用
         } else {
           showToast(t.tCannotEditTitle, d?.error ?? t.tCannotEditSub);
@@ -401,7 +408,7 @@ export default function PostScreen() {
           if (typeof d.address === 'string') setAddress(d.address);
           if (typeof d.lat === 'number') setLat(d.lat);
           if (typeof d.lng === 'number') setLng(d.lng);
-          if (Array.isArray(d.images)) setImages(d.images.filter((x: unknown) => !!x && typeof (x as { uri?: unknown }).uri === 'string').map((x: { uri: string }) => ({ uri: x.uri })));
+          if (Array.isArray(d.images)) setImages(d.images.filter((x: unknown) => !!x && typeof (x as { uri?: unknown }).uri === 'string').map((x: { uri: string; existing?: boolean }) => ({ uri: x.uri, existing: !!x.existing })));
           if (Array.isArray(d.moodTags)) setMoodTags(d.moodTags.filter((x: unknown) => typeof x === 'string'));
           if (typeof d.caption === 'string') setCaption(d.caption);
           if (typeof d.rating === 'number') setRating(d.rating);
@@ -431,7 +438,7 @@ export default function PostScreen() {
     const h = setTimeout(() => {
       if (hasContent) {
         AsyncStorage.setItem(draftKey, JSON.stringify({
-          spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri })),
+          spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri, existing: i.existing })),
           moodTags, caption, rating, availFrom, availUntil, station,
           openTime, closeTime, is24h, priceChip, priceNote, contact, vis,
         })).catch(() => {});
@@ -551,18 +558,34 @@ export default function PostScreen() {
   }, [moodTags]);
 
   const visServer = vis === 'private' ? 'private' : vis === 'anon' ? 'spot_public_anonymous' : 'public';
+  // 画像をアップロード用に縮小（メイン1440px＋サムネ400px, base64）。新規写真のみ渡す＝既存(existing)は対象外。
+  const prepareUploads = (imgs: { uri: string; base64?: string }[]) => Promise.all(imgs.map(async (img) => {
+    try {
+      const main = await ImageManipulator.manipulateAsync(img.uri, [{ resize: { width: 1440 } }], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+      const thumb = await ImageManipulator.manipulateAsync(img.uri, [{ resize: { width: 400 } }], { compress: 0.55, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+      return { main: main.base64 ? `data:image/jpeg;base64,${main.base64}` : '', thumb: thumb.base64 ? `data:image/jpeg;base64,${thumb.base64}` : '' };
+    } catch {
+      // 縮小失敗時は従来どおり元のbase64を送る（サムネ無し）
+      return { main: img.base64 ? `data:image/jpeg;base64,${img.base64}` : '', thumb: '' };
+    }
+  }));
   const submit = async () => {
     // ── 編集モード: 名前・本文・気分・公開範囲・評価・値段・連絡先を更新（最初の投稿と同項目）──
     if (editMode) {
       if (!spotName.trim()) { showToast(t.tSpotNameTitle, t.tSpotNameSub); return; }
       if (!caption.trim()) { showToast(t.tCaptionTitle, t.tCaptionSub); return; }
       if (moodTags.length === 0) { showToast(t.tMoodTitle, t.tMoodSub); return; }
+      if (images.length === 0) { showToast(t.tPhotoTitle, t.tPhotoSub); return; }   // 編集でも写真は1枚以上（全削除は不可）
       if (findNgWord(caption) || findNgWord(spotName) || findNgWord(contact)) { showToast(t.tNgTitle, t.tNgSub); return; }
       setSubmitting(true);
       try {
         const deviceId = await getDeviceId();
+        // 削除された既存写真＝元にありUIに残っていないもの / 追加＝existingでない新規写真
+        const keptUrls = new Set(images.filter((im) => im.existing).map((im) => im.uri));
+        const removePhotoUrls = originalPhotos.current.filter((u) => !keptUrls.has(u));
+        const newImgs = images.filter((im) => !im.existing);
         const d = await apiFetch('/api/spot-posts', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
           body: JSON.stringify({
             action: 'update', postId: editId, deviceId,
             placeName: spotName.trim(), visibility: visServer,
@@ -571,6 +594,7 @@ export default function PostScreen() {
             priceChip: priceChip || undefined,
             priceNote: priceNote.trim() || undefined,
             contact: contact.trim() || undefined,
+            removePhotoUrls,
             // 自分で作った穴場のみ場所情報も更新（サーバー側で source_type=user を確認）
             ...(placeEditable ? {
               address: address.trim(),
@@ -581,9 +605,21 @@ export default function PostScreen() {
             } : {}),
           }),
         }).then((r) => r.json());
+        if (!d?.ok) { setSubmitting(false); showToast(t.tUpdateFailTitle, d?.error ?? t.tRetrySub); return; }
+        // 追加した新規写真を1枚ずつアップロード（既存はexisting=trueなので対象外・失敗しても本文更新は成立）
+        if (newImgs.length > 0) {
+          const preparedNew = (await prepareUploads(newImgs)).filter((p2) => p2.main);
+          for (const p2 of preparedNew) {
+            try {
+              await apiFetch('/api/spot-posts', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, timeoutMs: 30000,
+                body: JSON.stringify({ action: 'add-photo', deviceId, postId: editId, image: p2.main, thumbImage: p2.thumb }),
+              });
+            } catch { /* best-effort: 追記失敗は更新全体を失敗にしない */ }
+          }
+        }
         setSubmitting(false);
-        if (d?.ok) { clearDraft(); markFeedStale(); setDone(true); }   // 下書き破棄＋フィード再取得（公開範囲/名前の変更を反映）
-        else showToast(t.tUpdateFailTitle, d?.error ?? t.tRetrySub);
+        clearDraft(); markFeedStale(); setDone(true);   // 下書き破棄＋フィード再取得（写真/公開範囲/名前の変更を反映）
       } catch { setSubmitting(false); showToast(t.tUpdateFailSub2Title, t.tNetworkSub); }
       return;
     }
@@ -609,27 +645,8 @@ export default function PostScreen() {
     try {
       const deviceId = await getDeviceId();
       const posterName = (await AsyncStorage.getItem('moodgo-group-nickname'))?.trim() || undefined;
-      // 画像はクライアントで縮小してから送る:
-      //   メイン=幅1440px(アップロード/表示とも軽量) ・ サムネ=幅400px(フィード表示用・_thumb規約で保存)
-      const prepared = await Promise.all(images.map(async (img) => {
-        try {
-          const main = await ImageManipulator.manipulateAsync(
-            img.uri, [{ resize: { width: 1440 } }],
-            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-          );
-          const thumb = await ImageManipulator.manipulateAsync(
-            img.uri, [{ resize: { width: 400 } }],
-            { compress: 0.55, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-          );
-          return {
-            main: main.base64 ? `data:image/jpeg;base64,${main.base64}` : '',
-            thumb: thumb.base64 ? `data:image/jpeg;base64,${thumb.base64}` : '',
-          };
-        } catch {
-          // 縮小失敗時は従来どおり元のbase64を送る（サムネ無し）
-          return { main: img.base64 ? `data:image/jpeg;base64,${img.base64}` : '', thumb: '' };
-        }
-      }));
+      // 画像はクライアントで縮小してから送る（メイン1440px＋サムネ400px）。新規投稿は全imagesが対象。
+      const prepared = await prepareUploads(images);
       const valid = prepared.filter(p2 => p2.main);
       if (valid.length === 0) { showToast(t.tPhotoTitle, t.tPhotoSub); setSubmitting(false); return; }
       // 画像上限なし対応: create は1枚だけ送り（Vercelのボディ上限回避）、残りは add-photo で1枚ずつ追記。
@@ -917,32 +934,27 @@ export default function PostScreen() {
             </>
           )}
 
-          {/* ⑧ 写真（最大3枚・圧縮base64送信）。編集時は写真を変更しない（本文・タグ・評価・値段のみ） */}
-          {editMode ? (
-            <Text style={s.note}>{t.editNote}</Text>
-          ) : (
-            <>
-              <Text style={s.label}>{t.photoLabel}<Text style={s.req}>*</Text></Text>
-              <Text style={s.hint}>{t.photoHint}</Text>
-              <View style={s.photoGrid}>
-                {images.map((im, i) => (
-                  <View key={`${im.uri}-${i}`} style={s.thumbWrap}>
-                    <Image source={{ uri: im.uri }} style={s.thumb}
-                      onLoadEnd={() => setThumbLoaded(p => ({ ...p, [im.uri]: true }))} />
-                    {/* 読込完了までスピナー＝「追加/保存中」を明示（写真が付いたか分かる） */}
-                    {!thumbLoaded[im.uri] && (
-                      <View style={s.thumbLoading}><ActivityIndicator size="small" color="#9B6BFF" /></View>
-                    )}
-                    <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
-                  </View>
-                ))}
-                {/* 枚数上限なし＝追加ボタンは常時表示（横に溢れず折り返す） */}
-                <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8} disabled={pickBusy}>
-                  {pickBusy ? <ActivityIndicator size="small" color="#A78BCA" /> : <><Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text></>}
-                </TouchableOpacity>
+          {/* ⑧ 写真: 新規は1枚以上必須／編集時も既存の削除＋新規追加ができる（圧縮base64送信） */}
+          <Text style={s.label}>{t.photoLabel}{!editMode && <Text style={s.req}>*</Text>}</Text>
+          <Text style={s.hint}>{editMode ? t.editPhotoHint : t.photoHint}</Text>
+          <View style={s.photoGrid}>
+            {images.map((im, i) => (
+              <View key={`${im.uri}-${i}`} style={s.thumbWrap}>
+                <Image source={{ uri: im.uri }} style={s.thumb}
+                  onLoadEnd={() => setThumbLoaded(p => ({ ...p, [im.uri]: true }))} />
+                {/* 読込完了までスピナー＝「追加/保存中」を明示（写真が付いたか分かる） */}
+                {!thumbLoaded[im.uri] && (
+                  <View style={s.thumbLoading}><ActivityIndicator size="small" color="#9B6BFF" /></View>
+                )}
+                <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
               </View>
-            </>
-          )}
+            ))}
+            {/* 枚数上限なし＝追加ボタンは常時表示（横に溢れず折り返す） */}
+            <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8} disabled={pickBusy}>
+              {pickBusy ? <ActivityIndicator size="small" color="#A78BCA" /> : <><Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text></>}
+            </TouchableOpacity>
+          </View>
+          {editMode && <Text style={[s.note, { marginTop: 10 }]}>{t.editNote}</Text>}
 
           {/* ⑨ 連絡先（任意・新スポット/編集時） */}
           {(!isExisting || editMode) && (

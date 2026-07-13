@@ -221,6 +221,23 @@ export async function POST(req: Request) {
       }
       if (error) throw error;
 
+      // ── 写真の削除（編集で外した既存写真）: image_url一致で spot_photos と Storage を掃除（本人=L144で確認済み）──
+      const removeUrls: string[] = Array.isArray(body?.removePhotoUrls)
+        ? (body.removePhotoUrls as unknown[]).filter((s): s is string => typeof s === "string").slice(0, 30)
+        : [];
+      if (removeUrls.length > 0) {
+        const { data: delRows } = await db.from("spot_photos")
+          .select("storage_path").eq("post_id", postId).in("image_url", removeUrls);
+        const paths = ((delRows ?? []) as Array<{ storage_path?: string }>)
+          .map((r) => String(r.storage_path ?? "")).filter(Boolean);
+        if (paths.length > 0) {
+          // 本体＋サムネ(_thumb)の両方を消す（add-photo と同じ命名規約）
+          const withThumbs = paths.flatMap((p) => [p, p.replace(/(\.[a-z0-9]+)$/i, "_thumb$1")]);
+          await db.storage.from(BUCKET).remove(withThumbs).then(() => {}, () => {});
+        }
+        await db.from("spot_photos").delete().eq("post_id", postId).in("image_url", removeUrls).then(() => {}, () => {});
+      }
+
       // ── 紐づく場所(places)の 住所/営業時間/最寄駅/期間 も更新（自分で作った穴場=source_type:user のみ）──
       //   共有の既存place(Google/admin)は壊さないため source_type を確認してから更新する。
       const newAddress = body?.address != null ? String(body.address).trim().slice(0, 300) : null;
