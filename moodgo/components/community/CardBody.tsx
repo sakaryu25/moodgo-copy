@@ -13,7 +13,8 @@ export default function CardBody({
     <View style={s.body}>
       {showTitleFirst && <Text style={s.title} numberOfLines={2}>{post.title}</Text>}
       {post.rating > 0 && <View style={s.starRow}><Stars n={post.rating} /></View>}
-      {!!post.description && <Text style={s.desc} numberOfLines={3}>{post.description}</Text>}
+      {/* 本文は全文表示（3行で切らない）＝「まだ文があるのに見えない」を解消。Masonryが可変高さを吸収 */}
+      {!!post.description && <Text style={s.desc}>{post.description}</Text>}
       {!!post.price && (
         <View style={s.priceChip}>
           <Wallet size={12} color="#5B5570" strokeWidth={2} />

@@ -20,7 +20,8 @@ function estHeight(post: Post, cardW: number): number {
   }
   if (post.rating > 0) h += 18;          // 星
   if (post.description) {
-    const lines = Math.min(3, Math.max(1, Math.ceil(post.description.length / 17)));
+    // 本文は全文表示（切り詰めなし）＝推定も全行で見積もる（列割り当ての高さ整合を保つ）
+    const lines = Math.max(1, Math.ceil(post.description.length / 17));
     h += 17.5 * lines + 9;
   }
   if (post.price) h += 24;
