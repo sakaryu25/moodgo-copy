@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PenLine } from 'lucide-react-native';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 
 // ─── 吹き出し＋AI アイコン（白の線画）──────────────────────────────────────────
@@ -81,13 +82,17 @@ const MARGIN = 14;          // 画面端からの余白
 const TAP_THRESHOLD = 8;    // この距離未満の移動はタップ扱い
 
 type Props = {
-  /** タップ時に呼ばれる（OpenAI自由入力モーダルを開く） */
+  /** タップ時に呼ばれる */
   onPress: () => void;
   /** 下部ナビの高さ（スナップ下限の計算に使用） */
   bottomNavHeight?: number;
+  /** 'ai'=AI相談ボタン(既定) / 'post'=投稿ボタン（アイコン・ラベルが切り替わる） */
+  variant?: 'ai' | 'post';
+  /** ラベル文言（未指定なら variant から自動決定） */
+  label?: string;
 };
 
-export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
+export default function AiChatFab({ onPress, bottomNavHeight = 80, variant = 'ai', label }: Props) {
   const insets = useSafeAreaInsets();
 
   // ── 移動可能範囲 ──
@@ -170,7 +175,7 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
     >
       {/* ラベル（ボタンと連動して動く） */}
       <View style={styles.labelWrap}>
-        <Text style={styles.labelText}>AI相談</Text>
+        <Text style={styles.labelText}>{label ?? (variant === 'post' ? '投稿' : 'AI相談')}</Text>
       </View>
 
       {/* 本体ボタン */}
@@ -181,12 +186,16 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80 }: Props) {
           end={{ x: 1, y: 1 }}
           style={styles.fab}
         >
-          <AiBubbleIcon size={30} />
+          {variant === 'post'
+            ? <PenLine size={26} color="#fff" strokeWidth={2.4} />
+            : <AiBubbleIcon size={30} />}
         </LinearGradient>
-        {/* 円の右上の内側にスパークル装飾 */}
-        <View style={styles.sparkle} pointerEvents="none">
-          <SparkleStar size={14} />
-        </View>
+        {/* 円の右上の内側にスパークル装飾（AI相談のみ） */}
+        {variant !== 'post' && (
+          <View style={styles.sparkle} pointerEvents="none">
+            <SparkleStar size={14} />
+          </View>
+        )}
       </View>
     </Animated.View>
   );

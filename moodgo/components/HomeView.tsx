@@ -352,7 +352,8 @@ export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory,
       </Animated.View>
 
       {/* ── ドラッグ可能なAI相談FAB（最前面・絶対配置）── */}
-      <AiChatFab onPress={onOpenAiChat} bottomNavHeight={insets.bottom + 18} />
+      {/* ホームのフローティングボタン＝投稿（機能は投稿ページ /post と統一） */}
+      <AiChatFab variant="post" label="投稿" onPress={() => router.push('/post')} bottomNavHeight={insets.bottom + 18} />
     </View>
   );
 }
