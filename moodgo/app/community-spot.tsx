@@ -57,6 +57,7 @@ type Spot = {
   availableFrom?: string | null; availableUntil?: string | null;  // 公開期間（期間限定投稿）
   posterName?: string | null; posterHandle?: string | null; posterIcon?: string | null;  // 投稿者（匿名はnull）
   posterId?: string | null;   // 投稿者の公開ハッシュ（プロフィール/フォロー用）
+  posterType?: string | null; // 投稿者バッジ種別（official/store）＝詳細でもバッジ表示
   visibility?: string | null; isMine?: boolean;   // 公開範囲＋本人判定（本人は匿名でも自分の表示）
   kind?: string;              // 'moodlog' | 'suggestion'（いいねtargetId構築用）
   likeCount?: number;         // 投稿へのいいね数
@@ -473,7 +474,7 @@ export default function CommunitySpotScreen() {
             ) : spot.posterId ? (() => {
               // 公開 or 自分の名前非公開: 現在プロフィール（名前/アイコン/@ID/バッジ）で表示＝全画面で名前を統一。
               //   自分の名前非公開は本人にだけ名前を出し「非公開」を明示（他者には上の匿名分岐で隠れる）。
-              const poster = resolvePoster(spot.posterId, { name: spot.posterName, icon: spot.posterIcon, handle: spot.posterHandle }, me);
+              const poster = resolvePoster(spot.posterId, { name: spot.posterName, icon: spot.posterIcon, handle: spot.posterHandle, accountType: spot.posterType }, me);
               const selfAnon = isMine && spot.visibility === 'spot_public_anonymous';
               const openId = poster.isMe ? (me.hash || spot.posterId) : spot.posterId;
               return (

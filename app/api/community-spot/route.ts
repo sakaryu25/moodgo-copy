@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
-import { handlesByDevice, iconVersionsByDevice } from "@/lib/user-handles";
+import { handlesByDevice, iconVersionsByDevice, accountTypesByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -88,6 +88,7 @@ export async function GET(request: Request) {
     let posterHandle: string | null = null;
     let posterIcon: string | null = null;
     let posterId: string | null = null;   // 公開ハッシュ（プロフィール/フォロー用・生device_idは返さない）
+    let posterType: string | null = null; // 投稿者バッジ種別（official/store・未設定はnull）
     let isMine = false;                    // 閲覧者が投稿者本人か（匿名でも本人には自分の表示を出す）
     let postVisibility = "";               // 投稿の公開範囲（本人向けに「匿名で公開中」等の表示に使う）
 
@@ -124,6 +125,7 @@ export async function GET(request: Request) {
           const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(post.device_id));
           posterIcon = `${pub.publicUrl}?v=${iconVer || Math.floor(Date.now() / 3_600_000)}`;
           posterId = deviceHash(post.device_id);
+          posterType = (await accountTypesByDevice(supabase, [post.device_id])).get(post.device_id) ?? null;
         }
       }
       respId = String(post.id);
@@ -184,6 +186,7 @@ export async function GET(request: Request) {
         const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(dev));
         posterIcon = `${pub.publicUrl}?v=${iconVer || Math.floor(Date.now() / 3_600_000)}`;
         posterId = deviceHash(dev);
+        posterType = (await accountTypesByDevice(supabase, [dev])).get(dev) ?? null;
       }
       respId = String(s.id);
       userTitle = (s.spot_name ?? "").trim();
@@ -392,6 +395,7 @@ export async function GET(request: Request) {
         posterHandle,         // 投稿者の@ID（未設定はnull）
         posterIcon,           // 投稿者アイコン（ハッシュ名URL）
         posterId,             // 投稿者の公開ハッシュ（プロフィール/フォロー用・匿名はnull）
+        posterType,           // 投稿者バッジ種別（official/store・未設定null）＝詳細でもバッジを出す
         isMine,               // 閲覧者が投稿者本人か（本人には匿名でも自分の表示を出す）
         visibility: postVisibility,   // 公開範囲（本人向けに「匿名で公開中」等の表示に使う・他者には影響なし）
       },

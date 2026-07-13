@@ -16,6 +16,7 @@ const LANG_KEY = "moodgo-lang";
 const NICKNAME_KEY = "moodgo-group-nickname";
 const USER_ICON_KEY = "moodgo-user-icon";
 const HANDLE_KEY = "moodgo-user-handle";
+const ACCOUNT_TYPE_KEY = "moodgo-account-type";   // バッジ種別(official/store)。サーバー由来だが即時表示のため端末にも保持
 
 export type Lang = "ja" | "en";
 
@@ -69,13 +70,14 @@ export async function hydrateSettings(): Promise<void> {
   if (state.hydrated || hydrating) return;
   hydrating = true;
   try {
-    const [langRaw, profileRaw, blockedRaw, nickRaw, iconRaw, handleRaw] = await Promise.all([
+    const [langRaw, profileRaw, blockedRaw, nickRaw, iconRaw, handleRaw, acctRaw] = await Promise.all([
       AsyncStorage.getItem(LANG_KEY),
       AsyncStorage.getItem(PROFILE_KEY),
       AsyncStorage.getItem(BLOCKED_PLACES_KEY),
       AsyncStorage.getItem(NICKNAME_KEY),
       AsyncStorage.getItem(USER_ICON_KEY),
       AsyncStorage.getItem(HANDLE_KEY),
+      AsyncStorage.getItem(ACCOUNT_TYPE_KEY),
     ]);
     let profile: { age?: string; gender?: string; prefecture?: string; bio?: string; showPrefecture?: boolean } = {};
     try { if (profileRaw) profile = JSON.parse(profileRaw); } catch { /* 破損時は空 */ }
@@ -92,6 +94,7 @@ export async function hydrateSettings(): Promise<void> {
       nickname: nickRaw ?? "",
       iconUrl: iconRaw ?? "",
       handle: handleRaw ?? "",
+      accountType: acctRaw ?? "",
       blockedPlaces: Array.isArray(blocked) ? blocked : [],
     });
   } catch {
@@ -137,10 +140,12 @@ export function saveHandle(handle: string): void {
   setState({ handle });
   AsyncStorage.setItem(HANDLE_KEY, handle).catch(() => {});
 }
-// account_type はサーバー(user_handles)由来。永続はせず、取得できたらバッジ即時表示のため保持。
+// account_type はサーバー(user_handles)由来。取得できたら端末にも保持＝次回起動〜全画面で
+//   本人バッジを即時表示（community-spot等のサーバー値が届く前でも本人のバッジが消えない）。
 export function setAccountType(accountType: string): void {
   if (state.accountType === accountType) return;
   setState({ accountType });
+  AsyncStorage.setItem(ACCOUNT_TYPE_KEY, accountType).catch(() => {});
 }
 
 function persistBlocked(next: string[]): void {

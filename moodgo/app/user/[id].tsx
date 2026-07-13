@@ -326,8 +326,8 @@ export default function UserProfileScreen() {
   const badgeType = isMe ? (localSettings.accountType || profile?.accountType || null) : (profile?.accountType ?? null);
   const handleText = (isMe && localSettings.handle) ? localSettings.handle : (profile?.handle ?? '');
   const tabW = (SCREEN_W - SIDE * 2) / 2;
-  // 一言メッセージ: サーバー(公開)優先。自分のページはローカル設定にもフォールバック。
-  const bioText = (profile?.bio?.trim() || (isMe ? (localSettings.profileBio ?? '').trim() : '') || '');
+  // 一言メッセージ: 自分のページはローカル優先＝編集が即時反映（名前/アイコンと統一）。他人はサーバー(公開)値。
+  const bioText = isMe ? ((localSettings.profileBio ?? '').trim() || profile?.bio?.trim() || '') : (profile?.bio?.trim() || '');
   // 在住地(県)はローカル保存のみ（サーバー未同期）→ 本人閲覧時だけプロフィールタブと同様に表示
   const prefText = isMe && localSettings.showPrefecture ? (localSettings.profilePrefecture ?? '').trim() : '';
   const visitedSpots = profile?.visitedSpots ?? [];
