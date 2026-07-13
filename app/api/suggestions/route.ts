@@ -185,9 +185,12 @@ export async function POST(request: Request) {
       availableUntil = null;
     }
 
-    // 管理者からの直接投稿は即承認
-    const isAdmin = secret === ADMIN_SECRET;
-    const status = (isAdmin && source === "admin") ? "approved" : "pending";
+    // 投稿は即時公開（2026-07-13修正）。
+    //   旧仕様: ユーザー投稿は "pending" で作成 → 読む側(フィード/詳細/検索)は approved のみ表示
+    //   ＝完了画面の「すぐ表示されます」に反して手動承認まで誰にも見えないバグだった。
+    //   NGワードは上でPOST自体を400にしているため、通過した投稿はそのまま公開してよい。
+    //   pending/hidden は admin が個別に非公開へ落とすための状態として残す。
+    const status = "approved";
 
     // コアペイロード（必ず存在するカラムのみ）
     const corePayload = {
@@ -258,7 +261,7 @@ export async function GET(request: Request) {
   try {
     let query = supabase
       .from("suggestions")
-      .select("id, created_at, spot_name, description, address, lat, lng, contact, image_urls, status, admin_note, google_place_id, google_maps_uri, google_place_name, auto_tags, station_info, source, available_from, available_until")
+      .select("id, created_at, spot_name, description, address, lat, lng, contact, image_urls, status, admin_note, google_place_id, google_maps_uri, google_place_name, auto_tags, station_info, source, available_from, available_until, poster_name")
       .order("created_at", { ascending: false });
 
     // 重複チェック用：スポット名での絞り込み
@@ -272,14 +275,44 @@ export async function GET(request: Request) {
     if (error?.code === "42703" || error?.code === "PGRST204") {
       const fallback = await supabase
         .from("suggestions")
-        .select("id, created_at, spot_name, description, address, lat, lng, contact, image_urls, status, admin_note, google_place_id, google_maps_uri, google_place_name, auto_tags, station_info, source")
+        .select("id, created_at, spot_name, description, address, lat, lng, contact, image_urls, status, admin_note, google_place_id, google_maps_uri, google_place_name, auto_tags, station_info, source, poster_name")
         .order("created_at", { ascending: false });
       data = fallback.data as unknown as typeof data;
       error = fallback.error;
     }
 
     if (error) throw error;
-    return NextResponse.json({ ok: true, suggestions: data ?? [] });
+
+    // 管理画面用: いいね数/コメント数を一括付与（テーブル未作成/失敗時は0のまま安全に劣化）
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const ids = rows.map(r => String(r.id));
+    const likeBy = new Map<string, number>();
+    const cmtBy = new Map<string, number>();
+    if (ids.length > 0) {
+      try {
+        const { data: rx } = await supabase.from("spot_post_reactions")
+          .select("post_id, rtype").in("post_id", ids).eq("rtype", "like");
+        for (const r of rx ?? []) {
+          const k = String((r as { post_id?: string }).post_id);
+          likeBy.set(k, (likeBy.get(k) ?? 0) + 1);
+        }
+      } catch { /* noop */ }
+      try {
+        const { data: cm } = await supabase.from("spot_comments")
+          .select("post_id").in("post_id", ids).neq("status", "hidden");
+        for (const c of cm ?? []) {
+          const k = String((c as { post_id?: string }).post_id);
+          cmtBy.set(k, (cmtBy.get(k) ?? 0) + 1);
+        }
+      } catch { /* noop */ }
+    }
+    for (const r of rows) {
+      const k = String(r.id);
+      r.like_count = likeBy.get(k) ?? 0;
+      r.comment_count = cmtBy.get(k) ?? 0;
+    }
+
+    return NextResponse.json({ ok: true, suggestions: rows });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

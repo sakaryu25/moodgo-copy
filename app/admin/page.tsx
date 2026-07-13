@@ -69,7 +69,7 @@ type Suggestion = {
   lng: number | null;
   contact: string | null;
   image_urls: string[];
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "hidden";
   admin_note: string | null;
   google_place_id: string | null;
   google_maps_uri: string | null;
@@ -79,6 +79,9 @@ type Suggestion = {
   is_chain?: boolean;
   available_from?: string | null;
   available_until?: string | null;
+  poster_name?: string | null;   // 投稿者の表示名（匿名はnull）
+  like_count?: number;           // いいね数（GETで集計付与）
+  comment_count?: number;        // コメント数（同上）
 };
 
 type FeedbackRecord = {
@@ -3156,15 +3159,15 @@ export default function AdminPage() {
   };
 
   // 承認（Googleマップ紐付けあり or なし）
-  const handleApprove = async (s: Suggestion) => {
-    // 気分タグ未設定の警告: 気分タグが無い投稿は承認しても検索結果に出る経路が無い
+  // タグ・Googleマップ紐付け・管理メモの保存（公開状態は変えない。旧handleApproveの後継）
+  const handleSaveChanges = async (s: Suggestion) => {
+    // 気分タグ未設定の警告: 気分タグが無い投稿は検索結果に出る経路が無い
     const tagsToCheck = editableTags[s.id] ?? s.auto_tags ?? [];
     const hasMoodTag = tagsToCheck.some((t) => MOOD_TAGS.includes(t));
     if (!hasMoodTag) {
       const ok = window.confirm(
         "⚠️ 気分タグ（#まったりしたい 等）が設定されていません。\n" +
-        "気分タグが無いと、承認しても検索結果に一切表示されません。\n\n" +
-        "このまま承認しますか？（キャンセルしてタグを追加することを推奨）"
+        "気分タグが無いと検索結果に一切表示されません。\n\nこのまま保存しますか？"
       );
       if (!ok) return;
     }
@@ -3176,7 +3179,6 @@ export default function AdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: s.id,
-          status: "approved",
           adminNote: noteInput[s.id] ?? s.admin_note ?? null,
           secret: adminSecret,
           googlePlaceId: candidate?.placeId ?? s.google_place_id ?? null,
@@ -3190,7 +3192,6 @@ export default function AdminPage() {
           item.id === s.id
             ? {
                 ...item,
-                status: "approved",
                 admin_note: noteInput[s.id] ?? item.admin_note,
                 google_place_id: candidate?.placeId ?? item.google_place_id,
                 google_maps_uri: candidate?.mapsUri ?? item.google_maps_uri,
@@ -3206,36 +3207,28 @@ export default function AdminPage() {
     }
   };
 
+  // 公開/非公開の切替（/api/admin/report-action の restore/hide を流用＝reportsタブと同一経路）
+  const handleSuggestionVisibility = async (s: Suggestion, publish: boolean) => {
+    setActionLoading(s.id);
+    try {
+      const d = await reportAction(publish ? "restore" : "hide", { postId: s.id });
+      if (!d?.ok) { alert(`失敗しました: ${d?.error ?? "不明なエラー"}`); return; }
+      setSuggestions(prev => prev.map(it => it.id === s.id ? { ...it, status: publish ? "approved" : "hidden" } : it));
+    } finally { setActionLoading(null); }
+  };
+
+  // 完全削除（投稿+コメント+リアクション+通報ログを連鎖削除・不可逆）
+  const handleSuggestionDelete = async (s: Suggestion) => {
+    if (!confirm(`「${s.spot_name}」を完全に削除します（コメント・いいね・通報ログも消えます）。元に戻せません。よろしいですか？`)) return;
+    setActionLoading(s.id);
+    try {
+      const d = await reportAction("delete", { postId: s.id });
+      if (!d?.ok) { alert(`失敗しました: ${d?.error ?? "不明なエラー"}`); return; }
+      setSuggestions(prev => prev.filter(it => it.id !== s.id));
+    } finally { setActionLoading(null); }
+  };
+
   // 却下
-  const handleReject = async (id: string) => {
-    setActionLoading(id);
-    try {
-      await fetch("/api/suggestions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "rejected", adminNote: noteInput[id] ?? null, secret: adminSecret }),
-      });
-      setSuggestions((prev) => prev.map((s) => s.id === id ? { ...s, status: "rejected", admin_note: noteInput[id] ?? s.admin_note } : s));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // 審査中に戻す
-  const handlePending = async (id: string) => {
-    setActionLoading(id);
-    try {
-      await fetch("/api/suggestions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "pending", adminNote: noteInput[id] ?? null, secret: adminSecret }),
-      });
-      setSuggestions((prev) => prev.map((s) => s.id === id ? { ...s, status: "pending" } : s));
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   const card: React.CSSProperties = {
     background: "#fff",
     borderRadius: "20px",
@@ -3474,6 +3467,11 @@ export default function AdminPage() {
             <div style={{ textAlign: "center", padding: "40px", opacity: 0.6 }}>読み込み中...</div>
           ) : (
             <>
+              <div style={{ background: "#f0f7ff", border: "1px solid #cfe3ff", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px", fontSize: "12.5px", color: "#3b5b8a", lineHeight: 1.7 }}>
+                ここは「全国みんなの穴場」への<b>新スポット投稿</b>の管理です。投稿は<b>即時公開</b>（NGワードは投稿時に自動ブロック）。
+                問題のある投稿は「非公開にする」（可逆）か「完全に削除」で対応してください。
+                既存スポットへの口コミ（Moodログ）は<b>📝 moodログ管理</b>タブ、通報対応は<b>⚠ 不適切報告</b>タブへ。
+              </div>
               {suggestions.length === 0 ? (
                 <div style={{ ...card, textAlign: "center", padding: "40px", opacity: 0.6 }}>まだ投稿がありません</div>
               ) : suggestions.map((s) => {
@@ -3482,24 +3480,40 @@ export default function AdminPage() {
                 const selCand = selectedCandidate[s.id];
                 const tags = editableTags[s.id] ?? s.auto_tags ?? [];
 
+                // 公開状態は2値運用（approved=公開 / それ以外=非公開）。pendingは即時公開化以前の旧投稿。
+                const isPublic = s.status === "approved";
+                const isLegacyPending = s.status === "pending";
+                const today = new Date().toISOString().slice(0, 10);
+                const isLimited = !!(s.available_from || s.available_until);
+                const isExpired = !!(s.available_until && s.available_until < today);
                 return (
-                  <div key={s.id} style={{ ...card, marginBottom: "16px", borderLeft: `4px solid ${s.status === "approved" ? "#18794e" : s.status === "rejected" ? "#c0385a" : "#ffbf67"}` }}>
+                  <div key={s.id} style={{ ...card, marginBottom: "16px", borderLeft: `4px solid ${isPublic ? "#18794e" : isLegacyPending ? "#ffbf67" : "#9ca3af"}` }}>
                     {/* ヘッダー */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                       <div>
-                        <span style={{
-                          display: "inline-block",
-                          padding: "3px 10px",
-                          borderRadius: "999px",
-                          fontSize: "11px",
-                          fontWeight: 900,
-                          marginBottom: "6px",
-                          background: s.status === "approved" ? "#e8f5e9" : s.status === "rejected" ? "#fce4e4" : "#fff8e1",
-                          color: s.status === "approved" ? "#18794e" : s.status === "rejected" ? "#c0385a" : "#b07030",
-                        }}>
-                          {s.status === "approved" ? "✅ 承認済み" : s.status === "rejected" ? "❌ 却下" : "⏳ 審査中"}
-                        </span>
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "6px" }}>
+                          <span style={{
+                            display: "inline-block", padding: "3px 10px", borderRadius: "999px",
+                            fontSize: "11px", fontWeight: 900,
+                            background: isPublic ? "#e8f5e9" : isLegacyPending ? "#fff8e1" : "#f3f4f6",
+                            color: isPublic ? "#18794e" : isLegacyPending ? "#b07030" : "#6b7280",
+                          }}>
+                            {isPublic ? "🟢 公開中" : isLegacyPending ? "⏳ 非公開（旧・承認待ち）" : "🚫 非公開"}
+                          </span>
+                          {isLimited && (
+                            <span style={{
+                              display: "inline-block", padding: "3px 10px", borderRadius: "999px",
+                              fontSize: "11px", fontWeight: 900,
+                              background: isExpired ? "#fce4e4" : "#ede9fe", color: isExpired ? "#c0385a" : "#6d28d9",
+                            }}>
+                              📅 期間限定 {s.available_from ?? "…"} 〜 {s.available_until ?? "…"}{isExpired ? "（終了・cronが自動削除）" : ""}
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontWeight: 900, fontSize: "17px", color: "#4a3034" }}>{s.spot_name}</div>
+                        <div style={{ fontSize: "12px", color: "#9a8088", marginTop: "3px" }}>
+                          投稿者: {s.poster_name || "（匿名）"}　❤️ {s.like_count ?? 0}　💬 {s.comment_count ?? 0}
+                        </div>
                       </div>
                       <div style={{ fontSize: "12px", opacity: 0.55 }}>{new Date(s.created_at).toLocaleDateString("ja-JP")}</div>
                     </div>
@@ -3876,52 +3890,41 @@ export default function AdminPage() {
                     )}
                     {/* ──────────────────────────────────────────────────── */}
 
-                    {/* アクションボタン */}
-                    {s.status === "pending" && (
-                      <div style={{ display: "flex", gap: "10px" }}>
-                        <button
-                          onClick={() => handleApprove(s)}
-                          disabled={actionLoading === s.id}
-                          style={{ flex: 1, height: "44px", ...btnBase, background: "linear-gradient(135deg, #18794e 0%, #10b977 100%)", color: "#fff", fontSize: "14px" }}
-                        >
-                          {actionLoading === s.id ? "..." : "✅ 承認する"}
-                        </button>
-                        <button
-                          onClick={() => handleReject(s.id)}
-                          disabled={actionLoading === s.id}
-                          style={{ flex: 1, height: "44px", ...btnBase, background: "#c0385a", color: "#fff", fontSize: "14px" }}
-                        >
-                          {actionLoading === s.id ? "..." : "❌ 却下する"}
-                        </button>
-                      </div>
-                    )}
-                    {s.status === "approved" && (
-                      <div style={{ display: "flex", gap: "10px" }}>
-                        <button
-                          onClick={() => handleApprove(s)}
-                          disabled={actionLoading === s.id}
-                          style={{ flex: 1, height: "40px", ...btnBase, background: "linear-gradient(135deg, #4184ff 0%, #5b6dff 100%)", color: "#fff", fontSize: "13px" }}
-                        >
-                          {actionLoading === s.id ? "..." : "🔄 タグ・紐付けを更新する"}
-                        </button>
-                        <button
-                          onClick={() => handlePending(s.id)}
-                          disabled={actionLoading === s.id}
-                          style={{ height: "40px", padding: "0 16px", ...btnBase, border: "1px solid #ead7db", background: "#fff", color: "#4a3034", fontSize: "13px" }}
-                        >
-                          審査中に戻す
-                        </button>
-                      </div>
-                    )}
-                    {s.status === "rejected" && (
+                    {/* アクション: 保存（タグ/紐付け/メモ）・公開⇔非公開・完全削除
+                        承認フローは廃止（投稿は即時公開・NGワードは投稿時にブロック）。 */}
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                       <button
-                        onClick={() => handlePending(s.id)}
+                        onClick={() => handleSaveChanges(s)}
                         disabled={actionLoading === s.id}
-                        style={{ height: "38px", padding: "0 20px", ...btnBase, border: "1px solid #ead7db", background: "#fff", color: "#4a3034", fontSize: "13px" }}
+                        style={{ flex: 1, minWidth: "200px", height: "42px", ...btnBase, background: "linear-gradient(135deg, #4184ff 0%, #5b6dff 100%)", color: "#fff", fontSize: "13px" }}
                       >
-                        審査中に戻す
+                        {actionLoading === s.id ? "..." : "💾 タグ・紐付け・メモを保存"}
                       </button>
-                    )}
+                      {isPublic ? (
+                        <button
+                          onClick={() => handleSuggestionVisibility(s, false)}
+                          disabled={actionLoading === s.id}
+                          style={{ height: "42px", padding: "0 18px", ...btnBase, background: "#fef3c7", color: "#92400e", fontSize: "13px" }}
+                        >
+                          {actionLoading === s.id ? "..." : "🚫 非公開にする"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleSuggestionVisibility(s, true)}
+                          disabled={actionLoading === s.id}
+                          style={{ height: "42px", padding: "0 18px", ...btnBase, background: "linear-gradient(135deg, #18794e 0%, #10b977 100%)", color: "#fff", fontSize: "13px" }}
+                        >
+                          {actionLoading === s.id ? "..." : "🟢 公開する"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleSuggestionDelete(s)}
+                        disabled={actionLoading === s.id}
+                        style={{ height: "42px", padding: "0 18px", ...btnBase, background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff", fontSize: "13px" }}
+                      >
+                        {actionLoading === s.id ? "..." : "🗑 完全に削除"}
+                      </button>
+                    </div>
                   </div>
                 );
               })}

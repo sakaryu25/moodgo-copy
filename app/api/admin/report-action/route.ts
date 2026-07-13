@@ -72,8 +72,10 @@ export async function POST(request: NextRequest) {
     if (action === "hide" || action === "restore") {
       const found = await findPost(postId);
       if (!found) return NextResponse.json({ ok: false, error: "投稿が見つかりません（削除済み？）" }, { status: 404 });
-      const status = action === "hide" ? "hidden" : "approved";
+      // suggestions.status はDB制約で pending/approved/rejected のみ → 非公開は "rejected" を使う
+      //   （読む側は approved のみ表示なので効果は同じ。spot_posts は "hidden"）。
       const table = found.kind === "moodlog" ? "spot_posts" : "suggestions";
+      const status = action === "restore" ? "approved" : (found.kind === "moodlog" ? "hidden" : "rejected");
       const { error } = await db.from(table).update({ status }).eq("id", postId);
       if (error) throw error;
       if (found.kind === "moodlog") {
@@ -118,6 +120,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "不正なaction" }, { status: 400 });
   } catch (e) {
     console.error("report-action error:", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    const msg = e instanceof Error ? e.message : (typeof e === "object" ? JSON.stringify(e) : String(e));
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
