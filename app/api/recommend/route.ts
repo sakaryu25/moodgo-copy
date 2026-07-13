@@ -5704,6 +5704,7 @@ type FinalizeRec = {
   userRatingCount?: number | null;
   hasUserPhotos?: boolean;
   features?: string[];
+  tags?: string[];   // 気分/ジャンルタグ（絶景boost・地味な公園判定に使用）
   source?: string;   // 手動追加(manual/admin/user)優先のために参照
   placeId?: string;  // #2: 重複排除の安全網（同一placeId=同一スポット）
   _aiRank?: number;  // OpenAI判別順位(0=最良)。Supabase候補のみ付与。sortOrShuffleで昇格boostに使う
@@ -6043,6 +6044,21 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (typeof r.rating === "number" && r.rating >= 4.5 && cnt > 0 && cnt <= 2) s -= 2;
       return s;
     };
+    // ── 地味な小さい公園を後方へ＋絶景/映えタグを上位へ ────────────────────────────
+    //   「自然」等で ことぶき公園/○丁目公園/児童公園 のような生活公園に絶景が埋もれる問題の是正。
+    //   ⚠削除でなく“減点”（データは消さない・0件回避）。タグ付き絶景/有名/花/記念/大型公園は対象外。
+    const SCENIC_TAG_SET = new Set(["#絶景スポット", "#展望台", "#夜景", "#岬", "#灯台", "#滝", "#湖", "#庭園", "#花畑", "#絶景"]);
+    const hasScenicTag = (r: FinalizeRec) => (r.tags ?? []).some(t => SCENIC_TAG_SET.has(t as string));
+    const JUNK_PARK_RE = /児童公園|児童遊園|街区公園|近隣公園|交通公園|防災公園|ちびっこ|こども広場|子ども広場|団地.{0,4}公園|[0-9０-９]+丁目.{0,5}公園|[0-9０-９]+[・･‐\-][0-9０-９].{0,8}公園|第?[0-9０-９]+号公園/;
+    const APPEALING_PARK_RE = /国営|国立|海浜|臨海|花|バラ|ローズ|チューリップ|ラベンダー|コスモス|芝桜|紅葉|桜|展望|絶景|パノラマ|夜景|記念|歴史|城|庭園|森林|渓谷|湖畔|湖|大通|中央公園|総合公園|運動公園|自然公園|県立|府立|フラワー|ガーデン|高原|牧場|オアシス|ふれあい/i;
+    const GENERIC_PARK_RE = /公園|緑地|広場/;
+    const parkPenalty = (r: FinalizeRec): number => {
+      const n = r.title ?? "";
+      if (hasScenicTag(r)) return 0;                                          // タグ付き絶景/映えは触らない
+      if (JUNK_PARK_RE.test(n)) return 5;                                     // 児童/番号/防災公園=どの気分でも行き先でない
+      if (GENERIC_PARK_RE.test(n) && !APPEALING_PARK_RE.test(n)) return 2.5;  // 地味な○○公園/緑地/広場=軽く後方へ
+      return 0;
+    };
     return [...arr]
       .map(r => ({
         r,
@@ -6056,7 +6072,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
           + (r.openNow === true ? 2 : 0)         // #7: 営業中の店を優先
           + (r.openNow === false ? -1.5 : 0)     //     営業時間外は控えめに後ろへ
           + ((isCurated(r.source) && !overCap(r)) ? 8 : 0)  // 領域1: 手動追加は近距離キャップ以内のみ満額昇格
-          + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0),
+          + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0)
+          + (hasScenicTag(r) ? 4 : 0)                        // 絶景/映えタグを上位化（生活公園に埋もれさせない）
+          - parkPenalty(r),                                  // 地味な小さい公園/緑地/広場を後方化（除外でなく減点）
       }))
       // 領域1: cap以内(band0)を必ず上位、cap外(band1)は後方。同バンドはscore降順、cap外は近い順タイブレーク。
       .sort((a, b) => {
