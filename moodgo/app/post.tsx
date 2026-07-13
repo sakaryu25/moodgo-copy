@@ -312,6 +312,7 @@ export default function PostScreen() {
   const [vis, setVis] = useState<'public' | 'anon' | 'private'>('public');   // 公開範囲: 名前/匿名/非公開
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);   // 二重送信防止の同期フラグ（stateは非同期で連打の2回目に間に合わない）
   const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
   const [priceNote, setPriceNote] = useState('');   // 値段の自由記入（任意）
   const [contact, setContact] = useState('');       // 連絡先（任意・掲載特典の連絡用）
@@ -571,7 +572,7 @@ export default function PostScreen() {
       return { main: img.base64 ? `data:image/jpeg;base64,${img.base64}` : '', thumb: '' };
     }
   }));
-  const submit = async () => {
+  const doSubmit = async () => {
     // ── 編集モード: 名前・本文・気分・公開範囲・評価・値段・連絡先を更新（最初の投稿と同項目）──
     if (editMode) {
       if (!spotName.trim()) { showToast(t.tSpotNameTitle, t.tSpotNameSub); return; }
@@ -705,6 +706,14 @@ export default function PostScreen() {
       registerForPushNotificationsAsync().catch(() => {});
       setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast(t.tPostFailSub2Title, t.tPostFailSub2); setSubmitting(false); }
+  };
+
+  // 二重送信防止: ボタンの disabled={submitting} は state 更新が非同期で連打の2回目に間に合わない。
+  //   同期の ref で「送信中は2回目以降を無視」。成功/失敗/バリデーション落ち後は finally で必ず解除。
+  const submit = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try { await doSubmit(); } finally { submittingRef.current = false; }
   };
 
   return (
