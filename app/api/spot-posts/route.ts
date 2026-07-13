@@ -18,6 +18,7 @@ import { ADMIN_SECRET } from "@/lib/admin-auth";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
 import { sendPushToDevice } from "@/lib/push-send";
+import { isSameNameLoose } from "@/lib/normalize-name";
 
 const BUCKET = "spot-photos";
 const REPORT_HIDE_THRESHOLD = 3;
@@ -416,6 +417,7 @@ export async function POST(req: Request) {
 
     // 新スポット投稿(place_id無し)は places に仮登録(is_active=false=承認待ち)。admin承認で検索に出る＝穴場の役割を吸収。
     let effectivePlaceId = placeId;
+    let linkedExistingName: string | null = null;   // A+C重複防止で既存placeに紐付けた場合の名前
     if (!placeId && placeName) {
       // 限定イベント派生スポットは親スポットの位置を継承（クライアントは座標を持たないため）。
       let insLat = newLat, insLng = newLng, insAddr = newAddress;
@@ -428,21 +430,42 @@ export async function POST(req: Request) {
           if (!insAddr) insAddr = p2.address ?? null;
         }
       }
-      // 通常の新スポットは admin 承認まで is_active=false。
-      // 期間限定イベント派生スポット(parentPlaceId＋終了日あり)は承認なしで期間中だけ検索に出す＝is_active=true。
-      //   recommend が is_active=true かつ available_from<=今日<=available_until のみ採用し、
-      //   期間が過ぎたら cron/cleanup-stale-cache が完全削除する＝自己完結（永続化しない）。
-      const eventActive = !!(parentPlaceId && newAvailUntil);
-      const { data: place } = await db.from("places").insert({
-        name: placeName, address: insAddr || "日本", tags: moodTags,
-        area: null, nearest_station: newStation, source_type: "user", is_active: eventActive,
-        lat: insLat, lng: insLng, open_hours: newOpenHours,
-      }).select("id").single();
-      if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
-      // 期間限定(公開期間): available_from/until 列が未作成でも投稿は成功させる（列があれば保存）。
-      if (effectivePlaceId && (newAvailFrom || newAvailUntil)) {
-        await db.from("places").update({ available_from: newAvailFrom, available_until: newAvailUntil })
-          .eq("id", effectivePlaceId).then(() => {}, () => {});
+      // ── A+C 重複防止（イベント派生以外・座標がある時）──
+      //   同じ物理的な場所は座標がほぼ同じ＝表記ゆれ(カナ/英語)の別名でも二重作成しない。
+      //   ①表記ゆれ範囲で名前一致 or ②±~30mに既存が1件だけ（＝同一地点の別表記）→ その既存placeに紐付ける。
+      if (!parentPlaceId && insLat != null && insLng != null) {
+        const dLat = 0.0009, dLng = 0.0011;   // 検索窓 ~100m
+        const { data: near } = await db.from("places")
+          .select("id, name, lat, lng")
+          .gte("lat", insLat - dLat).lte("lat", insLat + dLat)
+          .gte("lng", insLng - dLng).lte("lng", insLng + dLng).limit(60);
+        const rows = (near ?? []) as Array<{ id: string; name?: string; lat?: number; lng?: number }>;
+        let dup = rows.find((p) => isSameNameLoose(placeName, String(p.name ?? "")));
+        if (!dup) {
+          // 名前一致が無くても至近が1件だけなら同一地点の別表記(英語/カナ)とみなす（複数=別POIの恐れ→紐付けない）
+          const veryNear = rows.filter((p) =>
+            Math.abs(Number(p.lat) - (insLat as number)) < 0.0003 && Math.abs(Number(p.lng) - (insLng as number)) < 0.0004);
+          if (veryNear.length === 1) dup = veryNear[0];
+        }
+        if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
+      }
+      // 重複が無ければ新規placeを仮登録（admin承認まで is_active=false）。
+      //   期間限定イベント派生(parentPlaceId＋終了日)は承認なしで期間中だけ検索に出す＝is_active=true。
+      //   recommend が is_active=true かつ available_from<=今日<=available_until のみ採用し、期限切れは
+      //   cron/cleanup-stale-cache が完全削除＝自己完結（永続化しない）。
+      if (!effectivePlaceId) {
+        const eventActive = !!(parentPlaceId && newAvailUntil);
+        const { data: place } = await db.from("places").insert({
+          name: placeName, address: insAddr || "日本", tags: moodTags,
+          area: null, nearest_station: newStation, source_type: "user", is_active: eventActive,
+          lat: insLat, lng: insLng, open_hours: newOpenHours,
+        }).select("id").single();
+        if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
+        // 期間限定(公開期間): available_from/until 列が未作成でも投稿は成功させる（列があれば保存）。
+        if (effectivePlaceId && (newAvailFrom || newAvailUntil)) {
+          await db.from("places").update({ available_from: newAvailFrom, available_until: newAvailUntil })
+            .eq("id", effectivePlaceId).then(() => {}, () => {});
+        }
       }
     }
 
@@ -496,7 +519,7 @@ export async function POST(req: Request) {
       await db.from("spot_photos").insert(rows).then(() => {}, () => {});
     }
 
-    return NextResponse.json({ ok: true, id: postId, status });
+    return NextResponse.json({ ok: true, id: postId, status, linkedTo: linkedExistingName });
   } catch (e) {
     console.error("spot-posts POST error:", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });

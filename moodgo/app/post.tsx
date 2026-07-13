@@ -38,6 +38,7 @@ const T = {
     doneEditSub: '編集内容を保存しました。反映まで少し時間がかかることがあります。',
     doneExistingSub: 'ありがとうございます！あなたの投稿は「全国みんなの穴場」とスポットのページにすぐ表示されます。',
     doneNewSub: 'ありがとうございます！あなたの投稿は「全国みんなの穴場」にすぐ表示されます。',
+    doneLinkedSub: (name: string) => `近くに既存の「${name}」があったため、重複を防いでそこにまとめました。あなたの投稿はそのスポットのページに表示されます。ありがとうございます！`,
     close: '閉じる',
     leadText: 'あなたが知っている素敵な場所を投稿しよう。\n掲載された場合は特典をプレゼント予定です🎁',
     spotNameLabel: 'スポット名 ',
@@ -156,6 +157,7 @@ const T = {
     doneEditSub: 'Your changes have been saved. It may take a little while to appear.',
     doneExistingSub: 'Thank you! Your post will appear right away in "Hidden gems nationwide" and on the spot\'s page.',
     doneNewSub: 'Thank you! Your post will appear right away in "Hidden gems nationwide".',
+    doneLinkedSub: (name: string) => `We found an existing "${name}" nearby, so we merged your post there to avoid a duplicate. It appears on that spot's page. Thank you!`,
     close: 'Close',
     leadText: 'Share a great place you know.\nWe plan to send a reward if it gets featured 🎁',
     spotNameLabel: 'Spot name ',
@@ -330,6 +332,7 @@ export default function PostScreen() {
   const [locating, setLocating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);   // 二重送信防止の同期フラグ（stateは非同期で連打の2回目に間に合わない）
+  const [linkedTo, setLinkedTo] = useState<string | null>(null);   // 重複防止で既存スポットに紐付いた時その名前（完了画面で案内）
   const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
   const [priceNote, setPriceNote] = useState('');   // 値段の自由記入（任意）
   const [contact, setContact] = useState('');       // 連絡先（任意・掲載特典の連絡用）
@@ -731,6 +734,7 @@ export default function PostScreen() {
       // 投稿した＝いいね/行った！の通知を受け取る側になる文脈なので、ここで
       // プッシュ通知の許可＋トークン登録を行う（拒否済み/シミュレータはno-op）
       registerForPushNotificationsAsync().catch(() => {});
+      if (typeof d.linkedTo === 'string' && d.linkedTo) setLinkedTo(d.linkedTo);   // 近接＋表記ゆれで既存スポットにまとめられた
       setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast(t.tPostFailSub2Title, t.tPostFailSub2); setSubmitting(false); }
   };
@@ -762,6 +766,8 @@ export default function PostScreen() {
           <Text style={s.doneSub}>
             {editMode
               ? t.doneEditSub
+              : linkedTo
+              ? t.doneLinkedSub(linkedTo)
               : isExisting
               ? t.doneExistingSub
               : t.doneNewSub}
