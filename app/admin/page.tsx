@@ -108,6 +108,22 @@ type ReportRecord = {
   status?: string; // "blocked" | null
 };
 
+// 通報されたユーザー投稿の中身（/api/admin/report-action inspect の結果）
+type ReportInspect = {
+  kind: "moodlog" | "suggestion";
+  post: {
+    place_name?: string; spot_name?: string; caption?: string | null; description?: string | null;
+    poster_name?: string | null; status?: string | null; created_at?: string; report_count?: number;
+  };
+  photos: string[];
+  commentCount: number;
+};
+// note の [post:UUID] マーカーから通報対象のユーザー投稿IDを取り出す（無ければ場所への通報）
+const reportPostIdOf = (note: string | null): string | null => {
+  const m = /\[post:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/i.exec(note ?? "");
+  return m ? m[1] : null;
+};
+
 const font = '"Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif';
 
 // ─── 特集タブ振り分け：地方→県 マッピング（アプリの Tab 名と一致させること） ───
@@ -1459,6 +1475,9 @@ export default function AdminPage() {
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState("");
+  // 通報対象のユーザー投稿の確認結果（postId → 中身 / "loading" / "gone"=削除済み）と処理中フラグ
+  const [reportInspect, setReportInspect] = useState<Record<string, ReportInspect | "loading" | "gone">>({});
+  const [reportBusy, setReportBusy] = useState("");
   const [reportFilter, setReportFilter] = useState<"all" | "irrelevant" | "dislike" | "misinfoinfo" | "restricted" | "other">("all");
   const [blockingReport, setBlockingReport] = useState<string | null>(null); // report.id
   const [globallyBlocked, setGloballyBlocked] = useState<string[]>([]); // spot_names
@@ -2749,6 +2768,54 @@ export default function AdminPage() {
     .catch((e) => setReportsError(String(e)))
     .finally(() => setReportsLoading(false));
   }, [authed, tab]);
+
+  // ── 通報されたユーザー投稿の確認・処分（/api/admin/report-action）──────────────
+  const reportAction = async (action: string, payload: Record<string, unknown>) => {
+    const res = await fetch("/api/admin/report-action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": adminSecret },
+      body: JSON.stringify({ secret: adminSecret, action, ...payload }),
+    });
+    return res.json();
+  };
+  const reloadReports = async () => {
+    const d = await fetch("/api/reports", { headers: { "x-admin-secret": adminSecret } }).then(r => r.json()).catch(() => null);
+    if (d?.ok) setReports(d.reports ?? []);
+  };
+  // 投稿の中身を確認（moodlog/suggestion 自動判別・削除済みなら "gone"）
+  const handleReportInspect = async (postId: string) => {
+    setReportInspect(prev => ({ ...prev, [postId]: "loading" }));
+    const d = await reportAction("inspect", { postId }).catch(() => null);
+    if (!d?.ok) { alert(`確認に失敗しました: ${d?.error ?? "通信エラー"}`); setReportInspect(prev => { const n = { ...prev }; delete n[postId]; return n; }); return; }
+    setReportInspect(prev => ({
+      ...prev,
+      [postId]: d.kind ? { kind: d.kind, post: d.post ?? {}, photos: d.photos ?? [], commentCount: d.commentCount ?? 0 } : "gone",
+    }));
+  };
+  // 非表示(可逆)/解除/完全削除。削除は投稿+写真+コメント+この投稿への通報ログまで消える
+  const handleReportModerate = async (action: "hide" | "restore" | "delete", postId: string) => {
+    if (action === "delete" && !confirm("この投稿を完全に削除します（写真・コメント・通報ログも消えます）。元に戻せません。よろしいですか？")) return;
+    setReportBusy(postId);
+    try {
+      const d = await reportAction(action, { postId });
+      if (!d?.ok) { alert(`失敗しました: ${d?.error ?? "不明なエラー"}`); return; }
+      if (action === "delete") {
+        setReportInspect(prev => ({ ...prev, [postId]: "gone" }));
+        await reloadReports();   // 関連通報はサーバー側で消えるので一覧を更新
+      } else {
+        await handleReportInspect(postId);   // 非表示/解除後の状態を再表示
+      }
+    } finally { setReportBusy(""); }
+  };
+  // 通報を却下（対応済み）。投稿には触らず通報行だけ消す
+  const handleReportDismiss = async (reportId: string) => {
+    setReportBusy(reportId);
+    try {
+      const d = await reportAction("dismiss", { reportId });
+      if (d?.ok) setReports(prev => prev.filter(x => x.id !== reportId));
+      else alert(`失敗しました: ${d?.error ?? "不明なエラー"}`);
+    } finally { setReportBusy(""); }
+  };
 
   // 全体ブロック実行
   const handleGlobalBlock = async (report: ReportRecord) => {
@@ -6745,21 +6812,95 @@ export default function AdminPage() {
                       {r.spot_address && (
                         <div style={{ fontSize: "12px", color: "#9a8088", marginBottom: "6px" }}>{r.spot_address}</div>
                       )}
-                      {r.note && (
-                        <div style={{
-                          fontSize: "13px", color: "#5a4048",
-                          background: "#fdf8f9", borderRadius: "10px",
-                          padding: "8px 12px", marginBottom: "8px",
-                          border: "1px solid #f0e8ea",
-                        }}>
-                          💬 {r.note}
-                        </div>
-                      )}
+                      {(() => {
+                        // [post:UUID]/[id:...] は内部マーカーなので表示から除去（対象特定はボタン側で使う）
+                        const cleaned = (r.note ?? "").replace(/\[(?:post|id):[^\]]+\]\s*/gi, "").trim();
+                        return cleaned ? (
+                          <div style={{
+                            fontSize: "13px", color: "#5a4048",
+                            background: "#fdf8f9", borderRadius: "10px",
+                            padding: "8px 12px", marginBottom: "8px",
+                            border: "1px solid #f0e8ea",
+                          }}>
+                            💬 {cleaned}
+                          </div>
+                        ) : null;
+                      })()}
+                      {(() => {
+                        // ── ユーザー投稿への通報: 中身を確認して 非表示/削除/却下 を決める ──
+                        const pid = reportPostIdOf(r.note);
+                        if (!pid) return null;
+                        const insp = reportInspect[pid];
+                        const busy = reportBusy === pid;
+                        const loaded = insp && insp !== "loading" && insp !== "gone" ? insp : null;
+                        const hidden = loaded?.post.status === "hidden";
+                        return (
+                          <div style={{ marginTop: "10px", borderTop: "1px dashed #f0e8ea", paddingTop: "10px" }}>
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                              <span style={{ fontSize: "11px", fontWeight: 800, color: "#6d28d9", background: "#f3ecff", borderRadius: "999px", padding: "3px 10px" }}>
+                                ユーザー投稿への通報
+                              </span>
+                              <button onClick={() => handleReportInspect(pid)} disabled={insp === "loading"}
+                                style={{ fontSize: "12px", padding: "6px 14px", borderRadius: "999px", border: "1px solid #d1d5db", background: "#fff", color: "#4a3034", cursor: "pointer", fontWeight: 800 }}>
+                                {insp === "loading" ? "確認中..." : "投稿の内容を確認"}
+                              </button>
+                              {loaded && (
+                                <>
+                                  <button onClick={() => handleReportModerate(hidden ? "restore" : "hide", pid)} disabled={busy}
+                                    style={{ fontSize: "12px", padding: "6px 14px", borderRadius: "999px", border: "none", background: hidden ? "#e5e7eb" : "#fef3c7", color: hidden ? "#374151" : "#92400e", cursor: "pointer", fontWeight: 800 }}>
+                                    {busy ? "処理中..." : hidden ? "非表示を解除" : "非表示にする"}
+                                  </button>
+                                  <button onClick={() => handleReportModerate("delete", pid)} disabled={busy}
+                                    style={{ fontSize: "12px", padding: "6px 14px", borderRadius: "999px", border: "none", background: "linear-gradient(135deg, #dc2626, #b91c1c)", color: "#fff", cursor: "pointer", fontWeight: 900 }}>
+                                    {busy ? "処理中..." : "完全に削除"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {insp === "gone" && (
+                              <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>この投稿は既に削除されています</div>
+                            )}
+                            {loaded && (
+                              <div style={{ background: "#faf7ff", border: "1px solid #e9e2f7", borderRadius: "12px", padding: "10px 12px", marginTop: "8px" }}>
+                                <div style={{ fontSize: "12px", fontWeight: 800, color: "#6d28d9" }}>
+                                  {loaded.kind === "moodlog" ? "Moodログ投稿" : "穴場投稿"}
+                                  ・{hidden ? "🚫 非表示中" : "公開中"}
+                                  ・コメント{loaded.commentCount}件
+                                  {typeof loaded.post.report_count === "number" ? `・通報${loaded.post.report_count}件` : ""}
+                                </div>
+                                <div style={{ fontSize: "13px", color: "#4a3034", marginTop: "6px", whiteSpace: "pre-wrap" }}>
+                                  {(loaded.post.caption || loaded.post.description || "").trim() || "(本文なし)"}
+                                </div>
+                                <div style={{ fontSize: "11px", color: "#9a8088", marginTop: "4px" }}>
+                                  投稿者名: {loaded.post.poster_name || "(匿名)"}　投稿日: {(loaded.post.created_at ?? "").slice(0, 10)}
+                                </div>
+                                {loaded.photos.length > 0 && (
+                                  <div style={{ display: "flex", gap: "6px", marginTop: "8px", flexWrap: "wrap" }}>
+                                    {loaded.photos.slice(0, 4).map((u, i) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img key={i} src={u} alt="" style={{ width: "72px", height: "72px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e9e2f7" }} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "10px" }}>
-                        <div style={{ fontSize: "11px", color: "#b0a0a5" }}>
-                          {new Date(r.created_at).toLocaleString("ja-JP")}
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <div style={{ fontSize: "11px", color: "#b0a0a5" }}>
+                            {new Date(r.created_at).toLocaleString("ja-JP")}
+                          </div>
+                          <button
+                            onClick={() => handleReportDismiss(r.id)}
+                            disabled={reportBusy === r.id}
+                            style={{ fontSize: "11px", padding: "4px 12px", borderRadius: "999px", border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", cursor: "pointer", fontWeight: 700 }}
+                          >
+                            {reportBusy === r.id ? "処理中..." : "✓ 対応済みにする"}
+                          </button>
                         </div>
-                        {globallyBlocked.includes(r.spot_name) ? (
+                        {reportPostIdOf(r.note) ? null : globallyBlocked.includes(r.spot_name) ? (
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <span style={{ fontSize: "12px", background: "#fee2e2", color: "#dc2626", borderRadius: "999px", padding: "4px 12px", fontWeight: 800 }}>🚫 全体非表示中</span>
                             <button
