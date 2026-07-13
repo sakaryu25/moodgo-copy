@@ -998,6 +998,8 @@ export default function PostScreen() {
                 onChange={(_e, d) => { if (d) setTempDate(d); }}
                 style={{ alignSelf: 'stretch' }}
                 accentColor="#9B6BFF"
+                textColor="#1E0753"
+                themeVariant="light"
               />
               <View style={s.pickerBtns}>
                 <TouchableOpacity onPress={() => setShowPicker(null)} style={s.pickerCancel} activeOpacity={0.8}>
@@ -1015,6 +1017,7 @@ export default function PostScreen() {
             mode={isTime ? 'time' : 'date'}
             minuteInterval={isTime ? 5 : undefined}
             onChange={(e, d) => { if (e.type === 'set' && d) commit(d); setShowPicker(null); }}
+            themeVariant="light"
           />
         );
       })()}
