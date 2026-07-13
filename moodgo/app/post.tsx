@@ -289,6 +289,8 @@ export default function PostScreen() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
+  const [thumbLoaded, setThumbLoaded] = useState<Record<string, boolean>>({});   // 写真サムネの読込完了（未完了はスピナー表示）
+  const [pickBusy, setPickBusy] = useState(false);   // 写真選択の処理中（追加ボタンにスピナー）
   const [moodTags, setMoodTags] = useState<string[]>([]);
   const [caption, setCaption] = useState('');
   const [rating, setRating] = useState(0);
@@ -363,28 +365,36 @@ export default function PostScreen() {
             const m = oh.match(/^(\d{1,2}:\d{2})\s*[〜~]\s*(\d{1,2}:\d{2})$/);
             if (m) { setOpenTime(m[1]); setCloseTime(m[2]); }
           }
+          if (active) setEditLoaded(true);   // 元投稿の反映完了→この後に下書きを上書き適用
         } else {
           showToast(t.tCannotEditTitle, d?.error ?? t.tCannotEditSub);
           router.back();
         }
-      } catch { if (active) showToast(t.tLoadFailTitle, t.tNetworkSub); }
+      } catch { if (active) { showToast(t.tLoadFailTitle, t.tNetworkSub); setEditLoaded(true); } }
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
-  // ── 下書き保存（自由入力の新スポット投稿のみ）: 誤って戻る/アプリ終了でも続きから ──
-  //   編集モードや場所詳細からの投稿(params固定)は対象外＝別スポットの下書きと混ざらない。
-  const draftEnabled = !editMode && !lockedFromParam;
+  // ── 下書き保存: 誤って戻る/アプリ終了でも続きから ────────────────────────────
+  //   「自由入力の新スポット」に加え「編集モード」でも有効（編集途中で戻っても消えない）。
+  //   編集はpostIdごとに別キー＝別投稿の編集内容と混ざらない。場所詳細から固定された新規投稿
+  //   (paramPlaceId/Name)のみ対象外。
+  const draftKey = editMode ? `${POST_DRAFT_KEY}-edit-${editId}` : POST_DRAFT_KEY;
+  const draftEnabled = editMode || (!paramPlaceId && !paramPlaceName);
+  // 編集モードはサーバーから元投稿を読み込む(get-mine)。その完了後に下書きを上書き適用する
+  //   （読み込みと復元が競合して下書きがサーバー値で潰れるのを防ぐ）。新規は即true。
+  const [editLoaded, setEditLoaded] = useState(!editMode);
   const draftRestored = useRef(false);
-  const clearDraft = () => { AsyncStorage.removeItem(POST_DRAFT_KEY).catch(() => {}); };
+  const clearDraft = () => { AsyncStorage.removeItem(draftKey).catch(() => {}); };
 
   // 復元（初回のみ）。base64はメモリ節約で保存しない＝画像はuriのみ（送信時にuriから再生成）。
   useEffect(() => {
     if (!draftEnabled) { draftRestored.current = true; return; }
+    if (!editLoaded || draftRestored.current) return;   // 編集は元投稿の読込が済んでから復元
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(POST_DRAFT_KEY);
+        const raw = await AsyncStorage.getItem(draftKey);
         const d = raw ? JSON.parse(raw) : null;
         if (d && typeof d === 'object') {
           if (typeof d.spotName === 'string') setSpotName(d.spotName);
@@ -410,7 +420,7 @@ export default function PostScreen() {
       draftRestored.current = true;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draftEnabled, editLoaded]);
 
   // 保存（復元完了後、入力変更のたびに軽くデバウンス）。内容が空になったら下書きを消す。
   useEffect(() => {
@@ -420,13 +430,13 @@ export default function PostScreen() {
       openTime || closeTime || is24h);
     const h = setTimeout(() => {
       if (hasContent) {
-        AsyncStorage.setItem(POST_DRAFT_KEY, JSON.stringify({
+        AsyncStorage.setItem(draftKey, JSON.stringify({
           spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri })),
           moodTags, caption, rating, availFrom, availUntil, station,
           openTime, closeTime, is24h, priceChip, priceNote, contact, vis,
         })).catch(() => {});
       } else {
-        AsyncStorage.removeItem(POST_DRAFT_KEY).catch(() => {});
+        AsyncStorage.removeItem(draftKey).catch(() => {});
       }
     }, 400);
     return () => clearTimeout(h);
@@ -464,12 +474,14 @@ export default function PostScreen() {
       }
       // 上限なし（selectionLimit:0）。多数選択時のメモリ節約でpickerからはbase64を取らず、
       // 送信時に uri から縮小して生成する（submit の ImageManipulator）。
+      setPickBusy(true);   // 選択後の取り込み処理中を追加ボタンに表示
       const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 0, quality: 0.6, exif: false });
       if (!r.canceled && r.assets.length > 0) {
         const add = r.assets.map(a => ({ uri: a.uri }));
-        setImages(prev => [...prev, ...add]);
+        setImages(prev => [...prev, ...add]);   // サムネはonLoadEndまでスピナー表示
       }
     } catch { showToast(t.aErrorTitle, t.aPhotoPickFail); }   // 結果通知はトーストに統一
+    finally { setPickBusy(false); }
   };
 
   const useLocation = async () => {
@@ -570,7 +582,7 @@ export default function PostScreen() {
           }),
         }).then((r) => r.json());
         setSubmitting(false);
-        if (d?.ok) { markFeedStale(); setDone(true); }   // フィードを再取得対象に（公開範囲/名前の変更を反映）
+        if (d?.ok) { clearDraft(); markFeedStale(); setDone(true); }   // 下書き破棄＋フィード再取得（公開範囲/名前の変更を反映）
         else showToast(t.tUpdateFailTitle, d?.error ?? t.tRetrySub);
       } catch { setSubmitting(false); showToast(t.tUpdateFailSub2Title, t.tNetworkSub); }
       return;
@@ -914,14 +926,19 @@ export default function PostScreen() {
               <Text style={s.hint}>{t.photoHint}</Text>
               <View style={s.photoGrid}>
                 {images.map((im, i) => (
-                  <View key={i} style={s.thumbWrap}>
-                    <Image source={{ uri: im.uri }} style={s.thumb} />
+                  <View key={`${im.uri}-${i}`} style={s.thumbWrap}>
+                    <Image source={{ uri: im.uri }} style={s.thumb}
+                      onLoadEnd={() => setThumbLoaded(p => ({ ...p, [im.uri]: true }))} />
+                    {/* 読込完了までスピナー＝「追加/保存中」を明示（写真が付いたか分かる） */}
+                    {!thumbLoaded[im.uri] && (
+                      <View style={s.thumbLoading}><ActivityIndicator size="small" color="#9B6BFF" /></View>
+                    )}
                     <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
                   </View>
                 ))}
-                {/* 枚数上限なし＝追加ボタンは常時表示 */}
-                <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8}>
-                  <Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text>
+                {/* 枚数上限なし＝追加ボタンは常時表示（横に溢れず折り返す） */}
+                <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8} disabled={pickBusy}>
+                  {pickBusy ? <ActivityIndicator size="small" color="#A78BCA" /> : <><Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text></>}
                 </TouchableOpacity>
               </View>
             </>
@@ -1044,7 +1061,8 @@ const s = StyleSheet.create({
   addrRow: { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' },
   locBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C3AED', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12 },
   locBtnText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
-  photoGrid: { flexDirection: 'row', gap: 10 },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },   // 折り返し＝5枚目以降も全て表示
+  thumbLoading: { ...StyleSheet.absoluteFillObject, borderRadius: 12, backgroundColor: 'rgba(240,236,248,0.72)', alignItems: 'center', justifyContent: 'center' },
   thumbWrap: { position: 'relative' },
   thumb: { width: 88, height: 88, borderRadius: 12, backgroundColor: '#EEE' },
   thumbX: { position: 'absolute', top: -6, right: -6, backgroundColor: '#1E0753', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },

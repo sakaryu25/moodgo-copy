@@ -794,8 +794,8 @@ export default function PlaceDetailPage() {
 
   return (
     <View style={s.root}>
-      {/* スワイプで前のページに戻る（画面全体でジェスチャー有効化）*/}
-      <Stack.Screen options={{ gestureEnabled: true, fullScreenGesture: true } as any} />
+      {/* スワイプで前のページに戻る（左端エッジ発火＝硬め・_layout の既定に合わせる）*/}
+      <Stack.Screen options={{ gestureEnabled: true, fullScreenGestureEnabled: false }} />
 
       {/* ── スティッキーヘッダー ── */}
       <Animated.View

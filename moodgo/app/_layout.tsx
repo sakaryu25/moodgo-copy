@@ -42,9 +42,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          {/* fullScreenGestureEnabled: 画面のどこからでも右スワイプで前のページへ
-              （iOS標準のエッジのみ→全面に拡張。横スクロールUIはそちらが優先されるので競合しない） */}
-          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }} />
+          {/* 右スワイプで前のページへ戻る（全Stackページ共通）。
+              iOS標準の左端エッジ発火に固定＝意図した時だけ反応する“硬め”の操作感。
+              以前の全面(fullScreen=どこでも反応)は誤爆が多く「感度が緩い」ため取りやめ。
+              エッジ発火はどのページでも有効なので「ほぼ全ページで右スワイプ」を満たす。 */}
+          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: false }} />
           {/* LINE風「送信先を選択」シート（shareSpotToGroupから全画面で呼べる） */}
           <GroupShareSheet />
           {/* オフライン時のバナー（全画面に重ねる） */}
