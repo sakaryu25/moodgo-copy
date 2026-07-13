@@ -293,6 +293,7 @@ export default function PostScreen() {
   const [images, setImages] = useState<{ uri: string; base64?: string; existing?: boolean }[]>([]);   // existing=既存(サーバ済)写真＝再アップロードしない
   const originalPhotos = useRef<string[]>([]);   // 編集時の元写真URL（削除差分の算出用）
   const [thumbLoaded, setThumbLoaded] = useState<Record<string, boolean>>({});   // 写真サムネの読込完了（未完了はスピナー表示）
+  const [gridW, setGridW] = useState(0);   // 写真グリッドの実測幅（横4列のセル幅算出用）
   const [pickBusy, setPickBusy] = useState(false);   // 写真選択の処理中（追加ボタンにスピナー）
   const [moodTags, setMoodTags] = useState<string[]>([]);
   const [caption, setCaption] = useState('');
@@ -716,6 +717,9 @@ export default function PostScreen() {
     try { await doSubmit(); } finally { submittingRef.current = false; }
   };
 
+  // 写真グリッドは横4列: 実測幅から (幅 - gap×3) / 4 でセル幅を出す（未測定は概算82）
+  const photoCell = gridW > 0 ? Math.floor((gridW - 30) / 4) : 82;
+
   return (
     <View style={s.root}>
       <AppBackground />
@@ -948,10 +952,10 @@ export default function PostScreen() {
           {/* ⑧ 写真: 新規は1枚以上必須／編集時も既存の削除＋新規追加ができる（圧縮base64送信） */}
           <Text style={s.label}>{t.photoLabel}{!editMode && <Text style={s.req}>*</Text>}</Text>
           <Text style={s.hint}>{editMode ? t.editPhotoHint : t.photoHint}</Text>
-          <View style={s.photoGrid}>
+          <View style={s.photoGrid} onLayout={(e) => setGridW(e.nativeEvent.layout.width)}>
             {images.map((im, i) => (
-              <View key={`${im.uri}-${i}`} style={s.thumbWrap}>
-                <Image source={{ uri: im.uri }} style={s.thumb}
+              <View key={`${im.uri}-${i}`} style={[s.thumbWrap, { width: photoCell }]}>
+                <Image source={{ uri: im.uri }} style={[s.thumb, { width: photoCell, height: photoCell }]}
                   onLoadEnd={() => setThumbLoaded(p => ({ ...p, [im.uri]: true }))} />
                 {/* 読込完了までスピナー＝「追加/保存中」を明示（写真が付いたか分かる） */}
                 {!thumbLoaded[im.uri] && (
@@ -960,8 +964,8 @@ export default function PostScreen() {
                 <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
               </View>
             ))}
-            {/* 枚数上限なし＝追加ボタンは常時表示（横に溢れず折り返す） */}
-            <TouchableOpacity style={s.addPhoto} onPress={pickImages} activeOpacity={0.8} disabled={pickBusy}>
+            {/* 枚数上限なし＝追加ボタンは常時表示（横4列で折り返す） */}
+            <TouchableOpacity style={[s.addPhoto, { width: photoCell, height: photoCell }]} onPress={pickImages} activeOpacity={0.8} disabled={pickBusy}>
               {pickBusy ? <ActivityIndicator size="small" color="#A78BCA" /> : <><Camera size={22} color="#A78BCA" /><Text style={s.addPhotoText}>{t.addPhoto}</Text></>}
             </TouchableOpacity>
           </View>
