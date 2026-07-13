@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import AppBackground, { APP_BG } from '@/components/AppBackground';
+import LiquidSuccess from '@/components/LiquidSuccess';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
@@ -685,9 +686,8 @@ export default function PostScreen() {
       {done ? (
         /* ── 完了画面（送信後に切替）── */
         <View style={s.doneWrap}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.doneCircle}>
-            <Check size={36} color="#fff" strokeWidth={3} />
-          </LinearGradient>
+          {/* 液体サクセスアニメーション（円のみ差し替え・レイアウト/文字/ボタンは不変） */}
+          <LiquidSuccess size={84} colors={GRAD} style={{ marginBottom: 6 }} />
           <Text style={s.doneTitle}>{editMode ? t.doneEditTitle : t.donePostTitle}</Text>
           <Text style={s.doneSub}>
             {editMode
@@ -1096,7 +1096,6 @@ const s = StyleSheet.create({
   gotLoc: { fontSize: 12, color: '#16A34A', fontWeight: '700', marginTop: 8 },
   // 完了画面
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
-  doneCircle: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   doneTitle: { fontSize: 20, fontWeight: '800', color: '#1E0753' },
   doneSub: { fontSize: 13.5, color: '#6B5E85', textAlign: 'center', lineHeight: 21 },
   doneBtnWrap: { marginTop: 14, alignSelf: 'stretch', borderRadius: 16, overflow: 'hidden' },
