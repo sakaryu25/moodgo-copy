@@ -3190,7 +3190,6 @@ export default function AdminPage() {
         <div style={{ display: "flex", gap: "10px", marginBottom: "24px", flexWrap: "wrap" }}>
           {([
             { key: "stats", label: "📊 統計・学習データ" },
-            { key: "suggestions", label: "📍 ユーザー投稿管理" },
             { key: "add-spot", label: "➕ スポット追加" },
             { key: "import", label: "🔍 一括取り込み" },
             { key: "visited", label: "🚶 訪問学習データ" },
