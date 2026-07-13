@@ -190,10 +190,28 @@ export async function POST(req: Request) {
 
       // ── 削除（本人のみ）: 写真・リアクションも巻き取ってから本文を削除 ──
       if (action === "delete") {
+        // 削除前に紐づく place_id を控える（投稿のみで作られた孤立placeの掃除判定用）
+        const { data: pre } = await db.from("spot_posts").select("place_id").eq("id", postId).maybeSingle();
+        const delPlaceId = (pre as { place_id?: string } | null)?.place_id ?? null;
         await db.from("spot_photos").delete().eq("post_id", postId).then(() => {}, () => {});
         await db.from("spot_post_reactions").delete().eq("post_id", postId).then(() => {}, () => {});
         const { error } = await db.from("spot_posts").delete().match({ id: postId, device_id: deviceId });
         if (error) throw error;
+        // 投稿のみで作られた user place が、この削除で投稿ゼロになったら place も消す（孤立掃除）。
+        //   他の投稿が残っている / 取り込み・Google由来(source_type!=user) は消さない。
+        if (delPlaceId) {
+          try {
+            const { data: pl } = await db.from("places").select("source_type").eq("id", delPlaceId).maybeSingle();
+            if (String((pl as { source_type?: string } | null)?.source_type ?? "") === "user") {
+              const { count } = await db.from("spot_posts").select("id", { count: "exact", head: true }).eq("place_id", delPlaceId);
+              if ((count ?? 0) === 0) {
+                await db.from("spot_photos").delete().eq("place_id", delPlaceId).then(() => {}, () => {});
+                await db.from("spot_ratings").delete().eq("place_id", delPlaceId).then(() => {}, () => {});
+                await db.from("places").delete().eq("id", delPlaceId).then(() => {}, () => {});
+              }
+            }
+          } catch { /* 掃除失敗は削除成功を妨げない */ }
+        }
         return NextResponse.json({ ok: true, deleted: true });
       }
 

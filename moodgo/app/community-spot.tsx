@@ -89,6 +89,8 @@ const T = {
     hours: '営業時間',
     open: '営業中',
     closed: '営業時間外',
+    eventOngoing: '開催中',
+    eventUpcoming: '開催予定',
     helpfulReviews: 'ためになった口コミ',
     close: '閉じる',
     seeMore: 'もっと見る',
@@ -134,6 +136,8 @@ const T = {
     hours: 'Hours',
     open: 'Open now',
     closed: 'Closed',
+    eventOngoing: 'Now on',
+    eventUpcoming: 'Upcoming',
     helpfulReviews: 'Helpful reviews',
     close: 'Close',
     seeMore: 'See more',
@@ -203,6 +207,18 @@ export default function CommunitySpotScreen() {
   const [ratingCount, setRatingCount] = useState(0);
   const [priceAvg, setPriceAvg] = useState<string | null>(null);   // 利用者の値段の平均（みんなの目安）
   const [priceCount, setPriceCount] = useState(0);
+  // この場所で開催中/予定の期間限定イベント（派生スポット）＝場所詳細と同じバッジを投稿詳細にも出す（統一）
+  const [placeEvents, setPlaceEvents] = useState<Array<{ targetId: string; eventName: string; until: string | null; upcoming: boolean }>>([]);
+  useEffect(() => {
+    const name = (spot?.placeName || spot?.userTitle || '').trim();
+    if (!name || name.length < 2) { setPlaceEvents([]); return; }
+    let active = true;
+    apiFetch(`/api/place-events?placeName=${encodeURIComponent(name)}`)
+      .then((r) => r.json())
+      .then((d) => { if (active && d?.ok && Array.isArray(d.events)) setPlaceEvents(d.events.filter((e: { targetId?: string }) => !!e.targetId && e.targetId !== id)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [spot?.placeName, spot?.userTitle, id]);
 
   // フォーカスの度に再取得＝編集(公開範囲/名前等)から戻ると即その投稿に反映される
   useFocusEffect(useCallback(() => {
@@ -527,6 +543,27 @@ export default function CommunitySpotScreen() {
             )}
           </View>
 
+          {/* この場所で開催中/予定の期間限定イベントへの導線（場所詳細と統一・派生スポット「◯◯＠この場所」へ遷移）*/}
+          {placeEvents.length > 0 && (
+            <View style={s.eventWrap}>
+              {placeEvents.map((ev, i) => (
+                <TouchableOpacity key={i} style={s.eventRow} activeOpacity={0.85}
+                  onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
+                  accessibilityRole="button" accessibilityLabel={ev.eventName}>
+                  <View style={s.eventIcon}><CalendarClock size={15} color="#fff" strokeWidth={2.2} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.eventName} numberOfLines={1}>{ev.eventName}</Text>
+                    <Text style={s.eventDate}>
+                      {ev.upcoming ? t.eventUpcoming : t.eventOngoing}
+                      {ev.until ? ` 〜${ev.until.split('-').slice(1).map(Number).join('/')}` : ''}
+                    </Text>
+                  </View>
+                  <ChevronRight size={16} color="#B7A0F0" strokeWidth={2.4} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* ── みんなの声のバー（総合評価＝みんなの★平均 / 行った!。いいね数は右下のハートFABのみ）── */}
           <View style={s.voiceBar}>
             <View style={s.voiceCell}>
@@ -844,6 +881,18 @@ const s = StyleSheet.create({
   posterCardAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F0EDFF' },
   posterAvatarPh: { alignItems: 'center', justifyContent: 'center' },
   // みんなの声のバー（社会的証明・上部）
+  eventWrap: { gap: 8, marginBottom: 4 },
+  eventRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#F6F0FF', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#E7DBFB',
+  },
+  eventIcon: {
+    width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#9B6BFF',
+  },
+  eventName: { fontSize: 14, fontWeight: '800', color: '#3B2A63' },
+  eventDate: { fontSize: 11.5, fontWeight: '700', color: '#8B6BF2', marginTop: 1 },
   voiceBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 16, paddingVertical: 13, marginBottom: 14,
