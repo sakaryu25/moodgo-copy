@@ -6044,25 +6044,27 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       if (typeof r.rating === "number" && r.rating >= 4.5 && cnt > 0 && cnt <= 2) s -= 2;
       return s;
     };
-    // ── 地味な小さい公園を後方へ＋絶景/映えタグを上位へ ────────────────────────────
+    // ── 地味な小さい公園を最後尾バンドへ＋絶景/映えタグを上位へ ──────────────────────
     //   「自然」等で ことぶき公園/○丁目公園/児童公園 のような生活公園に絶景が埋もれる問題の是正。
-    //   ⚠削除でなく“減点”（データは消さない・0件回避）。タグ付き絶景/有名/花/記念/大型公園は対象外。
+    //   ⚠削除でなく“並べ替え”（データは消さない・地味公園も最後尾に必ず残る＝0件回避）。
+    //   タグ付き絶景/有名・大型・花・記念公園、及び「散歩/芝生/森」等の公園目的の深掘りは対象外。
     const SCENIC_TAG_SET = new Set(["#絶景スポット", "#展望台", "#夜景", "#岬", "#灯台", "#滝", "#湖", "#庭園", "#花畑", "#絶景"]);
     const hasScenicTag = (r: FinalizeRec) => (r.tags ?? []).some(t => SCENIC_TAG_SET.has(t as string));
-    const JUNK_PARK_RE = /児童公園|児童遊園|街区公園|近隣公園|交通公園|防災公園|ちびっこ|こども広場|子ども広場|団地.{0,4}公園|[0-9０-９]+丁目.{0,5}公園|[0-9０-９]+[・･‐\-][0-9０-９].{0,8}公園|第?[0-9０-９]+号公園/;
     const APPEALING_PARK_RE = /国営|国立|海浜|臨海|花|バラ|ローズ|チューリップ|ラベンダー|コスモス|芝桜|紅葉|桜|展望|絶景|パノラマ|夜景|記念|歴史|城|庭園|森林|渓谷|湖畔|湖|大通|中央公園|総合公園|運動公園|自然公園|県立|府立|フラワー|ガーデン|高原|牧場|オアシス|ふれあい/i;
-    const GENERIC_PARK_RE = /公園|緑地|広場/;
-    const parkPenalty = (r: FinalizeRec): number => {
+    const GENERIC_PARK_RE = /公園|緑地|広場|遊具|ちびっこ/;
+    // 公園そのものを求める深掘り(散歩/芝生/森/ひろびろ/公園)では沈めない
+    const parkSeekingCtx = /散歩|芝生|ゴロゴロ|ひろびろ|広々|森|ピクニック|深呼吸|自然の中|公園/.test(effectiveDeepDive || "");
+    const isFillerPark = (r: FinalizeRec): boolean => {
+      if (parkSeekingCtx) return false;
       const n = r.title ?? "";
-      if (hasScenicTag(r)) return 0;                                          // タグ付き絶景/映えは触らない
-      if (JUNK_PARK_RE.test(n)) return 5;                                     // 児童/番号/防災公園=どの気分でも行き先でない
-      if (GENERIC_PARK_RE.test(n) && !APPEALING_PARK_RE.test(n)) return 2.5;  // 地味な○○公園/緑地/広場=軽く後方へ
-      return 0;
+      if (hasScenicTag(r) || APPEALING_PARK_RE.test(n)) return false;   // タグ付き絶景・有名/大型/花/記念公園は残す
+      return GENERIC_PARK_RE.test(n);                                    // 地味な○○公園/緑地/広場/遊具=最後尾バンドへ
     };
     return [...arr]
       .map(r => ({
         r,
         over: overCap(r),
+        filler: isFillerPark(r),
         km: kmOf(r),
         score: (Math.random() * 10)
           + aiRankBoost(r)                       // OpenAI判別順を主signalに（埋もれ防止）
@@ -6073,12 +6075,12 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
           + (r.openNow === false ? -1.5 : 0)     //     営業時間外は控えめに後ろへ
           + ((isCurated(r.source) && !overCap(r)) ? 8 : 0)  // 領域1: 手動追加は近距離キャップ以内のみ満額昇格
           + (goodPlaceNames.has((r.title ?? "").toLowerCase()) ? 1.5 : 0)
-          + (hasScenicTag(r) ? 4 : 0)                        // 絶景/映えタグを上位化（生活公園に埋もれさせない）
-          - parkPenalty(r),                                  // 地味な小さい公園/緑地/広場を後方化（除外でなく減点）
+          + (hasScenicTag(r) ? 6 : 0),                       // 絶景/映えタグを非フィラー帯の上位へ
       }))
-      // 領域1: cap以内(band0)を必ず上位、cap外(band1)は後方。同バンドはscore降順、cap外は近い順タイブレーク。
+      // 領域1: cap以内(band0)を上位/cap外(band1)は後方。さらに地味公園(filler)を同バンド内で最後尾へ。
       .sort((a, b) => {
         if (a.over !== b.over) return a.over ? 1 : -1;
+        if (a.filler !== b.filler) return a.filler ? 1 : -1;   // 地味な公園は同バンド内で最後尾へ（除外でなく後方）
         const ds = b.score - a.score;
         if (Math.abs(ds) > 0.0001) return ds;
         return a.km - b.km;
