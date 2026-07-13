@@ -11,6 +11,7 @@
 
 import { after } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isLikelySamePlace } from "@/lib/normalize-name";
 
 // 応答返却後に実行（Vercelサーバーレスでも凍結されず確実に走る）。
 // setTimeoutのfire-and-forgetは応答後に関数が凍結され実行されない＝保存が消える罠の対策。
@@ -158,6 +159,28 @@ function extractArea(address: string): string | null {
   return m ? m[1] : null;
 }
 
+// ── 表記ゆれ重複ガード用: バッチ座標の外接矩形内にある既存 places を取得 ─────────
+// STEP2 の「完全な名前一致」では別表記（カナ↔ひらがな, 全角半角, 記号ゆれ）の既存を拾えず、
+// 同じ場所が二重登録される。座標近傍の既存を引いておき、isLikelySamePlace（名前ゆるふわ一致
+// ＋近接）で挿入前に弾く。日本語↔英語の別名は座標だけでは同定できない（別スポットを誤結合し得る）
+// ので、ここでは名前一致を伴う近接のみを重複とみなす（＝カナ/全角半角/記号ゆれを確実に防ぐ）。
+async function fetchNearbyExistingPlaces(
+  pts: Array<{ lat?: number | null; lng?: number | null }>,
+): Promise<Array<{ name: string; lat: number | null; lng: number | null }>> {
+  if (!supabase) return [];
+  const lats = pts.map(p => p.lat).filter((v): v is number => v != null && !isNaN(v));
+  const lngs = pts.map(p => p.lng).filter((v): v is number => v != null && !isNaN(v));
+  if (lats.length === 0 || lngs.length === 0) return [];
+  const pad = 0.002;   // ≈ 約200m の余白（座標が多少ズレていても拾えるように）
+  const { data } = await supabase
+    .from("places")
+    .select("name, lat, lng")
+    .gte("lat", Math.min(...lats) - pad).lte("lat", Math.max(...lats) + pad)
+    .gte("lng", Math.min(...lngs) - pad).lte("lng", Math.max(...lngs) + pad)
+    .limit(3000);   // 密集エリアの取り過ぎ防止（超過分は従来どおり名前完全一致で判定＝最悪でも現状維持）
+  return (data ?? []) as Array<{ name: string; lat: number | null; lng: number | null }>;
+}
+
 // ── メイン保存関数 ─────────────────────────────────────────────────────────────
 export async function autoSaveGooglePlaces(
   places: GooglePlaceEntry[],
@@ -191,11 +214,17 @@ export async function autoSaveGooglePlaces(
       )
     );
 
+    // 表記ゆれ（カナ/全角半角/記号ゆれ）＋近接の既存を弾くための座標近傍の既存 places
+    const nearby = await fetchNearbyExistingPlaces(notFoundById);
+
     // ── STEP 3: 新規のみ insert ─────────────────────────────────────────────
     const toInsert = notFoundById
       .filter(p => {
         const key = `${p.name}||${(p.address ?? "").replace(/\s+/g, "").substring(0, 30)}`;
-        return !nameAddrSet.has(key);
+        if (nameAddrSet.has(key)) return false;
+        // 名前がゆるふわ一致 かつ 近接（≈120m）の既存があれば別表記の重複とみなしスキップ
+        if (nearby.some(e => isLikelySamePlace(p.name, p.lat, p.lng, e.name, e.lat, e.lng))) return false;
+        return true;
       })
       .map(p => ({
         name: p.name,
@@ -257,11 +286,16 @@ export async function autoSavePlacesWithTags(
       )
     );
 
+    const nearby = await fetchNearbyExistingPlaces(notFoundById);
+
     // STEP 3: 新規のみ insert
     const toInsert = notFoundById
       .filter(p => {
         const key = `${p.name}||${(p.address ?? "").replace(/\s+/g, "").substring(0, 30)}`;
-        return !nameAddrSet.has(key);
+        if (nameAddrSet.has(key)) return false;
+        // 名前ゆるふわ一致＋近接の既存＝別表記の重複としてスキップ（カナ/全角半角/記号ゆれ対策）
+        if (nearby.some(e => isLikelySamePlace(p.name, p.lat, p.lng, e.name, e.lat, e.lng))) return false;
+        return true;
       })
       .map(p => ({
         name: p.name,

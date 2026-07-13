@@ -5860,10 +5860,10 @@ export default function AdminPage() {
                   <div style={{ marginTop: "14px" }}>
                     <div style={{ fontSize: "12px", color: "#9ca3af", marginBottom: "12px" }}>取得スポット数: {analysisResult.totalPlaces.toLocaleString()}件</div>
 
-                    {/* ① 完全一致の重複 */}
+                    {/* ① 表記ゆれ＋近接の重複（カナ/全角半角/記号ゆれを吸収・約40m以内の同一地点のみ） */}
                     <div style={{ marginBottom: "16px" }}>
                       <div style={{ fontWeight: 900, fontSize: "13px", color: "#dc2626", marginBottom: "8px" }}>
-                        🔁 完全一致の重複: {analysisResult.exactDuplicates.length}グループ
+                        🔁 表記ゆれ＋近接の重複: {analysisResult.exactDuplicates.length}グループ
                       </div>
                       {analysisResult.exactDuplicates.length === 0
                         ? <div style={{ fontSize: "12px", color: "#059669" }}>✅ 重複なし</div>

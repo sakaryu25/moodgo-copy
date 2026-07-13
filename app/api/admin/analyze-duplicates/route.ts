@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
+import { normalizeName, distanceMeters } from "@/lib/normalize-name";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Place = { id: string; name: string; address: string; tags: string[] | null; google_place_id: string | null };
+type Place = { id: string; name: string; address: string; tags: string[] | null; google_place_id: string | null; lat: number | null; lng: number | null };
 
 async function fetchAllPlaces(): Promise<Place[]> {
   const places: Place[] = [];
@@ -13,7 +14,7 @@ async function fetchAllPlaces(): Promise<Place[]> {
   while (true) {
     const { data, error } = await supabase!
       .from("places")
-      .select("id, name, address, tags, google_place_id")
+      .select("id, name, address, tags, google_place_id, lat, lng")
       .order("created_at", { ascending: true })
       .range(from, from + batchSize - 1);
     if (error || !data || data.length === 0) break;
@@ -32,30 +33,55 @@ export async function POST(req: NextRequest) {
 
   const places = await fetchAllPlaces();
 
-  // ① 完全一致の重複（名前が同じ）
-  const byName = new Map<string, Place[]>();
+  // ① 表記ゆれ（カナ↔ひらがな・全角半角・記号ゆれ）を吸収した重複＋近接クラスタ
+  //   normalizeName で束ねると「東京スカイツリー / 東京ｽｶｲﾂﾘｰ / 東京すかいつりー」が同一キーになる。
+  //   ただし同名≠同一店舗（チェーンは同名で全国散在）なので、束ねた中を座標近接(≈40m)で
+  //   クラスタ分割し、同一地点のクラスタだけを重複として返す＝別支店を誤って束ねない。
+  //   ※日本語↔英語（東京スカイツリー vs Tokyo Skytree）は正規化では吸えない別軸。座標だけで
+  //     結合すると同一ビル内の別店舗を誤結合し得るため、ここでは自動検出せず手動運用に委ねる。
+  const RADIUS_M = 40;
+  const byNorm = new Map<string, Place[]>();
   for (const p of places) {
-    const key = p.name.trim();
-    if (!byName.has(key)) byName.set(key, []);
-    byName.get(key)!.push(p);
+    const key = normalizeName(p.name);
+    if (!key) continue;
+    if (!byNorm.has(key)) byNorm.set(key, []);
+    byNorm.get(key)!.push(p);
   }
 
   const exactDuplicates = [];
-  for (const [name, group] of byName) {
+  for (const group of byNorm.values()) {
     if (group.length <= 1) continue;
-    // タグ数が多い順にソート（先頭を「残す」候補）
-    group.sort((a, b) => (b.tags?.length ?? 0) - (a.tags?.length ?? 0));
-    exactDuplicates.push({
-      name,
-      count: group.length,
-      places: group.map(p => ({
-        id: p.id,
-        name: p.name,
-        address: p.address ?? "",
-        tags: p.tags ?? [],
-        tagCount: p.tags?.length ?? 0,
-      })),
-    });
+    // 座標近接クラスタに分割（clique的＝クラスタ全員と近接する場合だけ同一クラスタに入れる）
+    const clusters: Place[][] = [];
+    for (const p of group) {
+      let placed = false;
+      if (p.lat != null && p.lng != null) {
+        for (const cl of clusters) {
+          if (cl.every(q => q.lat != null && q.lng != null &&
+              distanceMeters(p.lat as number, p.lng as number, q.lat as number, q.lng as number) <= RADIUS_M)) {
+            cl.push(p); placed = true; break;
+          }
+        }
+      }
+      // 座標なしは近接判定できない＝誤統合を避けて単独クラスタ（＝重複として報告しない）
+      if (!placed) clusters.push([p]);
+    }
+    for (const cl of clusters) {
+      if (cl.length <= 1) continue;
+      // タグ数が多い順にソート（先頭を「残す」候補）
+      cl.sort((a, b) => (b.tags?.length ?? 0) - (a.tags?.length ?? 0));
+      exactDuplicates.push({
+        name: cl[0].name,
+        count: cl.length,
+        places: cl.map(p => ({
+          id: p.id,
+          name: p.name,
+          address: p.address ?? "",
+          tags: p.tags ?? [],
+          tagCount: p.tags?.length ?? 0,
+        })),
+      });
+    }
   }
 
   // ② 名前プレフィックス一致の子スポット

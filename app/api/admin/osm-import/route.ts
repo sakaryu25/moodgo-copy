@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
+import { isLikelySamePlace } from "@/lib/normalize-name";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -257,6 +258,14 @@ export async function POST(req: NextRequest) {
     (existingPlaces ?? []).filter((p: { google_place_id: string | null }) => p.google_place_id).map((p: { google_place_id: string }) => p.google_place_id),
   );
 
+  // 表記ゆれ（カナ/全角半角/記号）＋近接の重複を弾くための、取り込み範囲内の既存places（座標付き）
+  const bboxPad = radiusKm / 111 + 0.002;   // km→度の概算＋余白
+  const { data: nearbyPlaces } = await supabase.from("places").select("name, lat, lng")
+    .gte("lat", lat - bboxPad).lte("lat", lat + bboxPad)
+    .gte("lng", lng - bboxPad).lte("lng", lng + bboxPad)
+    .limit(5000);
+  const nearby = (nearbyPlaces ?? []) as Array<{ name: string; lat: number | null; lng: number | null }>;
+
   let fetched = 0, inserted = 0, skipped = 0;
   const errors: string[] = [];
   const spots: Array<{ name: string; address: string; tags: string[] }> = [];
@@ -277,6 +286,8 @@ export async function POST(req: NextRequest) {
       if (!name) continue;
 
       if (existingSet.has(name.toLowerCase())) { skipped++; continue; }
+      // 別表記（カナ/全角半角/記号ゆれ）＋近接の既存があれば重複としてスキップ
+      if (nearby.some(e => isLikelySamePlace(name, el.lat, el.lon, e.name, e.lat, e.lng))) { skipped++; continue; }
       if (osmTags["shop"] === "mall" && !isValidMall(name, osmTags)) { skipped++; continue; }
 
       const moodgoTags = osmToMoodgoTags(osmTags, typeConfigs);

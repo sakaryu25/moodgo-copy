@@ -13,6 +13,7 @@
 //   dryRun    boolean  trueの場合はDBに書き込まない
 
 import { NextRequest, NextResponse } from "next/server";
+import { isLikelySamePlace } from "@/lib/normalize-name";
 import { supabase } from "@/lib/supabase";
 import { addUrbanTagIfNeeded } from "@/lib/urban-detector";
 import { ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
@@ -325,12 +326,26 @@ export async function POST(req: NextRequest) {
     const { data: existingById }   = await supabase.from("places").select("google_place_id").in("google_place_id", placeIds);
     const { data: existingByName } = await supabase.from("places").select("name").in("name", names);
 
+    // 表記ゆれ（カナ/全角半角/記号）＋近接の既存を弾くため、検索範囲の外接矩形内の既存placesを取得
+    const fLats = filtered.map(p => p.geometry!.location.lat);
+    const fLngs = filtered.map(p => p.geometry!.location.lng);
+    const pad = 0.002;   // ≈ 約200m 余白
+    const { data: nearbyExisting } = fLats.length
+      ? await supabase.from("places").select("name, lat, lng")
+          .gte("lat", Math.min(...fLats) - pad).lte("lat", Math.max(...fLats) + pad)
+          .gte("lng", Math.min(...fLngs) - pad).lte("lng", Math.max(...fLngs) + pad)
+          .limit(3000)
+      : { data: [] as Array<{ name: string; lat: number | null; lng: number | null }> };
+    const nearby = (nearbyExisting ?? []) as Array<{ name: string; lat: number | null; lng: number | null }>;
+
     const registeredIds   = new Set((existingById   ?? []).map((r: { google_place_id: string }) => r.google_place_id));
     const registeredNames = new Set((existingByName ?? []).map((r: { name: string }) => r.name.toLowerCase().trim()));
 
     const newSpots = filtered.filter(p =>
       !registeredIds.has(p.place_id) &&
-      !registeredNames.has(p.name.toLowerCase().trim())
+      !registeredNames.has(p.name.toLowerCase().trim()) &&
+      // 名前ゆるふわ一致＋近接の既存＝別表記の重複としてスキップ
+      !nearby.some(e => isLikelySamePlace(p.name, p.geometry!.location.lat, p.geometry!.location.lng, e.name, e.lat, e.lng))
     );
     skipped = filtered.length - newSpots.length;
 
