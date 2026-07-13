@@ -20,9 +20,10 @@ function estHeight(post: Post, cardW: number): number {
   }
   if (post.rating > 0) h += 18;          // 星
   if (post.description) {
-    // 本文は全文表示（切り詰めなし）＝推定も全行で見積もる（列割り当ての高さ整合を保つ）
-    const lines = Math.max(1, Math.ceil(post.description.length / 17));
-    h += 17.5 * lines + 9;
+    // 本文は既定3行。列割り当ての高さは3行分＋（超過時は「もっと見る…」1行分）で見積もる
+    const rawLines = Math.max(1, Math.ceil(post.description.length / 17));
+    h += 17.5 * Math.min(3, rawLines) + 9;
+    if (rawLines > 3) h += 16;   // 「もっと見る…」行
   }
   if (post.price) h += 24;
   h += 20 + 10;                          // 投稿者行＋marginTop
