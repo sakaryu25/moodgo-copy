@@ -654,7 +654,7 @@ export default function CommunitySpotScreen() {
           <CommentsSection targetId={spot.kind === 'moodlog' ? `ml-${spot.id}` : spot.id} />
 
           {/* ── みんなのMoodログ（同じ場所への他の投稿）＝一番下。いま見ている投稿自身は除外 ── */}
-          <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address}
+          <MoodLogSection placeId={spot.placeId} placeName={spot.placeName || spot.userTitle} address={spot.address} openHours={spot.openingHoursText ?? undefined}
             excludePostId={spot.kind === 'moodlog' ? spot.id : undefined} />
         </View>
       </ScrollView>

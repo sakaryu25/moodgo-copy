@@ -52,8 +52,8 @@ export type MoodPost = {
 
 
 export default function MoodLogSection(
-  { placeId, placeName, address, excludePostId }:
-  { placeId?: string; placeName: string; address?: string; excludePostId?: string },
+  { placeId, placeName, address, openHours, excludePostId }:
+  { placeId?: string; placeName: string; address?: string; openHours?: string; excludePostId?: string },
 ) {
   const { lang } = useSettings();
   const t = T[lang];
@@ -79,7 +79,7 @@ export default function MoodLogSection(
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // 新規ルート（expo-routerの型は次回生成で解決・実行時はファイルベースで有効）→ unknown経由でHrefにキャスト
-  const goPost = () => router.push({ pathname: '/post', params: { placeId: placeId ?? '', placeName, address: address ?? '' } } as unknown as Href);
+  const goPost = () => router.push({ pathname: '/post', params: { placeId: placeId ?? '', placeName, address: address ?? '', openHours: openHours ?? '' } } as unknown as Href);
 
   // カードタップ → そのMoodログの投稿詳細（community-spotはml-プレフィックスで両対応）
   const openDetail = (post: MoodPost) =>

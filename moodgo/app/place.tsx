@@ -1190,7 +1190,7 @@ export default function PlaceDetailPage() {
             </View>
           ) : null}
           {/* みんなのMoodログ（気分ベースの口コミ＝Google口コミの代用）＝一番下 */}
-          <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} />
+          <MoodLogSection placeId={rec.supabaseId ?? rec.placeId} placeName={rec.title} address={rec.address} openHours={extra.openingHoursText ?? undefined} />
 
         </View>
       </Animated.ScrollView>

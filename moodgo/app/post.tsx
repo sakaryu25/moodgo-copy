@@ -79,6 +79,7 @@ const T = {
     gotLoc: (addr: string) => `📍 位置を取得しました${addr ? `（${addr}）` : ''}`,
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
     hoursLabel: '営業時間（任意）',
+    completeHint: 'この場所は住所や営業時間が未登録です。分かる範囲で教えてください（任意・空欄でもOK）',
     hoursOpen: '開店',
     hoursClose: '閉店',
     hours24: '24時間営業',
@@ -192,6 +193,7 @@ const T = {
     gotLoc: (addr: string) => `📍 Location captured${addr ? ` (${addr})` : ''}`,
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
     hoursLabel: 'Opening hours (optional)',
+    completeHint: 'This spot has no address or hours yet. Fill in what you know (optional).',
     hoursOpen: 'Open',
     hoursClose: 'Close',
     hours24: 'Open 24h',
@@ -274,6 +276,12 @@ type PlaceHit = { id: string; name: string; address?: string };
 // 目安の値段チップ（独立カラムで保存・説明文には埋め込まない）
 const PRICE_CHIPS = ['無料', '〜¥500', '〜¥1,000', '〜¥3,000', '¥3,000〜'];
 
+// 住所が「未登録相当」か（空 / 「日本」だけ / 都道府県だけ）＝既存スポットで住所入力を促す判定用
+function isAddrIncomplete(a: string): boolean {
+  const t = (a ?? '').trim().replace(/^日本[、,\s]*/, '');
+  return !t || t === '日本' || /^(北海道|東京都|京都府|大阪府|.{2,3}県)$/.test(t);
+}
+
 // 投稿の下書き保存キー（自由入力の新スポット投稿のみ）。誤って戻る/アプリ終了でも入力を失わず続きから。
 const POST_DRAFT_KEY = 'moodgo-post-draft-v1';
 
@@ -281,8 +289,10 @@ export default function PostScreen() {
   const insets = useSafeAreaInsets();
   const { lang } = useSettings();
   const t = T[lang];
-  const params = useLocalSearchParams<{ placeId?: string; placeName?: string; address?: string; editId?: string }>();
+  const params = useLocalSearchParams<{ placeId?: string; placeName?: string; address?: string; openHours?: string; editId?: string }>();
   const paramPlaceId = (params.placeId ?? '').toString();   // 場所詳細から来た既存スポット
+  const paramAddress = (params.address ?? '').toString();       // 既存スポットの現在の住所（不足補完の判定用・入力stateとは別）
+  const paramOpenHours = (params.openHours ?? '').toString();   // 既存スポットの現在の営業時間（同上）
   const editId = (params.editId ?? '').toString();          // 自分の投稿を編集（community-spotの…メニューから）
   const editMode = !!editId;
 
@@ -333,6 +343,11 @@ export default function PostScreen() {
   // placeNameパラメータで判定＝この場所への投稿なので名前は変更させない）。編集時も固定。
   const paramPlaceName = (params.placeName ?? '').toString().trim();
   const lockedFromParam = !!paramPlaceId || !!paramPlaceName || editMode;
+  // 既存スポットで住所/営業時間が未登録なら、投稿時に入力を促して補完する（2b・空の項目だけ即反映）。
+  //   判定は遷移元から渡ったparam値で固定（入力stateの変化に追従させない）。編集は対象外。
+  const addrMissing = isExisting && !editMode && isAddrIncomplete(paramAddress);
+  const hoursMissing = isExisting && !editMode && !paramOpenHours.trim();
+  const spotIncomplete = addrMissing || hoursMissing;
 
   // 編集モード: 自分の投稿を読み込んでプレフィル（本文・気分タグ・評価・値段＋自分で作った穴場は
   //   住所/営業時間/最寄駅/期間も）。写真は変更しない。
@@ -679,8 +694,10 @@ export default function PostScreen() {
           contact: contact.trim() || undefined,
           // 新スポット(穴場)＝営業時間/最寄駅/期間を送る。既存スポットへのmoodログでは送らない(既存placeを上書きしない)。
           //   イベント派生スポットは新スポット扱いなので営業時間・期間を送る。
-          openingHours: (!isExisting || isEventPost) ? (composedHours || undefined) : undefined,
-          station: !isExisting ? (station.trim() || undefined) : undefined,
+          openingHours: (!isExisting || isEventPost || hoursMissing) ? (composedHours || undefined) : undefined,
+          station: (!isExisting || spotIncomplete) ? (station.trim() || undefined) : undefined,
+          // 既存スポットの未登録項目を投稿者入力で補完（サーバー側で「空の項目だけ」埋める）
+          completePlace: isExisting && spotIncomplete,
           availableFrom: (!isExisting || isEventPost) ? (availFrom.trim() || undefined) : undefined,
           availableUntil: (!isExisting || isEventPost) ? (availUntil.trim() || undefined) : undefined,
         }),
@@ -904,9 +921,10 @@ export default function PostScreen() {
           )}
 
           {/* ⑦ 場所・住所（新スポットのみ必須: 現在地 or 住所・編集では非表示） */}
-          {!isExisting && (!editMode || placeEditable) && (
+          {(!isExisting || spotIncomplete) && (!editMode || placeEditable) && (
             <>
-              <Text style={s.label}>{t.addrLabel}<Text style={s.req}>*</Text></Text>
+              {isExisting && <Text style={[s.hint, { marginBottom: 6 }]}>{t.completeHint}</Text>}
+              <Text style={s.label}>{t.addrLabel}{!isExisting && <Text style={s.req}>*</Text>}</Text>
               <View style={s.addrRow}>
                 <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder={t.addrPh} placeholderTextColor="#B9ABD2" />
                 <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>

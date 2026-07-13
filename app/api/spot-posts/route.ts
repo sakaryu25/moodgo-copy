@@ -446,6 +446,24 @@ export async function POST(req: Request) {
       }
     }
 
+    // ── 2b: 既存スポットへの投稿で「住所/営業時間/最寄駅」が未登録なら投稿者入力で補完（空の項目だけ・上書きしない）──
+    if (placeId && body?.completePlace) {
+      try {
+        const { data: cur } = await db.from("places")
+          .select("address, open_hours, nearest_station").eq("id", placeId).maybeSingle();
+        const c = (cur ?? {}) as { address?: string | null; open_hours?: string | null; nearest_station?: string | null };
+        const addrEmpty = (a?: string | null) => {
+          const s = String(a ?? "").trim().replace(/^日本[、,\s]*/, "");
+          return !s || s === "日本" || /^(北海道|東京都|京都府|大阪府|.{2,3}県)$/.test(s);
+        };
+        const patch: Record<string, unknown> = {};
+        if (newAddress && addrEmpty(c.address)) patch.address = newAddress;
+        if (newOpenHours && !String(c.open_hours ?? "").trim()) patch.open_hours = newOpenHours;
+        if (newStation && !String(c.nearest_station ?? "").trim()) patch.nearest_station = newStation;
+        if (Object.keys(patch).length > 0) await db.from("places").update(patch).eq("id", placeId).then(() => {}, () => {});
+      } catch { /* 補完失敗は投稿成立を妨げない */ }
+    }
+
     // 本文 insert（価格/おすすめ度/連絡先は独立カラム。列未適用(spot-posts-extra.sql)なら
     //   基本カラムのみで自動リトライ＝投稿自体は失敗させない）
     const baseRow = {
