@@ -201,6 +201,8 @@ export default function CommunitySpotScreen() {
   // 総合評価（この場所のみんなの★の平均）。SpotRatingが取得→onAvgで受け取りバーに表示
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
+  const [priceAvg, setPriceAvg] = useState<string | null>(null);   // 利用者の値段の平均（みんなの目安）
+  const [priceCount, setPriceCount] = useState(0);
 
   // フォーカスの度に再取得＝編集(公開範囲/名前等)から戻ると即その投稿に反映される
   useFocusEffect(useCallback(() => {
@@ -220,7 +222,7 @@ export default function CommunitySpotScreen() {
               if (d.spot.placeId) qs.set('placeId', String(d.spot.placeId));
               qs.set('placeName', d.spot.placeName || d.spot.userTitle || '');
               const rr = await apiFetch(`/api/spot-rating?${qs.toString()}`).then((x) => x.json());
-              if (rr?.ok) { setAvgRating(rr.avg ?? null); setRatingCount(rr.count ?? 0); }
+              if (rr?.ok) { setAvgRating(rr.avg ?? null); setRatingCount(rr.count ?? 0); setPriceAvg(rr.priceAvg ?? null); setPriceCount(rr.priceCount ?? 0); }
             } catch { /* noop */ }
           })();
           // 自分がいいね済みか（失敗しても未押下扱いで続行）
@@ -366,6 +368,10 @@ export default function CommunitySpotScreen() {
   }
 
   const photos = spot.imageUrls;
+  // 値段: 利用者の平均があればそれを「みんなの目安」として、無ければこの投稿のprice_chipを表示
+  const priceDisplay = priceCount > 0 && priceAvg
+    ? (priceCount >= 2 ? `${priceAvg}（${priceCount}人の平均）` : priceAvg)
+    : spot.priceText;
   const hasGoogleRating = spot.googleRating != null;
 
   return (
@@ -591,15 +597,11 @@ export default function CommunitySpotScreen() {
 
           {/* ── 情報カード（検索結果の場所詳細と同じ意匠: アイコン＋値・行の上罫線で区切り）── */}
           <View style={s.infoCard}>
-            {spot.priceText ? <InfoRow Icon={Wallet} value={spot.priceText} /> : null}
-            {spot.address ? <InfoRow Icon={MapPin} value={spot.address} border={!!spot.priceText} /> : null}
-            {spot.stationText ? <InfoRow Icon={Train} value={spot.stationText} border={!!(spot.priceText || spot.address)} /> : null}
-            {spot.phone ? <InfoRow Icon={Phone} value={spot.phone} link onPress={() => Linking.openURL(`tel:${spot.phone}`)} border={!!(spot.priceText || spot.address || spot.stationText)} /> : null}
-            {spot.website ? <InfoRow Icon={Globe} value={spot.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} link onPress={() => Linking.openURL(spot.website)} border={!!(spot.priceText || spot.address || spot.stationText || spot.phone)} /> : null}
-            {/* 営業時間（Googleが補完する位置と同じ情報カード内・Instagramの上）。
-                ⚠ 曜日:時刻でsplitしない（「10:00〜23:00」を「10」「00〜23:00」に割る旧バグの回避）＝行そのまま表示 */}
+            {/* 順番: 住所 → 営業時間 → 金額(みんなの平均) → 最寄駅 → 電話 → web → Instagram（場所詳細と統一）*/}
+            {spot.address ? <InfoRow Icon={MapPin} value={spot.address} /> : null}
+            {/* 営業時間。⚠ 曜日:時刻でsplitしない（「10:00〜23:00」を割る旧バグ回避）＝行そのまま表示 */}
             {spot.openingHoursText ? (
-              <View style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
+              <View style={[s.infoRow, spot.address ? s.infoRowBorder : null]}>
                 <View style={s.infoIconWrap}><Clock size={15} color="#C084FC" strokeWidth={2} /></View>
                 <View style={{ flex: 1 }}>
                   {spot.openingHoursText.split('\n').map((line, i) => (
@@ -614,9 +616,13 @@ export default function CommunitySpotScreen() {
                 )}
               </View>
             ) : null}
+            {priceDisplay ? <InfoRow Icon={Wallet} value={priceDisplay} border={!!(spot.address || spot.openingHoursText)} /> : null}
+            {spot.stationText ? <InfoRow Icon={Train} value={spot.stationText} border={!!(spot.address || spot.openingHoursText || priceDisplay)} /> : null}
+            {spot.phone ? <InfoRow Icon={Phone} value={spot.phone} link onPress={() => Linking.openURL(`tel:${spot.phone}`)} border={!!(spot.address || spot.openingHoursText || priceDisplay || spot.stationText)} /> : null}
+            {spot.website ? <InfoRow Icon={Globe} value={spot.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} link onPress={() => Linking.openURL(spot.website)} border={!!(spot.address || spot.openingHoursText || priceDisplay || spot.stationText || spot.phone)} /> : null}
             {/* Instagram検索 */}
             <TouchableOpacity onPress={openInstagram} activeOpacity={0.7}
-              style={[s.infoRow, (spot.priceText || spot.address || spot.stationText || spot.phone || spot.website || spot.openingHoursText) ? s.infoRowBorder : null]}>
+              style={[s.infoRow, (spot.address || spot.openingHoursText || priceDisplay || spot.stationText || spot.phone || spot.website) ? s.infoRowBorder : null]}>
               <View style={s.infoIconWrap}>
                 <LinearGradient colors={IG_GRAD} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={s.igIcon}>
                   <View style={s.igOuter}><View style={s.igLens} /><View style={s.igDot} /></View>

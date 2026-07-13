@@ -11,7 +11,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
   ArrowLeft, CalendarClock, Camera, ChevronDown, ChevronRight, ChevronUp, Clock, Footprints, Globe, Heart,
-  MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train,
+  MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train, Wallet,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -419,6 +419,8 @@ export default function PlaceDetailPage() {
   // 総合評価バー（投稿詳細と統一）: MoodGo★平均＋この場所の「行った!」延べ人数
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [ratingCount, setRatingCount] = useState(0);
+  const [priceAvg, setPriceAvg] = useState<string | null>(null);   // 利用者の値段の平均（みんなの目安）
+  const [priceCount, setPriceCount] = useState(0);
   const [placeVisited, setPlaceVisited] = useState(0);
   // この場所で開催中/開催予定の「期間限定イベント派生スポット」への導線
   const [placeEvents, setPlaceEvents] = useState<Array<{ targetId: string; eventName: string; until: string | null; upcoming: boolean }>>([]);
@@ -433,7 +435,7 @@ export default function PlaceDetailPage() {
         if (pid) qs.set('placeId', String(pid));
         if (name) qs.set('placeName', name);
         const d = await apiFetch(`/api/spot-rating?${qs.toString()}`).then((r) => r.json());
-        if (active && d?.ok) { setAvgRating(d.avg ?? null); setRatingCount(d.count ?? 0); }
+        if (active && d?.ok) { setAvgRating(d.avg ?? null); setRatingCount(d.count ?? 0); setPriceAvg(d.priceAvg ?? null); setPriceCount(d.priceCount ?? 0); }
       } catch { /* noop */ }
     })();
     (async () => {
@@ -777,6 +779,10 @@ export default function PlaceDetailPage() {
   const displayUserRatingCount = (baseRatingCount ?? 0) + ratingDelta;  // MoodGo評価を押すたびに『○○件の評価』が増える
   const displayOpenNow = extra.loaded ? (extra.openNow ?? rec.openNow) : rec.openNow;
   const displayPriceLevel = extra.loaded ? (extra.priceLevel ?? rec.priceLevel) : rec.priceLevel;
+  // 値段: 利用者の平均があればそれを「みんなの目安」として、無ければGoogleの価格帯を表示
+  const priceDisplay = priceCount > 0 && priceAvg
+    ? (priceCount >= 2 ? `${priceAvg}（${priceCount}人の平均）` : priceAvg)
+    : (extra.loaded ? displayPriceLevel : null);
   const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
   // mapUrl: APIの正しいURL（2枚目のページ）を優先、なければrecのAI生成URL
   const displayMapUrl = (extra.loaded && extra.mapUrl) ? extra.mapUrl : rec.mapUrl;
@@ -1065,81 +1071,66 @@ export default function PlaceDetailPage() {
 
           {/* Google評価バーは廃止 → MoodGo総合評価に一本化（上部の総合評価バー参照） */}
 
-          {/* 価格帯 */}
-          {extra.loaded && displayPriceLevel && (
-            <View style={s.pricePill}>
-              <Text style={s.priceText}>{displayPriceLevel}</Text>
-            </View>
-          )}
+          {/* 価格帯は情報カード内（住所→金額→…の順）に移設 */}
 
           {/* ─── 情報カード（読み込み完了後のみ） ─── */}
           {extra.loaded && (
           <View style={s.infoCard}>
-            {/* 住所 */}
+            {/* 順番: 住所 → 金額(みんなの平均/Google) → 最寄駅 → 所要 → 電話 → web → Instagram（投稿詳細と統一）。
+                詳しい営業時間は下の週間テーブルに表示 */}
             {displayAddress ? (
               <View style={s.infoRow}>
-                <View style={s.infoIconWrap}>
-                  <MapPin size={15} color="#C084FC" strokeWidth={2} />
-                </View>
+                <View style={s.infoIconWrap}><MapPin size={15} color="#C084FC" strokeWidth={2} /></View>
                 <Text style={s.infoText} selectable>{displayAddress}</Text>
               </View>
             ) : null}
 
-            {/* 現在地からの所要（車で何分か）— マスト表示 */}
-            {rec.distanceText ? (
-              <View style={[s.infoRow, s.infoRowBorder]}>
-                <View style={s.infoIconWrap}>
-                  <Navigation size={15} color="#C084FC" strokeWidth={2} />
-                </View>
-                <Text style={s.infoText}>
-                  {rec.distanceText}{rec.durationText ? `  /  ${rec.durationText}` : ''}
-                </Text>
+            {priceDisplay ? (
+              <View style={[s.infoRow, displayAddress ? s.infoRowBorder : null]}>
+                <View style={s.infoIconWrap}><Wallet size={15} color="#C084FC" strokeWidth={2} /></View>
+                <Text style={s.infoText}>{priceDisplay}</Text>
               </View>
             ) : null}
 
-            {/* 最寄り駅から何分か — マスト表示（自動保存・HeartRails無料） */}
             {rec.stationText ? (
-              <View style={[s.infoRow, s.infoRowBorder]}>
-                <View style={s.infoIconWrap}>
-                  <Train size={15} color="#C084FC" strokeWidth={2} />
-                </View>
+              <View style={[s.infoRow, (displayAddress || priceDisplay) ? s.infoRowBorder : null]}>
+                <View style={s.infoIconWrap}><Train size={15} color="#C084FC" strokeWidth={2} /></View>
                 <Text style={s.infoText}>{rec.stationText}</Text>
               </View>
             ) : null}
 
-            {/* 電話番号 */}
+            {rec.distanceText ? (
+              <View style={[s.infoRow, (displayAddress || priceDisplay || rec.stationText) ? s.infoRowBorder : null]}>
+                <View style={s.infoIconWrap}><Navigation size={15} color="#C084FC" strokeWidth={2} /></View>
+                <Text style={s.infoText}>{rec.distanceText}{rec.durationText ? `  /  ${rec.durationText}` : ''}</Text>
+              </View>
+            ) : null}
+
             {extra.phone ? (
               <TouchableOpacity
-                style={[s.infoRow, s.infoRowBorder]}
+                style={[s.infoRow, (displayAddress || priceDisplay || rec.stationText || rec.distanceText) ? s.infoRowBorder : null]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(`tel:${extra.phone}`); }}
                 activeOpacity={0.7}
               >
-                <View style={s.infoIconWrap}>
-                  <Phone size={15} color="#C084FC" strokeWidth={2} />
-                </View>
+                <View style={s.infoIconWrap}><Phone size={15} color="#C084FC" strokeWidth={2} /></View>
                 <Text style={[s.infoText, s.infoLink]}>{extra.phone}</Text>
               </TouchableOpacity>
             ) : null}
 
-            {/* 公式サイト */}
             {extra.website ? (
               <TouchableOpacity
-                style={[s.infoRow, s.infoRowBorder]}
+                style={[s.infoRow, (displayAddress || priceDisplay || rec.stationText || rec.distanceText || extra.phone) ? s.infoRowBorder : null]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); Linking.openURL(extra.website!); }}
                 activeOpacity={0.7}
               >
-                <View style={s.infoIconWrap}>
-                  <Globe size={15} color="#C084FC" strokeWidth={2} />
-                </View>
-                <Text style={[s.infoText, s.infoLink]} numberOfLines={1}>
-                  {extra.website!.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                </Text>
+                <View style={s.infoIconWrap}><Globe size={15} color="#C084FC" strokeWidth={2} /></View>
+                <Text style={[s.infoText, s.infoLink]} numberOfLines={1}>{extra.website!.replace(/^https?:\/\//, '').replace(/\/$/, '')}</Text>
               </TouchableOpacity>
             ) : null}
 
             {/* Instagram 検索 */}
             <TouchableOpacity
-              style={[s.infoRow, s.infoRowBorder]}
+              style={[s.infoRow, (displayAddress || priceDisplay || rec.stationText || rec.distanceText || extra.phone || extra.website) ? s.infoRowBorder : null]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const tag = encodeURIComponent(rec.title.replace(/\s+/g, ''));
@@ -1147,13 +1138,9 @@ export default function PlaceDetailPage() {
               }}
               activeOpacity={0.7}
             >
-              <View style={s.infoIconWrap}>
-                <IconInstagram />
-              </View>
+              <View style={s.infoIconWrap}><IconInstagram /></View>
               <View style={{ flex: 1 }}>
-                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>
-                  {t.searchInstagram}
-                </Text>
+                <Text style={[s.infoText, { color: '#C13584', paddingTop: 0 }]}>{t.searchInstagram}</Text>
                 <Text style={s.infoSubText}>#{rec.title.replace(/\s+/g, '')}</Text>
               </View>
             </TouchableOpacity>

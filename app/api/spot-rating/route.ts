@@ -18,22 +18,23 @@ function isMissingTable(e: { code?: string } | null): boolean {
 // 「同じ場所の1票」として device_id 単位で統合（★を優先し二重カウント防止）し、平均・件数・自分の票を返す。
 async function aggregate(
   db: NonNullable<typeof supabase>, placeId: string | null, placeName: string, deviceId: string,
-): Promise<{ avg: number | null; count: number; myStars: number }> {
+): Promise<{ avg: number | null; count: number; myStars: number; priceAvg: string | null; priceCount: number }> {
   const key = placeId || placeName;
   const { data: rData, error } = await db.from("spot_ratings").select("stars, device_id").eq("place_id", key);
-  if (error && isMissingTable(error)) return { avg: null, count: 0, myStars: 0 };
+  if (error && isMissingTable(error)) return { avg: null, count: 0, myStars: 0, priceAvg: null, priceCount: 0 };
   const rRows = (rData ?? []) as Array<{ stars: number; device_id: string }>;
 
-  // 投稿者のおすすめ度も同じ場所の評価として合算（place_id か place_name の一致・承認済み・rating>0）
-  let pRows: Array<{ rating: number; device_id: string }> = [];
+  // 投稿者のおすすめ度＋値段(price_chip)も合算（place_id か place_name の一致・承認済み）。
+  //   ※rating>0 で絞らない＝★無しでも値段だけ入れた投稿を値段平均に含めるため（★側はJSで v>=1 ガード済み）。
+  let pRows: Array<{ rating: number; device_id: string; price_chip?: string | null }> = [];
   try {
     const ors: string[] = [];
     if (placeId && !/[,()]/.test(placeId)) ors.push(`place_id.eq.${placeId}`);
     if (placeName && !/[,()]/.test(placeName)) ors.push(`place_name.eq.${placeName}`);
     if (ors.length) {
       const { data } = await db.from("spot_posts")
-        .select("rating, device_id").eq("status", "approved").gt("rating", 0).or(ors.join(","));
-      pRows = (data ?? []) as Array<{ rating: number; device_id: string }>;
+        .select("rating, device_id, price_chip").eq("status", "approved").or(ors.join(","));
+      pRows = (data ?? []) as Array<{ rating: number; device_id: string; price_chip?: string | null }>;
     }
   } catch { /* spot_posts未作成は★のみで集計 */ }
 
@@ -77,7 +78,23 @@ async function aggregate(
   const pSelf = deviceId ? pRows.find(p => p.device_id === deviceId)?.rating : undefined;
   const sSelf = deviceId ? sRows.find(p => p.device_id === deviceId)?.rating : undefined;
   const myStars = Number(rSelf ?? pSelf ?? sSelf ?? 0) || 0;
-  return { avg, count, myStars };
+
+  // 値段の平均: 利用者が入れた price_chip を1人1票(device_id単位)で集計し、最寄りの段階に丸めて返す。
+  //   段階=無料/〜¥500/〜¥1,000/〜¥3,000/¥3,000〜 を index 0〜4 に写像→平均→四捨五入で段階に戻す。
+  const PRICE_ORDER = ["無料", "〜¥500", "〜¥1,000", "〜¥3,000", "¥3,000〜"];
+  const priceByDevice = new Map<string, number>();
+  const priceAnon: number[] = [];
+  for (const p of pRows) {
+    const idx = PRICE_ORDER.indexOf(String(p.price_chip ?? ""));
+    if (idx < 0) continue;
+    const d = String(p.device_id ?? "");
+    if (d) priceByDevice.set(d, idx); else priceAnon.push(idx);
+  }
+  const priceIdxs = [...priceByDevice.values(), ...priceAnon];
+  const priceCount = priceIdxs.length;
+  const priceAvg = priceCount > 0 ? PRICE_ORDER[Math.round(priceIdxs.reduce((a, b) => a + b, 0) / priceCount)] : null;
+
+  return { avg, count, myStars, priceAvg, priceCount };
 }
 
 export async function POST(req: Request) {
@@ -114,7 +131,7 @@ export async function POST(req: Request) {
     }
     // 集計を返す（★＋投稿おすすめ度を統合）。自分の票は今送信した stars。
     const agg = await aggregate(supabase, placeId, placeName, deviceId);
-    return NextResponse.json({ ok: true, avg: agg.avg, count: agg.count, myStars: stars });
+    return NextResponse.json({ ok: true, avg: agg.avg, count: agg.count, myStars: stars, priceAvg: agg.priceAvg, priceCount: agg.priceCount });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
