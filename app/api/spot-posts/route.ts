@@ -430,10 +430,13 @@ export async function POST(req: Request) {
           if (!insAddr) insAddr = p2.address ?? null;
         }
       }
-      // ── A+C 重複防止（イベント派生以外・座標がある時）──
+      // ── A+C 重複防止（イベント派生・期間限定以外・座標がある時）──
       //   同じ物理的な場所は座標がほぼ同じ＝表記ゆれ(カナ/英語)の別名でも二重作成しない。
       //   ①表記ゆれ範囲で名前一致 or ②±~30mに既存が1件だけ（＝同一地点の別表記）→ その既存placeに紐付ける。
-      if (!parentPlaceId && insLat != null && insLng != null) {
+      //   ⚠ 期間限定(availableFrom/Until あり)は「同じ場所の一時イベント」＝恒久placeとは別物なので絶対に
+      //     紐付けない（紐付けると期間限定の写真が恒久スポットに混ざり“差別化できない”状態になる）。
+      //     イベント派生(parentPlaceId)も同様に除外＝どの入口でも期間限定は必ず独立スポットになる（統一）。
+      if (!parentPlaceId && !newAvailFrom && !newAvailUntil && insLat != null && insLng != null) {
         const dLat = 0.0009, dLng = 0.0011;   // 検索窓 ~100m
         const { data: near } = await db.from("places")
           .select("id, name, lat, lng")
