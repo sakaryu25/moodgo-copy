@@ -141,69 +141,6 @@ const FEATURE_REGION_PREFS: Record<string, string[]> = {
   "九州・沖縄":   ["福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄"],
 };
 
-// ─── 開発ログ用データ（モジュールレベル定数） ───────────────────────────────
-type TodoEntry = { id: string; text: string; done: boolean };
-
-type DevRequest = { id: string; date: string; summary: string };
-
-const DEVLOG_REQUESTS: DevRequest[] = [
-  { id: "r01", date: "2026-04-11", summary: "質問内容に困った時用のスキップボタンを各ステップに追加してほしい" },
-  { id: "r02", date: "2026-04-11", summary: "AIを使った最適な場所検索を実装してほしい。またスマホ画面でも綺麗に見えるUI にしてほしい" },
-  { id: "r03", date: "2026-04-11", summary: "OpenAIのプロンプトを改善して検索精度を上げてほしい。年齢・性別の質問を追加してほしい。スキップ時は「未選択」扱いにしてほしい。フィードバックを収集してAIに学習させる仕組みを作ってほしい" },
-  { id: "r04", date: "2026-04-11", summary: "「前回どこへ行きましたか？」を次回のアプリ起動時に最初に聞くようにしてほしい。予算をスキップした場合は「未定」として料金を気にせず検索できるようにしてほしい" },
-  { id: "r05", date: "2026-04-11", summary: "admin専用の閲覧画面を新設してほしい。高評価ランキングの基準をサイト内ハート（goodボタン）またはGoogleマップへ飛んだ場合のみにしてほしい。前回行った場所を記入できる欄をポップアップで画面中央に出してほしい" },
-  { id: "r06", date: "2026-04-11", summary: "気分だけでなく性別・年齢・同行者・交通手段・雰囲気・自由ワードをすべてAIに渡して検索精度を上げてほしい。過去の利用者データを次の人のおすすめに活かしてほしい" },
-  { id: "r07", date: "2026-04-11", summary: "質問の順番を変えてほしい。年齢・性別を一番最初、現在地を最後にしてほしい" },
-  { id: "r08", date: "2026-04-11", summary: "Supabaseと連携してフィードバックデータを蓄積し、AIの学習に活用できる仕組みにしてほしい。adminページでデータを確認できるようにしてほしい" },
-  { id: "r09", date: "2026-04-11", summary: "ユーザーが穴場スポットを投稿できるページを作ってほしい（画像・位置情報付き）。内容は管理者だけが見られて、承認したものを検索結果に反映できるようにしてほしい。adminページにパスワードを設定してほしい（moodgoadmin123）" },
-  { id: "r10", date: "2026-04-11", summary: "管理者が投稿を承認する際にGoogleマップと紐付けてほしい。「なぜおすすめか」の理由表示と、駐車場○時間無料などのタグを自動提案してほしい。検索結果にランダム性を持たせてほしい" },
-  { id: "r11", date: "2026-04-11", summary: "検索結果の各スポットにグッド/バッド評価を追加してほしい。バッド評価は「その気分のときにこの場所はナシ」という意味でAIに学習させてほしい" },
-  { id: "r12", date: "2026-04-11", summary: "予算を双方向スライダー（最小〜最大の範囲指定）にしてほしい。最大3万円まで。スライダーの間の色付けを正確にしてほしい" },
-  { id: "r13", date: "2026-04-11", summary: "現在地の精度を番地まで詳細に表示してほしい。重複するスポットを1つにまとめてほしい。過去に見たことがない場所だけを表示するフィルターを追加してほしい" },
-  { id: "r14", date: "2026-04-12", summary: "検索結果の画像を1枚だけでなく複数枚表示してほしい。画像の前後ナビゲーション（矢印ボタン）を追加してほしい" },
-  { id: "r15", date: "2026-04-12", summary: "価格表示を「何円で利用可能」などわかりやすく表示してほしい。現在地の市を省略せず正確に表示してほしい" },
-  { id: "r16", date: "2026-04-12", summary: "バッド評価は「場所が悪い」ではなく「この気分のときはこの場所はナシ」という意味でAIに正しく学習させてほしい。自由ワードをAI検索にしっかり活用してほしい" },
-  { id: "r17", date: "2026-04-13", summary: "Googleマップに載っていない場所を管理者が画像付きで追加できるようにしてほしい。「○○駅から徒歩○分」の表示を追加してほしい" },
-  { id: "r18", date: "2026-04-14", summary: "検索結果に表示される駅名を日本語に変換してほしい。最寄り駅から正確な徒歩時間を表示してほしい" },
-  { id: "r19", date: "2026-04-14", summary: "各スポットカードにワンタップで英語に翻訳できるボタンを追加してほしい" },
-  { id: "r20", date: "2026-04-14", summary: "営業時間APIで閉店中のスポットは検索結果に出さないようにしてほしい。天気APIで屋外スポットが天候に合わない場合はAIが判断して除外してほしい" },
-  { id: "r21", date: "2026-04-14", summary: "管理者がスポットを追加する際にチェーン店に対応してほしい（例：全国のIKEAを一括で検索結果に載せるなど）" },
-  { id: "r22", date: "2026-04-15", summary: "気分の選択結果によってステップ7・8の質問内容を変えてほしい。気分を深掘りできるランダムな質問を出してAIがより的確な場所を提案できるようにしてほしい" },
-  { id: "r23", date: "2026-04-15", summary: "気分の深掘り質問（ステップ7・8）の回答をAIのおすすめ生成プロンプトに渡して活用してほしい" },
-  { id: "r24", date: "2026-04-15", summary: "履歴を見るボタンを押した際、その履歴をタップしたら過去に出た検索結果をまるまる表示させてほしい" },
-  { id: "r25", date: "2026-04-15", summary: "管理者画面にスポット追加した一覧を表示してほしい。訪問学習データを管理者が手作業で登録できる新しいページを作ってほしい" },
-  { id: "r26", date: "2026-04-15", summary: "訪問学習データのページに、場所を検索するとAIが気分・エリア・雰囲気などを自動入力してくれる仕組みを作ってほしい。管理者スポット一覧に削除・編集機能をつけてほしい" },
-  { id: "r27", date: "2026-04-15", summary: "質問内容など海外の人にもわかるよう、全画面を英語にも対応させてほしい（🌐ボタンで日英切替）" },
-  { id: "r28", date: "2026-04-15", summary: "今まで行ってきた改善内容を別ページにチェックリストとToDoリストとして見やすくまとめてほしい" },
-  { id: "r29", date: "2026-04-15", summary: "開発ログをadminページ内に移動してほしい。チェックリストは私のリクエスト内容のみ時系列で。ToDoは自由に投稿・編集できるようにしてほしい。全リクエストを網羅して完了済みにしてほしい" },
-  { id: "r30", date: "2026-04-16", summary: "今の気分「スカッと発散したい」を「🚗ドライブしたい」に変更。以降の質問もドライブ向け5問（遠出距離・雰囲気・走る道・目的地での過ごし方・タイムリミット）に刷新" },
-  { id: "r31", date: "2026-04-16", summary: "管理者スポットに期間限定公開機能を追加。開始日・終了日をカレンダーで設定でき、期間外スポットは検索結果に自動で表示されなくなる仕組みを実装" },
-  { id: "r32", date: "2026-04-16", summary: "絵文字2重問題の修正（ドライブしたいラベルの🚗を1つに）。ドライブ時に交通手段質問を廃止し、ランダム深掘り質問をステップ6/7/8に配置。年代選択を40代以上までに変更" },
-  { id: "r33", date: "2026-04-16", summary: "ドライブ30分選択時に実際に30分圏内の場所のみ表示するよう3重対策を実装（locationBias半径制限・durationTextフィルタ・AIプロンプトへの距離指示）" },
-  { id: "r34", date: "2026-04-16", summary: "Supabaseのavailable_from/untilカラム未作成エラー(PGRST204)を段階的フォールバックパターンで修正。suggestions POST・GET・PATCHすべてに対応" },
-  { id: "r35", date: "2026-04-16", summary: "穴場投稿ページの写真アップロード不具合を修正（iOS SafariでのlabelのhtmlFor方式に変更）。管理者スポット追加でもサムネイルプレビューとアップロード結果フィードバックを追加" },
-  { id: "r36", date: "2026-04-17", summary: "気分問わず絶景スポットが出る問題を修正（scenicAllowedMoodsで対象外気分を除外）。検索結果カードに不適切を報告ボタン（mailto）を追加" },
-  { id: "r37", date: "2026-04-17", summary: "「遠くに行きたい」の時間選択肢を実際の移動時間（午前中のみ/夕方まで/日跨ぐ前まで/日越してもOK）に変更し、それを移動距離としてAIに渡す。計画スタイル質問を削除" },
-  { id: "r38", date: "2026-04-17", summary: "全質問（dynamicQ1/2/3・雰囲気・同行者・交通手段・予算・自由ワードすべて）をAIプロンプトへ漏れなく渡す実装。フィードバックのlocalStorage保存にもdynamicQを含めてパターン学習を強化" },
-  { id: "r39", date: "2026-04-17", summary: "訪問済み・閲覧済みスポットの除外フィルタ完全実装（showUnseenOnly）。検索結果後のリファインメント機能（「もっと近い場所で」等の再絞り込み入力）を追加" },
-  { id: "r40", date: "2026-04-17", summary: "Google Places APIにeditorialSummary（公式説明文）・goodForChildren・allowsDogs・restroom・駐車場・テラス席などブールフィールドを追加取得。AIの理由生成に活用し、アメニティタグをカードに表示。同行者・交通手段に応じたスコアリング強化" },
-  { id: "r41", date: "2026-04-17", summary: "季節コンテキストを自動付加（春:桜・夏:海/花火・秋:紅葉・冬:イルミネーション等）。AIの検索クエリ生成ルールに季節ヒントを追加し、季節に合ったスポットを優先提案するよう改善" },
-  { id: "r42", date: "2026-04-17", summary: "ユーザーの好みタイプをpastFeedbackから自動分析してバッジ表示（まったり派・グルメ好き・ドライブ好き等）。気分選択画面の上部に表示し、userPreferenceHintsとしてAIプロンプトに渡して提案精度を向上" },
-  { id: "r43", date: "2026-04-17", summary: "ユーザー投稿写真を検索結果カードに表示。承認済みスポットのimage_urlsをuserPhotosMapとして構築し、Google Places写真の前に投稿写真を優先表示。写真が投稿写真の場合「📸 投稿写真」バッジをオーバーレイ表示。管理者スポット・チェーン店・通常結果すべてに対応" },
-  { id: "r44", date: "2026-04-17", summary: "不適切報告をmailtoからインアプリ送信に変更。報告ボタン押下でボトムシートモーダルが開き「不適切な検索・好きではない・誤情報・規制対象・その他」から選択して送信。SupabaseのreportsテーブルへPOST。管理者の/adminページに⚠不適切報告タブを追加し理由別フィルターで一覧確認可能" },
-  { id: "r45", date: "2026-04-17", summary: "交通手段を複数選択可能に変更（string[]化）。「電車のみ選択時は駅徒歩圏内のみ」「車なしは山奥・郊外除外」など交通手段ごとの制約をAIシステムプロンプトに追加。時間選択から移動距離を逆算（6時間以上は遠出スポット必須、30分以内は超近場のみ等）してAIプロンプトとスコアリング（durationSecondsベースのペナルティ）両方に反映。TRANSITモード（電車・バス選択時）対応" },
-  { id: "r46", date: "2026-04-19", summary: "「徒歩のみ」→「徒歩」に表示変更。検索結果ページの今回の条件をチップ/タグレイアウトに刷新（気分アイコンをSVG imgで表示・ドライブ時は交通手段チップ非表示・お腹すいた時は距離感ラベルを表示するなど気分ごとに最適化）" },
-  { id: "r47", date: "2026-04-19", summary: "グルナビ API v3・ホットペッパーグルメ API v1 をお腹すいたモードに統合。外部フード結果を ScoredItem に正規化してGooglePlaces結果とマージ。コンパニオン・雰囲気・時間帯スコアリングを適用" },
-  { id: "r48", date: "2026-04-19", summary: "お腹すいたの動的質問（空腹度・食べたい味・食べたいジャンル・お店の雰囲気）の回答をAIクエリ・extraFoodPlans・グルナビ/ホットペッパーのキーワード引数すべてに反映。公園・自然スポット等の非食スポットをSTRICT_NON_FOOD_TYPESで完全除外" },
-  { id: "r49", date: "2026-04-19", summary: "ドライブしたいの距離表示アイコンが🚶になっていたバグを修正（travelIcon変数を新設し気分・交通手段から動的に🚗/🚃/🚌/🚶を決定）。PRICE_LEVEL_EXPENSIVEなど生文字列がカードに表示されるバグを修正（表示側に.startsWith('PRICE_LEVEL')ガードを追加）" },
-  { id: "r50", date: "2026-04-19", summary: "夜ドライブ+休憩モードで閉店中スポットが出る問題を修正。foodバケットの閉店中を hard filter で除外。openItemsをclosedItemsより常に優先ソート。「休憩（チル）」キーワードを24時間営業施設向けに変更" },
-  { id: "r51", date: "2026-04-19", summary: "外部スポットAPI検討の結果、OpenStreetMap Overpass API（無料・APIキー不要）を統合。自然・展望台・道の駅・温泉など Google が苦手なスポットを補完。ドライブしたい・体を動かしたい・遠くに行きたいで有効化。Yahoo!ローカルサーチAPIは実装済みだがキー設定は後回し" },
-  { id: "r52", date: "2026-04-20", summary: "ドライブしたいのランダム質問に「道路は？（一般道メイン🛣️ / 高速も使う🏎️）」を追加。道路種別に応じてAI到達距離説明文・locationBias半径・Durationフィルタをそれぞれ変更（一般道~40km/h・高速~90km/h基準）。DYNAMIC_ANSWER_KEYWORDSにも「道路は？」エントリを追加" },
-  { id: "r53", date: "2026-04-20", summary: "開発ログに未登録だった r46〜r52 の全改善内容を追加。/devlogページを廃止してadmin画面の開発ログタブに一本化" },
-  { id: "r54", date: "2026-04-21", summary: "質問フローを全面刷新。新気分「🍀 自然感じたい」を追加（海・川・湖/山・森/花畑/夕日の4問プール）。ランダム質問を2問→3問に増加。ドライブしたいのプールをdrive_distance(固定)+road_type/vibe/road/goalの4択ランダムに変更。道路は？に「どちらでも」選択肢追加。走りたい道は？にemoji追加。遠くに行きたいに移動ルート・スポット種別の2問追加（5問プール→3問ランダム）。DYNAMIC_ANSWER_KEYWORDSに自然感じたい・遠くに行きたい追加。AIシステムプロンプトに自然感じたい専用ルール追加" },
-];
-
-const DEVLOG_ALL_IDS = DEVLOG_REQUESTS.map((r) => r.id);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 生存確認・自浄パネル（独立コンポーネント）
@@ -1166,7 +1103,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "devlog" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -2280,48 +2217,6 @@ export default function AdminPage() {
     setCleanupLoading(false);
   };
 
-  // 開発ログ
-  const [devChecked, setDevChecked] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return Object.fromEntries(DEVLOG_ALL_IDS.map((id) => [id, true]));
-    try {
-      const stored = localStorage.getItem("moodgo_dev_checked");
-      if (stored) return JSON.parse(stored);
-      // 初回：全リクエストをデフォルト完了にする
-      return Object.fromEntries(DEVLOG_ALL_IDS.map((id) => [id, true]));
-    } catch { return Object.fromEntries(DEVLOG_ALL_IDS.map((id) => [id, true])); }
-  });
-  const [devTodos, setDevTodos] = useState<TodoEntry[]>(() => {
-    if (typeof window === "undefined") return [];
-    try { return JSON.parse(localStorage.getItem("moodgo_dev_todos") ?? "[]"); } catch { return []; }
-  });
-  const [newTodoText, setNewTodoText] = useState("");
-  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
-  const [editingTodoText, setEditingTodoText] = useState("");
-
-  const saveDevChecked = (next: Record<string, boolean>) => {
-    setDevChecked(next);
-    localStorage.setItem("moodgo_dev_checked", JSON.stringify(next));
-  };
-  const saveDevTodos = (next: TodoEntry[]) => {
-    setDevTodos(next);
-    localStorage.setItem("moodgo_dev_todos", JSON.stringify(next));
-  };
-  const addTodo = () => {
-    if (!newTodoText.trim()) return;
-    saveDevTodos([...devTodos, { id: String(Date.now()), text: newTodoText.trim(), done: false }]);
-    setNewTodoText("");
-  };
-  const toggleTodo = (id: string) =>
-    saveDevTodos(devTodos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
-  const deleteTodo = (id: string) =>
-    saveDevTodos(devTodos.filter((t) => t.id !== id));
-  const startEditTodo = (t: TodoEntry) => { setEditingTodoId(t.id); setEditingTodoText(t.text); };
-  const saveEditTodo = (id: string) => {
-    if (!editingTodoText.trim()) return;
-    saveDevTodos(devTodos.map((t) => (t.id === id ? { ...t, text: editingTodoText.trim() } : t)));
-    setEditingTodoId(null);
-  };
-
   // ─── ユーザー投稿を Supabase places に登録するハンドラ ──────────────────────
   const handleRegisterSuggestionToPlaces = async (s: Suggestion, force = false) => {
     const id = s.id;
@@ -3301,7 +3196,6 @@ export default function AdminPage() {
             { key: "visited", label: "🚶 訪問学習データ" },
             { key: "reports", label: "⚠ 不適切報告" },
             { key: "mood_ratings", label: "🎭 気分フィードバック" },
-            { key: "devlog", label: "📋 開発ログ" },
             { key: "geocode", label: "📍 座標登録" },
             { key: "merge",   label: "🔀 重複統合" },
             { key: "retag",   label: "🏷 一括タグ修正" },
@@ -7112,117 +7006,6 @@ export default function AdminPage() {
         )}
 
         {/* ===== 開発ログタブ ===== */}
-        {tab === "devlog" && (() => {
-          const doneCount = DEVLOG_REQUESTS.filter((r) => devChecked[r.id]).length;
-          return (
-            <div>
-              {/* ヘッダー */}
-              <div style={{ marginBottom: "28px" }}>
-                <div style={{ fontSize: "22px", fontWeight: 900, marginBottom: "4px" }}>📋 開発ログ</div>
-                <div style={{ fontSize: "13px", opacity: 0.6, marginBottom: "12px" }}>Claudeへのリクエスト履歴と、これからやること</div>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <span style={{ background: "#e8fff0", border: "1.5px solid #7ed8a0", borderRadius: "999px", padding: "4px 14px", fontSize: "12px", fontWeight: 900, color: "#1a7a4a" }}>
-                    ✅ 完了 {doneCount} / {DEVLOG_REQUESTS.length}
-                  </span>
-                  <span style={{ background: "#fff8ee", border: "1.5px solid #ffe0a0", borderRadius: "999px", padding: "4px 14px", fontSize: "12px", fontWeight: 900, color: "#b36000" }}>
-                    📌 ToDo {devTodos.filter((t) => !t.done).length}件
-                  </span>
-                </div>
-              </div>
-
-              {/* ===== ToDo（上） ===== */}
-              <div style={{ marginBottom: "36px" }}>
-                <div style={{ fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em", opacity: 0.4, textTransform: "uppercase", marginBottom: "12px" }}>
-                  ToDo — 自由に追加・編集できます
-                </div>
-                <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-                  <input
-                    type="text"
-                    value={newTodoText}
-                    onChange={(e) => setNewTodoText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") addTodo(); }}
-                    placeholder="新しいToDoを入力して Enter"
-                    style={{ flex: 1, height: "44px", borderRadius: "12px", border: "1.5px solid #f0dfe3", padding: "0 14px", fontSize: "14px", outline: "none", background: "#fff", color: "#3a2a30", fontFamily: font }}
-                  />
-                  <button onClick={addTodo} style={{ ...btnBase, padding: "0 18px", height: "44px", background: "linear-gradient(135deg, #ffbf67 0%, #ff8f7f 100%)", color: "#fff", fontSize: "14px", fontWeight: 900 }}>
-                    ＋ 追加
-                  </button>
-                </div>
-                {devTodos.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "24px 0", opacity: 0.4, fontSize: "13px", border: "1.5px dashed #e0d0d8", borderRadius: "14px" }}>
-                    ToDoはまだありません。上から追加してください。
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: "8px" }}>
-                    {devTodos.map((t) => (
-                      <div key={t.id} style={{ background: t.done ? "#f8f8f8" : "#fff", border: t.done ? "1.5px solid #e0e0e0" : "1.5px solid #f0dfe3", borderRadius: "14px", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
-                        <button onClick={() => toggleTodo(t.id)} style={{ flexShrink: 0, width: "22px", height: "22px", borderRadius: "6px", border: t.done ? "2px solid #1a7a4a" : "2px solid #d0bfc8", background: t.done ? "#1a7a4a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginTop: "2px" }}>
-                          {t.done && <span style={{ color: "#fff", fontSize: "12px", fontWeight: 900 }}>✓</span>}
-                        </button>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {editingTodoId === t.id ? (
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <input type="text" value={editingTodoText} onChange={(e) => setEditingTodoText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveEditTodo(t.id); if (e.key === "Escape") setEditingTodoId(null); }} autoFocus style={{ flex: 1, height: "34px", borderRadius: "8px", border: "1.5px solid #f0dfe3", padding: "0 10px", fontSize: "13px", outline: "none", fontFamily: font, color: "#3a2a30" }} />
-                              <button onClick={() => saveEditTodo(t.id)} style={{ ...btnBase, padding: "0 12px", height: "34px", fontSize: "12px", background: "#e8fff0", color: "#1a7a4a", border: "1.5px solid #a8e8c0" }}>保存</button>
-                              <button onClick={() => setEditingTodoId(null)} style={{ ...btnBase, padding: "0 12px", height: "34px", fontSize: "12px" }}>×</button>
-                            </div>
-                          ) : (
-                            <span style={{ fontSize: "14px", fontWeight: 700, color: t.done ? "#aaa" : "#3a2a30", textDecoration: t.done ? "line-through" : "none", lineHeight: 1.6, display: "block" }}>{t.text}</span>
-                          )}
-                        </div>
-                        {editingTodoId !== t.id && (
-                          <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                            <button onClick={() => startEditTodo(t)} style={{ ...btnBase, padding: "4px 10px", fontSize: "11px", background: "#f5f0ff", color: "#7c4dff", border: "1px solid #ddd0ff" }}>編集</button>
-                            <button onClick={() => deleteTodo(t.id)} style={{ ...btnBase, padding: "4px 10px", fontSize: "11px", background: "#fce4e4", color: "#c0385a", border: "1px solid #f5c0c8" }}>削除</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {devTodos.some((t) => t.done) && (
-                  <button onClick={() => saveDevTodos(devTodos.filter((t) => !t.done))} style={{ ...btnBase, marginTop: "10px", padding: "6px 14px", fontSize: "12px", background: "#fce4e4", color: "#c0385a", border: "1px solid #f5c0c8" }}>
-                    完了済みをまとめて削除
-                  </button>
-                )}
-              </div>
-
-              {/* ===== リクエスト履歴チェックリスト（下） ===== */}
-              <div>
-                <div style={{ fontSize: "11px", fontWeight: 900, letterSpacing: "0.1em", opacity: 0.4, textTransform: "uppercase", marginBottom: "12px" }}>
-                  リクエスト履歴（時系列 · タップで完了切替）
-                </div>
-                <div style={{ display: "grid", gap: "8px" }}>
-                  {DEVLOG_REQUESTS.map((r, idx) => {
-                    const checked = !!devChecked[r.id];
-                    return (
-                      <div key={r.id} style={{ background: checked ? "#f4fff7" : "#fff", border: checked ? "1.5px solid #a8e8c0" : "1.5px solid #f0dfe3", borderRadius: "14px", padding: "12px 14px", transition: "all 0.15s" }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
-                          <button
-                            onClick={() => saveDevChecked({ ...devChecked, [r.id]: !checked })}
-                            style={{ flexShrink: 0, width: "28px", height: "28px", borderRadius: "50%", border: checked ? "2px solid #1a7a4a" : "2px solid #d0bfc8", background: checked ? "#1a7a4a" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: 900, color: checked ? "#fff" : "#b0a0a8", marginTop: "1px" }}
-                          >
-                            {checked ? "✓" : idx + 1}
-                          </button>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px", flexWrap: "wrap" }}>
-                              <span style={{ fontSize: "11px", background: "#fff3e6", border: "1px solid #ffe0b0", borderRadius: "999px", padding: "1px 8px", fontWeight: 900, color: "#b36000" }}>{r.date}</span>
-                              {checked && <span style={{ fontSize: "11px", color: "#1a7a4a", fontWeight: 900 }}>✅ 完了</span>}
-                            </div>
-                            <div style={{ fontWeight: 700, fontSize: "13px", lineHeight: 1.65, color: checked ? "#7a9a7a" : "#3a2a30", textDecoration: checked ? "line-through" : "none" }}>
-                              {r.summary}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
         {/* ── 重複統合タブ ───────────────────────────────────────── */}
         {tab === "merge" && (
           <div style={{ padding: "24px 0" }}>
