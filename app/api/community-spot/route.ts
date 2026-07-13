@@ -357,6 +357,31 @@ export async function GET(request: Request) {
       }
     } catch { /* 0のまま */ }
 
+    // ── 期間限定イベント派生スポット("イベント名＠親スポット名")→ 親スポットへ導線＋親情報で補完 ──
+    //   名前を「＠」で割った末尾が親スポット名。source_type=user の親を引き、名前タップの遷移先(parentPlaceId)を返す。
+    //   イベント側の住所/営業時間/最寄駅が空なら親のもので補完＝「営業時間が無い/住所がおかしい」を解消。
+    let parentPlaceId: string | null = null;
+    let parentPlaceName: string | null = null;
+    const atIdx = userTitle.lastIndexOf("＠");
+    if (atIdx > 0) {
+      const parentName = userTitle.slice(atIdx + 1).trim();
+      if (parentName.length >= 2) {
+        try {
+          const { data: par } = await supabase.from("places")
+            .select("id, name, address, open_hours, nearest_station")
+            .eq("name", parentName).eq("source_type", "user").limit(1).maybeSingle();
+          const pr = par as { id?: string; name?: string; address?: string | null; open_hours?: string | null; nearest_station?: string | null } | null;
+          if (pr?.id) {
+            parentPlaceId = String(pr.id);
+            parentPlaceName = String(pr.name ?? parentName);
+            if (!address && pr.address) address = String(pr.address);
+            if (!openingHoursText && pr.open_hours) openingHoursText = String(pr.open_hours);
+            if (!stationText && pr.nearest_station) stationText = String(pr.nearest_station);
+          }
+        } catch { /* 親が見つからなくても詳細は表示する */ }
+      }
+    }
+
     // エッジキャッシュ: 詳細はGoogle補強が重いので60秒CDNに載せる
     //   （いいね/行った数の鮮度はクライアントが status POST(非キャッシュ)で上書きするため問題なし）
     return NextResponse.json({
@@ -387,6 +412,8 @@ export async function GET(request: Request) {
         lat: placeLat,
         lng: placeLng,
         placeId,
+        parentPlaceId,        // 期間限定イベントの親スポットID（名前タップの遷移先・無ければnull）
+        parentPlaceName,      // 親スポット名
         autoTags,
         createdAt,
         availableFrom,        // 公開期間の開始（期間限定投稿時・穴場）

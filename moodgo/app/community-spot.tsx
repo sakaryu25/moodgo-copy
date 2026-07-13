@@ -58,6 +58,7 @@ type Spot = {
   posterName?: string | null; posterHandle?: string | null; posterIcon?: string | null;  // 投稿者（匿名はnull）
   posterId?: string | null;   // 投稿者の公開ハッシュ（プロフィール/フォロー用）
   posterType?: string | null; // 投稿者バッジ種別（official/store）＝詳細でもバッジ表示
+  parentPlaceId?: string | null; parentPlaceName?: string | null;   // 期間限定イベントの親スポット（名前タップの遷移先）
   visibility?: string | null; isMine?: boolean;   // 公開範囲＋本人判定（本人は匿名でも自分の表示）
   kind?: string;              // 'moodlog' | 'suggestion'（いいねtargetId構築用）
   likeCount?: number;         // 投稿へのいいね数
@@ -320,6 +321,27 @@ export default function CommunitySpotScreen() {
   const openPlaceDetail = () => {
     if (!spot) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // 期間限定イベント("◯◯＠親スポット")の名前タップ → 親スポット(例: 東京ドリームパーク)の場所詳細へ。
+    //   住所/営業時間/座標は親から継承済みなのでそのまま渡す。写真は親のものをplace側で取得（イベント写真は渡さない）。
+    if (spot.parentPlaceId) {
+      setSelectedPlace({
+        title: spot.parentPlaceName || spot.placeName || spot.userTitle,
+        vibe: '',
+        address: spot.address || undefined,
+        mapUrl: spot.googleMapsUri || undefined,
+        photoUrl: undefined, photoUrls: undefined,
+        openingHoursText: spot.openingHoursText || undefined,
+        stationText: spot.stationText || undefined,
+        phone: spot.phone || undefined,
+        website: spot.website || undefined,
+        placeId: spot.parentPlaceId,
+        lat: spot.lat, lng: spot.lng,
+        hasUserPhotos: true,
+        isUserSpot: true,
+      });
+      router.push('/place');
+      return;
+    }
     setSelectedPlace({
       title: spot.placeName || spot.userTitle,
       vibe: '',

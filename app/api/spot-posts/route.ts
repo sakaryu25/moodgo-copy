@@ -438,14 +438,17 @@ export async function POST(req: Request) {
     let linkedExistingName: string | null = null;   // A+C重複防止で既存placeに紐付けた場合の名前
     if (!placeId && placeName) {
       // 限定イベント派生スポットは親スポットの位置を継承（クライアントは座標を持たないため）。
-      let insLat = newLat, insLng = newLng, insAddr = newAddress;
+      let insLat = newLat, insLng = newLng, insAddr = newAddress, insHours = newOpenHours, insStation = newStation;
       if (parentPlaceId) {
-        const { data: pp } = await db.from("places").select("address, lat, lng").eq("id", parentPlaceId).maybeSingle();
-        const p2 = pp as { address?: string | null; lat?: number | null; lng?: number | null } | null;
+        const { data: pp } = await db.from("places").select("address, lat, lng, open_hours, nearest_station").eq("id", parentPlaceId).maybeSingle();
+        const p2 = pp as { address?: string | null; lat?: number | null; lng?: number | null; open_hours?: string | null; nearest_station?: string | null } | null;
         if (p2) {
           if (insLat == null) insLat = p2.lat ?? null;
           if (insLng == null) insLng = p2.lng ?? null;
           if (!insAddr) insAddr = p2.address ?? null;
+          // 期間限定イベントの営業時間/最寄駅も親スポットから継承（未入力なら）＝詳細が空にならない
+          if (!insHours) insHours = p2.open_hours ?? null;
+          if (!insStation) insStation = p2.nearest_station ?? null;
         }
       }
       // ── A+C 重複防止（イベント派生・期間限定以外・座標がある時）──
@@ -478,8 +481,8 @@ export async function POST(req: Request) {
         const eventActive = !!(parentPlaceId && newAvailUntil);
         const { data: place } = await db.from("places").insert({
           name: placeName, address: insAddr || "日本", tags: moodTags,
-          area: null, nearest_station: newStation, source_type: "user", is_active: eventActive,
-          lat: insLat, lng: insLng, open_hours: newOpenHours,
+          area: null, nearest_station: insStation, source_type: "user", is_active: eventActive,
+          lat: insLat, lng: insLng, open_hours: insHours,
         }).select("id").single();
         if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;
         // 期間限定(公開期間): available_from/until 列が未作成でも投稿は成功させる（列があれば保存）。
