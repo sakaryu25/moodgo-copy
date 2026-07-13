@@ -58,6 +58,9 @@ const T = {
     priceNotePh: '詳細があれば（例: ランチ800円、ディナー2,000円〜）',
     periodLabel: '公開期間（任意）',
     periodHint: '期間限定スポットの場合に設定。空欄なら常時公開です。',
+    periodWhatLabel: '何の期間限定？',
+    periodWhatPh: '例: 夏季限定オープン、桜まつり、GWポップアップ',
+    periodWhatNote: '期間を設定したら「何の期間限定か」は必須です（投稿の先頭に表示されます）。',
     dateFrom: '開始日',
     dateUntil: '終了日',
     // 既存スポットへの「期間限定イベント/ポップアップ」投稿
@@ -173,6 +176,9 @@ const T = {
     priceNotePh: 'Add details if any (e.g. lunch ¥800, dinner from ¥2,000)',
     periodLabel: 'Availability period (optional)',
     periodHint: 'Set this for limited-time spots. Leave blank for always available.',
+    periodWhatLabel: 'What is limited-time?',
+    periodWhatPh: 'e.g. Summer-only opening, Cherry blossom festival, GW popup',
+    periodWhatNote: 'If you set dates, describing the limited-time is required (shown at the start of the post).',
     dateFrom: 'Start date',
     dateUntil: 'End date',
     eventLabel: 'Limited-time event / popup (optional)',
@@ -660,6 +666,9 @@ export default function PostScreen() {
     const isEventPost = isExisting && !editMode && !!(availFrom.trim() || availUntil.trim());
     if (isEventPost && !eventName.trim()) { showToast(t.tEventNameTitle, t.tEventNameSub); return; }
     if (isEventPost && !availUntil.trim()) { showToast(t.tEventEndTitle, t.tEventEndSub); return; }
+    // 新スポットで公開期間を設定したら「何の期間限定か」を必須に（マスト）＝投稿先頭に付ける
+    const newPeriodLabel = (!isExisting && !editMode && (availFrom.trim() || availUntil.trim())) ? eventName.trim() : '';
+    if (!isExisting && !editMode && (availFrom.trim() || availUntil.trim()) && !newPeriodLabel) { showToast(t.tEventNameTitle, t.tEventNameSub); return; }
     setSubmitting(true);
     try {
       const deviceId = await getDeviceId();
@@ -686,7 +695,7 @@ export default function PostScreen() {
           placeName: derivedName, address,
           lat: lat ?? undefined, lng: lng ?? undefined,
           // 名前を出して公開(public)=投稿者カード/プロフィール/フォロー対象。匿名は本人特定不可のまま公開。
-          caption: caption.trim(), moodTags, visibility: visServer,
+          caption: newPeriodLabel ? `【${newPeriodLabel}】${caption.trim()}` : caption.trim(), moodTags, visibility: visServer,
           canUseAsSpotPhoto: true, licenseDeclared: true, images: [first.main], thumbImages: [first.thumb],
           priceChip: priceChip || undefined,
           priceNote: priceNote.trim() || undefined,
@@ -877,6 +886,14 @@ export default function PostScreen() {
                   {availUntil ? <TouchableOpacity onPress={() => setAvailUntil('')} hitSlop={8}><X size={14} color="#B9ABD2" /></TouchableOpacity> : null}
                 </TouchableOpacity>
               </View>
+              {/* 期間を設定したら「何の期間限定か」を必須で書いてもらう（マスト） */}
+              {(availFrom || availUntil) ? (
+                <>
+                  <Text style={[s.label, { marginTop: 14 }]}>{t.periodWhatLabel}<Text style={s.req}>*</Text></Text>
+                  <TextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.periodWhatPh} placeholderTextColor="#B9ABD2" maxLength={60} />
+                  <Text style={s.note}>{t.periodWhatNote}</Text>
+                </>
+              ) : null}
             </>
           )}
 
