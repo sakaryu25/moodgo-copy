@@ -369,7 +369,8 @@ export default function PostScreen() {
             if (m) { setOpenTime(m[1]); setCloseTime(m[2]); }
           }
           // 既存の写真をプレフィル（編集で削除／追加できる）。uri=リモートURL・existing=trueで再アップロードしない
-          const ph = Array.isArray(d.photos) ? (d.photos as unknown[]).filter((u): u is string => typeof u === 'string') : [];
+          //   ⚠ get-mine は post.photos に既存URLを返す（d.photos ではなく d.post.photos）
+          const ph = Array.isArray(d.post.photos) ? (d.post.photos as unknown[]).filter((u): u is string => typeof u === 'string') : [];
           originalPhotos.current = ph;
           if (ph.length > 0) setImages(ph.map((u) => ({ uri: u, existing: true })));
           if (active) setEditLoaded(true);   // 元投稿の反映完了→この後に下書きを上書き適用
@@ -408,7 +409,8 @@ export default function PostScreen() {
           if (typeof d.address === 'string') setAddress(d.address);
           if (typeof d.lat === 'number') setLat(d.lat);
           if (typeof d.lng === 'number') setLng(d.lng);
-          if (Array.isArray(d.images)) setImages(d.images.filter((x: unknown) => !!x && typeof (x as { uri?: unknown }).uri === 'string').map((x: { uri: string; existing?: boolean }) => ({ uri: x.uri, existing: !!x.existing })));
+          // 空配列の下書きでは上書きしない（get-mineで読んだ既存写真を消さない＝旧バグ下書き対策）
+          if (Array.isArray(d.images) && d.images.length > 0) setImages(d.images.filter((x: unknown) => !!x && typeof (x as { uri?: unknown }).uri === 'string').map((x: { uri: string; existing?: boolean }) => ({ uri: x.uri, existing: !!x.existing })));
           if (Array.isArray(d.moodTags)) setMoodTags(d.moodTags.filter((x: unknown) => typeof x === 'string'));
           if (typeof d.caption === 'string') setCaption(d.caption);
           if (typeof d.rating === 'number') setRating(d.rating);
