@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
+  CalendarClock, CalendarX, Camera, ChevronLeft, ChevronRight, Clock, Footprints, Globe, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Phone, Star, Train, UserRound, Wallet,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -83,6 +83,8 @@ const T = {
     overallRating: '総合評価',
     beenHere: '行った！',
     limitedSpot: '期間限定の穴場',
+    limitedEnded: '期間限定（終了）',
+    ended: '終了',
     whatPlace: 'どんな場所？',
     posterRecommend: '投稿者のおすすめ度',
     reviewCount: (n: string) => `${n}件の口コミ`,
@@ -130,6 +132,8 @@ const T = {
     overallRating: 'Overall rating',
     beenHere: 'Been here!',
     limitedSpot: 'Limited-time spot',
+    limitedEnded: 'Limited-time (ended)',
+    ended: 'Ended',
     whatPlace: 'What kind of place?',
     posterRecommend: "Poster's rating",
     reviewCount: (n: string) => `${n} reviews`,
@@ -410,6 +414,8 @@ export default function CommunitySpotScreen() {
   const priceDisplay = priceCount > 0 && priceAvg
     ? (priceCount >= 2 ? `${priceAvg}（${priceCount}人の平均）` : priceAvg)
     : spot.priceText;
+  // 期間限定の公開期間が過ぎたか（今日 > 終了日）＝「終了しました」表示に切り替える
+  const periodEnded = !!(spot.availableUntil && String(spot.availableUntil).slice(0, 10) < new Date().toISOString().slice(0, 10));
   const hasGoogleRating = spot.googleRating != null;
 
   return (
@@ -607,14 +613,17 @@ export default function CommunitySpotScreen() {
 
           {/* ── 期間限定の穴場（公開期間が設定されている場合）── */}
           {(spot.availableFrom || spot.availableUntil) ? (
-            <View style={s.periodCard}>
-              <View style={s.periodIconWrap}>
-                <CalendarClock size={17} color="#fff" strokeWidth={2.4} />
+            <View style={[s.periodCard, periodEnded && s.periodCardEnded]}>
+              <View style={[s.periodIconWrap, periodEnded && s.periodIconWrapEnded]}>
+                {periodEnded
+                  ? <CalendarX size={17} color="#fff" strokeWidth={2.4} />
+                  : <CalendarClock size={17} color="#fff" strokeWidth={2.4} />}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.periodLabel}>{t.limitedSpot}</Text>
-                <Text style={s.periodValue}>{fmtPeriod(spot.availableFrom, spot.availableUntil, t)}</Text>
+                <Text style={[s.periodLabel, periodEnded && s.periodLabelEnded]}>{periodEnded ? t.limitedEnded : t.limitedSpot}</Text>
+                <Text style={[s.periodValue, periodEnded && s.periodValueEnded]}>{fmtPeriod(spot.availableFrom, spot.availableUntil, t)}</Text>
               </View>
+              {periodEnded ? <View style={s.periodEndedTag}><Text style={s.periodEndedTagText}>{t.ended}</Text></View> : null}
             </View>
           ) : null}
 
@@ -883,6 +892,13 @@ const s = StyleSheet.create({
   },
   periodLabel: { fontSize: 11, fontWeight: '800', color: '#B45309', marginBottom: 2 },
   periodValue: { fontSize: 14.5, fontWeight: '800', color: '#9A3412', letterSpacing: -0.2 },
+  // ── 期間終了時（今日 > 終了日）＝アンバーからグレーへ。終わったことが一目で分かるようにする ──
+  periodCardEnded: { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' },
+  periodIconWrapEnded: { backgroundColor: '#9CA3AF' },
+  periodLabelEnded: { color: '#6B7280' },
+  periodValueEnded: { color: '#9CA3AF', textDecorationLine: 'line-through' },
+  periodEndedTag: { backgroundColor: '#6B7280', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
+  periodEndedTagText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
 
   // Comment (大目玉)
   commentCard: {
