@@ -12,8 +12,8 @@ export async function GET(request: Request) {
   const lat = searchParams.get("lat");
   const lng = searchParams.get("lng");
 
-  if (!lat || !lng) {
-    return NextResponse.json({ ok: false, error: "lat and lng are required" }, { status: 400 });
+  if (!lat || !lng || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    return NextResponse.json({ ok: false, error: "有効な座標を指定してください" }, { status: 400 });
   }
 
   // Googleが使えない時のYahooフォールバック
@@ -41,7 +41,8 @@ export async function GET(request: Request) {
       // REQUEST_DENIED（課金未設定）等はYahooで救済
       const yahoo = await tryYahoo();
       if (yahoo) return yahoo;
-      return NextResponse.json({ ok: false, error: `Reverse geocode failed: ${data.status}` }, { status: 404 });
+      console.warn("[reverse-geocode] google status:", data.status);   // 内部ステータスはサーバーログのみ
+      return NextResponse.json({ ok: false, error: "住所を取得できませんでした" }, { status: 404 });
     }
 
     const address = data.results[0].formatted_address as string;

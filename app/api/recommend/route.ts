@@ -6307,8 +6307,9 @@ export async function POST(request: Request): Promise<Response> {
         google_detail: counts.detail,           // 内訳: Place Details(★評価等)。列未作成時はinsert失敗→黙殺(既存挙動)
         total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
       });
-      // 15件揃った標準検索のみスナップショット保存（薄い/失敗結果はキャッシュしない）
-      if (snapKey && res.status === 200 && recCount >= 12) writeSnapshot(snapKey, body);
+      // 8件以上(プロダクト下限)の標準検索をスナップショット保存＝再検索で同じ結果が返り安定＋Google/Yahoo再呼び出しを削減
+      //   （旧: >=12 だと多様性フィルタ後に達しないことが多く一度も保存されず、再検索のたびに件数が揺れていた）
+      if (snapKey && res.status === 200 && recCount >= 8) writeSnapshot(snapKey, body);
       return NextResponse.json(
         { ...body, _apiCount: { total, ...counts, elapsedMs: elapsed } },
         { status: res.status },

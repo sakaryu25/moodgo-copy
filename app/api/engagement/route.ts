@@ -11,11 +11,13 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const VALID_ACTIONS = new Set(["map_click", "detail_view", "favorite", "visited", "share"]);
 
 export async function POST(req: NextRequest) {
+  if (!rateLimit(`engagement:${clientIp(req)}`, 120, 60_000)) return NextResponse.json({ ok: true });   // 学習ログ=fire-and-forget。濫用時は静かにドロップ
   try {
     const body = await req.json();
     const { place_name, mood, action, place_id, device_id, search_id, position } = body ?? {};

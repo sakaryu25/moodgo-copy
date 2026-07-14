@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   const placeName = (searchParams.get("placeName") ?? "").trim();
   if (placeName.length < 2) return NextResponse.json({ ok: true, events: [] });
 
-  const today = new Date().toISOString().slice(0, 10);   // YYYY-MM-DD
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);   // YYYY-MM-DD（JST基準・UTCだと0-9時に1日ズレる）
   const safe = placeName.replace(/[%_,]/g, "").slice(0, 80);   // PostgREST like/or の記号を除去
 
   try {

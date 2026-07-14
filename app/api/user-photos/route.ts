@@ -6,8 +6,10 @@ export const dynamic = "force-dynamic";
 //   Google等は呼ばない（DBのspot_photosのみ・課金ゼロ）。クライアントで先頭に差し込む。
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
+  if (!rateLimit(`user-photos:${clientIp(req)}`, 60, 60_000)) return NextResponse.json({ ok: true, byId: {}, byName: {} });
   if (!supabase) return NextResponse.json({ ok: true, byId: {}, byName: {} });
   const body = await req.json().catch(() => null) as { items?: Array<{ name?: string; supabaseId?: string }> } | null;
   const items = Array.isArray(body?.items) ? body!.items! : [];

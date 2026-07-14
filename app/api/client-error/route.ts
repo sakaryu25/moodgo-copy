@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 const ADMIN = ADMIN_SECRET;
@@ -17,6 +18,7 @@ function isMissingTable(error: { code?: string } | null): boolean {
 }
 
 export async function POST(request: Request) {
+  if (!rateLimit(`client-error:${clientIp(request)}`, 30, 60_000)) return NextResponse.json({ ok: true });
   // Supabase未設定でも 200 を返す（クライアントはfire-and-forget。失敗で再送しない）
   if (!supabase) return NextResponse.json({ ok: true });
   try {

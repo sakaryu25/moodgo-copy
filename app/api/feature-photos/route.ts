@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
  * 有名スポットの実写真を Google Places から1枚ずつ取得（並列・各5秒timeout）。
  */
 import { NextResponse } from "next/server";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
@@ -39,6 +40,7 @@ async function fetchOnePhoto(origin: string, name: string, area: string): Promis
 }
 
 export async function POST(request: Request) {
+  if (!rateLimit(`feature-photos:${clientIp(request)}`, 30, 60_000)) return NextResponse.json({ ok: false, photos: {} }, { status: 200 });
   const { origin } = new URL(request.url);
   if (!GOOGLE_API_KEY) return NextResponse.json({ ok: false, photos: {} }, { status: 200 });
 

@@ -32,7 +32,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace, getSelectedContext } from '@/lib/selectedPlace';
-import { buildGoogleMapsUrl } from '@/lib/mapsUrl';
+import { openInGoogleMaps } from '@/lib/openMaps';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -1036,8 +1036,8 @@ export default function PlaceDetailPage() {
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    // 座標でなく店名＋住所でGoogleマップ検索→店ページに着地(place_id有れば正確に)
-                    Linking.openURL(buildGoogleMapsUrl(rec.title, rec.address, rec.placeId)).catch(() => {});
+                    // 名前＋住所で検索＝店ページ(営業時間/口コミ)に着地。座標はMapsアプリのcenterヒント（全マップ導線で統一）
+                    openInGoogleMaps({ query: [rec.title, rec.address].filter(Boolean).join(' '), lat: rec.lat, lng: rec.lng, mapsUri: displayMapUrl ?? undefined });
                   }}
                   activeOpacity={0.82}
                   style={s.mapPillBtn}
@@ -1142,7 +1142,7 @@ export default function PlaceDetailPage() {
 
           {/* ── 期間限定の穴場（このスポット自体に公開期間がある場合・投稿詳細と統一・終了はグレー）── */}
           {(rec.availableFrom || rec.availableUntil) ? (() => {
-            const ended = !!(rec.availableUntil && String(rec.availableUntil).slice(0, 10) < new Date().toISOString().slice(0, 10));
+            const ended = !!(rec.availableUntil && String(rec.availableUntil).slice(0, 10) < new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10));   // JST基準
             const fp = (d?: string | null) => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-').map(Number); return `${y}/${m}/${dd}`; };
             const label = rec.availableFrom && rec.availableUntil
               ? `${fp(rec.availableFrom)} 〜 ${fp(rec.availableUntil)}`

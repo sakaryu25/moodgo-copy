@@ -4,9 +4,11 @@
 export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { iconPathFor } from "@/lib/device-hash";
 
 export async function POST(req: Request) {
+  if (!rateLimit(`user-icon:${clientIp(req)}`, 10, 60_000)) return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
   if (!supabase) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   try {
     const body = await req.json().catch(() => null);

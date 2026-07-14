@@ -425,7 +425,7 @@ export default function CommunitySpotScreen() {
     ? (priceCount >= 2 ? `${priceAvg}（${priceCount}人の平均）` : priceAvg)
     : spot.priceText;
   // 期間限定の公開期間が過ぎたか（今日 > 終了日）＝「終了しました」表示に切り替える
-  const periodEnded = !!(spot.availableUntil && String(spot.availableUntil).slice(0, 10) < new Date().toISOString().slice(0, 10));
+  const periodEnded = !!(spot.availableUntil && String(spot.availableUntil).slice(0, 10) < new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10));   // JST基準
   const hasGoogleRating = spot.googleRating != null;
 
   return (

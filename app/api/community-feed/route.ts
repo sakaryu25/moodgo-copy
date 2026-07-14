@@ -205,7 +205,7 @@ export async function GET(request: Request) {
     const sugPromise = (async () => {
       if (posterHandle) return;
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);   // JST基準（期間限定の当日判定）
         const toPref = toArea;   // カード地名を「都道府県＋市区町村」に（[[jp-area]]）
         let sq = supabase
           .from("suggestions")

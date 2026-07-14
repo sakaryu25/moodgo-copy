@@ -106,7 +106,8 @@ export async function GET(request: Request) {
           .select("id, place_id, place_name, caption, mood_tags, created_at, poster_name, device_id, visibility")
           .eq("id", realId)
           .single();
-        if (e2 || !p2) throw e2 ?? new Error("not found");
+        // 行が無い(削除済み/存在しないID)は404＝クライアントは「見つかりません」表示（旧: 500+[object Object]）
+        if (e2 || !p2) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
         pRow = p2 as Record<string, unknown>;
       }
       const post = pRow;
@@ -185,7 +186,8 @@ export async function GET(request: Request) {
         .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, contact, station_info, google_maps_uri, created_at, available_from, available_until, poster_name, device_id")
         .eq("id", realId)
         .single();
-      if (error || !s) throw error ?? new Error("not found");
+      // 行が無い(削除済み/存在しないID)は404（旧: 500+[object Object]）
+      if (error || !s) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
       if (typeof (s as Record<string, unknown>).device_id === "string" && (s as Record<string, unknown>).device_id) {
         const dev = String((s as Record<string, unknown>).device_id);
         posterName = ((s as Record<string, unknown>).poster_name as string | null) ?? null;
@@ -454,6 +456,9 @@ export async function GET(request: Request) {
     }, { headers: { "Cache-Control": viewerHash ? "private, no-store" : "public, s-maxage=60, stale-while-revalidate=600" } });
   } catch (e) {
     console.error("[community-spot]", e);
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    // Supabaseエラー等のオブジェクトを "[object Object]" にしない（監視ログの可読性）
+    const msg = e instanceof Error ? e.message
+      : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message) : String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

@@ -9,7 +9,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
 import PhotoViewer from './PhotoViewer';   // 全画面フォトビューア（場所詳細/投稿詳細と共通）
 import { shareSpotToGroup } from '@/lib/groupShare';
-import { buildGoogleMapsUrl } from '@/lib/mapsUrl';
+import { openInGoogleMaps } from '@/lib/openMaps';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -329,7 +329,7 @@ export default function PlaceCard({
   // 期間限定バッジ: available_from/until があれば「期間限定 M/D〜M/D」。終了日が過ぎていれば「期間限定(終了)」。
   const fmtMD = (d?: string | null) => { const m = d ? /^(\d{4})-(\d{2})-(\d{2})/.exec(d) : null; return m ? `${Number(m[2])}/${Number(m[3])}` : ''; };
   const hasPeriod = !!(item.availableFrom || item.availableUntil);
-  const periodEnded = !!(item.availableUntil && item.availableUntil.slice(0, 10) < new Date().toISOString().slice(0, 10));
+  const periodEnded = !!(item.availableUntil && item.availableUntil.slice(0, 10) < new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10));   // JST基準
   const periodRange = [fmtMD(item.availableFrom), fmtMD(item.availableUntil)].filter(Boolean).join('〜');
   const periodLabel = !hasPeriod ? ''
     : periodEnded ? (lang === 'ja' ? '期間限定（終了）' : 'Limited (ended)')
@@ -617,8 +617,8 @@ export default function PlaceCard({
           {item.title ? (
             <PuniPressable
               onPress={() => {
-                // 座標ピンでなく店名＋住所でGoogleマップ検索→店ページに着地(place_id有れば正確に)
-                Linking.openURL(buildGoogleMapsUrl(item.title, item.address, item.placeId)).catch(() => {});
+                // 名前＋住所で検索＝店ページに着地。座標はcenterヒント（全マップ導線で統一）
+                openInGoogleMaps({ query: [item.title, item.address].filter(Boolean).join(' '), lat: item.lat, lng: item.lng, mapsUri: item.mapUrl ?? undefined });
               }}
               style={s.mapBtn}
               containerStyle={{ flex: 1 }}

@@ -2,9 +2,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function POST(request: Request) {
+  if (!rateLimit(`feedback:${clientIp(request)}`, 20, 60_000)) return NextResponse.json({ ok: false, error: "しばらく時間をおいてください" }, { status: 429 });
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   }
