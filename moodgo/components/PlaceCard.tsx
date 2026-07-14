@@ -690,14 +690,14 @@ export default function PlaceCard({
         </>)}
       </View>
 
-      {/* 写真の全画面ビューア */}
-      {viewerIdx !== null && photos.length > 0 && (
-        <PhotoViewer
-          photos={photos}
-          initialIdx={Math.min(viewerIdx, photos.length - 1)}
-          onClose={() => setViewerIdx(null)}
-        />
-      )}
+      {/* 写真の全画面ビューア（場所詳細/投稿詳細と共通・スワイプで閉じる/サムネ/ズーム）
+          ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
+      <PhotoViewer
+        visible={viewerIdx !== null && photos.length > 0}
+        photos={photos}
+        initialIdx={Math.min(viewerIdx ?? 0, Math.max(0, photos.length - 1))}
+        onClose={() => setViewerIdx(null)}
+      />
     </Animated.View>
   );
 }

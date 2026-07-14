@@ -727,10 +727,10 @@ export default function CommunitySpotScreen() {
         </View>
       </ScrollView>
 
-      {/* 写真タップの全画面ビューア（場所詳細と共通・スワイプ切替/ピンチズーム）*/}
-      {viewerOpen && photos.length > 0 && (
-        <PhotoViewer photos={photos} initialIdx={Math.min(photoIdx, photos.length - 1)} onClose={() => setViewerOpen(false)} />
-      )}
+      {/* 写真タップの全画面ビューア（場所詳細と共通・スワイプで閉じる/サムネ/ズーム）
+          ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
+      <PhotoViewer visible={viewerOpen && photos.length > 0} photos={photos}
+        initialIdx={Math.min(photoIdx, Math.max(0, photos.length - 1))} onClose={() => setViewerOpen(false)} />
 
       {/* 通報（フィードと同じReportModal＝理由選択・投稿者ブロック・自動非表示カウント統一）
           ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}

@@ -1195,10 +1195,10 @@ export default function PlaceDetailPage() {
         </View>
       </Animated.ScrollView>
 
-      {/* 写真タップの全画面ビューア（スワイプ切替・ピンチズーム・カウンター）*/}
-      {viewerOpen && photos.length > 0 && (
-        <PhotoViewer photos={photos} initialIdx={Math.min(photoIdx, photos.length - 1)} onClose={() => setViewerOpen(false)} />
-      )}
+      {/* 写真タップの全画面ビューア（投稿詳細と共通・スワイプで閉じる/サムネ/ズーム）
+          ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
+      <PhotoViewer visible={viewerOpen && photos.length > 0} photos={photos}
+        initialIdx={Math.min(photoIdx, Math.max(0, photos.length - 1))} onClose={() => setViewerOpen(false)} />
 
       {/* お気に入りハート（右下フローティング・投稿詳細と同様）
           未保存はグレー輪郭＋グレー数字・保存済みはピンク塗り＋ピンク数字。
