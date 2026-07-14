@@ -972,7 +972,9 @@ export default function PlaceDetailPage() {
           <View style={s.titleBlock}>
             <View style={s.titleRow}>
               <Text style={s.title} onLongPress={() => copyPlaceName(rec.title)} suppressHighlighting>{rec.title}</Text>
-              {displayMapUrl ? (
+              {/* マップ: buildGoogleMapsUrlは名前＋住所で動くのでURL未取得のユーザー作成スポットでも常に表示
+                  （旧: displayMapUrl必須＝投稿詳細→場所詳細でボタンが消えていた・2026-07-14） */}
+              {rec.title ? (
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

@@ -595,16 +595,59 @@ export async function GET(req: Request) {
   const deviceId = searchParams.get("deviceId")?.trim() ?? "";
   if (!placeId && !placeName) return NextResponse.json({ ok: true, posts: [] });
 
+  const LIST_COLS = "id, device_id, poster_name, caption, mood_tags, companion, visibility, time_of_day, want_revisit, matches_photo, like_count, helpful_count, revisit_count, created_at";
+
   try {
+    // ── 期間限定イベント派生スポット("イベント名＠この場所")の投稿も親のMoodログに含める（2026-07-14）──
+    //   派生スポットは親と同じ場所（座標/住所を継承）なので、名前サフィックス一致＋
+    //   座標近接(≦200m・両方に座標がある時のみ確認)で同一地点と判定して束ねる。
+    //   ※place-events APIと同じ like("%＠親名") パターン。親名に＠を含む(=自身が派生)場合はスキップ。
+    let parentName = placeName ?? "";
+    let pLat: number | null = null, pLng: number | null = null;
+    if (placeId) {
+      const { data: pl } = await db.from("places").select("name, lat, lng").eq("id", placeId).maybeSingle();
+      const p = pl as { name?: string | null; lat?: number | null; lng?: number | null } | null;
+      if (p?.name) parentName = String(p.name);
+      pLat = typeof p?.lat === "number" ? p.lat : null;
+      pLng = typeof p?.lng === "number" ? p.lng : null;
+    }
+    const derivedIds: string[] = [];
+    if (parentName && parentName.length >= 2 && !parentName.includes("＠")) {
+      const safe = parentName.replace(/[%_,]/g, "").slice(0, 80);
+      const { data: kids } = await db.from("places")
+        .select("id, lat, lng").eq("source_type", "user").like("name", `%＠${safe}`).limit(20);
+      for (const k of (kids ?? []) as Array<{ id: string; lat: number | null; lng: number | null }>) {
+        if (pLat != null && pLng != null && k.lat != null && k.lng != null) {
+          const dLat = (k.lat - pLat) * 111000, dLng = (k.lng - pLng) * 91000;
+          if (Math.hypot(dLat, dLng) > 200) continue;   // 別地域の同名スポットへの誤混入防止
+        }
+        derivedIds.push(String(k.id));
+      }
+    }
+
     let q = db.from("spot_posts")
-      .select("id, device_id, poster_name, caption, mood_tags, companion, visibility, time_of_day, want_revisit, matches_photo, like_count, helpful_count, revisit_count, created_at")
+      .select(LIST_COLS)
       .order("created_at", { ascending: false }).limit(50);
     q = placeId ? q.eq("place_id", placeId) : q.eq("place_name", placeName!);
     const { data, error } = await q;
     if (error) { if (isMissingTable(error)) return NextResponse.json({ ok: true, posts: [] }); throw error; }
 
+    // 派生スポットの投稿をマージ（新しい順に統合して上限50件）
+    let rows = data ?? [];
+    if (derivedIds.length > 0) {
+      const { data: extra } = await db.from("spot_posts")
+        .select(LIST_COLS).in("place_id", derivedIds)
+        .order("created_at", { ascending: false }).limit(50);
+      const seen = new Set(rows.map((r) => String((r as { id: string }).id)));
+      for (const r of (extra ?? []) as typeof rows) {
+        if (!seen.has(String((r as { id: string }).id))) rows.push(r);
+      }
+      rows.sort((a, b) => String((b as { created_at?: string }).created_at ?? "").localeCompare(String((a as { created_at?: string }).created_at ?? "")));
+      rows = rows.slice(0, 50);
+    }
+
     // 可視判定: approved の public/anon は全員、private/group は本人のみ表示（MVP: groupは本人扱い）
-    const visible = (data ?? []).filter((p) => {
+    const visible = rows.filter((p) => {
       const own = deviceId && p.device_id === deviceId;
       const pub = (p as { visibility: string }).visibility === "spot_public_anonymous" || (p as { visibility: string }).visibility === "public";
       return own || pub;

@@ -338,7 +338,9 @@ export default function CommunitySpotScreen() {
         stationText: spot.stationText || undefined,
         phone: spot.phone || undefined,
         website: spot.website || undefined,
-        placeId: spot.parentPlaceId,
+        // parentPlaceIdはSupabase UUID。placeId(Google ID用)ではなくsupabaseIdに渡す＝
+        // 場所詳細側の写真/Moodログ/評価の取得キーが正しく効き、検索から開いた時と同じ表示になる
+        supabaseId: spot.parentPlaceId,
         lat: spot.lat, lng: spot.lng,
         hasUserPhotos: true,
         isUserSpot: true,
@@ -356,7 +358,10 @@ export default function CommunitySpotScreen() {
       stationText: spot.stationText || undefined,
       phone: spot.phone || undefined,
       website: spot.website || undefined,
-      placeId: spot.placeId || undefined,
+      // place_idはSupabase UUID(選択/新規スポット)とGoogle ID(ChIJ…)が混在。
+      // UUIDはsupabaseIdへ＝写真/Moodログ/評価の取得キーが効く。Google IDだけplaceIdへ。
+      supabaseId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(spot.placeId ?? '') ? spot.placeId! : undefined,
+      placeId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(spot.placeId ?? '') ? undefined : (spot.placeId || undefined),
       lat: spot.lat, lng: spot.lng,
       hasUserPhotos: spot.hasUserPhotos,
       isUserSpot: true,
