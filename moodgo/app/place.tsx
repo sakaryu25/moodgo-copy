@@ -1017,7 +1017,9 @@ export default function PlaceDetailPage() {
                 <TouchableOpacity key={i} activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
                   accessibilityRole="button" accessibilityLabel={ev.eventName}>
-                  {/* 白カード＋グラデはアイコン/ピルだけ＝他カードの帯に馴染みつつ期間限定と分かる控えめ版 */}
+                  {/* 白カード＋外枠1.5pxのブランドグラデ＝馴染みと特別感の両立（RNはグラデborder非対応
+                      のため、グラデ下地(padding:1.5)に白カードを重ねてリング状に見せる） */}
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventBorder}>
                   <View style={s.eventRow}>
                     <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventIcon}>
                       <CalendarClock size={17} color="#fff" strokeWidth={2.4} />
@@ -1036,6 +1038,7 @@ export default function PlaceDetailPage() {
                     </View>
                     <ChevronRight size={16} color="#C9BCE6" strokeWidth={2.4} />
                   </View>
+                  </LinearGradient>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1387,10 +1390,13 @@ const s = StyleSheet.create({
 
   // 開催中イベント導線（元スポット→派生イベント）
   eventWrap: { gap: 8, marginBottom: 14 },
+  eventBorder: {
+    borderRadius: 16, padding: 1.5,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 2,
+  },
   eventRow: {
     flexDirection: 'row', alignItems: 'center', gap: 11,
-    backgroundColor: '#fff', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 13,
-    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 1,
+    backgroundColor: '#fff', borderRadius: 14.5, paddingVertical: 12, paddingHorizontal: 13,
   },
   eventIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   eventTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 },
