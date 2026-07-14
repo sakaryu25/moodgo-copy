@@ -19,6 +19,7 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { findNgWord } from "@/lib/ngwords";
 import { sendPushToDevice } from "@/lib/push-send";
 import { isSameNameLoose } from "@/lib/normalize-name";
+import { forwardGeocode } from "@/lib/forward-geocode";
 
 const BUCKET = "spot-photos";
 const REPORT_HIDE_THRESHOLD = 3;
@@ -451,6 +452,13 @@ export async function POST(req: Request) {
           if (!insStation) insStation = p2.nearest_station ?? null;
         }
       }
+      // 座標が無い新スポットは住所(無ければ名前)から順ジオコーディングで座標を補完する。
+      //   利用者には見せない内部データ＝距離計算・下の重複防止・検索対象化に効く（要望: 住所と名前から座標補完）。
+      //   イベント派生(parentPlaceId)は親から継承済みなのでスキップ。
+      if (!parentPlaceId && (insLat == null || insLng == null)) {
+        const geo = (insAddr ? await forwardGeocode(insAddr) : null) ?? (placeName ? await forwardGeocode(placeName) : null);
+        if (geo) { insLat = geo.lat; insLng = geo.lng; }
+      }
       // ── A+C 重複防止（イベント派生・期間限定以外・座標がある時）──
       //   同じ物理的な場所は座標がほぼ同じ＝表記ゆれ(カナ/英語)の別名でも二重作成しない。
       //   ①表記ゆれ範囲で名前一致 or ②±~30mに既存が1件だけ（＝同一地点の別表記）→ その既存placeに紐付ける。
@@ -470,6 +478,25 @@ export async function POST(req: Request) {
           const veryNear = rows.filter((p) =>
             Math.abs(Number(p.lat) - (insLat as number)) < 0.0003 && Math.abs(Number(p.lng) - (insLng as number)) < 0.0004);
           if (veryNear.length === 1) dup = veryNear[0];
+        }
+        if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
+      }
+      // R2: 座標一致で見つからなくても、名前が既存placeと完全一致するなら二重作成しない。
+      //   （検索の「これかも？」候補を選ばず同名を手入力したケースの重複を防ぐ）。同名が1件＝それに
+      //   紐付け／複数(チェーン)は座標最寄りを採用／座標も無ければ曖昧なので新規作成に委ねる。
+      if (!effectivePlaceId && !parentPlaceId && !newAvailFrom && !newAvailUntil && placeName.trim().length >= 2) {
+        const { data: byName } = await db.from("places")
+          .select("id, name, lat, lng").eq("name", placeName.trim()).limit(20);
+        const rows = (byName ?? []) as Array<{ id: string; name?: string; lat?: number | null; lng?: number | null }>;
+        let dup: { id: string; name?: string } | null = null;
+        if (rows.length === 1) dup = rows[0];
+        else if (rows.length > 1 && insLat != null && insLng != null) {
+          let bestD = Infinity;
+          for (const p of rows) {
+            if (p.lat == null || p.lng == null) continue;
+            const d = Math.abs(Number(p.lat) - (insLat as number)) + Math.abs(Number(p.lng) - (insLng as number));
+            if (d < bestD) { bestD = d; dup = p; }
+          }
         }
         if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
       }
