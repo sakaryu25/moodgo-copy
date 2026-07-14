@@ -377,7 +377,9 @@ export async function GET(request: Request) {
         try {
           const { data: par } = await supabase.from("places")
             .select("id, name, address, open_hours, nearest_station")
-            .eq("name", parentName).eq("source_type", "user").limit(1).maybeSingle();
+            .eq("name", parentName).eq("source_type", "user")
+            .eq("is_active", true)   // ⚠同名の非アクティブ行(削除済みの抜け殻)を親にしない＝空ページ遷移バグの原因
+            .limit(1).maybeSingle();
           const pr = par as { id?: string; name?: string; address?: string | null; open_hours?: string | null; nearest_station?: string | null } | null;
           if (pr?.id) {
             parentPlaceId = String(pr.id);

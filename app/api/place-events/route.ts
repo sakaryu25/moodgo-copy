@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       .from("places")
       .select("id, name, available_from, available_until")
       .eq("source_type", "user")
+      .eq("is_active", true)   // 非アクティブ(削除済み)の派生イベントを導線に出さない
       .like("name", `%＠${safe}`)
       .not("available_until", "is", null)
       .gte("available_until", today)

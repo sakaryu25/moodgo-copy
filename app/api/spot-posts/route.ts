@@ -486,7 +486,9 @@ export async function POST(req: Request) {
       //   紐付け／複数(チェーン)は座標最寄りを採用／座標も無ければ曖昧なので新規作成に委ねる。
       if (!effectivePlaceId && !parentPlaceId && !newAvailFrom && !newAvailUntil && placeName.trim().length >= 2) {
         const { data: byName } = await db.from("places")
-          .select("id, name, lat, lng").eq("name", placeName.trim()).limit(20);
+          .select("id, name, lat, lng").eq("name", placeName.trim())
+          .eq("is_active", true)   // 非アクティブ行に紐付けると投稿が見えなくなる
+          .limit(20);
         const rows = (byName ?? []) as Array<{ id: string; name?: string; lat?: number | null; lng?: number | null }>;
         let dup: { id: string; name?: string } | null = null;
         if (rows.length === 1) dup = rows[0];
@@ -615,7 +617,7 @@ export async function GET(req: Request) {
     if (parentName && parentName.length >= 2 && !parentName.includes("＠")) {
       const safe = parentName.replace(/[%_,]/g, "").slice(0, 80);
       const { data: kids } = await db.from("places")
-        .select("id, lat, lng").eq("source_type", "user").like("name", `%＠${safe}`).limit(20);
+        .select("id, lat, lng").eq("source_type", "user").eq("is_active", true).like("name", `%＠${safe}`).limit(20);
       for (const k of (kids ?? []) as Array<{ id: string; lat: number | null; lng: number | null }>) {
         if (pLat != null && pLng != null && k.lat != null && k.lng != null) {
           const dLat = (k.lat - pLat) * 111000, dLng = (k.lng - pLng) * 91000;
