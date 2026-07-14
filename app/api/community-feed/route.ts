@@ -14,6 +14,28 @@ import { deviceHash, anonPosterId, iconPathFor } from "@/lib/device-hash";
 import { toArea } from "@/lib/jp-area";
 import { handlesByDevice, deviceByHandle, accountTypesByDevice, iconVersionsByDevice } from "@/lib/user-handles";
 
+// ── キーワード検索の横断マッチ（2026-07-14）──────────────────────────────────
+// 「東京カフェ」のような地名＋ジャンルの連結語でもヒットさせる:
+//   ・NFKC＋小文字＋カタカナ→ひらがな折りたたみで表記ゆれを吸収
+//   ・空白区切りは全トークンAND
+//   ・空白なしの1語は、全体一致→ダメなら2分割(東京|カフェ)して両方一致で許容
+//   対象は 名前/本文/タグ/住所 の連結haystack（SQLのilikeでは書けないためJS側で絞る）
+const foldKw = (s: unknown) => String(s ?? "").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+function makeKeywordMatcher(qRaw: string): (hay: string) => boolean {
+  const tokens = foldKw(qRaw).split(/[\s　]+/).filter(Boolean);
+  if (tokens.length === 0) return () => true;
+  const tokenHit = (hay: string, tk: string): boolean => {
+    if (hay.includes(tk)) return true;
+    if (tk.length >= 3) {
+      for (let i = 1; i < tk.length; i++) {
+        if (hay.includes(tk.slice(0, i)) && hay.includes(tk.slice(i))) return true;
+      }
+    }
+    return false;
+  };
+  return (hay) => tokens.every((tk) => tokenHit(hay, tk));
+}
+
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
 
 // 旧形式 Google Maps Photo URL か判定
@@ -31,6 +53,7 @@ export async function GET(request: Request) {
   const cursor = (searchParams.get("cursor") ?? "").trim() || null;
   // キーワード検索（スポット名/本文の部分一致）。PostgRESTのor構文に入るため記号は除去。
   const q = (searchParams.get("q") ?? "").trim().replace(/[,()*%]/g, "").slice(0, 50) || null;
+  const kwMatch = q ? makeKeywordMatcher(q) : null;   // 横断キーワードマッチ（JS側）
   // @IDでのユーザー絞り込み（プロフィール検索）。匿名投稿の帰属バレ防止のため public のみ返す。
   const posterHandle = (searchParams.get("posterHandle") ?? "").trim().toLowerCase().replace(/^@+/, "");
 
@@ -79,9 +102,11 @@ export async function GET(request: Request) {
         qq = posterDeviceId
           ? qq.eq("device_id", posterDeviceId).eq("visibility", "public")
           : qq.in("visibility", ["spot_public_anonymous", "public"]);
-        if (q) qq = qq.or(`place_name.ilike.*${q}*,caption.ilike.*${q}*`);   // キーワード検索
         if (cursor) qq = qq.lt("created_at", cursor);
         const ordered = qq.order("created_at", { ascending: false });
+        // 検索時は広めに取得してJS横断マッチ（名前/本文/タグ/住所）で絞る。
+        //   ⚠後段の写真join(in句)のURL長制限があるためプールは200件（現状の投稿規模では実質全件）
+        if (q) return ordered.limit(200);
         return cursor ? ordered.limit(limit) : ordered.range(offset, offset + limit - 1);
       };
       let { data: posts, error: postsErr } = await buildQ(`${BASE_COLS}, price_chip, rating`);
@@ -119,17 +144,29 @@ export async function GET(request: Request) {
         }
         const prefByPlace = new Map<string, string>();
         const prefByName = new Map<string, string>();
+        const rawAddrByPlace = new Map<string, string>();   // 検索haystack用（東京都◯◯…のフル住所）
+        const rawAddrByName = new Map<string, string>();
         const coordByPlace = new Map<string, { lat: number; lng: number }>();
         const coordByName = new Map<string, { lat: number; lng: number }>();
         for (const pl of (plsIdRes.data ?? []) as Array<Record<string, unknown>>) {
           prefByPlace.set(String(pl.id), toPref(pl.address));
+          rawAddrByPlace.set(String(pl.id), String(pl.address ?? ""));
           if (pl.lat != null && pl.lng != null) coordByPlace.set(String(pl.id), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
         for (const pl of (plsNameRes.data ?? []) as Array<Record<string, unknown>>) {
           prefByName.set(String(pl.name), toPref(pl.address));
+          rawAddrByName.set(String(pl.name), String(pl.address ?? ""));
           if (pl.lat != null && pl.lng != null) coordByName.set(String(pl.name), { lat: Number(pl.lat), lng: Number(pl.lng) });
         }
-        moodItems = plist.map(p => {
+        // キーワード横断マッチ: 名前/本文/気分タグ/住所のどこかに全トークンが一致（連結語は2分割許容）
+        const searched = kwMatch
+          ? plist.filter(p => kwMatch(foldKw([
+              p.place_name, p.caption,
+              Array.isArray(p.mood_tags) ? (p.mood_tags as unknown[]).join(" ") : "",
+              rawAddrByPlace.get(String(p.place_id)) || rawAddrByName.get(String(p.place_name)) || "",
+            ].join(" ")))).slice(0, limit)
+          : plist;
+        moodItems = searched.map(p => {
           const anon = p.visibility === "spot_public_anonymous";
           return {
             id: `ml-${p.id}`, kind: "moodlog",
@@ -174,10 +211,10 @@ export async function GET(request: Request) {
           .from("suggestions")
           .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, poster_name, device_id, available_from, available_until")
           .eq("status", "approved");
-        if (q) sq = sq.or(`spot_name.ilike.*${q}*,google_place_name.ilike.*${q}*,description.ilike.*${q}*`);   // キーワード検索
         if (cursor) sq = sq.lt("created_at", cursor);
         const sOrdered = sq.order("created_at", { ascending: false });
-        const { data: sugs } = await (cursor ? sOrdered.limit(limit) : sOrdered.range(offset, offset + limit - 1));
+        // 検索時は広めに取得してJS横断マッチ（名前/本文/タグ/住所）で絞る
+        const { data: sugs } = await (q ? sOrdered.limit(200) : cursor ? sOrdered.limit(limit) : sOrdered.range(offset, offset + limit - 1));
         const slist = (sugs ?? []) as unknown as Array<Record<string, unknown>>;
         rawSugCount = slist.length;
         trackOldest(slist);
@@ -186,11 +223,19 @@ export async function GET(request: Request) {
           const f = s.available_from as string | null, u = s.available_until as string | null;
           return (!f || f <= today) && (!u || u >= today);
         };
-        const sDevs = slist.map(s => String(s.device_id ?? ""));
+        // キーワード横断マッチ: 名前(投稿名/Google名)/本文/タグ/住所に全トークン一致（連結語は2分割許容）
+        const sMatched = kwMatch
+          ? slist.filter(s => kwMatch(foldKw([
+              s.spot_name, s.google_place_name, s.description,
+              Array.isArray(s.auto_tags) ? (s.auto_tags as unknown[]).join(" ") : "",
+              s.address,
+            ].join(" ")))).slice(0, limit)
+          : slist;
+        const sDevs = sMatched.map(s => String(s.device_id ?? ""));
         const sHandleMap = await handlesByDevice(supabase, sDevs);
         const sAcctMap = await accountTypesByDevice(supabase, sDevs);
         const sVerMap = await iconVersionsByDevice(supabase, sDevs);
-        suggestionItems = slist.filter(inPeriod).map(s => {
+        suggestionItems = sMatched.filter(inPeriod).map(s => {
           const rawImgs = (s.image_urls ?? []) as string[];
           const imgs = Array.isArray(rawImgs) ? rawImgs.filter(u => typeof u === "string" && !isLegacyPhotoUrl(u)) : [];
           const dev = typeof s.device_id === "string" ? s.device_id : "";
