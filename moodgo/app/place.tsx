@@ -86,6 +86,7 @@ const T = {
     map: 'マップ',
     eventOngoing: '開催中',
     eventUpcoming: '開催予定',
+    eventKicker: '期間限定イベント',
     overallRating: '総合評価',
     overallRatingCount: (n: number) => `総合評価（${n}）`,
     visited: '行った！',
@@ -126,6 +127,7 @@ const T = {
     map: 'Map',
     eventOngoing: 'Now on',
     eventUpcoming: 'Upcoming',
+    eventKicker: 'Limited-time event',
     overallRating: 'Overall',
     overallRatingCount: (n: number) => `Overall (${n})`,
     visited: 'Been here!',
@@ -1012,18 +1014,25 @@ export default function PlaceDetailPage() {
           {placeEvents.length > 0 && (
             <View style={s.eventWrap}>
               {placeEvents.map((ev, i) => (
-                <TouchableOpacity key={i} style={s.eventRow} activeOpacity={0.85}
+                <TouchableOpacity key={i} activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
                   accessibilityRole="button" accessibilityLabel={ev.eventName}>
-                  <View style={s.eventIcon}><CalendarClock size={15} color="#fff" strokeWidth={2.2} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.eventName} numberOfLines={1}>{ev.eventName}</Text>
-                    <Text style={s.eventDate}>
-                      {ev.upcoming ? t.eventUpcoming : t.eventOngoing}
-                      {ev.until ? ` 〜${ev.until.split('-').slice(1).map(Number).join('/')}` : ''}
-                    </Text>
-                  </View>
-                  <ChevronRight size={16} color="#B7A0F0" strokeWidth={2.4} />
+                  <LinearGradient colors={['#A78BFA', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventRow}>
+                    <View style={s.eventIcon}><CalendarClock size={17} color="#fff" strokeWidth={2.4} /></View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={s.eventTopRow}>
+                        <Text style={s.eventKicker}>{t.eventKicker}</Text>
+                        <View style={s.eventDatePill}>
+                          <Text style={s.eventDateText}>
+                            {ev.upcoming ? t.eventUpcoming : t.eventOngoing}
+                            {ev.until ? ` 〜${ev.until.split('-').slice(1).map(Number).join('/')}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={s.eventName} numberOfLines={1}>{ev.eventName}</Text>
+                    </View>
+                    <ChevronRight size={17} color="rgba(255,255,255,0.9)" strokeWidth={2.6} />
+                  </LinearGradient>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1376,16 +1385,20 @@ const s = StyleSheet.create({
   // 開催中イベント導線（元スポット→派生イベント）
   eventWrap: { gap: 8, marginBottom: 4 },
   eventRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#F6F0FF', borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
-    borderWidth: 1, borderColor: '#E7DBFB',
+    flexDirection: 'row', alignItems: 'center', gap: 11,
+    borderRadius: 16, paddingVertical: 12, paddingHorizontal: 13,
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
   eventIcon: {
-    width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#9B6BFF',
+    width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.45)',
   },
-  eventName: { fontSize: 14, fontWeight: '800', color: '#3B2A63' },
-  eventDate: { fontSize: 11.5, fontWeight: '700', color: '#8B6BF2', marginTop: 1 },
+  eventTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 },
+  eventKicker: { fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.6 },
+  eventDatePill: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5 },
+  eventDateText: { fontSize: 10.5, fontWeight: '800', color: '#7C3AED' },
+  eventName: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: -0.2 },
 
   // 総合評価バー（投稿詳細ページと統一）
   voiceBar: {
