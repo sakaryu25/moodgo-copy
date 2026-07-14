@@ -1161,7 +1161,12 @@ export default function Home() {
             onReset={resetQuiz}
             onReviewConditions={handleReviewConditions}
             reportingSpot={reportingSpot}
-            onSetReportingSpot={setReportingSpot}
+            onSetReportingSpot={(s) => {
+              // 新しい対象を開くたびに前回の理由/メモ/送信済み状態をリセット
+              // （2件目の報告に前回内容が持ち越されて「選ばずに送信」できてしまうバグ対策・2026-07-14）
+              if (s) { setReportReason(''); setReportNote(''); setReportDone(false); setReportSubmitting(false); }
+              setReportingSpot(s);
+            }}
             reportReason={reportReason}
             onSetReportReason={setReportReason}
             reportNote={reportNote}

@@ -226,11 +226,11 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
   };
   const clearUser = () => { setUActive(null); setUq(''); setUUsers([]); setKw(''); };
 
-  // 下部バー再タップ: 気分・キーワード絞り込みを解除して振り出しの一覧へ
+  // 下部バー再タップ: 絞り込み(気分/キーワード/並び/範囲)は保持したまま、
+  // フィードだけ最新に更新（CommunityFeedのrefreshKey=resetKey）して先頭へ戻す（2026-07-14要望）
   useEffect(() => {
     if (resetKey === undefined) return;
-    setSortMode('popular'); setFeedScope('all'); setMoodTag(''); clearUser();
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [resetKey]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 統一フィード（穴場＋moodログ）──
