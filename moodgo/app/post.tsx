@@ -4,7 +4,7 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Camera, Check, Clock, MapPin, Plus, Search, Send, Star, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Check, Clock, Lock, MapPin, Plus, Search, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -95,7 +95,7 @@ const T = {
     hoursClose: '閉店',
     hours24: '24時間営業',
     stationPh: '最寄駅（任意・例: JR横浜駅 徒歩5分）',
-    editNote: '※ 自分で作った穴場は住所・営業時間・最寄駅・公開期間も編集できます。',
+    editNote: '※ 未登録の項目だけ入力できます。登録済みの住所・営業時間・最寄駅は変更できません（間違いは場所詳細の旗ボタンから報告してください）。',
     editPhotoHint: '写真の追加・削除ができます（×で削除・「追加」で選択）。最低1枚は必要です',
     photoLabel: '写真（1枚以上）',
     photoHint: '駐車場の看板、穴場の建物、景色など。雰囲気が伝わる写真を！何枚でもOK',
@@ -220,7 +220,7 @@ const T = {
     hoursClose: 'Close',
     hours24: 'Open 24h',
     stationPh: 'Nearest station (optional — e.g. 5 min walk from JR Yokohama)',
-    editNote: '※ Address, hours, station and availability are also editable for spots you created.',
+    editNote: '※ Only missing fields can be filled in. Saved address/hours/station are locked (report mistakes from the flag button on the place page).',
     editPhotoHint: 'Add or remove photos (× to remove, “Add” to pick). At least one is required.',
     photoLabel: 'Photos (1+)',
     photoHint: 'Parking signs, the building, the scenery — photos that convey the vibe! Add as many as you like.',
@@ -341,6 +341,8 @@ export default function PostScreen() {
   const [closeTime, setCloseTime] = useState('');  // 閉店時刻 HH:MM
   const [is24h, setIs24h] = useState(false);       // 24時間営業
   const [closedDays, setClosedDays] = useState<string[]>([]);   // 定休の曜日（月..日・任意）
+  // 編集時ロック: 登録済みの場所情報は変更不可（値=固定表示する文字列）。未登録/不完全のみ入力可
+  const [editLocks, setEditLocks] = useState<{ addr?: string; hours?: string; station?: string }>({});
   const [placeEditable, setPlaceEditable] = useState(false);  // 編集時: 自分で作った穴場なら場所情報も編集可
   const [eventName, setEventName] = useState('');  // 期間限定イベント名（既存スポットに期間を設定した時のみ必須）
   const [licenseOk, setLicenseOk] = useState(false);
@@ -415,6 +417,14 @@ export default function PostScreen() {
           setPlaceEditable(!!d.post.placeEditable);
           setAddress(String(d.post.address ?? ''));
           setStation(String(d.post.station ?? ''));
+          // 登録済みの場所情報はロック＝書かれている場合は編集不可（間違いは場所詳細の旗ボタンから報告）
+          const a0 = String(d.post.address ?? '');
+          const st0 = String(d.post.station ?? '');
+          setEditLocks({
+            addr: !isAddrIncomplete(a0) ? a0 : undefined,
+            hours: oh || undefined,
+            station: st0.trim() ? st0 : undefined,
+          });
           setAvailFrom(String(d.post.availableFrom ?? '').slice(0, 10));
           setAvailUntil(String(d.post.availableUntil ?? '').slice(0, 10));
           // 営業時間文字列をピッカーへ復元（"HH:MM〜HH:MM" / "24時間営業"＋（◯曜定休）。旧・自由入力形式は空＝再設定）
@@ -1016,6 +1026,13 @@ export default function PostScreen() {
             <>
               {isExisting && <Text style={[s.hint, { marginBottom: 6 }]}>{t.completeHint}</Text>}
               <Text style={s.label}>{t.addrLabel}{!isExisting && <Text style={s.req}>*</Text>}</Text>
+              {editMode && editLocks.addr ? (
+                <View style={s.pickedRow}>
+                  <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
+                  <Text style={[s.pickedText, { flex: 1, fontSize: 14 }]} numberOfLines={2}>{editLocks.addr}</Text>
+                  <Lock size={13} color="#B9ABD2" strokeWidth={2.2} />
+                </View>
+              ) : (
               <View style={s.addrRow}>
                 <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder={t.addrPh} placeholderTextColor="#B9ABD2" />
                 <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>
@@ -1023,11 +1040,20 @@ export default function PostScreen() {
                   <Text style={s.locBtnText}>{locating ? t.locating : t.locate}</Text>
                 </TouchableOpacity>
               </View>
+              )}
               {lat != null && lng != null && (
                 <Text style={s.gotLoc}>{t.gotLoc(address)}</Text>
               )}
               {/* 営業時間: 開店/閉店の時刻ピッカー＋24時間トグル（自由入力の表示崩れを根絶し統一） */}
               <Text style={[s.label, { marginTop: 14 }]}>{t.hoursLabel}</Text>
+              {editMode && editLocks.hours ? (
+                <View style={s.pickedRow}>
+                  <Clock size={15} color="#7C3AED" strokeWidth={2.2} />
+                  <Text style={[s.pickedText, { flex: 1, fontSize: 14 }]} numberOfLines={1}>{editLocks.hours}</Text>
+                  <Lock size={13} color="#B9ABD2" strokeWidth={2.2} />
+                </View>
+              ) : (
+              <>
               {is24h ? (
                 <TouchableOpacity style={[s.input, s.dateBtn, { minHeight: 48, marginTop: 8 }]} onPress={() => setIs24h(false)} activeOpacity={0.8}>
                   <Clock size={15} color="#9B6BFF" strokeWidth={2.2} />
@@ -1065,7 +1091,16 @@ export default function PostScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              </>
+              )}
+              {editMode && editLocks.station ? (
+                <View style={[s.pickedRow, { marginTop: 12 }]}>
+                  <Text style={[s.pickedText, { flex: 1, fontSize: 14 }]} numberOfLines={1}>{editLocks.station}</Text>
+                  <Lock size={13} color="#B9ABD2" strokeWidth={2.2} />
+                </View>
+              ) : (
               <TextInput style={[s.input, { marginTop: 12, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
+              )}
             </>
           )}
 
