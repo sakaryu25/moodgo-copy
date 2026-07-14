@@ -106,6 +106,11 @@ export default function Home() {
   // 結果Modalは全画面RN Modal＝内部からのrouter.push(/place)やGroupShareSheetをネイティブに
   // 覆い隠す。遷移/シート表示中だけModalを退避(visible=false)して前面を譲る（lib/overlayNav）。
   const [navAway, setNavAway] = useState(false);
+  // 検索結果→場所詳細の遷移: 先にpushしてModalの裏で遷移を完了させ、その後"無アニメ"で退避する。
+  // （旧: 先に退避→push だと退避アニメ中に裏のホームが一瞬見えていた）
+  const [resultsAnim, setResultsAnim] = useState<'slide' | 'none'>('slide');
+  const navAwayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailNavigating = useRef(false);   // 退避待ちの間の多重タップ防止
   // NativeTabs移行: 保存/みんな/つぶやき/特集 は独立タブルートに分離。
   //   このホームルートは home と history(ボタンで開くサブ画面) のみを切替える。
   const [homeView,   setHomeView]   = useState<'home' | 'history'>('home');
@@ -252,8 +257,12 @@ export default function Home() {
 
   useFocusEffect(
     useCallback(() => {
-      // /place 等から戻ってフォーカス復帰したら結果Modalを再表示（退避解除）
-      setNavAway(false);
+      // /place 等から戻ってフォーカス復帰したら結果Modalを再表示（退避解除）。
+      // 詳細遷移用の遅延退避タイマーが残っていれば取り消し（420ms以内に戻ったケース）。
+      if (navAwayTimer.current) { clearTimeout(navAwayTimer.current); navAwayTimer.current = null; }
+      detailNavigating.current = false;
+      setNavAway(false);   // resultsAnim='none'のまま＝結果画面が即時(無アニメ)で復帰する
+      setTimeout(() => setResultsAnim('slide'), 400);   // 以後のクイズ開閉はいつも通りslide
       if (!profileLoaded) return;
       (async () => {
         const faves = await loadJSON<FavoriteItem[]>(FAVORITES_KEY, []);
@@ -913,6 +922,8 @@ export default function Home() {
   // ─── 詳細ページへ遷移 ─────────────────────────────────────────────────────
 
   const handlePressDetail = (rec: Recommendation) => {
+    if (detailNavigating.current) return;   // Modal退避待ちの間の多重タップ＝二重pushを防止
+    detailNavigating.current = true;
     sendEngagement(rec.title, 'detail_view');  // ② 学習ループ
     // 詳細ページの★評価を「気分に合う/合わない」学習に使うため、現在の検索文脈を一緒に渡す。
     setSelectedPlace(rec, {
@@ -920,8 +931,13 @@ export default function Home() {
       companion: selectedCompanion || undefined,
       subCategory: deepDiveL2 || deepDiveL1 || undefined,
     });
-    setNavAway(true);       // 結果Modalを退避してから遷移（Modalの裏に隠れるのを防ぐ）
+    // 先に /place へ push（結果Modalの裏でスライド遷移が完了する）→ 完了後に無アニメで退避。
+    // 退避した瞬間には /place が既に前面にいるので、裏のホームは一切見えない。
+    // （旧: 先に退避→push だと退避アニメ中にホームが見えていた）
+    setResultsAnim('none');
     router.push('/place');
+    if (navAwayTimer.current) clearTimeout(navAwayTimer.current);
+    navAwayTimer.current = setTimeout(() => { setNavAway(true); navAwayTimer.current = null; }, 420);
   };
 
   const handlePressFavoriteDetail = (item: FavoriteItem) => {
@@ -1260,10 +1276,12 @@ export default function Home() {
       </Modal>
 
       {/* クイズ/結果: フルスクリーンModalで没入表示（ネイティブタブバーを隠す）。
-          navAway中は退避してrouter.push(/place)やGroupShareSheetに前面を譲る（戻ると再表示）*/}
+          navAway中は退避してrouter.push(/place)やGroupShareSheetに前面を譲る（戻ると再表示）。
+          場所詳細への遷移中は resultsAnim='none'＝pushが裏で終わってから無アニメで退避・復帰
+          （退避アニメで裏のホームを見せない） */}
       <Modal
         visible={started && !navAway}
-        animationType="slide"
+        animationType={resultsAnim}
         presentationStyle="fullScreen"
         onRequestClose={resetQuiz}
       >
