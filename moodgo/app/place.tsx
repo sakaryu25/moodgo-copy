@@ -1056,13 +1056,11 @@ export default function PlaceDetailPage() {
                 <TouchableOpacity key={i} activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
                   accessibilityRole="button" accessibilityLabel={ev.eventName}>
-                  {/* 白カード＋外枠1.5pxのブランドグラデ＝馴染みと特別感の両立（RNはグラデborder非対応
-                      のため、グラデ下地(padding:1.5)に白カードを重ねてリング状に見せる） */}
-                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventBorder}>
+                  {/* 期間限定の統一デザイン: 「期間限定の穴場」カードと同じアンバー系（2026-07-15統一） */}
                   <View style={s.eventRow}>
-                    <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventIcon}>
+                    <View style={s.eventIcon}>
                       <CalendarClock size={17} color="#fff" strokeWidth={2.4} />
-                    </LinearGradient>
+                    </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={s.eventTopRow}>
                         <Text style={s.eventKicker}>{t.eventKicker}</Text>
@@ -1075,9 +1073,8 @@ export default function PlaceDetailPage() {
                       </View>
                       <Text style={s.eventName} numberOfLines={1}>{ev.eventName}</Text>
                     </View>
-                    <ChevronRight size={16} color="#C9BCE6" strokeWidth={2.4} />
+                    <ChevronRight size={16} color="#D97706" strokeWidth={2.4} />
                   </View>
-                  </LinearGradient>
                 </TouchableOpacity>
               ))}
             </View>
@@ -1462,20 +1459,17 @@ const s = StyleSheet.create({
 
   // 開催中イベント導線（元スポット→派生イベント）
   eventWrap: { gap: 8, marginBottom: 14 },
-  eventBorder: {
-    borderRadius: 16, padding: 1.5,
-    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 2,
-  },
   eventRow: {
     flexDirection: 'row', alignItems: 'center', gap: 11,
-    backgroundColor: '#fff', borderRadius: 14.5, paddingVertical: 12, paddingHorizontal: 13,
+    backgroundColor: '#FFF7ED', borderRadius: 16, paddingVertical: 12, paddingHorizontal: 13,
+    borderWidth: 1, borderColor: '#FED7AA',
   },
-  eventIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  eventIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F59E0B' },
   eventTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 },
-  eventKicker: { fontSize: 10, fontWeight: '800', color: '#9B6BFF', letterSpacing: 0.6 },
-  eventDatePill: { backgroundColor: '#F3EEFF', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5 },
-  eventDateText: { fontSize: 10.5, fontWeight: '800', color: '#9B6BFF' },
-  eventName: { fontSize: 15, fontWeight: '800', color: '#2A2235', letterSpacing: -0.2 },
+  eventKicker: { fontSize: 10, fontWeight: '800', color: '#B45309', letterSpacing: 0.6 },
+  eventDatePill: { backgroundColor: '#FFEDD5', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5 },
+  eventDateText: { fontSize: 10.5, fontWeight: '800', color: '#B45309' },
+  eventName: { fontSize: 15, fontWeight: '800', color: '#9A3412', letterSpacing: -0.2 },
 
   // 総合評価バー（投稿詳細ページと統一）
   voiceBar: {
