@@ -83,6 +83,7 @@ const T = {
     gotLoc: (addr: string) => `📍 位置を取得しました${addr ? `（${addr}）` : ''}`,
     openingHoursPh: '営業時間（任意・例: 11:00〜22:00、月曜休）',
     hoursLabel: '営業時間（任意）',
+    closedLabel: '休業日（任意）',
     completeHint: 'この場所は住所や営業時間が未登録です。分かる範囲で教えてください（任意・空欄でもOK）',
     hoursOpen: '開店',
     hoursClose: '閉店',
@@ -201,6 +202,7 @@ const T = {
     gotLoc: (addr: string) => `📍 Location captured${addr ? ` (${addr})` : ''}`,
     openingHoursPh: 'Hours (optional — e.g. 11:00–22:00, closed Mon)',
     hoursLabel: 'Opening hours (optional)',
+    closedLabel: 'Closed days (optional)',
     completeHint: 'This spot has no address or hours yet. Fill in what you know (optional).',
     hoursOpen: 'Open',
     hoursClose: 'Close',
@@ -279,6 +281,8 @@ const MOOD_TAG_TO_DIVE: Record<string, string> = {
   '#スリル味わいたい': 'スリル',
 };
 
+const DAYS_JP = ['月', '火', '水', '木', '金', '土', '日'];   // 休業日チップの表示順
+
 type PlaceHit = { id: string; name: string; address?: string };
 
 // 目安の値段チップ（独立カラムで保存・説明文には埋め込まない）
@@ -324,6 +328,7 @@ export default function PostScreen() {
   const [openTime, setOpenTime] = useState('');    // 開店時刻 HH:MM（営業時間ピッカー）
   const [closeTime, setCloseTime] = useState('');  // 閉店時刻 HH:MM
   const [is24h, setIs24h] = useState(false);       // 24時間営業
+  const [closedDays, setClosedDays] = useState<string[]>([]);   // 定休の曜日（月..日・任意）
   const [placeEditable, setPlaceEditable] = useState(false);  // 編集時: 自分で作った穴場なら場所情報も編集可
   const [eventName, setEventName] = useState('');  // 期間限定イベント名（既存スポットに期間を設定した時のみ必須）
   const [licenseOk, setLicenseOk] = useState(false);
@@ -387,11 +392,14 @@ export default function PostScreen() {
           setStation(String(d.post.station ?? ''));
           setAvailFrom(String(d.post.availableFrom ?? '').slice(0, 10));
           setAvailUntil(String(d.post.availableUntil ?? '').slice(0, 10));
-          // 営業時間文字列をピッカーへ復元（"HH:MM〜HH:MM" / "24時間営業"。旧・自由入力形式は空＝再設定）
+          // 営業時間文字列をピッカーへ復元（"HH:MM〜HH:MM" / "24時間営業"＋（◯曜定休）。旧・自由入力形式は空＝再設定）
           const oh = String(d.post.openingHours ?? '').trim();
-          if (oh === '24時間営業') { setIs24h(true); }
+          const cm = oh.match(/([月火水木金土日](?:・[月火水木金土日])*)曜定休/);
+          if (cm) setClosedDays(cm[1].split('・'));
+          const core = oh.replace(/（[^）]*）/g, '').replace(/[月火水木金土日](?:・[月火水木金土日])*曜定休/g, '').trim();
+          if (core === '24時間営業') { setIs24h(true); }
           else {
-            const m = oh.match(/^(\d{1,2}:\d{2})\s*[〜~]\s*(\d{1,2}:\d{2})$/);
+            const m = core.match(/^(\d{1,2}:\d{2})\s*[〜~]\s*(\d{1,2}:\d{2})$/);
             if (m) { setOpenTime(m[1]); setCloseTime(m[2]); }
           }
           // 既存の写真をプレフィル（編集で削除／追加できる）。uri=リモートURL・existing=trueで再アップロードしない
@@ -446,6 +454,7 @@ export default function PostScreen() {
           if (typeof d.openTime === 'string') setOpenTime(d.openTime);
           if (typeof d.closeTime === 'string') setCloseTime(d.closeTime);
           if (typeof d.is24h === 'boolean') setIs24h(d.is24h);
+          if (Array.isArray(d.closedDays)) setClosedDays(d.closedDays.filter((x: unknown): x is string => typeof x === 'string'));
           if (typeof d.priceChip === 'string') setPriceChip(d.priceChip);
           if (typeof d.priceNote === 'string') setPriceNote(d.priceNote);
           if (typeof d.contact === 'string') setContact(d.contact);
@@ -462,20 +471,20 @@ export default function PostScreen() {
     if (!draftEnabled || !draftRestored.current) return;
     const hasContent = !!(spotName || caption || moodTags.length || images.length || address ||
       rating || priceChip || priceNote || contact || station || availFrom || availUntil ||
-      openTime || closeTime || is24h);
+      openTime || closeTime || is24h || closedDays.length > 0);
     const h = setTimeout(() => {
       if (hasContent) {
         AsyncStorage.setItem(draftKey, JSON.stringify({
           spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri, existing: i.existing })),
           moodTags, caption, rating, availFrom, availUntil, station,
-          openTime, closeTime, is24h, priceChip, priceNote, contact, vis,
+          openTime, closeTime, is24h, closedDays, priceChip, priceNote, contact, vis,
         })).catch(() => {});
       } else {
         AsyncStorage.removeItem(draftKey).catch(() => {});
       }
     }, 400);
     return () => clearTimeout(h);
-  }, [draftEnabled, spotName, address, lat, lng, images, moodTags, caption, rating, availFrom, availUntil, station, openTime, closeTime, is24h, priceChip, priceNote, contact, vis]);
+  }, [draftEnabled, spotName, address, lat, lng, images, moodTags, caption, rating, availFrom, availUntil, station, openTime, closeTime, is24h, closedDays, priceChip, priceNote, contact, vis]);
 
   // スポット名を打つたびに既存placeを検索（被り候補を出す）。空/1文字なら候補クリア。
   const onNameChange = (text: string) => {
@@ -565,8 +574,10 @@ export default function PostScreen() {
     const tt = fmtTime(d);
     if (showPicker === 'open') setOpenTime(tt); else if (showPicker === 'close') setCloseTime(tt);
   };
-  // 送信用の営業時間文字列（24時間営業 or 「開店〜閉店」・未入力は空）
-  const composedHours = is24h ? '24時間営業' : (openTime && closeTime ? `${openTime}〜${closeTime}` : '');
+  // 送信用の営業時間文字列: 24時間営業 or 「開店〜閉店」＋休業日は（◯曜定休）で付記（未入力は空）
+  const closedPart = closedDays.length > 0 ? `${DAYS_JP.filter(d => closedDays.includes(d)).join('・')}曜定休` : '';
+  const hoursCore = is24h ? '24時間営業' : (openTime && closeTime ? `${openTime}〜${closeTime}` : '');
+  const composedHours = hoursCore ? (closedPart ? `${hoursCore}（${closedPart}）` : hoursCore) : closedPart;
 
   // 選んだ気分の深掘り(サブジャンル)タグを L1＋L2 フラットで出す（重複排除）
   const deepDiveOptions = useMemo(() => {
@@ -986,6 +997,17 @@ export default function PostScreen() {
                   <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9B6BFF' }}>＋ {t.hours24}</Text>
                 </TouchableOpacity>
               )}
+              {/* 休業日（定休の曜日・任意）: 「（水曜定休）」として営業時間に保存され検索カード/詳細に表示される */}
+              <Text style={[s.label, { marginTop: 14 }]}>{t.closedLabel}</Text>
+              <View style={s.dayChipRow}>
+                {DAYS_JP.map((d) => (
+                  <TouchableOpacity key={d} activeOpacity={0.8}
+                    onPress={() => setClosedDays(p => (p.includes(d) ? p.filter(x => x !== d) : [...p, d]))}
+                    style={[s.dayChip, closedDays.includes(d) && s.dayChipOn]}>
+                    <Text style={[s.dayChipText, closedDays.includes(d) && s.dayChipTextOn]}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <TextInput style={[s.input, { marginTop: 12, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
             </>
           )}
@@ -1138,6 +1160,11 @@ const s = StyleSheet.create({
   addPhotoText: { fontSize: 11, color: '#A78BCA', fontWeight: '700' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: { borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 16, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: '#fff' },
+  dayChipRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  dayChip: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 12, paddingVertical: 9, backgroundColor: '#fff' },
+  dayChipOn: { backgroundColor: '#9B6BFF', borderColor: '#9B6BFF' },
+  dayChipText: { fontSize: 13, fontWeight: '700', color: '#7A6B99' },
+  dayChipTextOn: { color: '#fff' },
   chipOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
   chipText: { fontSize: 12.5, color: '#7E6CA0', fontWeight: '700' },
   chipTextOn: { color: '#fff' },

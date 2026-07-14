@@ -17,6 +17,7 @@ import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { sendEngagement } from '@/lib/engagement';
 import { copyPlaceName } from '@/lib/clipboard';
 import { genrePlaceholder } from '@/lib/genrePlaceholder';
+import { userHoursOpenNow } from '@/lib/openHours';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -299,16 +300,20 @@ export default function PlaceCard({
   // #8: openStatusBadge（営業中/もうすぐ閉店/もうすぐ開店/営業時間外）を優先表示（日本語時のみ）。
   //   無い場合は従来の openNow ベースの 営業中/閉店 ラベルにフォールバック。
   const badge = lang === 'ja' ? item.openStatusBadge : undefined;
+  // openNow(Google由来)が無いユーザー作成スポットは、投稿された営業時間
+  // ("24時間営業"/"HH:MM〜HH:MM"＋"（水曜定休）")から判定して補完＝
+  // 24時間営業は常に営業中・定休日の今日は閉店中が検索カードに出る（2026-07-14）
+  const effOpenNow = item.openNow ?? userHoursOpenNow(item.openingHoursText);
   const openNowColor =
     badge?.includes('もうすぐ閉店') ? '#F59E0B' :          // オレンジ（まもなく閉店）
     badge?.includes('もうすぐ開店') ? '#3B82F6' :          // 青（まもなく開店）
     badge === '営業時間外'          ? '#EF4444' :
-    item.openNow === true  ? '#10B981' :
-    item.openNow === false ? '#EF4444' : COLORS.textMuted;
+    effOpenNow === true  ? '#10B981' :
+    effOpenNow === false ? '#EF4444' : COLORS.textMuted;
   const openNowLabel =
     badge ? badge :
-    item.openNow === true  ? t.openNow :
-    item.openNow === false ? t.closedNow : '';
+    effOpenNow === true  ? t.openNow :
+    effOpenNow === false ? t.closedNow : '';
 
   const handleShare = () => {
     const parts = [item.title];
