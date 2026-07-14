@@ -434,17 +434,30 @@ export default function PlaceDetailPage() {
   //   「正規化名の完全一致がちょうど1件」の時だけ採用する。
   useEffect(() => {
     if (!rec?.title) return;
-    if (rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId)) return;
+    const hasId = !!(rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId));
+    const missing = !rec.openingHoursText || !rec.stationText || !rec.address;
+    if (hasId && !missing) return;   // IDも情報も揃っていれば何もしない
     let active = true;
     (async () => {
       try {
         const r = await apiFetch(`/api/place-search?q=${encodeURIComponent(rec.title)}`);
         const d = await r.json();
-        const hits = Array.isArray(d?.places) ? (d.places as Array<{ id: string; name: string }>) : [];
+        type Hit = { id: string; name: string; address?: string | null; openHours?: string | null; station?: string | null };
+        const hits = Array.isArray(d?.places) ? (d.places as Hit[]) : [];
         const norm = (s: string) => String(s ?? '').normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+        // ID一致を最優先。無ければ「正規化名の完全一致がちょうど1件」の時だけ採用（チェーン誤リンク防止）
+        const byId = hasId ? hits.find((h) => h.id === rec.supabaseId) : undefined;
         const exact = hits.filter((h) => norm(h.name) === norm(rec.title));
-        if (active && exact.length === 1 && exact[0].id) {
-          setRec(prev => (prev ? { ...prev, supabaseId: exact[0].id } : prev));
+        const hit = byId ?? (exact.length === 1 ? exact[0] : undefined);
+        if (active && hit?.id) {
+          setRec(prev => (prev ? {
+            ...prev,
+            supabaseId: prev.supabaseId && PLACE_UUID_RE.test(prev.supabaseId) ? prev.supabaseId : hit.id,
+            // 欠けている項目だけ place行から補完＝どの経路で開いても住所/営業時間/最寄り駅が揃う
+            address: prev.address || hit.address || undefined,
+            openingHoursText: prev.openingHoursText || hit.openHours || undefined,
+            stationText: prev.stationText || hit.station || undefined,
+          } : prev));
         }
       } catch { /* 解決できなくても従来表示のまま */ }
     })();
@@ -825,7 +838,7 @@ export default function PlaceDetailPage() {
   // 営業時間: APIデータ優先。ロード前のみ rec のデータを暫定表示
   // （extra.loaded 後は AI生成の不完全データにフォールバックしない）
   const hoursSource = extra.loaded
-    ? extra.openingHoursText                          // APIから取得した確実なデータのみ
+    ? (extra.openingHoursText || rec.openingHoursText)   // Google優先・無ければ投稿/place行の営業時間（ユーザー/OSMスポットで消えないように）
     : rec.openingHoursText;                           // 読み込み中は暫定表示
   if (__DEV__ && hoursSource) {
     console.log('[place.tsx] hoursSource lines:', hoursSource.split('\n').length, hoursSource.slice(0, 80));

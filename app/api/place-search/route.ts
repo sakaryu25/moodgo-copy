@@ -32,12 +32,12 @@ export async function GET(req: Request) {
     const orExpr = variants.map((v) => `name.ilike.%${v}%`).join(",");
     const { data } = await supabase
       .from("places")
-      .select("id, name, address, lat, lng")
+      .select("id, name, address, lat, lng, open_hours, nearest_station")
       .eq("is_active", true)
       .or(orExpr)
       .limit(60);
 
-    type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null };
+    type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours?: string | null; nearest_station?: string | null };
     const nq = normalizeName(q);
     const scored = ((data ?? []) as Row[]).map((p) => {
       const nn = normalizeName(p.name);
@@ -60,6 +60,7 @@ export async function GET(req: Request) {
       ok: true,
       places: scored.slice(0, 8).map(({ p, distM }) => ({
         id: p.id, name: p.name, address: p.address,
+        openHours: p.open_hours ?? null, station: p.nearest_station ?? null,   // 場所詳細の自己解決マージ用
         dist: distM != null ? Math.round((distM / 1000) * 10) / 10 : null,   // km(小数1桁)
       })),
     });
