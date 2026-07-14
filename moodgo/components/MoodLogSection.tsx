@@ -5,6 +5,7 @@
 // 「Moodログを投稿」ボタンは mood-log 画面へ遷移（スポット情報をparamsで渡す）。
 import React, { useCallback, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Sparkles, Flag } from 'lucide-react-native';
 import { apiFetch } from '@/lib/api';
@@ -171,9 +172,12 @@ export default function MoodLogSection(
         <Sparkles size={15} color="#C084FC" strokeWidth={2} />
         <Text style={s.title}>{t.sectionTitle}</Text>
         {posts.length > 0 && <Text style={s.count}>{t.count(posts.length)}</Text>}
-        <TouchableOpacity onPress={goPost} style={s.postBtn} activeOpacity={0.85}>
-          <MessageCirclePlus size={14} color="#fff" strokeWidth={2.4} />
-          <Text style={s.postBtnText}>{t.postBtn}</Text>
+        <TouchableOpacity onPress={goPost} style={s.postBtnWrap} activeOpacity={0.85}>
+          {/* ホーム画面と同じブランドグラデ（濃紫単色は「怖い」検索結果専用のため使わない） */}
+          <LinearGradient colors={['#F56CB3', '#9B6BFF', '#4FA3FF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.postBtn}>
+            <MessageCirclePlus size={14} color="#fff" strokeWidth={2.4} />
+            <Text style={s.postBtnText}>{t.postBtn}</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -211,7 +215,8 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   title: { fontSize: 15, fontWeight: '800', color: '#3A1D6E' },
   count: { fontSize: 12, color: '#9B89BE', fontWeight: '700' },
-  postBtn: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12 },
+  postBtnWrap: { marginLeft: 'auto', borderRadius: 14, overflow: 'hidden' },
+  postBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12 },
   postBtnText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
   empty: { backgroundColor: '#F6F2FD', borderRadius: 14, padding: 18, alignItems: 'center' },
   emptyText: { fontSize: 13, color: '#7E6CA0', textAlign: 'center', lineHeight: 20 },
@@ -225,7 +230,7 @@ const s = StyleSheet.create({
   photoBadgeText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 6 },
   chip: { backgroundColor: '#EEE7FA', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  chipText: { fontSize: 11, color: '#7C3AED', fontWeight: '700' },
+  chipText: { fontSize: 11, color: '#9B6BFF', fontWeight: '700' },
   chipAlt: { backgroundColor: '#F0F0F4', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
   chipAltText: { fontSize: 11, color: '#6B7280', fontWeight: '700' },
   chipGood: { backgroundColor: '#FCE7F3', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
@@ -233,7 +238,7 @@ const s = StyleSheet.create({
   caption: { fontSize: 13.5, color: '#3F3550', lineHeight: 20, marginBottom: 8 },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },   // 半幅カードで折り返す
   reactBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, borderWidth: 1, borderColor: '#E3D8F5', borderRadius: 11, paddingVertical: 4, paddingHorizontal: 7 },
-  reactOn: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  reactOn: { backgroundColor: '#9B6BFF', borderColor: '#9B6BFF' },
   reactText: { fontSize: 10.5, color: '#A78BCA', fontWeight: '700' },
   reactTextOn: { color: '#fff' },
 });

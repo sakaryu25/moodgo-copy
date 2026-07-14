@@ -586,7 +586,7 @@ export default function CommunitySpotScreen() {
                 <TouchableOpacity key={i} activeOpacity={0.85}
                   onPress={() => router.push({ pathname: '/community-spot', params: { id: ev.targetId } })}
                   accessibilityRole="button" accessibilityLabel={ev.eventName}>
-                  <LinearGradient colors={['#A78BFA', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventRow}>
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.eventRow}>
                     <View style={s.eventIcon}><CalendarClock size={17} color="#fff" strokeWidth={2.4} /></View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={s.eventTopRow}>
@@ -934,11 +934,11 @@ const s = StyleSheet.create({
   posterCardAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F0EDFF' },
   posterAvatarPh: { alignItems: 'center', justifyContent: 'center' },
   // みんなの声のバー（社会的証明・上部）
-  eventWrap: { gap: 8, marginBottom: 4 },
+  eventWrap: { gap: 8, marginBottom: 14 },
   eventRow: {
     flexDirection: 'row', alignItems: 'center', gap: 11,
     borderRadius: 16, paddingVertical: 12, paddingHorizontal: 13,
-    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+    shadowColor: '#9B6BFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.22, shadowRadius: 8, elevation: 4,
   },
   eventIcon: {
     width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
@@ -948,7 +948,7 @@ const s = StyleSheet.create({
   eventTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 },
   eventKicker: { fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.85)', letterSpacing: 0.6 },
   eventDatePill: { backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2.5 },
-  eventDateText: { fontSize: 10.5, fontWeight: '800', color: '#7C3AED' },
+  eventDateText: { fontSize: 10.5, fontWeight: '800', color: '#9B6BFF' },
   eventName: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: -0.2 },
   voiceBar: {
     flexDirection: 'row', alignItems: 'center',
