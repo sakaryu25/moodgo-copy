@@ -357,6 +357,8 @@ export default function CommunitySpotScreen() {
       address: spot.address || undefined,
       mapUrl: spot.googleMapsUri || undefined,
       photoUrl: spot.imageUrls[0], photoUrls: spot.imageUrls.length > 0 ? spot.imageUrls : undefined,
+      availableFrom: spot.availableFrom || undefined,   // 期間限定スポットは場所詳細でも期間カードを出す
+      availableUntil: spot.availableUntil || undefined,
       openingHoursText: spot.openingHoursText || undefined,
       stationText: spot.stationText || undefined,
       phone: spot.phone || undefined,

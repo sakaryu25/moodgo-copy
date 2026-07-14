@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
-  ArrowLeft, CalendarClock, Camera, ChevronDown, ChevronRight, ChevronUp, Clock, Footprints, Globe, Heart,
+  ArrowLeft, CalendarClock, CalendarX, Camera, ChevronDown, ChevronRight, ChevronUp, Clock, Footprints, Globe, Heart,
   Flag, MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train, Wallet,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -88,6 +88,9 @@ const T = {
     eventOngoing: '開催中',
     eventUpcoming: '開催予定',
     eventKicker: '期間限定イベント',
+    limitedSpot: '期間限定の穴場',
+    limitedEnded: '期間限定（終了）',
+    ended: '終了',
     overallRating: '総合評価',
     overallRatingCount: (n: number) => `総合評価（${n}）`,
     visited: '行った！',
@@ -129,6 +132,9 @@ const T = {
     eventOngoing: 'Now on',
     eventUpcoming: 'Upcoming',
     eventKicker: 'Limited-time event',
+    limitedSpot: 'Limited-time spot',
+    limitedEnded: 'Limited-time (ended)',
+    ended: 'Ended',
     overallRating: 'Overall',
     overallRatingCount: (n: number) => `Overall (${n})`,
     visited: 'Been here!',
@@ -1120,6 +1126,27 @@ export default function PlaceDetailPage() {
 
           {/* 価格帯は情報カード内（住所→金額→…の順）に移設 */}
 
+          {/* ── 期間限定の穴場（このスポット自体に公開期間がある場合・投稿詳細と統一・終了はグレー）── */}
+          {(rec.availableFrom || rec.availableUntil) ? (() => {
+            const ended = !!(rec.availableUntil && String(rec.availableUntil).slice(0, 10) < new Date().toISOString().slice(0, 10));
+            const fp = (d?: string | null) => { if (!d) return ''; const [y, m, dd] = String(d).slice(0, 10).split('-').map(Number); return `${y}/${m}/${dd}`; };
+            const label = rec.availableFrom && rec.availableUntil
+              ? `${fp(rec.availableFrom)} 〜 ${fp(rec.availableUntil)}`
+              : rec.availableFrom ? `${fp(rec.availableFrom)} 〜` : `〜 ${fp(rec.availableUntil)}`;
+            return (
+              <View style={[s.periodCard, ended && s.periodCardEnded]}>
+                <View style={[s.periodIconWrap, ended && s.periodIconWrapEnded]}>
+                  {ended ? <CalendarX size={17} color="#fff" strokeWidth={2.4} /> : <CalendarClock size={17} color="#fff" strokeWidth={2.4} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.periodLabel, ended && s.periodLabelEnded]}>{ended ? t.limitedEnded : t.limitedSpot}</Text>
+                  <Text style={[s.periodValue, ended && s.periodValueEnded]}>{label}</Text>
+                </View>
+                {ended ? <View style={s.periodEndedTag}><Text style={s.periodEndedTagText}>{t.ended}</Text></View> : null}
+              </View>
+            );
+          })() : null}
+
           {/* ─── 情報カード（読み込み完了後のみ） ─── */}
           {extra.loaded && (
           <View style={s.infoCard}>
@@ -1493,6 +1520,24 @@ const s = StyleSheet.create({
   priceText: { fontSize: 12, fontWeight: '700', color: '#15803D' },
 
   // 情報カード
+  // ── 期間限定の穴場カード（投稿詳細 community-spot と同一デザイン）──
+  periodCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#FFF7ED', borderRadius: 16, padding: 13, marginBottom: 14,
+    borderWidth: 1, borderColor: '#FED7AA',
+  },
+  periodIconWrap: {
+    width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#F59E0B',
+  },
+  periodLabel: { fontSize: 11, fontWeight: '800', color: '#B45309', marginBottom: 2 },
+  periodValue: { fontSize: 14.5, fontWeight: '800', color: '#9A3412', letterSpacing: -0.2 },
+  periodCardEnded: { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' },
+  periodIconWrapEnded: { backgroundColor: '#9CA3AF' },
+  periodLabelEnded: { color: '#6B7280' },
+  periodValueEnded: { color: '#9CA3AF', textDecorationLine: 'line-through' },
+  periodEndedTag: { backgroundColor: '#6B7280', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
+  periodEndedTagText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
   infoCard: {
     backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden',
     shadowColor: '#C084FC', shadowOffset: { width: 0, height: 2 },
