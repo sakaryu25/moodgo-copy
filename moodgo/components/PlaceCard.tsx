@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
+import { CalendarClock, CalendarX, Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -320,6 +320,15 @@ export default function PlaceCard({
   // 説明文：featuresの中で長い文はdescription扱い
   const description = item.features?.find(f => f.length > 15) ?? '';
 
+  // 期間限定バッジ: available_from/until があれば「期間限定 M/D〜M/D」。終了日が過ぎていれば「期間限定(終了)」。
+  const fmtMD = (d?: string | null) => { const m = d ? /^(\d{4})-(\d{2})-(\d{2})/.exec(d) : null; return m ? `${Number(m[2])}/${Number(m[3])}` : ''; };
+  const hasPeriod = !!(item.availableFrom || item.availableUntil);
+  const periodEnded = !!(item.availableUntil && item.availableUntil.slice(0, 10) < new Date().toISOString().slice(0, 10));
+  const periodRange = [fmtMD(item.availableFrom), fmtMD(item.availableUntil)].filter(Boolean).join('〜');
+  const periodLabel = !hasPeriod ? ''
+    : periodEnded ? (lang === 'ja' ? '期間限定（終了）' : 'Limited (ended)')
+    : (lang === 'ja' ? (periodRange ? `期間限定 ${periodRange}` : '期間限定') : (periodRange ? `Limited ${periodRange}` : 'Limited-time'));
+
   return (
     <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
 
@@ -511,6 +520,16 @@ export default function PlaceCard({
         ) : (
           <Text style={[s.title, darkTheme && s.titleDark]} numberOfLines={2} onLongPress={() => copyPlaceName(item.title)} suppressHighlighting>{item.title}</Text>
         )}
+
+        {/* 期間限定バッジ（検索結果で期間限定と分かるように・終了時はグレー） */}
+        {hasPeriod ? (
+          <View style={[s.limitedBadge, periodEnded && s.limitedBadgeEnded]}>
+            {periodEnded
+              ? <CalendarX size={12} color="#fff" strokeWidth={2.4} />
+              : <CalendarClock size={12} color="#fff" strokeWidth={2.4} />}
+            <Text style={s.limitedBadgeText}>{periodLabel}</Text>
+          </View>
+        ) : null}
 
         {/* 説明文（Web版と同じ small gray text） */}
         {description ? (
@@ -779,6 +798,9 @@ const s = StyleSheet.create({
   body:        { padding: 16, gap: 8 },
   prBadge:       { alignSelf: 'flex-start', backgroundColor: '#EEE7FA', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, marginBottom: 5 },
   prBadgeText:   { fontSize: 10.5, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.3 },
+  limitedBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', backgroundColor: '#F59E0B', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, marginTop: 6 },
+  limitedBadgeEnded: { backgroundColor: '#9CA3AF' },   // 期間終了はグレー
+  limitedBadgeText:  { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
   moodLogRow:    { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 },
   moodLogMain:   { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
   moodLogSub:    { fontSize: 11, fontWeight: '700', color: '#A06CB8', backgroundColor: '#F7EEFB', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },

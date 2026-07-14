@@ -50,6 +50,10 @@ export type Recommendation = {
   lat?: number;
   /** 経度 */
   lng?: number;
+  /** 期間限定スポットの公開開始日（YYYY-MM-DD, null=即日） */
+  availableFrom?: string | null;
+  /** 期間限定スポットの公開終了日（YYYY-MM-DD, null=無期限） */
+  availableUntil?: string | null;
 };
 
 export type FavoriteItem = {

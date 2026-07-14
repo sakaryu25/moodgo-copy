@@ -7336,6 +7336,8 @@ async function handleRecommend(request: Request) {
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,
+            availableFrom: null as string | null,    // 期間限定バッジ用（下の一括取得で埋める）
+            availableUntil: null as string | null,
             routesByMode: undefined,
             tags: r.tags ?? [],          // 飲食NGコンテキストの飲食店除外(tagsAreFood)で使用
           };
@@ -7806,6 +7808,8 @@ async function handleRecommend(request: Request) {
                 isUserSpot: (s.source ?? "admin") !== "admin",   // ユーザー投稿穴場はバッジ表示
                 hasUserPhotos: imgs.length > 0,
                 userPhotoCount: imgs.length,
+                availableFrom: s.available_from ?? null,     // 期間限定バッジ用（穴場経路）
+                availableUntil: s.available_until ?? null,
                 routesByMode: undefined,
               } as Rec;
             }));
@@ -8276,6 +8280,26 @@ async function handleRecommend(request: Request) {
             });
           }
         } catch { /* 期間ガード失敗は素通り（検索自体は成立させる） */ }
+        // 期間限定バッジ用: 残ったplacesの available_from/until を supabaseId で一括取得し各recに載せる
+        //   （検索カードで「期間限定」と分かるようにする）。列が無い/未適用でもバッジ無しで安全に成立。
+        try {
+          const sids = [...new Set(recommendations.map(r => (r as { supabaseId?: string }).supabaseId ?? "").filter(Boolean))];
+          if (sids.length > 0 && supabase) {
+            const { data: periodRows } = await supabase.from("places")
+              .select("id, available_from, available_until").in("id", sids);
+            const pmap = new Map<string, { from: string | null; until: string | null }>();
+            for (const p of (periodRows ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null }>) {
+              if (p.available_from || p.available_until) pmap.set(String(p.id), { from: p.available_from, until: p.available_until });
+            }
+            if (pmap.size > 0) {
+              recommendations = recommendations.map(r => {
+                const sid = (r as { supabaseId?: string }).supabaseId;
+                const pv = sid ? pmap.get(sid) : undefined;
+                return pv ? { ...r, availableFrom: pv.from, availableUntil: pv.until } : r;
+              });
+            }
+          }
+        } catch { /* 期間列が無い/未適用でもバッジ無しで成立 */ }
         // 領域R2(最終確定): LLMリランカー(7819)・多様化の後でも「近め指定の距離外れ値」を末尾へ。
         //   rerankerが遠方を上位に戻すため、ここで cap 超過を安定パーティションで末尾固定する(順序保持)。
         //   far-bias(minRadiusKm>0)・高層ビル目的地・心霊は対象外＝遠方意図/独自データを壊さない。
