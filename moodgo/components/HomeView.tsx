@@ -206,11 +206,12 @@ type Props = {
   onShowHistory?: () => void;  // 履歴サブ画面を開く（NativeTabs移行で履歴をタブから外したため）
   onOpenAiChat: () => void;    // AI相談を開く（旧・設定ギアの位置＝右上のグラデボタン）
   onOpenTsubuyaki: () => void; // つぶやき(GroupsView)を開く（チャットの隣のボタン）
+  scrollRef?: React.RefObject<ScrollView | null>;  // ホームタブ再タップで最上部へ戻すため親から握る
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki }: Props) {
+export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki, scrollRef }: Props) {
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
@@ -267,6 +268,7 @@ export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory,
       {/* ── Scrollable body ── */}
       <Animated.View style={[s.flex, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <ScrollView
+          ref={scrollRef}
           style={s.flex}
           contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}

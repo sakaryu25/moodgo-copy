@@ -5,6 +5,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -117,7 +118,13 @@ export default function Home() {
   const [historyResetKey, setHistoryResetKey] = useState(0);
   // #14: ホームタブを再タップ → クイズ/検索結果/履歴サブ画面を全部閉じてSTART画面へ（振り出し）
   //   resetQuiz が started/step/回答/結果/homeView('home') まで一括で戻す（検索自体は履歴に残る）
-  useTabReset(() => { resetQuiz(); setHistoryResetKey(k => k + 1); });
+  //   ＋ホーム表示中に下までスクロールしていたら最上部へ戻す（iOS標準のタブ再タップ挙動）
+  const homeScrollRef = useRef<ScrollView | null>(null);
+  useTabReset(() => {
+    resetQuiz();
+    setHistoryResetKey(k => k + 1);
+    homeScrollRef.current?.scrollTo({ y: 0, animated: true });
+  });
 
   // ── Quiz state ───────────────────────────────────────────────────────────
   const [selectedMood,       setSelectedMood]       = useState('');
@@ -1226,6 +1233,7 @@ export default function Home() {
     }
     return (
       <HomeView
+        scrollRef={homeScrollRef}
         profileAge={profileAge}
         profileGender={profileGender}
         lang={lang}
