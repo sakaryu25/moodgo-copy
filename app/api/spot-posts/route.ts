@@ -469,6 +469,7 @@ export async function POST(req: Request) {
         const dLat = 0.0009, dLng = 0.0011;   // 検索窓 ~100m
         const { data: near } = await db.from("places")
           .select("id, name, lat, lng")
+          .eq("is_active", true)   // 非アクティブ(削除済み)行に紐付けると投稿が見えなくなる
           .gte("lat", insLat - dLat).lte("lat", insLat + dLat)
           .gte("lng", insLng - dLng).lte("lng", insLng + dLng).limit(60);
         const rows = (near ?? []) as Array<{ id: string; name?: string; lat?: number; lng?: number }>;

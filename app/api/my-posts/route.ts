@@ -117,7 +117,7 @@ async function handle(deviceId: string, limit: number) {
             ? supabase.from("places").select("id, address, lat, lng").in("id", placeIds)
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
           placeNames.length > 0
-            ? supabase.from("places").select("name, address, lat, lng").in("name", placeNames)
+            ? supabase.from("places").select("name, address, lat, lng").in("name", placeNames).eq("is_active", true)
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
         ]);
         const photoByPost = new Map<string, string[]>();

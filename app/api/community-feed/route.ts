@@ -131,7 +131,7 @@ export async function GET(request: Request) {
             ? supabase.from("places").select("id, address, lat, lng").in("id", placeIds)
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
           names2.length > 0
-            ? supabase.from("places").select("name, address, lat, lng").in("name", names2)
+            ? supabase.from("places").select("name, address, lat, lng").in("name", names2).eq("is_active", true)
             : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
           handlesByDevice(supabase, nonAnonDevs),
           accountTypesByDevice(supabase, nonAnonDevs),
