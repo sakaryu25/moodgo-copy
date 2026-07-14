@@ -4,7 +4,7 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Camera, Check, Clock, MapPin, Search, Send, Star, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Check, Clock, MapPin, Plus, Search, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -44,8 +44,14 @@ const T = {
     spotNameLabel: 'スポット名 ',
     change: '変更',
     spotNamePh: '例：海が見える穴場カフェ',
-    dupHint: '同じ名前のスポットが見つかりました。タップで選ぶと、その場所への投稿になります👇',
-    newSpotHint: (name: string) => `一覧に無ければ、このまま「${name}」を新しいスポットとして登録できます`,
+    dupHint: '投稿する場所は一覧から選んでください。同じ場所があればタップ',
+    noHitHint: '候補が見つからない時は、下のボタンから新しいスポットとして追加できます',
+    searchingHint: '候補を検索中…',
+    addNewSpot: (name: string) => `「${name}」を新しいスポットとして追加`,
+    addNewSpotSub: '一覧に無い時だけ（重複防止のため先に候補をご確認ください）',
+    newSpotBadge: '新しいスポットとして追加',
+    tPickTitle: '場所の選択が必要です',
+    tPickSub: '候補から選ぶか「新しいスポットとして追加」を押してください',
     captionLabel: 'どんな場所？おすすめポイント ',
     captionPh: 'どんな場所？何が良い？雰囲気やおすすめポイントを自由に',
     moodLabel: '合う気分 ',
@@ -164,8 +170,14 @@ const T = {
     spotNameLabel: 'Spot name ',
     change: 'Change',
     spotNamePh: 'e.g. Hidden café with a sea view',
-    dupHint: 'We found spots with the same name. Tap one to post about that place 👇',
-    newSpotHint: (name: string) => `If it's not in the list, you can register "${name}" as a new spot`,
+    dupHint: 'Pick the place from the list. Tap it if it already exists',
+    noHitHint: 'No match? Add it as a new spot with the button below',
+    searchingHint: 'Searching…',
+    addNewSpot: (name: string) => `Add "${name}" as a new spot`,
+    addNewSpotSub: 'Only when not in the list (helps prevent duplicates)',
+    newSpotBadge: 'Adding as a new spot',
+    tPickTitle: 'Please choose a place',
+    tPickSub: 'Pick from the list or tap "Add as a new spot"',
     captionLabel: 'What kind of place? What makes it great ',
     captionPh: 'What kind of place is it? What\'s good about it? Share the vibe and highlights',
     moodLabel: 'Matching moods ',
@@ -283,7 +295,7 @@ const MOOD_TAG_TO_DIVE: Record<string, string> = {
 
 const DAYS_JP = ['月', '火', '水', '木', '金', '土', '日'];   // 休業日チップの表示順
 
-type PlaceHit = { id: string; name: string; address?: string };
+type PlaceHit = { id: string; name: string; address?: string; dist?: number | null };
 
 // 目安の値段チップ（独立カラムで保存・説明文には埋め込まない）
 const PRICE_CHIPS = ['無料', '〜¥500', '〜¥1,000', '〜¥3,000', '¥3,000〜'];
@@ -347,6 +359,19 @@ export default function PostScreen() {
   const [results, setResults] = useState<PlaceHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [pickedId, setPickedId] = useState('');   // 候補から選んだ既存スポットID
+  const [newSpotOk, setNewSpotOk] = useState(false);   // 「新しいスポットとして追加」を明示確定（候補選択の必須化＝重複抑止）
+  // 候補の「近い順」用の現在地。許可済みの時だけ静かに最終既知位置を使う（フォームの住所/座標には触れない）
+  const searchCoords = useRef<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const pos = await Location.getLastKnownPositionAsync();
+        if (pos) searchCoords.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      } catch { /* 取れなくても名前一致だけで検索できる */ }
+    })();
+  }, []);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 画面を離れる時に検索タイマーを止める（unmount後のsetState/古い結果上書きを防ぐ）
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -489,12 +514,16 @@ export default function PostScreen() {
   // スポット名を打つたびに既存placeを検索（被り候補を出す）。空/1文字なら候補クリア。
   const onNameChange = (text: string) => {
     setSpotName(text);
+    setNewSpotOk(false);   // 名前を打ち直したら新規確定を解除（既存に一致するかもしれない）
     if (timer.current) clearTimeout(timer.current);
     if (text.trim().length < 2) { setResults([]); return; }
     timer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await apiFetch(`/api/place-search?q=${encodeURIComponent(text.trim())}`);
+        const qs = new URLSearchParams({ q: text.trim() });
+        const c = searchCoords.current;
+        if (c) { qs.set('lat', String(c.lat)); qs.set('lng', String(c.lng)); }   // 近い順ランキング用
+        const res = await apiFetch(`/api/place-search?${qs.toString()}`);
         const d = await res.json();
         setResults(Array.isArray(d?.places) ? d.places : []);
       } catch { setResults([]); } finally { setSearching(false); }
@@ -504,9 +533,14 @@ export default function PostScreen() {
   const pickPlace = (p: PlaceHit) => {
     if (timer.current) clearTimeout(timer.current);
     setPickedId(p.id); setSpotName(p.name); setAddress(p.address ?? '');
-    setResults([]);
+    setResults([]); setNewSpotOk(false);
   };
-  const clearPicked = () => { setPickedId(''); setSpotName(''); setAddress(''); setResults([]); };
+  const clearPicked = () => { setPickedId(''); setSpotName(''); setAddress(''); setResults([]); setNewSpotOk(false); };
+  // 「新しいスポットとして追加」を明示確定（候補に無い時だけの入口＝重複抑止）
+  const confirmNewSpot = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setSearching(false); setResults([]); setNewSpotOk(true);
+  };
 
   const pickImages = async () => {
     try {
@@ -665,6 +699,9 @@ export default function PostScreen() {
 
     // バリデーションはフォームの並び順（名前→紹介文→気分→…→場所）に合わせる＝下の項目のエラーが先に出ない
     if (!isExisting && !spotName.trim()) { showToast(t.tSpotNameTitle, t.tSpotNameSub); return; }
+    // 候補選択の必須化: 既存を選ばない投稿は「新しいスポットとして追加」の明示確定が必要（重複抑止・2026-07-14）。
+    //   場所詳細から来た placeName のみのケース(lockedFromParam)は既知の場所なので免除。
+    if (!isExisting && !lockedFromParam && !newSpotOk) { showToast(t.tPickTitle, t.tPickSub); return; }
     if (!caption.trim()) { showToast(t.tCaptionTitle, t.tCaptionSub); return; }
     if (moodTags.length === 0) { showToast(t.tMoodTitle, t.tMoodSub); return; }
     if (findNgWord(caption) || findNgWord(spotName) || findNgWord(contact)) { showToast(t.tNgTitle, t.tNgSub); return; }
@@ -813,6 +850,16 @@ export default function PostScreen() {
               <Text style={s.pickedText} numberOfLines={1}>{spotName}</Text>
               <TouchableOpacity onPress={clearPicked} hitSlop={8}><Text style={s.changeBtn}>{t.change}</Text></TouchableOpacity>
             </View>
+          ) : newSpotOk ? (
+            // 「新しいスポットとして追加」を確定済み（変更で候補選択へ戻れる）
+            <View style={s.pickedRow}>
+              <Plus size={15} color="#7C3AED" strokeWidth={2.6} />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.pickedText, { flex: 0 }]} numberOfLines={1}>{spotName}</Text>
+                <Text style={s.newSpotTag}>{t.newSpotBadge}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setNewSpotOk(false)} hitSlop={8}><Text style={s.changeBtn}>{t.change}</Text></TouchableOpacity>
+            </View>
           ) : (
             <>
               <View style={s.searchWrap}>
@@ -820,9 +867,10 @@ export default function PostScreen() {
                 <TextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" />
                 {searching && <ActivityIndicator size="small" color="#9B6BFF" />}
               </View>
-              {results.length > 0 && (
+              {/* 場所は必ずこの候補から選ぶ（重複抑止）。見つからない時だけ下の「新しいスポットとして追加」 */}
+              {spotName.trim().length >= 2 && (
                 <View style={s.suggestBox}>
-                  <Text style={s.suggestHint}>{t.dupHint}</Text>
+                  <Text style={s.suggestHint}>{searching ? t.searchingHint : results.length > 0 ? t.dupHint : t.noHitHint}</Text>
                   {results.map(p => (
                     <TouchableOpacity key={p.id} onPress={() => pickPlace(p)} style={s.resultRow} activeOpacity={0.8}>
                       <MapPin size={14} color="#7C3AED" strokeWidth={2.2} />
@@ -830,9 +878,18 @@ export default function PostScreen() {
                         <Text style={s.resultName} numberOfLines={1}>{p.name}</Text>
                         {p.address ? <Text style={s.resultAddr} numberOfLines={1}>{p.address}</Text> : null}
                       </View>
+                      {typeof p.dist === 'number' ? (
+                        <Text style={s.resultDist}>{p.dist < 1 ? `${Math.max(100, Math.round(p.dist * 1000))}m` : `${p.dist.toFixed(1)}km`}</Text>
+                      ) : null}
                     </TouchableOpacity>
                   ))}
-                  <Text style={s.suggestNew}>{t.newSpotHint(spotName.trim())}</Text>
+                  <TouchableOpacity onPress={confirmNewSpot} style={s.addNewRow} activeOpacity={0.85}>
+                    <Plus size={15} color="#7C3AED" strokeWidth={2.6} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.addNewText} numberOfLines={1}>{t.addNewSpot(spotName.trim())}</Text>
+                      <Text style={s.addNewSub}>{t.addNewSpotSub}</Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
               )}
             </>
@@ -1141,7 +1198,11 @@ const s = StyleSheet.create({
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 14, color: '#2A2235' },
   suggestBox: { marginTop: 8, backgroundColor: '#F7F2FF', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#E9DEFB' },
   suggestHint: { fontSize: 11.5, color: '#7C3AED', fontWeight: '800', lineHeight: 17 },
-  suggestNew: { fontSize: 11, color: '#9B89BE', fontWeight: '700', marginTop: 8, lineHeight: 16 },
+  addNewRow: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 8, borderWidth: 1.2, borderColor: '#CDB6F2', borderStyle: 'dashed' },
+  addNewText: { fontSize: 13.5, fontWeight: '800', color: '#7C3AED' },
+  addNewSub: { fontSize: 10.5, color: '#9B89BE', fontWeight: '600', marginTop: 2 },
+  resultDist: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+  newSpotTag: { fontSize: 10.5, color: '#9B89BE', fontWeight: '700', marginTop: 2 },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6, borderWidth: 1, borderColor: '#EFE8FB' },
   resultName: { fontSize: 14, fontWeight: '700', color: '#2A2235' },
   resultAddr: { fontSize: 11.5, color: '#9B89BE', marginTop: 2 },
