@@ -32,6 +32,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSelectedPlace, getSelectedContext } from '@/lib/selectedPlace';
+import { buildGoogleMapsUrl } from '@/lib/mapsUrl';
 import { API_BASE, apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -975,12 +976,8 @@ export default function PlaceDetailPage() {
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    if (Platform.OS === 'ios') {
-                      const q = encodeURIComponent(rec.title || '');
-                      Linking.openURL(`comgooglemaps://?q=${q}`).catch(() => Linking.openURL(displayMapUrl));
-                    } else {
-                      Linking.openURL(displayMapUrl);
-                    }
+                    // 座標でなく店名＋住所でGoogleマップ検索→店ページに着地(place_id有れば正確に)
+                    Linking.openURL(buildGoogleMapsUrl(rec.title, rec.address, rec.placeId)).catch(() => {});
                   }}
                   activeOpacity={0.82}
                   style={s.mapPillBtn}

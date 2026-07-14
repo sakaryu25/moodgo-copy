@@ -9,6 +9,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
 import PhotoViewer from './PhotoViewer';   // 全画面フォトビューア（場所詳細/投稿詳細と共通）
 import { shareSpotToGroup } from '@/lib/groupShare';
+import { buildGoogleMapsUrl } from '@/lib/mapsUrl';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
@@ -608,15 +609,11 @@ export default function PlaceCard({
 
         {/* ── アクションボタン: Googleマップ + 行った！ ── */}
         <View style={s.actions}>
-          {item.mapUrl ? (
+          {item.title ? (
             <PuniPressable
               onPress={() => {
-                if (Platform.OS === 'ios') {
-                  const query = encodeURIComponent(item.title || '');
-                  Linking.openURL(`comgooglemaps://?q=${query}`).catch(() => Linking.openURL(item.mapUrl!));
-                } else {
-                  Linking.openURL(item.mapUrl!);
-                }
+                // 座標ピンでなく店名＋住所でGoogleマップ検索→店ページに着地(place_id有れば正確に)
+                Linking.openURL(buildGoogleMapsUrl(item.title, item.address, item.placeId)).catch(() => {});
               }}
               style={s.mapBtn}
               containerStyle={{ flex: 1 }}
