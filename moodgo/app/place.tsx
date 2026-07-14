@@ -418,6 +418,31 @@ export default function PlaceDetailPage() {
   const place = getSelectedPlace();
   const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
   const [rec, setRec] = useState<Recommendation | null>(place);
+
+  // 経路差の自己解決（2026-07-15）: supabaseId無しで開かれた場合（お気に入り/投稿詳細経由の一部等）は
+  //   名前からSupabaseの正規place IDを引いて rec に補完する。recはstateなので補完すると
+  //   コメント(ID必須)/Moodログ/写真/評価の取得キーが一斉に揃い、どこから開いても同じ表示になる
+  //   （同じ場所なのに経路で表示が割れる問題の根治）。同名チェーンの誤リンクを避けるため
+  //   「正規化名の完全一致がちょうど1件」の時だけ採用する。
+  useEffect(() => {
+    if (!rec?.title) return;
+    if (rec.supabaseId && PLACE_UUID_RE.test(rec.supabaseId)) return;
+    let active = true;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/place-search?q=${encodeURIComponent(rec.title)}`);
+        const d = await r.json();
+        const hits = Array.isArray(d?.places) ? (d.places as Array<{ id: string; name: string }>) : [];
+        const norm = (s: string) => String(s ?? '').normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+        const exact = hits.filter((h) => norm(h.name) === norm(rec.title));
+        if (active && exact.length === 1 && exact[0].id) {
+          setRec(prev => (prev ? { ...prev, supabaseId: exact[0].id } : prev));
+        }
+      } catch { /* 解決できなくても従来表示のまま */ }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rec?.title, rec?.supabaseId]);
   const [ratingDelta, setRatingDelta] = useState(0);  // 自分が今セッションで新規評価した分(件数を即時+1)
   // 総合評価バー（投稿詳細と統一）: MoodGo★平均＋この場所の「行った!」延べ人数
   const [avgRating, setAvgRating] = useState<number | null>(null);
