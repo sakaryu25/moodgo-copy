@@ -420,9 +420,10 @@ export default function PostScreen() {
           // 登録済みの場所情報はロック＝書かれている場合は編集不可（間違いは場所詳細の旗ボタンから報告）
           const a0 = String(d.post.address ?? '');
           const st0 = String(d.post.station ?? '');
+          const oh0 = String(d.post.openingHours ?? '').trim();
           setEditLocks({
             addr: !isAddrIncomplete(a0) ? a0 : undefined,
-            hours: oh || undefined,
+            hours: oh0 || undefined,
             station: st0.trim() ? st0 : undefined,
           });
           setAvailFrom(String(d.post.availableFrom ?? '').slice(0, 10));
