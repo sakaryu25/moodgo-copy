@@ -307,9 +307,10 @@ export default function CommunitySpotScreen() {
   };
   const openMap = () => {
     if (!spot) return;
-    // 住所（座標）優先で開く。名前だと別の同名スポットに飛ぶため query は住所を使う。
+    // 名前＋住所で検索＝Googleの店舗リスティング(営業時間/口コミ)に着地する。
+    // 座標はopenMaps側でcenterヒントに使われ、同名別店への誤着地を近傍優先で防ぐ（2026-07-14）。
     openInGoogleMaps({
-      query: spot.address || spot.placeName || spot.userTitle,
+      query: [spot.placeName || spot.userTitle, spot.address].filter(Boolean).join(' '),
       lat: spot.lat,
       lng: spot.lng,
       mapsUri: spot.googleMapsUri,
