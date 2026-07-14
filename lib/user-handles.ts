@@ -2,6 +2,7 @@
 // 投稿レスポンスに @ハンドルを添付するためのサーバー内ヘルパー（2026-07-06）。
 // device_id は資格情報のため、外に出すのは handle / deviceHash / ハッシュ名アイコンURL のみ。
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { deviceHash } from "./device-hash";
 
 /** device_id[] → Map<device_id, handle>（テーブル未適用/エラーは空Mapで安全に劣化） */
 export async function handlesByDevice(
@@ -67,4 +68,56 @@ export async function deviceByHandle(db: SupabaseClient, handle: string): Promis
     const { data } = await db.from("user_handles").select("device_id").eq("handle", h).maybeSingle();
     return (data?.device_id as string | undefined) ?? null;
   } catch { return null; }
+}
+
+/** hash[] → Map<hash, 表示名>。直近の公開(public)投稿の poster_name をプロフィールと同じ真実源として解決。
+ *  匿名(spot_public_anonymous)投稿は名前の紐付けに使わない（逆引き防止）。テーブル未作成は無視。 */
+export async function namesByHash(
+  db: NonNullable<typeof import("./supabase").supabase>, hashes: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (hashes.length === 0) return map;
+  const want = new Set(hashes);
+  const pick = (rows: Array<{ device_id?: string | null; poster_name?: string | null }>) => {
+    for (const r of rows) {
+      const dev = r.device_id ? String(r.device_id) : "";
+      const nm = r.poster_name ? String(r.poster_name).trim() : "";
+      if (!dev || !nm) continue;
+      const h = deviceHash(dev);
+      if (want.has(h) && !map.has(h)) map.set(h, nm);
+    }
+  };
+  try {
+    const { data } = await db.from("spot_posts").select("device_id, poster_name, created_at")
+      .eq("status", "approved").eq("visibility", "public")
+      .order("created_at", { ascending: false }).limit(600);
+    pick((data ?? []) as Array<{ device_id?: string | null; poster_name?: string | null }>);
+  } catch { /* 未作成は無視 */ }
+  if (map.size < want.size) {
+    try {
+      const { data } = await db.from("suggestions").select("device_id, poster_name, created_at")
+        .eq("status", "approved").order("created_at", { ascending: false }).limit(400);
+      pick((data ?? []) as Array<{ device_id?: string | null; poster_name?: string | null }>);
+    } catch { /* 無視 */ }
+  }
+  return map;
+}
+
+/** hash[] → Map<hash, account_type>（official/storeのみ）。user_handles全走査＋ハッシュ照合。42703等は空Map。 */
+export async function accountTypesByHash(
+  db: NonNullable<typeof import("./supabase").supabase>, hashes: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (hashes.length === 0) return map;
+  const want = new Set(hashes);
+  try {
+    const { data, error } = await db.from("user_handles").select("device_id, account_type");
+    if (error) return map;
+    for (const r of (data ?? []) as Array<{ device_id?: string; account_type?: string }>) {
+      if (!r.device_id || !r.account_type || r.account_type === "user") continue;
+      const h = deviceHash(String(r.device_id));
+      if (want.has(h)) map.set(h, String(r.account_type));
+    }
+  } catch { /* 空Mapで劣化 */ }
+  return map;
 }

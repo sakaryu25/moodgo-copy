@@ -10,6 +10,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
 import { apiFetch } from '@/lib/api';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { getDeviceId } from '@/lib/abtest';
 import { useSettings } from '@/lib/settingsStore';
 import { registerForPushNotificationsAsync } from '@/lib/push';
@@ -41,7 +42,7 @@ const T = {
   },
 } as const;
 
-type Row = { id: string; handle: string | null; icon: string | null };
+type Row = { id: string; handle: string | null; icon: string | null; name?: string | null; accountType?: string | null };
 
 export default function FollowListScreen() {
   const insets = useSafeAreaInsets();
@@ -134,8 +135,12 @@ export default function FollowListScreen() {
                   ) : (
                     <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
                   )}
-                  <Pressable style={{ flex: 1 }} onPress={() => router.push({ pathname: '/user/[id]', params: { id: u.id } })}>
-                    <Text style={s.name} numberOfLines={1}>{u.handle ? `@${u.handle}` : t.defaultName}</Text>
+                  <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => router.push({ pathname: '/user/[id]', params: { id: u.id } })}>
+                    <View style={s.nameRow}>
+                      <Text style={s.name} numberOfLines={1}>{u.name || (u.handle ? `@${u.handle}` : t.defaultName)}</Text>
+                      {(u.accountType === 'official' || u.accountType === 'store') ? <VerifiedBadge type={u.accountType} size={14} /> : null}
+                    </View>
+                    {u.name && u.handle ? <Text style={s.subHandle} numberOfLines={1}>@{u.handle}</Text> : null}
                   </Pressable>
                   {followed.has(u.id) ? (
                     <Text style={s.followedTag}>{t.following}</Text>
@@ -159,7 +164,13 @@ export default function FollowListScreen() {
                 ) : (
                   <View style={[s.avatar, s.avatarPh]}><UserRound size={20} color="#B7A9D6" strokeWidth={2} /></View>
                 )}
-                <Text style={s.name} numberOfLines={1}>{r.handle ? `@${r.handle}` : t.defaultName}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={s.nameRow}>
+                    <Text style={s.name} numberOfLines={1}>{r.name || (r.handle ? `@${r.handle}` : t.defaultName)}</Text>
+                    {(r.accountType === 'official' || r.accountType === 'store') ? <VerifiedBadge type={r.accountType} size={14} /> : null}
+                  </View>
+                  {r.name && r.handle ? <Text style={s.subHandle} numberOfLines={1}>@{r.handle}</Text> : null}
+                </View>
                 <ChevronRight size={18} color="#C9BCE6" strokeWidth={2.4} />
               </Pressable>
             ))
@@ -177,7 +188,7 @@ const s = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '800', color: '#1A0A2E' },
   segRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
   seg: { flex: 1, paddingVertical: 9, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center' },
-  segOn: { backgroundColor: '#7C3AED' },
+  segOn: { backgroundColor: '#9B6BFF' },
   segText: { fontSize: 13.5, fontWeight: '800', color: '#8B88A6' },
   segTextOn: { color: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 30 },
@@ -189,10 +200,12 @@ const s = StyleSheet.create({
   },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#EFE9FB' },
   avatarPh: { alignItems: 'center', justifyContent: 'center' },
-  name: { flex: 1, fontSize: 14.5, fontWeight: '800', color: '#1A0A2E' },
+  name: { flexShrink: 1, fontSize: 14.5, fontWeight: '800', color: '#1A0A2E' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  subHandle: { fontSize: 11.5, fontWeight: '700', color: '#9B93AF', marginTop: 2 },
   sectionTitle: { fontSize: 13, fontWeight: '800', color: '#8B88A6', marginBottom: 8, marginLeft: 2 },
   centerPad: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 50 },
-  followBtn: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#7C3AED' },
+  followBtn: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#9B6BFF' },
   followBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   followedTag: { fontSize: 12.5, fontWeight: '700', color: '#9B94B4', paddingHorizontal: 8 },
 });

@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash } from "@/lib/device-hash";
+import { namesByHash, accountTypesByHash } from "@/lib/user-handles";
 
 const LIMIT = 12;
 
@@ -75,9 +76,16 @@ export async function POST(req: Request) {
     const ordered = [...withHandle, ...without].slice(0, LIMIT);
 
     const vHour = Math.floor(Date.now() / 3_600_000);
+    const [nameByHash, acctByHash] = await Promise.all([
+      namesByHash(db, ordered), accountTypesByHash(db, ordered),
+    ]);
     const items = ordered.map((h) => {
       const { data: pub } = db.storage.from("user-icons").getPublicUrl(`${h}.jpg`);
-      return { id: h, handle: handleByHash.get(h) ?? null, icon: `${pub.publicUrl}?v=${vHour}` };
+      return {
+        id: h, handle: handleByHash.get(h) ?? null,
+        name: nameByHash.get(h) ?? null, accountType: acctByHash.get(h) ?? null,
+        icon: `${pub.publicUrl}?v=${vHour}`,
+      };
     });
     return NextResponse.json({ ok: true, items });
   } catch (e) {
