@@ -278,7 +278,8 @@ export async function GET(request: Request) {
     const lastItem = merged[merged.length - 1];
     const nextCursor = (lastItem?.created_at ? String(lastItem.created_at) : null) ?? oldestFetched;
     // どちらかのソースがlimit件まるごと返した=まだ先がある可能性が高い
-    const hasMore = rawMoodCount >= limit || rawSugCount >= limit;
+    // 検索(q)時は広めプールを一発取得しJS側で絞る方式＝続きページは無い（hasMore=trueだと将来の無限スクロールが空フェッチし続ける）
+    const hasMore = q ? false : (rawMoodCount >= limit || rawSugCount >= limit);
 
     // エッジキャッシュ: 60秒は同一URLをCDNから即返す（コールドDBの遅さを利用者から隠す）。
     // ホームと一覧が同じ先頭ページを叩くためヒット率が高い。いいね数等の鮮度は60秒で十分。

@@ -63,7 +63,7 @@ export async function GET(req: Request) {
         openHours: p.open_hours ?? null, station: p.nearest_station ?? null,   // 場所詳細の自己解決マージ用
         dist: distM != null ? Math.round((distM / 1000) * 10) / 10 : null,   // km(小数1桁)
       })),
-    });
+    }, { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } });
   } catch {
     return NextResponse.json({ ok: true, places: [] });
   }
