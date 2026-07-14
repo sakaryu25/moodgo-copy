@@ -2,17 +2,22 @@
  * ProfileSetup.tsx — 初回起動セットアップ画面 (MoodGo UI統一)
  */
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronRight, MapPin, UserRound } from 'lucide-react-native';
+import { Check, ChevronRight, MapPin, UserRound, X } from 'lucide-react-native';
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Animated, Dimensions, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, Dimensions, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Defs, LinearGradient as SvgGrad, Stop, Text as SvgText,
 } from 'react-native-svg';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
+import { getDeviceId } from '@/lib/abtest';
+import { apiFetch } from '@/lib/api';
+import { saveHandle } from '@/lib/settingsStore';
+
+const HANDLE_RE = /^[a-z0-9_]{3,20}$/;   // 半角英数と_ のみ・3〜20文字（/api/user-handle と一致）
 
 // ─── tokens ──────────────────────────────────────────────────────────────────
 const PINK   = '#F56CB3';
@@ -79,6 +84,61 @@ export default function ProfileSetup({ onDone }: Props) {
   const [prefecture, setPrefecture] = useState('');
   const [showPrefPicker, setShowPrefPicker] = useState(false);
 
+  // ── ユーザーID（@ハンドル）＝必須。空きチェック(check)→取得(claim)まで通らないと開始不可 ──
+  const [handle, setHandle]             = useState('');
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'ok' | 'taken' | 'invalid'>('idle');
+  const [handleReason, setHandleReason] = useState('');
+  const [claiming, setClaiming]         = useState(false);
+  const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onChangeHandle = (raw: string) => {
+    const v = raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);   // 半角英数と_ のみに整形
+    setHandle(v);
+    if (checkTimer.current) clearTimeout(checkTimer.current);
+    if (!v) { setHandleStatus('idle'); setHandleReason(''); return; }
+    if (!HANDLE_RE.test(v)) { setHandleStatus('invalid'); setHandleReason('3〜20文字・半角英数と_のみ'); return; }
+    setHandleStatus('checking'); setHandleReason('');
+    checkTimer.current = setTimeout(async () => {   // 500msデバウンスで空きチェック
+      try {
+        const id = await getDeviceId();
+        const res = await apiFetch('/api/user-handle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'check', handle: v, deviceId: id }),
+        });
+        const d = await res.json();
+        if (d?.ok && d.available) { setHandleStatus('ok'); setHandleReason(''); }
+        else { setHandleStatus('taken'); setHandleReason(d?.reason ?? d?.error ?? 'このIDはすでに使われています'); }
+      } catch { setHandleStatus('idle'); setHandleReason('通信に失敗しました'); }
+    }, 500);
+  };
+
+  const finish = async () => {
+    if (handleStatus !== 'ok' || claiming) return;
+    const h = handle.trim();
+    if (!HANDLE_RE.test(h)) { setHandleStatus('invalid'); setHandleReason('3〜20文字・半角英数と_のみ'); return; }
+    setClaiming(true);
+    try {
+      const id = await getDeviceId();
+      const res = await apiFetch('/api/user-handle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'claim', deviceId: id, handle: h }),
+      });
+      const d = await res.json();
+      if (!d?.ok) {   // 取得失敗（重複/形式）＝開始させない
+        setHandleStatus(d?.taken ? 'taken' : 'invalid');
+        setHandleReason(d?.error ?? '取得できませんでした。別のIDにしてください');
+        setClaiming(false);
+        return;
+      }
+      saveHandle(h);                       // ストア＋AsyncStorageへ即時反映（@IDが全画面に出る）
+      onDone(age, gender, prefecture);     // 取得成功後にだけ初回セットアップを完了させる
+    } catch {
+      setHandleReason('通信に失敗しました。もう一度お試しください');
+      setClaiming(false);
+    }
+  };
+  const canStart = handleStatus === 'ok' && !claiming;
+
   // フェードイン
   const fade  = useRef(new Animated.Value(0)).current;
   const slideY = useRef(new Animated.Value(30)).current;
@@ -138,7 +198,32 @@ export default function ProfileSetup({ onDone }: Props) {
             </LinearGradient>
           </View>
           <Text style={s.title}>はじめる前に教えてください</Text>
-          <Text style={s.subtitle}>あなたにぴったりの場所を提案するために使います。{'\n'}後からいつでも変更できます。</Text>
+          <Text style={s.subtitle}>まずはあなたのIDを決めましょう。{'\n'}年代などは提案の参考に使います（あとで変更可）。</Text>
+
+          {/* ユーザーID（必須・最初に決める） */}
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>ユーザーID（必須）</Text>
+            <View style={[s.handleRow, handleStatus === 'ok' && s.handleRowOk, (handleStatus === 'taken' || handleStatus === 'invalid') && s.handleRowBad]}>
+              <Text style={s.handleAt}>@</Text>
+              <TextInput
+                value={handle}
+                onChangeText={onChangeHandle}
+                placeholder="eiga_suki"
+                placeholderTextColor="#C4B5FD"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                maxLength={20}
+                style={s.handleInput}
+              />
+              {handleStatus === 'checking' && <ActivityIndicator size="small" color={PURPLE} />}
+              {handleStatus === 'ok' && <Check size={18} color="#10B981" strokeWidth={2.6} />}
+              {(handleStatus === 'taken' || handleStatus === 'invalid') && <X size={18} color="#EF4444" strokeWidth={2.6} />}
+            </View>
+            <Text style={[s.handleHint, (handleStatus === 'taken' || handleStatus === 'invalid') && s.handleHintBad]}>
+              {handleReason || '半角英数と_・3〜20文字。プロフィールに表示され、あとから変更できます'}
+            </Text>
+          </View>
 
           {/* 年代 */}
           <View style={s.section}>
@@ -172,20 +257,16 @@ export default function ProfileSetup({ onDone }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* はじめるボタン */}
+          {/* はじめるボタン（@IDの取得が済むまで無効） */}
           <TouchableOpacity
-            onPress={() => onDone(age, gender, prefecture)}
+            onPress={finish}
             activeOpacity={0.88}
-            style={s.startWrap}
+            disabled={!canStart}
+            style={[s.startWrap, !canStart && s.startWrapDisabled]}
           >
-            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.startBtn}>
-              <Text style={s.startText}>はじめる</Text>
+            <LinearGradient colors={canStart ? GRAD : ['#D8CEF2', '#D0C6EE', '#CBD6F2']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.startBtn}>
+              {claiming ? <ActivityIndicator color="#fff" /> : <Text style={s.startText}>はじめる</Text>}
             </LinearGradient>
-          </TouchableOpacity>
-
-          {/* スキップ */}
-          <TouchableOpacity onPress={() => onDone('', '', '')} style={s.skipBtn} activeOpacity={0.6}>
-            <Text style={s.skipText}>スキップ</Text>
           </TouchableOpacity>
         </ScrollView>
       </Animated.View>
@@ -243,6 +324,21 @@ const s = StyleSheet.create({
   },
   startBtn:  { height: 58, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   startText: { fontSize: 18, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+  startWrapDisabled: { shadowOpacity: 0.12 },
+
+  // @ID 入力
+  handleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fff', borderRadius: 14, borderWidth: 1.5, borderColor: '#DDD6FE',
+    paddingHorizontal: 16,
+    shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  handleRowOk:  { borderColor: '#10B981' },
+  handleRowBad: { borderColor: '#FCA5A5' },
+  handleAt:     { fontSize: 17, fontWeight: '800', color: PURPLE },
+  handleInput:  { flex: 1, fontSize: 16, color: '#1E0753', fontWeight: '600', paddingVertical: 13 },
+  handleHint:   { fontSize: 11.5, color: '#A78BFA', marginTop: 7, marginLeft: 4 },
+  handleHintBad: { color: '#EF4444' },
 
   skipBtn:  { marginTop: 16, padding: 10 },
   skipText: { fontSize: 14, color: '#A78BFA', fontWeight: '500' },
