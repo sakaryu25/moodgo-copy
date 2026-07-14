@@ -375,12 +375,23 @@ export async function GET(request: Request) {
       const parentName = userTitle.slice(atIdx + 1).trim();
       if (parentName.length >= 2) {
         try {
-          const { data: par } = await supabase.from("places")
-            .select("id, name, address, open_hours, nearest_station")
-            .eq("name", parentName).eq("source_type", "user")
-            .eq("is_active", true)   // ⚠同名の非アクティブ行(削除済みの抜け殻)を親にしない＝空ページ遷移バグの原因
-            .limit(1).maybeSingle();
-          const pr = par as { id?: string; name?: string; address?: string | null; open_hours?: string | null; nearest_station?: string | null } | null;
+          // 親はuser作成に限らない（Google/OSM/admin由来のこともある）ので source_type では絞らない。
+          // is_active=true で抜け殻(削除済み)を除外し、同名複数はイベント座標に最も近い行を採用。
+          const { data: pars } = await supabase.from("places")
+            .select("id, name, address, open_hours, nearest_station, lat, lng")
+            .eq("name", parentName)
+            .eq("is_active", true)
+            .limit(5);
+          type ParRow = { id?: string; name?: string; address?: string | null; open_hours?: string | null; nearest_station?: string | null; lat?: number | null; lng?: number | null };
+          const rows = (pars ?? []) as ParRow[];
+          let pr: ParRow | null = rows[0] ?? null;
+          if (rows.length > 1 && baseLat != null && baseLng != null) {
+            pr = rows.slice().sort((a, b) => {
+              const da = a.lat != null && a.lng != null ? haversineM(baseLat!, baseLng!, a.lat, a.lng) : Infinity;
+              const db2 = b.lat != null && b.lng != null ? haversineM(baseLat!, baseLng!, b.lat, b.lng) : Infinity;
+              return da - db2;
+            })[0] ?? null;
+          }
           if (pr?.id) {
             parentPlaceId = String(pr.id);
             parentPlaceName = String(pr.name ?? parentName);
