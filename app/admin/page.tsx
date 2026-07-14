@@ -7065,7 +7065,7 @@ export default function AdminPage() {
                 {peResults.map((r) => (
                   <div key={r.id} onClick={() => peLoad(r.id)}
                     style={{ padding: "9px 12px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", fontSize: "13px", background: peForm?.id === r.id ? "#f5f3ff" : "#fff" }}>
-                    <b>{r.name}</b> {r.is_active === false && <span style={{ color: "#dc2626", fontWeight: 700 }}>[非公開]</span>}
+                    <b>{r.name}</b> {r.is_active !== true && <span style={{ color: "#dc2626", fontWeight: 700 }}>[非公開]</span>}
                     <span style={{ color: "#9ca3af" }}> / {r.address ?? "住所なし"} [{r.source_type ?? "?"}]</span>
                   </div>
                 ))}
@@ -7101,7 +7101,7 @@ export default function AdminPage() {
                   </label>
                 </div>
                 <label style={{ fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                  <input type="checkbox" checked={peForm.is_active !== false} onChange={(e) => setPeForm({ ...peForm, is_active: e.target.checked })} />
+                  <input type="checkbox" checked={peForm.is_active === true} onChange={(e) => setPeForm({ ...peForm, is_active: e.target.checked })} />
                   公開中（オフ＝検索/詳細に出さない）
                 </label>
                 <button onClick={peSave} disabled={peBusy}
