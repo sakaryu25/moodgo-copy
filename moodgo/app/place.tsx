@@ -847,6 +847,9 @@ export default function PlaceDetailPage() {
   const openNowColor = displayOpenNow === true ? '#10B981' : displayOpenNow === false ? '#EF4444' : '#9CA3AF';
   const openNowLabel = displayOpenNow === true ? t.openNow : displayOpenNow === false ? t.closedNow : null;
   const hoursRows = hoursSource ? formatOpeningHours(hoursSource) : [];
+  // 曜日ラベル付き(Google週間形式)は下部テーブル、それ以外(「10:00~21:00（水曜定休）」等)は情報カードの行に出す（投稿詳細と統一）
+  const isWeekdayHours = hoursRows.some(r => r.label);
+  const inlineHours = !isWeekdayHours ? String(hoursSource ?? '').trim() : '';
 
   return (
     <View style={s.root}>
@@ -1170,8 +1173,15 @@ export default function PlaceDetailPage() {
               </View>
             ) : null}
 
-            {priceDisplay ? (
+            {inlineHours ? (
               <View style={[s.infoRow, displayAddress ? s.infoRowBorder : null]}>
+                <View style={s.infoIconWrap}><Clock size={15} color="#C084FC" strokeWidth={2} /></View>
+                <Text style={s.infoText}>{inlineHours}</Text>
+              </View>
+            ) : null}
+
+            {priceDisplay ? (
+              <View style={[s.infoRow, (displayAddress || inlineHours) ? s.infoRowBorder : null]}>
                 <View style={s.infoIconWrap}><Wallet size={15} color="#C084FC" strokeWidth={2} /></View>
                 <Text style={s.infoText}>{priceDisplay}</Text>
               </View>
@@ -1233,7 +1243,7 @@ export default function PlaceDetailPage() {
           )}
 
           {/* ─── 営業時間セクション（心霊は出さない）─── */}
-          {!isSpooky && extra.loaded && hoursRows.length > 0 && (
+          {!isSpooky && extra.loaded && isWeekdayHours && hoursRows.length > 0 && (
             <View style={s.section}>
               <View style={s.sectionHeader}>
                 <Clock size={15} color="#C084FC" strokeWidth={2} />
