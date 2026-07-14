@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, iconPathFor } from "@/lib/device-hash";
 import { handlesByDevice } from "@/lib/user-handles";
+import { toArea } from "@/lib/jp-area";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 const SCAN_LIMIT = 600;
@@ -21,11 +22,7 @@ const SCAN_LIMIT = 600;
 function isLegacyPhotoUrl(url: string): boolean {
   return url.includes("maps.googleapis.com/maps/api/place/photo");
 }
-function toPref(addr: unknown): string {
-  const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
-  const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-  return m ? m[1].replace(/[都道府県]$/, "") : "";
-}
+function toPref(addr: unknown): string { return toArea(addr); }   // カード地名を「都道府県＋市区町村」に（[[jp-area]]）
 
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ ok: false, items: [] }, { status: 503 });

@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { deviceHash, anonPosterId, iconPathFor } from "@/lib/device-hash";
+import { toArea } from "@/lib/jp-area";
 import { handlesByDevice, deviceByHandle, accountTypesByDevice, iconVersionsByDevice } from "@/lib/user-handles";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
@@ -95,11 +96,7 @@ export async function GET(request: Request) {
         const placeIds = [...new Set(plist.map(p => p.place_id).filter(Boolean).map(String))];
         const names2 = [...new Set(plist.map(p => p.place_name).filter(Boolean).map(String))];
         // 都道府県(places.address) を id と name の両方で引けるようにする（place_idがgoogle_id/nullでも名前で補完）
-        const toPref = (addr: unknown): string => {
-          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
-          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-          return m ? m[1].replace(/[都道府県]$/, "") : "";
-        };
+        const toPref = toArea;   // カード地名を「都道府県＋市区町村」に（[[jp-area]]）
         // 写真・places(id/name)・@ハンドルの4系統を並列取得（従来は直列で最も遅い区間だった）
         const nonAnonDevs = plist.filter(p => p.visibility !== "spot_public_anonymous").map(p => String(p.device_id ?? ""));
         const [phsRes, plsIdRes, plsNameRes, handleMap, acctMap, verMap] = await Promise.all([
@@ -172,11 +169,7 @@ export async function GET(request: Request) {
       if (posterHandle) return;
       try {
         const today = new Date().toISOString().slice(0, 10);
-        const toPref = (addr: unknown): string => {
-          const a = String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/^〒?\s*\d{3}-?\d{4}\s*/, "");
-          const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-          return m ? m[1].replace(/[都道府県]$/, "") : "";
-        };
+        const toPref = toArea;   // カード地名を「都道府県＋市区町村」に（[[jp-area]]）
         let sq = supabase
           .from("suggestions")
           .select("id, spot_name, google_place_name, description, address, image_urls, auto_tags, lat, lng, created_at, poster_name, device_id, available_from, available_until")

@@ -390,6 +390,9 @@ export async function GET(request: Request) {
       }
     }
 
+    // 住所は必ず何か出す: フル住所が空でも、拾えた都道府県だけは表示して行を隠さない（"必ず出す"要望）
+    if (!address && prefecture) address = prefecture;
+
     // エッジキャッシュ: 詳細はGoogle補強が重いので60秒CDNに載せる
     //   （いいね/行った数の鮮度はクライアントが status POST(非キャッシュ)で上書きするため問題なし）
     return NextResponse.json({
