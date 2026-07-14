@@ -207,7 +207,8 @@ function formatOpeningHours(text: string): { label: string; time: string; isToda
   // フォールバック: 行ごとにそのまま表示（ラベルと時間を ": " で分割）
   return lines.map(line => {
     const sep = line.indexOf(':');
-    if (sep > 0 && sep < 10) {
+    // コロン前が数字だけなら「10:00~21:00」のような時刻＝ラベル分割しない（10｜00~21:00に割れるバグ対策）
+    if (sep > 0 && sep < 10 && !/^\d+$/.test(line.slice(0, sep).trim())) {
       const label = line.slice(0, sep).trim();
       const time = line.slice(sep + 1).trim();
       const dayChar = label.charAt(0);
