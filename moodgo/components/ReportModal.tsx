@@ -27,6 +27,10 @@ const REASONS: { label: string; Icon: typeof Info }[] = [
   { label: '不適切なコンテンツ', Icon: ShieldAlert },
   { label: 'その他', Icon: MoreHorizontal },
 ];
+// カスタム理由（reasons prop）用のアイコン割当。未知のラベルは Info。
+const ICON_BY_LABEL: Record<string, typeof Info> = {
+  '閉店・閉業': Store, '不適切なコンテンツ': ShieldAlert, 'その他': MoreHorizontal,
+};
 
 type Props = {
   visible: boolean;
@@ -40,10 +44,15 @@ type Props = {
   onBlockUser?: (posterId: string) => void;
   /** 任意: 通報が受け付けられた時（リストから対象を消す等・閉じる前に呼ばれる） */
   onReported?: () => void;
+  /** 任意: 理由リストの差し替え（場所詳細の「場所名/営業時間/最寄り駅が違う」等） */
+  reasons?: string[];
+  /** 任意: 詳細入力のプレースホルダ差し替え（例:「正しい情報を教えてください」） */
+  notePlaceholder?: string;
   onClose: () => void;
 };
 
-export default function ReportModal({ visible, spotName, spotAddress, suggestionId, posterId, onBlockUser, onReported, onClose }: Props) {
+export default function ReportModal({ visible, spotName, spotAddress, suggestionId, posterId, onBlockUser, onReported, reasons, notePlaceholder, onClose }: Props) {
+  const reasonList = reasons ? reasons.map((label) => ({ label, Icon: ICON_BY_LABEL[label] ?? Info })) : REASONS;
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -138,7 +147,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
 
               <Text style={s.label}>理由<Text style={s.required}> *</Text></Text>
               <View style={s.reasonWrap}>
-                {REASONS.map(({ label, Icon }) => {
+                {reasonList.map(({ label, Icon }) => {
                   const active = reason === label;
                   return (
                     <TouchableOpacity key={label} onPress={() => { Haptics.selectionAsync(); setReason(label); }} activeOpacity={0.85}
@@ -154,7 +163,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="詳細（任意）"
+                placeholder={notePlaceholder ?? "詳細（任意）"}
                 placeholderTextColor="#B7BCC6"
                 multiline
                 textAlignVertical="top"

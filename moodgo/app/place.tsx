@@ -11,7 +11,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { router, Stack } from 'expo-router';
 import {
   ArrowLeft, CalendarClock, Camera, ChevronDown, ChevronRight, ChevronUp, Clock, Footprints, Globe, Heart,
-  MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train, Wallet,
+  Flag, MapPin, Moon, Navigation, Phone, RefreshCw, Share2, Star, ThumbsUp, Train, Wallet,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -38,6 +38,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import MoodLogSection from '@/components/MoodLogSection';
+import ReportModal from '@/components/ReportModal';
 import CommentsSection from '@/components/CommentsSection';
 import SpotRating from '@/components/SpotRating';
 import PhotoViewer from '@/components/PhotoViewer';
@@ -418,6 +419,7 @@ export default function PlaceDetailPage() {
   const place = getSelectedPlace();
   const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
   const [rec, setRec] = useState<Recommendation | null>(place);
+  const [reportOpen, setReportOpen] = useState(false);   // 情報の間違い報告（場所名/営業時間/最寄り駅など）
 
   // 経路差の自己解決（2026-07-15）: supabaseId無しで開かれた場合（お気に入り/投稿詳細経由の一部等）は
   //   名前からSupabaseの正規place IDを引いて rec に補完する。recはstateなので補完すると
@@ -849,9 +851,15 @@ export default function PlaceDetailPage() {
         >
           <ArrowLeft size={18} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleShare} style={s.overlayBtn} activeOpacity={0.85}>
-          <Share2 size={18} color="#fff" strokeWidth={2} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity onPress={() => setReportOpen(true)} style={s.overlayBtn} activeOpacity={0.85}
+            accessibilityRole="button" accessibilityLabel="情報の間違いを報告">
+            <Flag size={16} color="#fff" strokeWidth={2.2} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleShare} style={s.overlayBtn} activeOpacity={0.85}>
+            <Share2 size={18} color="#fff" strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Animated.ScrollView
@@ -1238,6 +1246,18 @@ export default function PlaceDetailPage() {
           ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
       <PhotoViewer visible={viewerOpen && photos.length > 0} photos={photos}
         initialIdx={Math.min(photoIdx, Math.max(0, photos.length - 1))} onClose={() => setViewerOpen(false)} />
+
+      {/* 情報の間違い報告（場所名/営業時間/最寄り駅/住所）。[place:UUID]マーカーでadminが特定して
+          🛠場所編集タブから修正できる。⚠常時マウント+visibleトグル（Fabric透明Modal安全パターン） */}
+      <ReportModal
+        visible={reportOpen}
+        spotName={rec.title}
+        spotAddress={rec.address}
+        suggestionId={rec.supabaseId ? `place-${rec.supabaseId}` : undefined}
+        reasons={['場所名が違う', '営業時間が違う', '最寄り駅が違う', '住所が違う', '閉店・閉業', 'その他']}
+        notePlaceholder="正しい情報を教えてください（例: 営業時間は10:00〜19:00）"
+        onClose={() => setReportOpen(false)}
+      />
 
       {/* お気に入りハート（右下フローティング・投稿詳細と同様）
           未保存はグレー輪郭＋グレー数字・保存済みはピンク塗り＋ピンク数字。

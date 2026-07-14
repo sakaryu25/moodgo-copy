@@ -1103,7 +1103,47 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit">("stats");
+  // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/公開状態を直接編集（報告対応用）──
+  type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null };
+  const [peKw, setPeKw] = useState("");
+  const [peResults, setPeResults] = useState<Array<{ id: string; name: string; address: string | null; is_active: boolean | null; source_type: string | null }>>([]);
+  const [peForm, setPeForm] = useState<PeRow | null>(null);
+  const [peBusy, setPeBusy] = useState(false);
+  const [peMsg, setPeMsg] = useState("");
+  const peSearch = async () => {
+    if (!peKw.trim()) return;
+    setPeBusy(true); setPeMsg(""); setPeForm(null);
+    try {
+      const d = await fetch("/api/admin/search-places", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, keyword: peKw.trim() }) }).then(r => r.json());
+      if (d?.ok) { setPeResults((d.places ?? []).slice(0, 50)); if ((d.places ?? []).length === 0) setPeMsg("見つかりませんでした"); }
+      else setPeMsg(d?.error ?? "検索に失敗しました");
+    } catch { setPeMsg("検索に失敗しました"); }
+    setPeBusy(false);
+  };
+  const peLoad = async (id: string) => {
+    setPeBusy(true); setPeMsg("");
+    try {
+      const d = await fetch("/api/admin/place-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, action: "get", id }) }).then(r => r.json());
+      if (d?.ok && d.place) setPeForm(d.place as PeRow); else setPeMsg(d?.error ?? "取得に失敗しました");
+    } catch { setPeMsg("取得に失敗しました"); }
+    setPeBusy(false);
+  };
+  const peSave = async () => {
+    if (!peForm) return;
+    setPeBusy(true); setPeMsg("");
+    try {
+      const patch = { name: peForm.name, address: peForm.address ?? "", open_hours: peForm.open_hours ?? "", nearest_station: peForm.nearest_station ?? "", lat: peForm.lat, lng: peForm.lng, is_active: peForm.is_active !== false };
+      const d = await fetch("/api/admin/place-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, action: "update", id: peForm.id, patch }) }).then(r => r.json());
+      if (d?.ok) {
+        setPeMsg("保存しました");
+        if (d.place) setPeForm(d.place as PeRow);
+        setPeResults(prev => prev.map(r => (r.id === peForm.id ? { ...r, name: peForm.name, address: peForm.address, is_active: peForm.is_active } : r)));
+      } else setPeMsg(d?.error ?? "保存に失敗しました");
+    } catch { setPeMsg("保存に失敗しました"); }
+    setPeBusy(false);
+  };
+
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -3197,6 +3237,7 @@ export default function AdminPage() {
             { key: "mood_ratings", label: "🎭 気分フィードバック" },
             { key: "geocode", label: "📍 座標登録" },
             { key: "merge",   label: "🔀 重複統合" },
+            { key: "place-edit", label: "🛠 場所編集" },
             { key: "retag",   label: "🏷 一括タグ修正" },
             { key: "vitality",  label: "🔍 生存確認・自浄" },
             { key: "db-stats",  label: "🗄 DB統計" },
@@ -7005,6 +7046,72 @@ export default function AdminPage() {
         )}
 
         {/* ===== 開発ログタブ ===== */}
+        {/* ── 🛠 場所編集タブ ───────────────────────────────────────── */}
+        {tab === "place-edit" && (
+          <div style={{ background: "#fff", borderRadius: "12px", padding: "20px" }}>
+            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 900 }}>🛠 場所編集</h2>
+            <p style={{ fontSize: "12.5px", color: "#6b7280", margin: "8px 0 14px" }}>
+              名前/住所で検索して、名前・住所・座標・営業時間・最寄り駅・公開状態を直接編集します（「場所名/営業時間/最寄り駅が違う」報告への対応用。報告のnoteに [id:place-UUID] が入っています）。
+            </p>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+              <input value={peKw} onChange={(e) => setPeKw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") peSearch(); }}
+                placeholder="スポット名 or 住所（source:xxx / #タグ も可）"
+                style={{ flex: 1, padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px" }} />
+              <button onClick={peSearch} disabled={peBusy}
+                style={{ padding: "10px 18px", borderRadius: "8px", border: "none", background: "#7c3aed", color: "#fff", fontWeight: 700, cursor: "pointer" }}>{peBusy ? "…" : "検索"}</button>
+            </div>
+            {peResults.length > 0 && (
+              <div style={{ maxHeight: "260px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "8px", marginBottom: "14px" }}>
+                {peResults.map((r) => (
+                  <div key={r.id} onClick={() => peLoad(r.id)}
+                    style={{ padding: "9px 12px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", fontSize: "13px", background: peForm?.id === r.id ? "#f5f3ff" : "#fff" }}>
+                    <b>{r.name}</b> {r.is_active === false && <span style={{ color: "#dc2626", fontWeight: 700 }}>[非公開]</span>}
+                    <span style={{ color: "#9ca3af" }}> / {r.address ?? "住所なし"} [{r.source_type ?? "?"}]</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {peForm && (
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px", display: "grid", gap: "10px" }}>
+                <div style={{ fontSize: "11px", color: "#9ca3af" }}>id: {peForm.id} / source: {peForm.source_type ?? "?"}{peForm.google_place_id ? ` / gpid: ${peForm.google_place_id}` : ""}</div>
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>名前
+                  <input value={peForm.name ?? ""} onChange={(e) => setPeForm({ ...peForm, name: e.target.value })}
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                </label>
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>住所
+                  <input value={peForm.address ?? ""} onChange={(e) => setPeForm({ ...peForm, address: e.target.value })}
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                </label>
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>営業時間
+                  <input value={peForm.open_hours ?? ""} onChange={(e) => setPeForm({ ...peForm, open_hours: e.target.value })} placeholder="例: 10:00〜19:00（水曜定休） / 24時間営業"
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                </label>
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>最寄り駅
+                  <input value={peForm.nearest_station ?? ""} onChange={(e) => setPeForm({ ...peForm, nearest_station: e.target.value })} placeholder="例: JR横浜駅 徒歩5分"
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                </label>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <label style={{ flex: 1, fontSize: "13px", fontWeight: 700 }}>緯度(lat)
+                    <input value={peForm.lat ?? ""} onChange={(e) => { const v = e.target.value.trim(); setPeForm({ ...peForm, lat: v === "" ? null : Number(v) }); }}
+                      style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: "13px", fontWeight: 700 }}>経度(lng)
+                    <input value={peForm.lng ?? ""} onChange={(e) => { const v = e.target.value.trim(); setPeForm({ ...peForm, lng: v === "" ? null : Number(v) }); }}
+                      style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                  </label>
+                </div>
+                <label style={{ fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input type="checkbox" checked={peForm.is_active !== false} onChange={(e) => setPeForm({ ...peForm, is_active: e.target.checked })} />
+                  公開中（オフ＝検索/詳細に出さない）
+                </label>
+                <button onClick={peSave} disabled={peBusy}
+                  style={{ padding: "11px", borderRadius: "8px", border: "none", background: "#10b981", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peBusy ? "保存中…" : "💾 保存"}</button>
+              </div>
+            )}
+            {peMsg && <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 700, color: peMsg.includes("失敗") ? "#dc2626" : "#059669" }}>{peMsg}</div>}
+          </div>
+        )}
+
         {/* ── 重複統合タブ ───────────────────────────────────────── */}
         {tab === "merge" && (
           <div style={{ padding: "24px 0" }}>
