@@ -10,12 +10,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
-import { forwardGeocode as forwardYahooGoogle } from "@/lib/forward-geocode";
+import { forwardGeocode as forwardFree } from "@/lib/forward-geocode";
 import { yahooReverseGeocode } from "@/lib/yahoo-reverse-geocode";
-import { pickGsiResult } from "@/lib/gsi-geocode";
 
-const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
-const PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+const PREFS =["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
 
 // 住所が「未登録相当」か（空 / 日本 / 都道府県だけ）＝補完対象
 function isIncompleteAddr(a: string | null | undefined): boolean {
@@ -31,41 +29,20 @@ function cleanFull(addr: string): string {
   return String(addr ?? "").replace(/^日本[、,]\s*/, "").replace(/〒?\s*\d{3}-?\d{4}\s*/, "").trim();
 }
 
-// 逆引き(座標→完全住所): Yahoo(無料・番地まで)を一次に、失敗時だけGoogle(課金)で救済＝コスト最小化
+// 逆引き(座標→完全住所): Yahoo(無料・番地まで)のみ。Google課金は使わない（完全無料方針・2026-07-15）
 async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   try {
     const y = await yahooReverseGeocode(lat, lng);
     if (y?.fullAddress) return cleanFull(y.fullAddress) || null;
-  } catch { /* Googleへ */ }
-  if (GOOGLE_API_KEY) {
-    try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=ja&region=jp&key=${GOOGLE_API_KEY}`;
-      const d = await (await fetch(url, { cache: "no-store" })).json();
-      const first = d?.results?.[0];
-      if (first) return cleanFull(String(first.formatted_address ?? "")) || null;
-    } catch { /* noop */ }
-  }
+  } catch { /* 無料で取れなければ住所なし */ }
   return null;
 }
-// 正引き(住所/名前→座標): 国土地理院(無料・キー不要)を一次 → Yahoo(無料) → Google(課金)。座標のみ返す
+// 正引き(住所/名前→座標): 完全無料。lib forwardGeocode が GSI(国土地理院)→Yahoo の順で座標を返す（Google不使用）。
 //   ※完全住所は取得した座標を上の reverseGeocode(Yahoo無料) にかけて得る＝正引きも実質無料で完結
 async function forwardGeocode(query: string): Promise<{ lat: number; lng: number } | null> {
   const q = query.trim();
   if (q.length < 2) return null;
-  // ① GSI(国土地理院・完全無料・キー不要)。有名度順でないため pickGsiResult で行政区画一致を選ぶ
-  try {
-    const res = await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`, { cache: "no-store", signal: AbortSignal.timeout(4000) });
-    const arr = await res.json().catch(() => null);
-    const best = pickGsiResult(arr, q);
-    const c = best?.geometry?.coordinates;
-    if (Array.isArray(c) && typeof c[1] === "number") return { lat: Number(c[1]), lng: Number(c[0]) };
-  } catch { /* Yahoo/Googleへ */ }
-  // ② Yahoo(無料)→Google(課金)。lib forwardGeocode が既にこの順でフォールバックする
-  try {
-    const g = await forwardYahooGoogle(q);
-    if (g) return g;
-  } catch { /* noop */ }
-  return null;
+  try { return await forwardFree(q); } catch { return null; }
 }
 
 type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null };
