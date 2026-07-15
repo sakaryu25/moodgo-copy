@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
-import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
-import CoveragePanel from "./_components/CoveragePanel";
-import ReviewQueuePanel from "./_components/ReviewQueuePanel";
 // サブ管理ページを取り込み、タブとして1ページに集約（各ページは localStorage の moodgo-admin-secret で自動認証）
 import MetricsAdmin from "./metrics/MetricsAdmin";
 import MoodLogAdmin from "./mood-logs/MoodLogAdmin";
@@ -1398,17 +1395,22 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights" | "location-fill">("stats");
-  // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/公開状態を直接編集（報告対応用）──
-  type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null };
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights" | "location-fill">("stats");
+  // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/タグ/値段/写真/公開状態を直接編集（報告対応用）──
+  type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null; tags: string[] | null; budget: string | null; close_day: string | null; image_urls: string[] | null; photo_url: string | null; rating: number | null; rating_count: number | null };
+  type PeSignals = { photos: number; posts: number; ratings: number; engagement: number };
   const [peKw, setPeKw] = useState("");
   const [peResults, setPeResults] = useState<Array<{ id: string; name: string; address: string | null; is_active: boolean | null; source_type: string | null }>>([]);
   const [peForm, setPeForm] = useState<PeRow | null>(null);
+  const [peSignals, setPeSignals] = useState<PeSignals | null>(null);
+  const [pePhotos, setPePhotos] = useState<string[]>([]);
+  const [pePriceChips, setPePriceChips] = useState<string[]>([]);
+  const [peTagInput, setPeTagInput] = useState("");
   const [peBusy, setPeBusy] = useState(false);
   const [peMsg, setPeMsg] = useState("");
   const peSearch = async () => {
     if (!peKw.trim()) return;
-    setPeBusy(true); setPeMsg(""); setPeForm(null);
+    setPeBusy(true); setPeMsg(""); setPeForm(null); setPeSignals(null);
     try {
       const d = await fetch("/api/admin/search-places", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, keyword: peKw.trim() }) }).then(r => r.json());
       if (d?.ok) { setPeResults((d.places ?? []).slice(0, 50)); if ((d.places ?? []).length === 0) setPeMsg("見つかりませんでした"); }
@@ -1417,18 +1419,43 @@ export default function AdminPage() {
     setPeBusy(false);
   };
   const peLoad = async (id: string) => {
-    setPeBusy(true); setPeMsg("");
+    setPeBusy(true); setPeMsg(""); setPeSignals(null); setPePhotos([]); setPePriceChips([]); setPeTagInput("");
     try {
       const d = await fetch("/api/admin/place-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, action: "get", id }) }).then(r => r.json());
-      if (d?.ok && d.place) setPeForm(d.place as PeRow); else setPeMsg(d?.error ?? "取得に失敗しました");
+      if (d?.ok && d.place) {
+        setPeForm(d.place as PeRow);
+        setPeSignals((d.signals ?? null) as PeSignals | null);
+        setPePhotos(Array.isArray(d.photos) ? d.photos : []);
+        setPePriceChips(Array.isArray(d.priceChips) ? d.priceChips : []);
+      } else setPeMsg(d?.error ?? "取得に失敗しました");
     } catch { setPeMsg("取得に失敗しました"); }
+    setPeBusy(false);
+  };
+  // 検索結果/編集フォームから削除(ソフト=is_active:false)・復活。削除は二重確認＋学習資産があれば警告強化。
+  const peDelete = async (id: string, name: string, restore: boolean, sig?: PeSignals | null) => {
+    const asset = sig ? (sig.photos + sig.posts + sig.ratings) : 0;
+    if (!restore) {
+      const warn = asset > 0 ? `\n\n⚠️ この場所には 写真${sig?.photos ?? 0}・Moodログ${sig?.posts ?? 0}・評価${sig?.ratings ?? 0} が付いています。` : "";
+      // 二重確認: 1回目=意思確認 / 2回目=最終確認
+      if (!confirm(`【確認 1/2】「${name}」を削除（非公開）しますか？\n検索・詳細に出なくなります（データは残り、復活可）。${warn}`)) return;
+      if (!confirm(`【確認 2/2】本当に削除します。よろしいですか？\n\n「${name}」`)) return;
+    }
+    setPeBusy(true); setPeMsg("");
+    try {
+      const d = await fetch("/api/admin/place-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, action: restore ? "restore" : "delete", id }) }).then(r => r.json());
+      if (d?.ok) {
+        setPeMsg(restore ? "復活しました（公開）" : "削除しました（非公開）");
+        setPeResults(prev => prev.map(r => (r.id === id ? { ...r, is_active: !restore ? false : true } : r)));
+        setPeForm(prev => (prev && prev.id === id ? { ...prev, is_active: !restore ? false : true } : prev));
+      } else setPeMsg(d?.error ?? "操作に失敗しました");
+    } catch { setPeMsg("操作に失敗しました"); }
     setPeBusy(false);
   };
   const peSave = async () => {
     if (!peForm) return;
     setPeBusy(true); setPeMsg("");
     try {
-      const patch = { name: peForm.name, address: peForm.address ?? "", open_hours: peForm.open_hours ?? "", nearest_station: peForm.nearest_station ?? "", lat: peForm.lat, lng: peForm.lng, is_active: peForm.is_active !== false };
+      const patch = { name: peForm.name, address: peForm.address ?? "", open_hours: peForm.open_hours ?? "", nearest_station: peForm.nearest_station ?? "", lat: peForm.lat, lng: peForm.lng, is_active: peForm.is_active !== false, tags: peForm.tags ?? [], budget: peForm.budget ?? "", close_day: peForm.close_day ?? "" };
       const d = await fetch("/api/admin/place-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: adminSecret, action: "update", id: peForm.id, patch }) }).then(r => r.json());
       if (d?.ok) {
         setPeMsg("保存しました");
@@ -1437,6 +1464,19 @@ export default function AdminPage() {
       } else setPeMsg(d?.error ?? "保存に失敗しました");
     } catch { setPeMsg("保存に失敗しました"); }
     setPeBusy(false);
+  };
+  // タグ追加/削除（フォーム内で編集）
+  const peAddTag = () => {
+    if (!peForm) return;
+    const t = peTagInput.trim();
+    if (!t) return;
+    const cur = peForm.tags ?? [];
+    if (!cur.includes(t)) setPeForm({ ...peForm, tags: [...cur, t] });
+    setPeTagInput("");
+  };
+  const peRemoveTag = (t: string) => {
+    if (!peForm) return;
+    setPeForm({ ...peForm, tags: (peForm.tags ?? []).filter(x => x !== t) });
   };
 
 
@@ -3547,9 +3587,6 @@ export default function AdminPage() {
             { key: "retag",   label: "🏷 一括タグ修正" },
             { key: "vitality",  label: "🔍 生存確認・自浄" },
             { key: "db-stats",  label: "🗄 DB統計" },
-            { key: "pref-featured", label: "⭐ 特集ページ" },
-            { key: "coverage",  label: "📊 カバレッジ" },
-            { key: "review-queue", label: "✅ タグ検証" },
             { key: "metrics", label: "📈 検索メトリクス" },
             { key: "mood-logs", label: "📝 moodログ管理" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
@@ -7423,12 +7460,21 @@ export default function AdminPage() {
                 style={{ padding: "10px 18px", borderRadius: "8px", border: "none", background: "#7c3aed", color: "#fff", fontWeight: 700, cursor: "pointer" }}>{peBusy ? "…" : "検索"}</button>
             </div>
             {peResults.length > 0 && (
-              <div style={{ maxHeight: "260px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "8px", marginBottom: "14px" }}>
+              <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "8px", marginBottom: "14px" }}>
                 {peResults.map((r) => (
-                  <div key={r.id} onClick={() => peLoad(r.id)}
-                    style={{ padding: "9px 12px", borderBottom: "1px solid #f3f4f6", cursor: "pointer", fontSize: "13px", background: peForm?.id === r.id ? "#f5f3ff" : "#fff" }}>
-                    <b>{r.name}</b> {r.is_active !== true && <span style={{ color: "#dc2626", fontWeight: 700 }}>[非公開]</span>}
-                    <span style={{ color: "#9ca3af" }}> / {r.address ?? "住所なし"} [{r.source_type ?? "?"}]</span>
+                  <div key={r.id}
+                    style={{ display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px", borderBottom: "1px solid #f3f4f6", fontSize: "13px", background: peForm?.id === r.id ? "#f5f3ff" : "#fff" }}>
+                    <div onClick={() => peLoad(r.id)} style={{ flex: 1, cursor: "pointer", minWidth: 0 }}>
+                      <b>{r.name}</b> {r.is_active === false && <span style={{ color: "#dc2626", fontWeight: 700 }}>[非公開]</span>}
+                      <span style={{ color: "#9ca3af" }}> / {r.address ?? "住所なし"} [{r.source_type ?? "?"}]</span>
+                    </div>
+                    {r.is_active === false ? (
+                      <button onClick={() => peDelete(r.id, r.name, true)} disabled={peBusy}
+                        style={{ flexShrink: 0, padding: "5px 10px", borderRadius: "7px", border: "1px solid #86efac", background: "#f0fdf4", color: "#16a34a", fontWeight: 800, fontSize: "12px", cursor: "pointer" }}>↩︎ 復活</button>
+                    ) : (
+                      <button onClick={() => peDelete(r.id, r.name, false)} disabled={peBusy}
+                        style={{ flexShrink: 0, padding: "5px 10px", borderRadius: "7px", border: "1px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 800, fontSize: "12px", cursor: "pointer" }}>🗑 削除</button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -7436,6 +7482,36 @@ export default function AdminPage() {
             {peForm && (
               <div style={{ border: "1px solid #e5e7eb", borderRadius: "10px", padding: "14px", display: "grid", gap: "10px" }}>
                 <div style={{ fontSize: "11px", color: "#9ca3af" }}>id: {peForm.id} / source: {peForm.source_type ?? "?"}{peForm.google_place_id ? ` / gpid: ${peForm.google_place_id}` : ""}</div>
+                {/* 学習シグナル: この場所にユーザーが積み上げた資産（削除の可否判断に） */}
+                {peSignals && (peSignals.photos + peSignals.posts + peSignals.ratings + peSignals.engagement > 0 ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                    <span style={{ fontSize: "11px", color: "#6b7280", fontWeight: 700 }}>ユーザーの積み上げ:</span>
+                    {peSignals.photos > 0 && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#e6fffa", color: "#2c7a7b", fontSize: "11px", fontWeight: 800 }}>📷 写真{peSignals.photos}</span>}
+                    {peSignals.posts > 0 && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#fef5ff", color: "#9b2c9b", fontSize: "11px", fontWeight: 800 }}>📝 Moodログ{peSignals.posts}</span>}
+                    {peSignals.ratings > 0 && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#fffbea", color: "#b7791f", fontSize: "11px", fontWeight: 800 }}>⭐ 評価{peSignals.ratings}</span>}
+                    {peSignals.engagement > 0 && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#eef2ff", color: "#4f46e5", fontSize: "11px", fontWeight: 800 }}>👀 行動{peSignals.engagement}</span>}
+                    <span style={{ fontSize: "11px", color: "#c05621" }}>← 検索に効いています。削除は慎重に</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "11px", color: "#9ca3af" }}>ユーザーの積み上げ（写真/Moodログ/評価/行動）はまだありません</div>
+                ))}
+                {/* 写真（places.image_urls/photo_url ＋ 利用者写真）。クリックで別タブ表示 */}
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "6px" }}>📷 写真 {pePhotos.length > 0 ? `(${pePhotos.length})` : ""}
+                    {peForm.rating != null && <span style={{ fontSize: "11px", color: "#9ca3af", fontWeight: 600, marginLeft: "8px" }}>Google評価 {Number(peForm.rating).toFixed(1)}（{peForm.rating_count ?? 0}件）</span>}
+                  </div>
+                  {pePhotos.length > 0 ? (
+                    <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "4px" }}>
+                      {pePhotos.map((u, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={u} alt="" onClick={() => window.open(u, "_blank")}
+                          style={{ width: "84px", height: "84px", flexShrink: 0, objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer", background: "#f3f4f6" }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "12px", color: "#9ca3af" }}>写真なし</div>
+                  )}
+                </div>
                 <label style={{ fontSize: "13px", fontWeight: 700 }}>名前
                   <input value={peForm.name ?? ""} onChange={(e) => setPeForm({ ...peForm, name: e.target.value })}
                     style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
@@ -7452,6 +7528,36 @@ export default function AdminPage() {
                   <input value={peForm.nearest_station ?? ""} onChange={(e) => setPeForm({ ...peForm, nearest_station: e.target.value })} placeholder="例: JR横浜駅 徒歩5分"
                     style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
                 </label>
+                {/* タグ（検索の語彙＝×で削除・入力＋Enterで追加） */}
+                <div style={{ fontSize: "13px", fontWeight: 700 }}>タグ
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", margin: "6px 0" }}>
+                    {(peForm.tags ?? []).length === 0 && <span style={{ fontSize: "12px", color: "#9ca3af", fontWeight: 400 }}>タグなし</span>}
+                    {(peForm.tags ?? []).map((t) => (
+                      <span key={t} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 8px", borderRadius: "999px", background: "#f0e8ec", fontSize: "12px", color: "#7a3040", fontWeight: 700 }}>
+                        {t}
+                        <span onClick={() => peRemoveTag(t)} style={{ cursor: "pointer", color: "#b07080", fontWeight: 900 }}>×</span>
+                      </span>
+                    ))}
+                  </div>
+                  <input value={peTagInput} onChange={(e) => setPeTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); peAddTag(); } }} placeholder="タグを入力してEnterで追加（例: #まったりしたい）"
+                    style={{ display: "block", width: "100%", marginTop: "2px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "13px", fontWeight: 400, boxSizing: "border-box" }} />
+                </div>
+                {/* 値段（budget）＋利用者の価格帯（読み取り） */}
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>値段
+                  <input value={peForm.budget ?? ""} onChange={(e) => setPeForm({ ...peForm, budget: e.target.value })} placeholder="例: ¥1,000〜2,000 / ~¥3,000"
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                  {pePriceChips.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
+                      <span style={{ fontSize: "11px", color: "#9ca3af", fontWeight: 600 }}>利用者の価格帯:</span>
+                      {pePriceChips.map((c) => <span key={c} style={{ padding: "2px 8px", borderRadius: "999px", background: "#fffbea", color: "#b7791f", fontSize: "11px", fontWeight: 700 }}>{c}</span>)}
+                    </div>
+                  )}
+                </label>
+                {/* 休業日（close_day） */}
+                <label style={{ fontSize: "13px", fontWeight: 700 }}>休業日
+                  <input value={peForm.close_day ?? ""} onChange={(e) => setPeForm({ ...peForm, close_day: e.target.value })} placeholder="例: 水曜日 / 年中無休 / 第2・4火曜"
+                    style={{ display: "block", width: "100%", marginTop: "4px", padding: "9px 11px", border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", fontWeight: 400, boxSizing: "border-box" }} />
+                </label>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <label style={{ flex: 1, fontSize: "13px", fontWeight: 700 }}>緯度(lat)
                     <input value={peForm.lat ?? ""} onChange={(e) => { const v = e.target.value.trim(); setPeForm({ ...peForm, lat: v === "" ? null : Number(v) }); }}
@@ -7466,8 +7572,17 @@ export default function AdminPage() {
                   <input type="checkbox" checked={peForm.is_active === true} onChange={(e) => setPeForm({ ...peForm, is_active: e.target.checked })} />
                   公開中（オフ＝検索/詳細に出さない）
                 </label>
-                <button onClick={peSave} disabled={peBusy}
-                  style={{ padding: "11px", borderRadius: "8px", border: "none", background: "#10b981", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peBusy ? "保存中…" : "💾 保存"}</button>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button onClick={peSave} disabled={peBusy}
+                    style={{ flex: 1, padding: "11px", borderRadius: "8px", border: "none", background: "#10b981", color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peBusy ? "保存中…" : "💾 保存"}</button>
+                  {peForm.is_active === false ? (
+                    <button onClick={() => peDelete(peForm.id, peForm.name, true, peSignals)} disabled={peBusy}
+                      style={{ flexShrink: 0, padding: "11px 16px", borderRadius: "8px", border: "1px solid #86efac", background: "#f0fdf4", color: "#16a34a", fontWeight: 800, cursor: "pointer" }}>↩︎ 復活</button>
+                  ) : (
+                    <button onClick={() => peDelete(peForm.id, peForm.name, false, peSignals)} disabled={peBusy}
+                      style={{ flexShrink: 0, padding: "11px 16px", borderRadius: "8px", border: "1px solid #fca5a5", background: "#fef2f2", color: "#dc2626", fontWeight: 800, cursor: "pointer" }}>🗑 削除</button>
+                  )}
+                </div>
               </div>
             )}
             {peMsg && <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 700, color: peMsg.includes("失敗") ? "#dc2626" : "#059669" }}>{peMsg}</div>}
@@ -8148,20 +8263,6 @@ export default function AdminPage() {
           <DbStatsPanel secret={adminSecret} />
         )}
 
-        {/* ===== 🗾 県別特集タブ ===== */}
-        {tab === "pref-featured" && (
-          <PrefFeaturedPanel secret={adminSecret} />
-        )}
-
-        {/* ===== 📊 カバレッジタブ (C-1) ===== */}
-        {tab === "coverage" && (
-          <CoveragePanel secret={adminSecret} />
-        )}
-
-        {/* ===== ✅ AIタグ検証キュー (C-2) ===== */}
-        {tab === "review-queue" && (
-          <ReviewQueuePanel secret={adminSecret} />
-        )}
         {tab === "metrics" && <MetricsAdmin secret={adminSecret} />}
         {tab === "mood-logs" && <MoodLogAdmin secret={adminSecret} />}
         {tab === "server-errors" && <ServerErrorsAdmin />}
