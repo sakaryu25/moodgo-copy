@@ -378,6 +378,22 @@ export default function PostScreen() {
   // 画面を離れる時に検索タイマーを止める（unmount後のsetState/古い結果上書きを防ぐ）
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
+  // 既存place候補を取得（onNameChangeの遅延実行と、下書き復元後の再表示から共用）。
+  //   ⚠復元時はタイピングを介さないので、この関数を明示的に呼ばないと「これかも？」が出ない。
+  const fetchCandidates = async (text: string) => {
+    const q = text.trim();
+    if (q.length < 2) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const qs = new URLSearchParams({ q });
+      const c = searchCoords.current;
+      if (c) { qs.set('lat', String(c.lat)); qs.set('lng', String(c.lng)); }   // 近い順ランキング用
+      const res = await apiFetch(`/api/place-search?${qs.toString()}`);
+      const d = await res.json();
+      setResults(Array.isArray(d?.places) ? d.places : []);
+    } catch { setResults([]); } finally { setSearching(false); }
+  };
+
   const existingPlaceId = paramPlaceId || pickedId;  // 既存(param or 検索選択)
   const isExisting = !!existingPlaceId;
   // 場所詳細から来た投稿はスポット名を固定（placeId無しのユーザー作成スポットでも
@@ -495,6 +511,16 @@ export default function PostScreen() {
           if (typeof d.priceNote === 'string') setPriceNote(d.priceNote);
           if (typeof d.contact === 'string') setContact(d.contact);
           if (d.vis === 'public' || d.vis === 'anon' || d.vis === 'private') setVis(d.vis);
+          // 候補選択/新規確定の状態を復元し、未選択なら候補検索を再実行（「これかも？」を再表示）。
+          //   ⚠これが無いと、名前だけ入った下書きの復元後に候補が出ず「新規追加」だけが出てしまう。
+          const rName = typeof d.spotName === 'string' ? d.spotName.trim() : '';
+          const rPicked = typeof d.pickedId === 'string' ? d.pickedId : '';
+          const rNewOk = d.newSpotOk === true;
+          if (rPicked) setPickedId(rPicked);
+          if (rNewOk) setNewSpotOk(true);
+          if (!editMode && !lockedFromParam && rName.length >= 2 && !rPicked && !rNewOk) {
+            fetchCandidates(rName);
+          }
         }
       } catch { /* 破損した下書きは無視 */ }
       draftRestored.current = true;
@@ -514,13 +540,14 @@ export default function PostScreen() {
           spotName, address, lat, lng, images: images.map((i) => ({ uri: i.uri, existing: i.existing })),
           moodTags, caption, rating, availFrom, availUntil, station,
           openTime, closeTime, is24h, closedDays, priceChip, priceNote, contact, vis,
+          pickedId, newSpotOk,   // 候補選択/新規確定の状態も保存＝復元時に候補を再表示 or 選択済みを維持
         })).catch(() => {});
       } else {
         AsyncStorage.removeItem(draftKey).catch(() => {});
       }
     }, 400);
     return () => clearTimeout(h);
-  }, [draftEnabled, spotName, address, lat, lng, images, moodTags, caption, rating, availFrom, availUntil, station, openTime, closeTime, is24h, closedDays, priceChip, priceNote, contact, vis]);
+  }, [draftEnabled, spotName, address, lat, lng, images, moodTags, caption, rating, availFrom, availUntil, station, openTime, closeTime, is24h, closedDays, priceChip, priceNote, contact, vis, pickedId, newSpotOk]);
 
   // スポット名を打つたびに既存placeを検索（被り候補を出す）。空/1文字なら候補クリア。
   const onNameChange = (text: string) => {
@@ -528,17 +555,7 @@ export default function PostScreen() {
     setNewSpotOk(false);   // 名前を打ち直したら新規確定を解除（既存に一致するかもしれない）
     if (timer.current) clearTimeout(timer.current);
     if (text.trim().length < 2) { setResults([]); return; }
-    timer.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const qs = new URLSearchParams({ q: text.trim() });
-        const c = searchCoords.current;
-        if (c) { qs.set('lat', String(c.lat)); qs.set('lng', String(c.lng)); }   // 近い順ランキング用
-        const res = await apiFetch(`/api/place-search?${qs.toString()}`);
-        const d = await res.json();
-        setResults(Array.isArray(d?.places) ? d.places : []);
-      } catch { setResults([]); } finally { setSearching(false); }
-    }, 300);
+    timer.current = setTimeout(() => { fetchCandidates(text); }, 300);
   };
   // 候補から既存スポットを選択＝その場所への口コミ(moodログ)として投稿
   const pickPlace = (p: PlaceHit) => {
