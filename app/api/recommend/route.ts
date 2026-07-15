@@ -239,6 +239,31 @@ function json(data: unknown, init?: ResponseInit) {
   return NextResponse.json(data, init);
 }
 
+// 期間限定バッジ用: 各recの supabaseId から places.available_from/until を一括取得して載せる。
+//   ⚠recommend には返却経路が複数ある（穴場/時間潰し/フリーワード/relax/AI/最終）。どの経路でも
+//     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
+//     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
+async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
+  if (!supabase || !Array.isArray(recs) || recs.length === 0) return recs;
+  const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
+  try {
+    const sids = [...new Set(recs.map(sidOf).filter(Boolean))];
+    if (sids.length === 0) return recs;
+    const pmap = new Map<string, { from: string | null; until: string | null }>();
+    for (const chunk of (function* () { for (let i = 0; i < sids.length; i += 300) yield sids.slice(i, i + 300); })()) {
+      const { data } = await supabase.from("places").select("id, available_from, available_until").in("id", chunk);
+      for (const p of (data ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null }>) {
+        if (p.available_from || p.available_until) pmap.set(String(p.id), { from: p.available_from, until: p.available_until });
+      }
+    }
+    if (pmap.size === 0) return recs;
+    return recs.map((r) => {
+      const pv = pmap.get(sidOf(r));
+      return pv ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T) : r;
+    });
+  } catch { return recs; }
+}
+
 type ApprovedSuggestion = {
   spot_name: string;
   description: string | null;
@@ -6575,7 +6600,7 @@ async function handleRecommend(request: Request) {
         const jikanRecs = [...jikanTop.map(r => toJikanRec(r, true)), ...jTake.map(r => toJikanRec(r, false))];
         await applyUserPhotos(jikanRecs as unknown as UserPhotoRec[]);
         return json({
-          recommendations: jikanRecs,
+          recommendations: await attachAvailability(jikanRecs),
           source: "supabase-jikan",
           searchId,
           usedAI: false,
@@ -6621,7 +6646,7 @@ async function handleRecommend(request: Request) {
           await applyUserPhotos(fwRecs as unknown as UserPhotoRec[]);
           diversifyByCategory(fwRecs as unknown as DivRec[]);
           return json({
-            recommendations: fwRecs,
+            recommendations: await attachAvailability(fwRecs),
             source: answers.aiChat ? "ai_chat" : "ai_freeword",
             usedAI: true,
             warning: "",
@@ -8281,26 +8306,8 @@ async function handleRecommend(request: Request) {
             });
           }
         } catch { /* 期間ガード失敗は素通り（検索自体は成立させる） */ }
-        // 期間限定バッジ用: 残ったplacesの available_from/until を supabaseId で一括取得し各recに載せる
-        //   （検索カードで「期間限定」と分かるようにする）。列が無い/未適用でもバッジ無しで安全に成立。
-        try {
-          const sids = [...new Set(recommendations.map(r => (r as { supabaseId?: string }).supabaseId ?? "").filter(Boolean))];
-          if (sids.length > 0 && supabase) {
-            const { data: periodRows } = await supabase.from("places")
-              .select("id, available_from, available_until").in("id", sids);
-            const pmap = new Map<string, { from: string | null; until: string | null }>();
-            for (const p of (periodRows ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null }>) {
-              if (p.available_from || p.available_until) pmap.set(String(p.id), { from: p.available_from, until: p.available_until });
-            }
-            if (pmap.size > 0) {
-              recommendations = recommendations.map(r => {
-                const sid = (r as { supabaseId?: string }).supabaseId;
-                const pv = sid ? pmap.get(sid) : undefined;
-                return pv ? { ...r, availableFrom: pv.from, availableUntil: pv.until } : r;
-              });
-            }
-          }
-        } catch { /* 期間列が無い/未適用でもバッジ無しで成立 */ }
+        // 期間限定バッジ用: 各recの supabaseId から places.available_from/until を載せる（全経路共通ヘルパー）
+        recommendations = await attachAvailability(recommendations);
         // 領域R2(最終確定): LLMリランカー(7819)・多様化の後でも「近め指定の距離外れ値」を末尾へ。
         //   rerankerが遠方を上位に戻すため、ここで cap 超過を安定パーティションで末尾固定する(順序保持)。
         //   far-bias(minRadiusKm>0)・高層ビル目的地・心霊は対象外＝遠方意図/独自データを壊さない。
@@ -8647,7 +8654,7 @@ async function handleRecommend(request: Request) {
           });
           await applyUserPhotos(hiFinal as unknown as UserPhotoRec[]);
           diversifyByCategory(hiFinal as unknown as DivRec[]);
-          return json({ recommendations: hiFinal, usedAI: true, warning: "" });
+          return json({ recommendations: await attachAvailability(hiFinal), usedAI: true, warning: "" });
         }
       }
     }
@@ -8944,7 +8951,7 @@ async function handleRecommend(request: Request) {
       await applyUserPhotos(relaxFinalResults as unknown as UserPhotoRec[]);
       diversifyByCategory(relaxFinalResults as unknown as DivRec[]);
       return json({
-        recommendations: relaxFinalResults,
+        recommendations: await attachAvailability(relaxFinalResults),
         usedAI: !!relaxAiResult,
         warning: relaxFinalResults.length === 0 ? "条件に合うスポットが見つかりませんでした。エリアや条件を変えてお試しください。" : "",
       });
@@ -9915,7 +9922,7 @@ async function handleRecommend(request: Request) {
     await applyUserPhotos(finalResults as unknown as UserPhotoRec[]);
     diversifyByCategory(finalResults as unknown as DivRec[]);
     return json({
-      recommendations: finalResults,
+      recommendations: await attachAvailability(finalResults),
       usedAI: !!aiPlans,
       searchId,
       warning: "",
