@@ -1,5 +1,7 @@
 // ── (tabs)/_layout ─────────────────────────────────────────────────────────
-// iOS標準のネイティブタブバー（UITabBar）。iOS26では自動的にLiquid Glassになる。
+// iOS標準のネイティブタブバー（UITabBar）。
+// ⚠iOS26は既定でLiquid Glass（半透明の浮遊バー＋スクロールで縮むピル）になり「色が変」に見えるため、
+//   backgroundColor=白で不透明化＋minimizeBehavior=never で縮ませず、従来の"ソリッドな下部バー"に固定。
 // 家計簿アプリと同じ"本物の"タブバー。タブは最大5つ（履歴はホーム内ボタンから）。
 // ラベルは非表示でアイコンのみ（読み上げ用にテキストは残す）。
 // ⚠ disablePopToTop/disableScrollToTop は必須: 再タップをネイティブのspecial effectに
@@ -8,7 +10,7 @@ import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 
 export default function TabsLayout() {
   return (
-    <NativeTabs tintColor="#7C3AED" minimizeBehavior="onScrollDown" labelVisibilityMode="unlabeled" disableTransparentOnScrollEdge={true}>
+    <NativeTabs tintColor="#7C3AED" backgroundColor="#FFFFFF" minimizeBehavior="never" labelVisibilityMode="unlabeled" disableTransparentOnScrollEdge={true}>
       <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop>
         <Label hidden>ホーム</Label>
         <Icon sf={{ default: 'house', selected: 'house.fill' }} />

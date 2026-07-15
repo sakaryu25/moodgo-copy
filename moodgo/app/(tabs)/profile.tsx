@@ -329,7 +329,7 @@ export default function ProfileTab() {
   const tileCell   = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP * 2) / 3) - 1;  // カード内3列
   const badgeCell  = Math.floor((W - SIDE * 2 - CARD_PAD * 2 - GAP * 3) / 4) - 1;  // カード内4列×1行（全件は「＞」）
   const tileCellFull  = Math.floor((W - SIDE * 2 - GAP * 2) / 3) - 1;         // サブビュー3列
-  const badgeCellFull = Math.floor((W - SIDE * 2 - GAP) / 2) - 1;             // サブビュー2列
+  const badgeCellFull = Math.floor((W - SIDE * 2 - GAP * 3) / 4) - 1;         // サブビュー4列（少数は中央揃え）
 
   // ── 部品 ────────────────────────────────────────────────────────────────
   const CardHeader = ({ icon, title, onMore }: { icon: React.ReactNode; title: string; onMore?: () => void }) => (
