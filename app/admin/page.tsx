@@ -162,6 +162,113 @@ interface VitalityStats {
 
 // ─── DB統計パネル ──────────────────────────────────────────────────────────────
 
+
+// 📍 位置情報補完: 座標なし OR 住所不完全 のスポットを双方向(住所↔座標)で一括補完。完全住所形式に統一。
+function LocationFillPanel({ secret }: { secret: string }) {
+  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; noCoord: boolean; badAddr: boolean };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string>("");
+  const [msg, setMsg] = useState("");
+  const [batch, setBatch] = useState<{ running: boolean; filled: number; processed: number }>({ running: false, filled: 0, processed: 0 });
+  const [edit, setEdit] = useState<Record<string, { lat: string; lng: string; address: string }>>({});
+
+  const load = useCallback(async (kw = "") => {
+    setBusy(true); setMsg("");
+    try {
+      const u = new URL("/api/admin/location-fill", window.location.origin);
+      u.searchParams.set("secret", secret); u.searchParams.set("limit", "300");
+      if (kw) u.searchParams.set("q", kw);
+      const d = await fetch(u.toString()).then(r => r.json());
+      if (d?.ok) setRows(d.places ?? []); else setMsg(d?.error ?? "取得に失敗しました");
+    } catch { setMsg("取得に失敗しました"); }
+    setBusy(false);
+  }, [secret]);
+  useEffect(() => { load(); }, [load]);
+
+  const post = (b: Record<string, unknown>) => fetch("/api/admin/location-fill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, ...b }) }).then(r => r.json());
+
+  const autoOne = async (id: string) => {
+    setRowBusy(id); setMsg("");
+    const d = await post({ action: "auto", placeId: id });
+    if (d?.ok) { setRows(prev => prev.filter(r => r.id !== id)); }
+    else setMsg(d?.error ?? "補完できませんでした");
+    setRowBusy("");
+  };
+  const saveOne = async (id: string) => {
+    const e = edit[id]; if (!e) return;
+    setRowBusy(id);
+    const body: Record<string, unknown> = { action: "save", placeId: id };
+    if (e.lat.trim()) body.lat = Number(e.lat); if (e.lng.trim()) body.lng = Number(e.lng);
+    if (e.address.trim()) body.address = e.address.trim();
+    const d = await post(body);
+    if (d?.ok) setRows(prev => prev.filter(r => r.id !== id)); else setMsg(d?.error ?? "保存に失敗");
+    setRowBusy("");
+  };
+  const runBatch = async () => {
+    setBatch({ running: true, filled: 0, processed: 0 });
+    let filled = 0, processed = 0, guard = 0;
+    while (guard++ < 60) {
+      const d = await post({ action: "auto-batch" });
+      if (!d?.ok) break;
+      filled += d.filled ?? 0; processed += d.processed ?? 0;
+      setBatch({ running: true, filled, processed });
+      if (d.done || (d.processed ?? 0) === 0) break;
+    }
+    setBatch({ running: false, filled, processed });
+    load(q);
+  };
+
+  const card: React.CSSProperties = { background: "#fff", border: "1px solid #f0e9fb", borderRadius: 12, padding: 14, marginBottom: 12 };
+  const inp: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px", fontSize: 13, boxSizing: "border-box" };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>📍 位置情報補完</h2>
+        <span style={{ fontSize: 12, color: "#9ca3af" }}>座標登録＋住所補完を統一（{rows.length}件）</span>
+        <span style={{ marginLeft: "auto" }} />
+        <button onClick={() => load(q)} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E3D8F5", background: "#fff", color: "#7C3AED", fontWeight: 700, cursor: "pointer" }}>🔄 再読み込み</button>
+        <button onClick={runBatch} disabled={batch.running || busy} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#ffbf67,#ff8f7f)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>
+          {batch.running ? `補完中… ${batch.filled}/${batch.processed}` : "⚡ 一括自動補完"}
+        </button>
+      </div>
+      <p style={{ fontSize: 12.5, color: "#6b7280", margin: "0 0 12px", lineHeight: 1.7 }}>
+        座標が無い／住所が「日本」「都道府県だけ」のスポットを、名前・住所から双方向で補完します。<br />
+        住所は「<b>神奈川県横浜市金沢区富岡東1-44-11</b>」の完全形（丁目・番地まで）で保存＝検索の距離/地名精度が上がります。
+      </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === "Enter") load(q); }} placeholder="名前で絞り込み（Enter）" style={{ ...inp, flex: 1 }} />
+        <button onClick={() => load(q)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#9B6BFF", color: "#fff", fontWeight: 700, cursor: "pointer" }}>検索</button>
+      </div>
+      {msg && <div style={{ color: "#dc2626", fontWeight: 700, marginBottom: 10 }}>{msg}</div>}
+      {busy ? <div style={{ opacity: 0.5, padding: 20 }}>読み込み中…</div> : rows.length === 0 ? (
+        <div style={{ opacity: 0.55, padding: 20 }}>補完が必要なスポットはありません 🎉</div>
+      ) : rows.map(r => {
+        const e = edit[r.id] ?? { lat: "", lng: "", address: "" };
+        return (
+          <div key={r.id} style={card}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 14, color: "#1A0A2E" }}>{r.name}</b>
+              {r.noCoord && <span style={{ fontSize: 10.5, background: "#FEF3C7", color: "#B45309", borderRadius: 6, padding: "2px 7px", fontWeight: 800 }}>座標なし</span>}
+              {r.badAddr && <span style={{ fontSize: 10.5, background: "#FEE2E2", color: "#DC2626", borderRadius: 6, padding: "2px 7px", fontWeight: 800 }}>住所不完全</span>}
+              <span style={{ marginLeft: "auto" }} />
+              <button onClick={() => autoOne(r.id)} disabled={rowBusy === r.id} style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "#7C3AED", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{rowBusy === r.id ? "補完中…" : "⚡ 自動補完"}</button>
+            </div>
+            <div style={{ fontSize: 11.5, color: "#9ca3af", margin: "4px 0 8px" }}>現在: {r.address || "(住所なし)"} ／ 座標 {r.lat != null ? `${r.lat}, ${r.lng}` : "なし"}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr auto", gap: 8, alignItems: "center" }}>
+              <input placeholder="緯度(lat)" value={e.lat} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, lat: ev.target.value } }))} style={inp} />
+              <input placeholder="経度(lng)" value={e.lng} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, lng: ev.target.value } }))} style={inp} />
+              <input placeholder="住所（例: 神奈川県横浜市金沢区富岡東1-44-11）" value={e.address} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, address: ev.target.value } }))} style={inp} />
+              <button onClick={() => saveOne(r.id)} disabled={rowBusy === r.id} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>💾 保存</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // 🧠 学習インサイト: 検索ランキングが実際に学習に使う信号（エンゲージメント/アフィニティ/Moodログ/検索perf）を可視化
 function LearningInsightsPanel({ secret }: { secret: string }) {
   type Ins = {
@@ -1291,7 +1398,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights" | "location-fill">("stats");
   // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/公開状態を直接編集（報告対応用）──
   type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null };
   const [peKw, setPeKw] = useState("");
@@ -3424,7 +3531,7 @@ export default function AdminPage() {
             { key: "visited", label: "🚶 訪問学習データ" },
             { key: "reports", label: "⚠ 不適切報告" },
             { key: "mood_ratings", label: "🎭 気分フィードバック" },
-            { key: "geocode", label: "📍 座標登録" },
+            { key: "location-fill", label: "📍 位置情報補完" },
             { key: "merge",   label: "🔀 重複統合" },
             { key: "place-edit", label: "🛠 場所編集" },
             { key: "retag",   label: "🏷 一括タグ修正" },
@@ -3437,7 +3544,6 @@ export default function AdminPage() {
             { key: "mood-logs", label: "📝 moodログ管理" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
-            { key: "address-fill", label: "住所補完" },
             { key: "account-type", label: "アカウント種別" },
           ] as const).map((t) => (
             <button
@@ -7289,6 +7395,8 @@ export default function AdminPage() {
 
         {/* ===== 開発ログタブ ===== */}
         {tab === "insights" && <LearningInsightsPanel secret={adminSecret} />}
+
+        {tab === "location-fill" && <LocationFillPanel secret={adminSecret} />}
 
         {/* ── 🛠 場所編集タブ ───────────────────────────────────────── */}
         {tab === "place-edit" && (
