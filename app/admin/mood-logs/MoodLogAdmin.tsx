@@ -67,6 +67,9 @@ export default function MoodLogAdmin({ secret: propSecret }: { secret?: string }
   return (
     <div style={{ maxWidth: 760, margin: "0 auto", padding: 20, fontFamily: "system-ui", background: C.bg, minHeight: "100vh" }}>
       <h2 style={{ color: C.purple }}>Moodログ管理（{shown.length}件）</h2>
+      <p style={{ fontSize: 12.5, color: "#5b6b8c", background: "#f5f8ff", border: "1px solid #d9e2ff", borderRadius: 10, padding: "10px 14px", lineHeight: 1.7, margin: "10px 0 0" }}>
+        Moodログの<b>気分タグは検索ランキングに直結</b>します（その気分で検索した時にこの場所が出やすくなる）。荒らし/宣伝など不適切な投稿は<b>「非表示」か「却下」で検索の学習から除外</b>されます＝ここが「検索に出す場所を消す」入口です。👍参考/🔁また行きたい が多い投稿ほど学習の重みが大きくなります。
+      </p>
       <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
         {(["pending", "reported", "all"] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -87,8 +90,11 @@ export default function MoodLogAdmin({ secret: propSecret }: { secret?: string }
             <span style={{ marginLeft: "auto", fontSize: 12, color: C.gray }}>{new Date(p.created_at).toLocaleString("ja-JP")}</span>
           </div>
           {p.caption && <div style={{ fontSize: 14, marginBottom: 6 }}>{p.caption}</div>}
-          <div style={{ fontSize: 12, color: C.gray, marginBottom: 8 }}>
-            {(p.mood_tags ?? []).join(" ")} {p.companion ? `・${p.companion}` : ""} ・👍{p.like_count ?? 0} 🙏{p.helpful_count ?? 0} 🔁{p.revisit_count ?? 0}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center", marginBottom: 8 }}>
+            {(p.mood_tags ?? []).map(t => (
+              <span key={t} style={{ padding: "2px 9px", borderRadius: 999, background: "#EDE9FE", color: C.purple, fontSize: 11.5, fontWeight: 700 }}>{t}</span>
+            ))}
+            <span style={{ fontSize: 12, color: C.gray }}>{p.companion ? `・${p.companion}` : ""} ・👍{p.like_count ?? 0} 🙏{p.helpful_count ?? 0} 🔁{p.revisit_count ?? 0}</span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => moderate(p.id, "approved")} style={{ padding: "6px 14px", border: 0, borderRadius: 8, background: C.green, color: "#fff", cursor: "pointer", fontWeight: 700 }}>承認</button>

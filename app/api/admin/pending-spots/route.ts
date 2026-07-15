@@ -8,16 +8,23 @@ import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 
 export async function GET(req: Request) {
-  if (new URL(req.url).searchParams.get("secret") !== ADMIN_SECRET) {
+  const sp = new URL(req.url).searchParams;
+  if (sp.get("secret") !== ADMIN_SECRET) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   if (!supabase) return NextResponse.json({ ok: true, places: [] });
   try {
-    const { data } = await supabase
+    // filter: pending(承認待ち=既定) / approved(承認済み) / rejected(却下履歴)
+    //   承認済み=source_type:user & is_active:true、却下=source_type:user_rejected（ソフト却下＝履歴が残る）
+    const filter = sp.get("filter") === "approved" ? "approved" : sp.get("filter") === "rejected" ? "rejected" : "pending";
+    let q = supabase
       .from("places")
       .select("id, name, address, lat, lng, tags, nearest_station, description, created_at")
-      .eq("source_type", "user").eq("is_active", false)
       .order("created_at", { ascending: false }).limit(200);
+    if (filter === "approved") q = q.eq("source_type", "user").eq("is_active", true);
+    else if (filter === "rejected") q = q.eq("source_type", "user_rejected");
+    else q = q.eq("source_type", "user").eq("is_active", false);
+    const { data } = await q;
     const places = data ?? [];
     // 投稿本文(caption)を添付＝審査時に「利用者が何を書いたか」を見て調整できる
     const ids = places.map((p) => (p as { id: string }).id);
@@ -51,8 +58,8 @@ export async function POST(req: Request) {
   try {
     if (action === "approve") {
       // 承認時に渡された編集値があれば places を更新（タグ/座標/住所/名前/最寄駅）。
-      //   無ければ is_active=true だけ（従来動作）。合格＝検索に出る。
-      const update: Record<string, unknown> = { is_active: true };
+      //   無ければ is_active=true だけ（従来動作）。合格＝検索に出る。source_typeをuserに戻す＝却下からの復帰も対応。
+      const update: Record<string, unknown> = { is_active: true, source_type: "user" };
       if (Array.isArray(body?.tags)) {
         const tags = (body.tags as unknown[]).filter((t) => typeof t === "string" && t).slice(0, 30);
         // タグが1つも無いと検索に出ないので承認をブロック（決められた#に振り分けるのが承認の役割）
@@ -68,10 +75,16 @@ export async function POST(req: Request) {
       }
       await supabase.from("places").update(update).eq("id", id);
     } else if (action === "reject") {
-      // 却下 → 仮登録placeを削除（紐づくspot_postは残るが検索には出ない）
-      await supabase.from("places").delete().eq("id", id);
+      // 却下 → ソフト却下（source_type=user_rejected・is_active=false）＝検索に出ないが履歴に残る＆復帰可。
+      await supabase.from("places").update({ source_type: "user_rejected", is_active: false }).eq("id", id);
+    } else if (action === "unreject") {
+      // 却下履歴から「承認待ち」に戻す（source_type=user・is_active=false）
+      await supabase.from("places").update({ source_type: "user", is_active: false }).eq("id", id);
+    } else if (action === "purge") {
+      // 却下履歴を完全削除（掃除用・元に戻せない）
+      await supabase.from("places").delete().eq("id", id).eq("source_type", "user_rejected");
     } else {
-      return NextResponse.json({ ok: false, error: "action(approve|reject)が必要です" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "action(approve|reject|unreject|purge)が必要です" }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -1104,6 +1104,7 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
   const [places, setPlaces] = useState<PendingSpot[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
   // 承認前の調整用ドラフト（タグ/住所/座標/最寄駅）。キー=place id
   const [draft, setDraft] = useState<Record<string, PendingDraft>>({});
   const [geoBusy, setGeoBusy] = useState<string | null>(null);
@@ -1111,7 +1112,7 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/pending-spots?secret=${encodeURIComponent(secret)}`);
+      const res = await fetch(`/api/admin/pending-spots?secret=${encodeURIComponent(secret)}&filter=${filter}`);
       const d = await res.json();
       const list: PendingSpot[] = d?.places ?? [];
       setPlaces(list);
@@ -1128,7 +1129,7 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
       setDraft(init);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setD = (id: string, patch: Partial<PendingDraft>) =>
     setDraft(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
@@ -1147,7 +1148,8 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
     } catch { /* 手入力にフォールバック */ } finally { setGeoBusy(null); }
   };
 
-  const act = async (id: string, action: "approve" | "reject") => {
+  const act = async (id: string, action: "approve" | "reject" | "unreject" | "purge") => {
+    if (action === "purge" && !confirm("この却下スポットを完全に削除します（元に戻せません）。よろしいですか？")) return;
     setBusy(id);
     const d = draft[id];
     const payload: Record<string, unknown> = { secret, id, action };
@@ -1171,12 +1173,22 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E" }}>🆕 ユーザー投稿の新スポット審査（{places.length}件）</h2>
         <button onClick={load} style={{ background: "#fff", border: "1px solid #ddd", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer" }}>{loading ? "読込中…" : "更新"}</button>
       </div>
-      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>統一投稿で新スポットが投稿されると承認待ちで溜まります。<b>タグ・住所・座標を調整</b>してから「承認→検索に出す」を押すと、その内容で検索に反映されます（付けたタグの気分で検索に出ます）。</p>
-      {!loading && places.length === 0 && <p style={{ color: "#9CA3AF" }}>承認待ちの新スポットはありません。</p>}
+      {/* 履歴タブ: 承認待ち / 承認済み / 却下 */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {([["pending", "承認待ち"], ["approved", "承認済み"], ["rejected", "却下"]] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ border: filter === k ? "0" : "1px solid #DDD6FE", background: filter === k ? "#7C3AED" : "#fff", color: filter === k ? "#fff" : "#7C3AED", borderRadius: 999, padding: "6px 16px", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>{label}</button>
+        ))}
+      </div>
+      <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>
+        {filter === "pending" ? <>統一投稿で新スポットが投稿されると承認待ちで溜まります。<b>タグ・住所・座標を調整</b>してから「承認→検索に出す」を押すと、その内容で検索に反映されます（付けたタグの気分で検索に出ます）。</>
+          : filter === "approved" ? <>承認して検索に出しているユーザー投稿スポットの履歴です。問題があれば「却下」で検索から外せます。</>
+          : <>却下したスポットの履歴です（検索には出ていません）。「承認待ちに戻す」で再審査、「完全削除」でDBから消去できます。</>}
+      </p>
+      {!loading && places.length === 0 && <p style={{ color: "#9CA3AF" }}>{filter === "pending" ? "承認待ちの新スポットはありません。" : filter === "approved" ? "承認済みのユーザー投稿スポットはありません。" : "却下履歴はありません。"}</p>}
       {places.map(p => {
         const d = draft[p.id] ?? { tags: [], address: "", station: "", lat: "", lng: "" };
         const hasCoords = !!(parseFloat(d.lat) && parseFloat(d.lng));
@@ -1233,8 +1245,23 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
             {!hasCoords && <span style={{ fontSize: 11, color: "#DC2626", marginLeft: 10 }}>⚠ 座標が無いと距離検索に出ません</span>}
 
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button onClick={() => act(p.id, "approve")} disabled={busy === p.id || d.tags.length === 0} style={{ background: d.tags.length === 0 ? "#9CA3AF" : "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 800, cursor: d.tags.length === 0 ? "not-allowed" : "pointer" }}>{busy === p.id ? "処理中…" : "承認→検索に出す"}</button>
-              <button onClick={() => act(p.id, "reject")} disabled={busy === p.id} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>却下</button>
+              {filter === "rejected" ? (
+                <>
+                  <button onClick={() => act(p.id, "unreject")} disabled={busy === p.id} style={{ background: "#7C3AED", color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 800, cursor: "pointer" }}>{busy === p.id ? "処理中…" : "↩︎ 承認待ちに戻す"}</button>
+                  <button onClick={() => act(p.id, "purge")} disabled={busy === p.id} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>完全削除</button>
+                </>
+              ) : filter === "approved" ? (
+                <>
+                  <span style={{ alignSelf: "center", fontSize: 12.5, fontWeight: 800, color: "#16A34A" }}>✅ 検索に出ています</span>
+                  <button onClick={() => act(p.id, "approve")} disabled={busy === p.id || d.tags.length === 0} style={{ background: d.tags.length === 0 ? "#9CA3AF" : "#EDE9FE", color: d.tags.length === 0 ? "#fff" : "#7C3AED", border: 0, borderRadius: 8, padding: "10px 14px", fontWeight: 800, cursor: d.tags.length === 0 ? "not-allowed" : "pointer" }}>{busy === p.id ? "処理中…" : "タグ/情報を更新"}</button>
+                  <button onClick={() => act(p.id, "reject")} disabled={busy === p.id} style={{ marginLeft: "auto", background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>却下（検索から外す）</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => act(p.id, "approve")} disabled={busy === p.id || d.tags.length === 0} style={{ background: d.tags.length === 0 ? "#9CA3AF" : "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 800, cursor: d.tags.length === 0 ? "not-allowed" : "pointer" }}>{busy === p.id ? "処理中…" : "承認→検索に出す"}</button>
+                  <button onClick={() => act(p.id, "reject")} disabled={busy === p.id} style={{ background: "#fff", color: "#DC2626", border: "1px solid #DC2626", borderRadius: 8, padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>却下</button>
+                </>
+              )}
             </div>
           </div>
         );
