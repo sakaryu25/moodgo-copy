@@ -300,6 +300,55 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
   );
 }
 
+
+// 🚶 実際の訪問学習（行った！）: spot_engagement action=visited の実データ。手動feedbackとは別の「今のリアル信号」
+function VisitedRealityPanel({ secret }: { secret: string }) {
+  type V = { total: number; topPlaces: Array<{ place: string; count: number }>; byMood: Array<{ mood: string; count: number }> };
+  const [v, setV] = useState<V | null>(null);
+  const [busy, setBusy] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/admin/learning-insights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, days: 90 }) }).then(x => x.json());
+        if (r?.ok && r.visited) setV(r.visited as V);
+      } catch { /* noop */ }
+      setBusy(false);
+    })();
+  }, [secret]);
+  const box: React.CSSProperties = { background: "linear-gradient(135deg,#FFF7ED,#FFF1E6)", border: "1px solid #FED7AA", borderRadius: 14, padding: 16, marginBottom: 20 };
+  const mx = Math.max(1, ...(v?.topPlaces ?? []).map(p => p.count));
+  return (
+    <div style={box}>
+      <div style={{ fontWeight: 900, fontSize: 15, color: "#9A3412", marginBottom: 4 }}>🚶 実際の「行った！」学習データ <span style={{ fontSize: 11, fontWeight: 600, color: "#b45309" }}>（アプリの行った!ボタン＝spot_engagement・過去90日・{v?.total ?? 0}件）</span></div>
+      <div style={{ fontSize: 11.5, color: "#b45309", marginBottom: 12 }}>下の手動追加とは別の「実利用データ」です。気分×場所のアフィニティ加点に直結します。</div>
+      {busy ? <div style={{ opacity: 0.5, fontSize: 13 }}>読み込み中…</div> : !v || v.total === 0 ? (
+        <div style={{ opacity: 0.55, fontSize: 13 }}>まだ実データがありません（利用者が「行った!」を押すと溜まります）。</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#9A3412", marginBottom: 6 }}>訪問された場所 TOP</div>
+            {v.topPlaces.slice(0, 8).map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                <span style={{ width: 130, fontSize: 12, color: "#7c2d12", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i + 1}. {p.place}</span>
+                <span style={{ flex: 1, height: 7, background: "#FDE7D0", borderRadius: 99 }}><span style={{ display: "block", width: `${Math.round((p.count / mx) * 100)}%`, height: "100%", background: "#F59E0B", borderRadius: 99 }} /></span>
+                <b style={{ width: 30, textAlign: "right", fontSize: 12, color: "#9A3412" }}>{p.count}</b>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#9A3412", marginBottom: 6 }}>気分別の訪問</div>
+            {v.byMood.slice(0, 8).map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "3px 0", color: "#7c2d12", borderBottom: "1px dashed #FDE7D0" }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>{m.mood}</span><b>{m.count}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DbStatsPanel({ secret }: { secret: string }) {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -6492,6 +6541,7 @@ export default function AdminPage() {
         {/* ===== 訪問学習データ管理タブ ===== */}
         {tab === "visited" && (
           <div style={{ display: "grid", gap: "20px" }}>
+            <VisitedRealityPanel secret={adminSecret} />
             {/* 手動追加フォーム */}
             <div style={card}>
               <div style={titleStyle}>➕ 訪問データを手動追加</div>
@@ -6748,6 +6798,58 @@ export default function AdminPage() {
             <div style={{ fontWeight: 900, fontSize: "20px", marginBottom: "18px", color: "#4a3034" }}>
               ⚠ 不適切報告一覧
             </div>
+
+            {/* 🔎 検索品質シグナル: 報告を「検索改善に効く負のシグナル」として場所別に集計（既存reports配列をクライアント集計）*/}
+            {(() => {
+              // 報告理由を検索品質カテゴリに分類（関連度=検索の的外れ / 誤情報=データ品質 / 閉店=在庫除去）
+              const catOf = (reason: string): "relevance" | "misinfo" | "closed" | "other" => {
+                const r = reason || "";
+                if (/関連度|不適切な検索|場所名が違う|最寄り駅が違う|住所が違う/.test(r)) return "relevance";
+                if (/誤情報|不正確|営業時間が違う/.test(r)) return "misinfo";
+                if (/閉店|閉業/.test(r)) return "closed";
+                return "other";
+              };
+              const byPlace = new Map<string, { relevance: number; misinfo: number; closed: number; other: number; total: number }>();
+              for (const r of reports) {
+                const k = r.spot_name || "(無名)";
+                const e = byPlace.get(k) ?? { relevance: 0, misinfo: 0, closed: 0, other: 0, total: 0 };
+                e[catOf(r.reason)] += 1; e.total += 1;
+                byPlace.set(k, e);
+              }
+              // 検索を最も痛める順（関連度×3 + 誤情報×2 + 閉店×2）
+              const ranked = [...byPlace.entries()]
+                .map(([place, c]) => ({ place, ...c, harm: c.relevance * 3 + c.misinfo * 2 + c.closed * 2 }))
+                .filter(x => x.harm > 0)
+                .sort((a, b) => b.harm - a.harm).slice(0, 12);
+              const catTotals = reports.reduce((acc, r) => { acc[catOf(r.reason)] = (acc[catOf(r.reason)] ?? 0) + 1; return acc; }, {} as Record<string, number>);
+              return (
+                <div style={{ background: "linear-gradient(135deg,#EEF2FF,#F5F3FF)", border: "1px solid #C7D2FE", borderRadius: 16, padding: "18px 20px", marginBottom: 24 }}>
+                  <div style={{ fontWeight: 900, fontSize: 15, color: "#4338CA", marginBottom: 4 }}>🔎 検索品質シグナル</div>
+                  <div style={{ fontSize: 11.5, color: "#6366F1", marginBottom: 12 }}>報告を「検索を痛める負のシグナル」として集計。関連度が低い＝検索の的外れ、誤情報＝データ品質、閉店＝在庫除去の対象。ここ上位は🛠場所編集/重複統合/非表示で直すと検索が改善します。</div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                    {([["relevance","関連度が低い","#DC2626"],["misinfo","誤情報","#EA580C"],["closed","閉店・閉業","#6B7280"],["other","その他","#9CA3AF"]] as const).map(([k,l,c]) => (
+                      <span key={k} style={{ background: "#fff", border: `1px solid ${c}44`, color: c, borderRadius: 99, padding: "5px 12px", fontSize: 12.5, fontWeight: 800 }}>{l} {catTotals[k] ?? 0}</span>
+                    ))}
+                  </div>
+                  {ranked.length === 0 ? (
+                    <div style={{ opacity: 0.55, fontSize: 13 }}>検索品質を痛める報告はありません。</div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#4338CA", marginBottom: 6 }}>検索を最も痛めている場所（要対応順）</div>
+                      {ranked.map((x, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid #E0E7FF" }}>
+                          <span style={{ width: 20, fontSize: 12, color: "#818CF8", fontWeight: 800 }}>{i + 1}</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "#312E81", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.place}</span>
+                          {x.relevance > 0 && <span style={{ fontSize: 11, background: "#FEE2E2", color: "#DC2626", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>関連{x.relevance}</span>}
+                          {x.misinfo > 0 && <span style={{ fontSize: 11, background: "#FFEDD5", color: "#EA580C", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>誤情報{x.misinfo}</span>}
+                          {x.closed > 0 && <span style={{ fontSize: 11, background: "#F3F4F6", color: "#6B7280", borderRadius: 6, padding: "2px 7px", fontWeight: 700 }}>閉店{x.closed}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* 全体非表示リスト */}
             <div style={{ background: "#fff5f5", border: "1px solid #fecaca", borderRadius: "16px", padding: "18px 20px", marginBottom: "24px" }}>

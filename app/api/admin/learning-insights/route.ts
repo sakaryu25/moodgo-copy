@@ -46,6 +46,25 @@ export async function POST(req: NextRequest) {
     };
   } catch { out.engagement = null; }
 
+  // ①-b 実際の訪問（行った！）: spot_engagement action=visited が今のリアルな訪問学習信号。
+  //   旧・訪問学習データタブは feedback への手動入力だけで、この実データが映っていなかった。
+  try {
+    const { data } = await db.from("spot_engagement")
+      .select("place_name, mood, created_at").eq("action", "visited").gte("created_at", sinceIso).limit(20000);
+    const rows = (data ?? []) as Array<{ place_name: string | null; mood: string | null }>;
+    const byPlace: Record<string, number> = {};
+    const byMood: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.place_name) byPlace[r.place_name] = (byPlace[r.place_name] ?? 0) + 1;
+      if (r.mood) byMood[r.mood] = (byMood[r.mood] ?? 0) + 1;
+    }
+    out.visited = {
+      total: rows.length,
+      topPlaces: Object.entries(byPlace).map(([place, count]) => ({ place, count })).sort((a, b) => b.count - a.count).slice(0, 20),
+      byMood: Object.entries(byMood).map(([mood, count]) => ({ mood, count })).sort((a, b) => b.count - a.count).slice(0, 12),
+    };
+  } catch { out.visited = null; }
+
   // ② アフィニティ: 気分×場所の学習済みスコア上位（recommend が最優先で読む＝ランキングの実体）
   try {
     const { data } = await db.from("place_mood_affinity")
