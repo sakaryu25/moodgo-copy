@@ -1500,13 +1500,23 @@ export default function AdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [visitedFilter, setVisitedFilter] = useState<"all" | "visited">("visited");
 
-  // 重複統合タブ
-  type DupPlace = { id: string; name: string; address: string; tags: string[]; lat: number | null; lng: number | null; google_place_id: string | null; is_active: boolean };
-  const [mergeGroups, setMergeGroups] = useState<DupPlace[][]>([]);
+  // 重複統合タブ（各行に学習シグナル=写真/Moodログ/評価を付与し、検索インパクト順で並ぶ）
+  type DupPlace = { id: string; name: string; address: string; tags: string[]; lat: number | null; lng: number | null; google_place_id: string | null; is_active?: boolean; photos?: number; posts?: number; ratings?: number };
+  type MergeGroup = { rows: DupPlace[]; nameSignal: number; atStake: number; impact: number };
+  const [mergeGroups, setMergeGroups] = useState<MergeGroup[]>([]);
   const [mergeLoading, setMergeLoading] = useState(false);
   const [mergeProcessing, setMergeProcessing] = useState<number | null>(null);
   const [mergeKeep, setMergeKeep] = useState<Record<number, string>>({});
   const [mergeResult, setMergeResult] = useState("");
+  // 表記ゆれ＝学習分裂の再結合（検索改善レバー）
+  type VariantSpelling = { name: string; signal: number; placeCount: number };
+  type VariantPlace = { id: string; name: string; address: string; lat: number | null; lng: number | null; hasGoogle: boolean; tags: string[] };
+  type VariantGroup = { normKey: string; canonical: string; totalSignal: number; spellings: VariantSpelling[]; places: VariantPlace[] };
+  const [variants, setVariants] = useState<VariantGroup[]>([]);
+  const [variantsLoaded, setVariantsLoaded] = useState(false);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantProcessing, setVariantProcessing] = useState<string | null>(null);
+  const [variantCanon, setVariantCanon] = useState<Record<string, string>>({});
   // 一括統合（同名×近接300mのクラスタだけ自動統合・チェーン店等の離れた同名は対象外）
   type BulkPreview = { clusters: number; willDelete: number; skippedFarGroups: number; samples: { name: string; deleteCount: number; keepAddress: string }[] };
   type BulkResp = { ok?: boolean; error?: string; done?: boolean; nextCursor?: string | null; scanned?: number; merged?: number; deleted?: number; failed?: number; skippedFarGroups?: number; samples?: { name: string; deleteCount: number; keepAddress: string }[] };
@@ -7489,6 +7499,11 @@ export default function AdminPage() {
               </button>
             </div>
 
+            {/* なぜ重複統合が検索を良くするのか（学習の観点） */}
+            <div style={{ marginBottom: "16px", padding: "12px 16px", background: "#f5f8ff", border: "1px solid #d9e2ff", borderRadius: "12px", fontSize: "12.5px", color: "#3f4b7a", lineHeight: 1.75 }}>
+              重複は<b>検索学習を薄めます</b>。同じ場所が2行あると、写真・Moodログ・評価が別々の行に分かれ、<b>中身が空の行が検索に勝ってしまう</b>ことがあります。統合すると学習が1つに集約され、カードの写真・並び順が良くなります。各グループは<b>検索インパクト順</b>（実際に検索で使われている度＋救える投稿量）で並んでいます。統合時は写真/Moodログ/評価を必ず残す側へ引き継ぎます。
+            </div>
+
             {/* ── 一括統合（同名×近接のみ・チェーン店保護）── */}
             <div style={{ marginBottom: "20px", padding: "16px 18px", background: "#fffaf0", border: "1.5px solid #f6ad55", borderRadius: "14px" }}>
               <div style={{ fontWeight: 900, fontSize: "15px", marginBottom: "6px" }}>⚡ 同名スポットを一括統合</div>
@@ -7587,6 +7602,101 @@ export default function AdminPage() {
               )}
             </div>
 
+            {/* ── 表記ゆれ＝学習分裂の再結合（検索改善レバー）── */}
+            <div style={{ marginBottom: "20px", padding: "16px 18px", background: "#f7f5ff", border: "1.5px solid #c4b5fd", borderRadius: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+                <div style={{ fontWeight: 900, fontSize: "15px", color: "#5b21b6" }}>🔤 表記ゆれで学習が分裂しているスポット</div>
+                <button
+                  disabled={variantsLoading}
+                  onClick={async () => {
+                    setVariantsLoading(true);
+                    try {
+                      const d = await fetch("/api/admin/merge-duplicates?mode=variants", { headers: { "x-admin-secret": adminSecret } }).then(r => r.json());
+                      if (d.ok) { setVariants(d.variants ?? []); setVariantsLoaded(true); }
+                      else alert("検出失敗: " + (d.error ?? "不明"));
+                    } catch (e) { alert("通信エラー: " + String(e)); }
+                    finally { setVariantsLoading(false); }
+                  }}
+                  style={{ padding: "8px 16px", borderRadius: "10px", border: "1.5px solid #c4b5fd", background: "#fff", fontWeight: 800, cursor: variantsLoading ? "default" : "pointer", fontSize: "13px", opacity: variantsLoading ? 0.6 : 1 }}
+                >
+                  {variantsLoading ? "検出中…" : "🔍 検出する"}
+                </button>
+              </div>
+              <p style={{ margin: "0 0 4px", fontSize: "12.5px", color: "#6b5b95", lineHeight: 1.75 }}>
+                検索の学習（訪問/評価/Moodログ）は<b>すべて名前をキー</b>にしています。「東京ｽｶｲﾂﾘｰ」と「東京スカイツリー」のような<b>綴り違いは別物と扱われ、学習が2つに割れて検索が弱くなります</b>。ここでは学習が乗っている名前だけを走査し、綴りゆれを検出。<b>正規名に統合すると割れた学習が1つに合流</b>し、その場所が検索で正しく強くなります。
+              </p>
+              {variantsLoaded && variants.length === 0 && (
+                <div style={{ marginTop: "8px", padding: "10px 14px", background: "#f0fff4", border: "1px solid #9ae6b4", borderRadius: "10px", fontSize: "13px", color: "#276749", fontWeight: 700 }}>
+                  ✅ 現在、表記ゆれによる学習分裂はありません（健全）。データが増えると自動で検出されます。
+                </div>
+              )}
+              {variants.length > 0 && (
+                <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {variants.map((v) => {
+                    const canonical = variantCanon[v.normKey] ?? v.canonical;
+                    const busy = variantProcessing === v.normKey;
+                    return (
+                      <div key={v.normKey} style={{ background: "#fff", border: "1px solid #ddd6fe", borderRadius: "12px", padding: "14px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px", flexWrap: "wrap" }}>
+                          <div style={{ fontSize: "12px", color: "#7c6bb0", fontWeight: 700 }}>学習合計 {v.totalSignal} ／ 綴り {v.spellings.length}種</div>
+                          <button
+                            disabled={busy}
+                            onClick={async () => {
+                              const variantNames = v.spellings.map(s => s.name);
+                              setVariantProcessing(v.normKey);
+                              try {
+                                const dry = await fetch("/api/admin/merge-duplicates", {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ secret: adminSecret, action: "merge-variant", dryRun: true, canonical, variantNames }),
+                                }).then(r => r.json());
+                                if (!dry.ok) { alert("確認失敗: " + (dry.error ?? "不明")); return; }
+                                if (!confirm(`「${canonical}」に統合し、割れた学習を合流します。\n・場所を非表示: ${dry.willHidePlaces}件\n・学習を合流: アフィニティ${dry.affinityRows}／評価${dry.ratingRows}／行動${dry.engagementRows}／Moodログ${dry.postRows}行\nよろしいですか？`)) return;
+                                const res = await fetch("/api/admin/merge-duplicates", {
+                                  method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ secret: adminSecret, action: "merge-variant", canonical, variantNames }),
+                                }).then(r => r.json());
+                                if (res.ok) {
+                                  setVariants(prev => prev.filter(x => x.normKey !== v.normKey));
+                                  setMergeResult(`表記ゆれ「${canonical}」に学習を合流しました（場所${res.hidPlaces}件を統合）`);
+                                } else alert("統合失敗: " + (res.error ?? "不明"));
+                              } catch (e) { alert("通信エラー: " + String(e)); }
+                              finally { setVariantProcessing(null); }
+                            }}
+                            style={{ padding: "7px 14px", borderRadius: "10px", border: "none", background: busy ? "#ccc" : "linear-gradient(135deg, #a78bfa, #7c9bff)", color: "#fff", fontWeight: 900, fontSize: "12.5px", cursor: busy ? "default" : "pointer" }}
+                          >
+                            {busy ? "統合中…" : "🔗 正規名に統合"}
+                          </button>
+                        </div>
+                        {/* 綴りの選択（クリックで正規名を切替） */}
+                        <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {v.spellings.map(sp => {
+                            const isCanon = sp.name === canonical;
+                            return (
+                              <button
+                                key={sp.name}
+                                onClick={() => setVariantCanon(prev => ({ ...prev, [v.normKey]: sp.name }))}
+                                style={{
+                                  padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                                  border: isCanon ? "2px solid #7c3aed" : "1.5px solid #ddd",
+                                  background: isCanon ? "linear-gradient(135deg, #ede9fe, #e0e7ff)" : "#fafafa",
+                                  fontSize: "12px", fontWeight: isCanon ? 900 : 700, color: isCanon ? "#5b21b6" : "#666",
+                                }}
+                              >
+                                {isCanon ? "✓ " : ""}{sp.name} <span style={{ color: "#999", fontWeight: 700 }}>({sp.signal}{sp.placeCount ? `・${sp.placeCount}件` : ""})</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ marginTop: "6px", fontSize: "11px", color: "#999" }}>
+                          クリックで残す正規名を選択。他の綴りの学習はこの名前へ合流します。
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {mergeResult && (
               <div style={{ marginBottom: "16px", padding: "12px 16px", background: "#f0fff4", border: "1px solid #68d391", borderRadius: "12px", fontWeight: 700, color: "#276749" }}>
                 ✅ {mergeResult}
@@ -7601,7 +7711,8 @@ export default function AdminPage() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                {mergeGroups.map((group, gi) => {
+                {mergeGroups.map((grp, gi) => {
+                  const group = grp.rows;
                   const keepId = mergeKeep[gi] ?? group[0].id;
                   const keeper = group.find(p => p.id === keepId) ?? group[0];
                   const others = group.filter(p => p.id !== keepId);
@@ -7613,13 +7724,37 @@ export default function AdminPage() {
                     <div key={gi} style={{ background: "#fff", border: "1.5px solid #f0dfe3", borderRadius: "18px", padding: "20px", boxShadow: "0 2px 8px rgba(74,48,52,0.06)" }}>
                       {/* ヘッダー */}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
-                        <div style={{ fontSize: "16px", fontWeight: 900, color: "#4a3034" }}>
-                          「{group[0].name}」— {group.length} 件の重複
+                        <div>
+                          <div style={{ fontSize: "16px", fontWeight: 900, color: "#4a3034" }}>
+                            「{group[0].name}」— {group.length} 件の重複
+                          </div>
+                          {/* 検索インパクト＝この重複を統合すると検索/学習がどれだけ良くなるか */}
+                          <div style={{ display: "flex", gap: "6px", marginTop: "7px", flexWrap: "wrap", alignItems: "center" }}>
+                            {grp.impact > 0 ? (
+                              <span style={{ padding: "3px 10px", borderRadius: "999px", background: "linear-gradient(135deg, #ff8fa5, #b57bff)", color: "#fff", fontSize: "11px", fontWeight: 900 }}>
+                                検索インパクト {grp.impact}
+                              </span>
+                            ) : (
+                              <span style={{ padding: "3px 10px", borderRadius: "999px", background: "#eee", color: "#999", fontSize: "11px", fontWeight: 700 }}>
+                                学習シグナルなし（空データ同士＝影響小）
+                              </span>
+                            )}
+                            {grp.nameSignal > 0 && (
+                              <span style={{ padding: "3px 10px", borderRadius: "999px", background: "#eef2ff", color: "#4f46e5", fontSize: "11px", fontWeight: 800 }}>
+                                ランキング寄与 {grp.nameSignal}
+                              </span>
+                            )}
+                            {grp.atStake > 0 && (
+                              <span style={{ padding: "3px 10px", borderRadius: "999px", background: "#fff4e5", color: "#c05621", fontSize: "11px", fontWeight: 800 }}>
+                                統合で救う投稿 {grp.atStake}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <button
                           onClick={async () => {
                             const deleteIds = others.map(p => p.id);
-                            if (!confirm(`「${keeper.name}」を残し、他 ${deleteIds.length} 件を統合・削除します。よろしいですか？`)) return;
+                            if (!confirm(`「${keeper.name}」を残し、他 ${deleteIds.length} 件を統合・削除します。よろしいですか？\n※写真・Moodログ・評価は残す側へ引き継がれます`)) return;
                             setMergeProcessing(gi);
                             const res = await fetch("/api/admin/merge-duplicates", {
                               method: "POST",
@@ -7629,7 +7764,7 @@ export default function AdminPage() {
                             const d = await res.json();
                             if (d.ok) {
                               setMergeGroups(prev => prev.filter((_, i) => i !== gi));
-                              setMergeResult(`「${keeper.name}」を統合しました（${d.deleted} 件削除）`);
+                              setMergeResult(`「${keeper.name}」を統合しました（${d.deleted} 件削除・写真/Moodログ/評価は引き継ぎ）`);
                             } else {
                               alert("統合失敗: " + (d.error ?? "不明"));
                             }
@@ -7640,7 +7775,7 @@ export default function AdminPage() {
                             padding: "8px 18px", borderRadius: "12px", border: "none",
                             background: isProcessing ? "#ccc" : "linear-gradient(135deg, #ffbf67, #ff8f7f)",
                             color: "#fff", fontWeight: 900, fontSize: "13px",
-                            cursor: isProcessing ? "default" : "pointer",
+                            cursor: isProcessing ? "default" : "pointer", alignSelf: "flex-start",
                           }}
                         >
                           {isProcessing ? "統合中..." : "🔀 統合する"}
@@ -7659,10 +7794,11 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      {/* 各レコード */}
+                      {/* 各レコード（学習シグナル付き＝どの行が「本物」か一目でわかる） */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                         {group.map(place => {
                           const isKeeper = place.id === keepId;
+                          const hasSig = !!(place.photos || place.posts || place.ratings || place.google_place_id);
                           return (
                             <div
                               key={place.id}
@@ -7679,12 +7815,21 @@ export default function AdminPage() {
                                   <span style={{ fontSize: "12px", fontWeight: 900, padding: "2px 8px", borderRadius: "6px", background: isKeeper ? "#ff8fa5" : "#ddd", color: isKeeper ? "#fff" : "#888" }}>
                                     {isKeeper ? "✓ 残す" : "削除"}
                                   </span>
-                                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#4a3034" }}>{place.address}</span>
+                                  <span style={{ fontSize: "13px", fontWeight: 700, color: "#4a3034" }}>{place.address || "（住所なし）"}</span>
                                 </div>
                                 <span style={{ fontSize: "11px", color: place.lat ? "#68d391" : "#fc8181", fontWeight: 700 }}>
                                   {place.lat ? `📍 ${place.lat.toFixed(4)}, ${place.lng?.toFixed(4)}` : "📍 座標なし"}
                                 </span>
                               </div>
+                              {/* 学習シグナルのチップ */}
+                              {hasSig && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "5px" }}>
+                                  {!!place.photos && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#e6fffa", color: "#2c7a7b", fontSize: "10.5px", fontWeight: 800 }}>📷 写真{place.photos}</span>}
+                                  {!!place.posts && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#fef5ff", color: "#9b2c9b", fontSize: "10.5px", fontWeight: 800 }}>📝 Moodログ{place.posts}</span>}
+                                  {!!place.ratings && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#fffbea", color: "#b7791f", fontSize: "10.5px", fontWeight: 800 }}>⭐ 評価{place.ratings}</span>}
+                                  {place.google_place_id && <span style={{ padding: "2px 8px", borderRadius: "999px", background: "#eef2ff", color: "#4f46e5", fontSize: "10.5px", fontWeight: 800 }}>Google情報</span>}
+                                </div>
+                              )}
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                                 {(place.tags ?? []).map(tag => (
                                   <span key={tag} style={{ padding: "2px 8px", borderRadius: "999px", background: "#f0e8ec", fontSize: "11px", color: "#7a3040", fontWeight: 700 }}>
