@@ -1245,27 +1245,45 @@ function PendingSpotsPanel({ secret }: { secret: string }) {
 
 // アカウント種別パネル: @IDに認証/店舗バッジを付与
 function AccountTypePanel({ secret }: { secret: string }) {
+  type VUser = { handle: string; account_type: string; bio: string | null; updated_at: string | null };
   const [handle, setHandle] = useState("");
   const [type, setType] = useState<"store" | "official" | "user">("official");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [users, setUsers] = useState<VUser[]>([]);
+  const [loading, setLoading] = useState(false);
   const inputStyle: React.CSSProperties = { border: "1px solid #DDD6FE", borderRadius: 8, padding: "8px 12px", fontSize: 14 };
-  const submit = async () => {
-    const h = handle.trim().replace(/^@+/, "");
-    if (!h) return;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const d = await fetch(`/api/admin/set-account-type?secret=${encodeURIComponent(secret)}`).then(r => r.json());
+      if (d?.ok) setUsers(d.users ?? []);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setType2 = async (h: string, accountType: "store" | "official" | "user") => {
     setBusy(true); setMsg("");
     try {
-      const res = await fetch("/api/admin/set-account-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, handle: h, accountType: type }) });
+      const res = await fetch("/api/admin/set-account-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, handle: h, accountType }) });
       const d = await res.json();
-      setMsg(d?.ok ? (d.matched > 0 ? `@${h} を「${type}」に設定しました` : `@${h} が見つかりません（@ID未登録）`) : (d?.error ?? "失敗しました"));
+      setMsg(d?.ok ? (d.matched > 0 ? `@${h} を「${accountType}」に設定しました` : `@${h} が見つかりません（@ID未登録）`) : (d?.error ?? "失敗しました"));
+      if (d?.ok) await load();
     } catch { setMsg("通信エラー"); } finally { setBusy(false); }
   };
+  const submit = () => { const h = handle.trim().replace(/^@+/, ""); if (h) setType2(h, type); };
+
+  const badge = (t: string) => t === "official"
+    ? { label: "公式・認証", bg: "#EFF6FF", fg: "#2563EB", ring: "#93C5FD" }
+    : { label: "店舗", bg: "#FFFBEB", fg: "#B7791F", ring: "#FCD34D" };
+
   return (
     <div>
       <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1A0A2E", marginBottom: 8 }}>アカウント種別（認証/店舗バッジ）</h2>
       <p style={{ fontSize: 12.5, color: "#888", marginBottom: 14 }}>@IDを指定して認証(official)/店舗(store)バッジを付与。「user」で解除。プロフィール・投稿・コメントに表示されます（⚠ user-account-type.sql適用が必要）。</p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={handle} onChange={e => setHandle(e.target.value)} placeholder="@ユーザーID" style={{ ...inputStyle, width: 200 }} />
+        <input value={handle} onChange={e => setHandle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") submit(); }} placeholder="@ユーザーID" style={{ ...inputStyle, width: 200 }} />
         <select value={type} onChange={e => setType(e.target.value as "store" | "official" | "user")} style={inputStyle}>
           <option value="official">公式・認証 (official)</option>
           <option value="store">店舗 (store)</option>
@@ -1274,6 +1292,34 @@ function AccountTypePanel({ secret }: { secret: string }) {
         <button onClick={submit} disabled={busy || !handle.trim()} style={{ background: "#16A34A", color: "#fff", border: 0, borderRadius: 8, padding: "8px 18px", fontWeight: 800, cursor: "pointer" }}>{busy ? "設定中…" : "設定"}</button>
       </div>
       {msg && <p style={{ marginTop: 12, fontSize: 13, color: "#4a3034" }}>{msg}</p>}
+
+      {/* 認証済みユーザー一覧＝「今誰が認証されているか」 */}
+      <div style={{ marginTop: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: "#1A0A2E", margin: 0 }}>認証済みユーザー一覧</h3>
+          <span style={{ fontSize: 12.5, color: "#888" }}>{loading ? "読み込み中…" : `公式 ${users.filter(u => u.account_type === "official").length} / 店舗 ${users.filter(u => u.account_type === "store").length}`}</span>
+          <button onClick={load} disabled={loading} style={{ marginLeft: "auto", border: "1px solid #DDD6FE", background: "#fff", borderRadius: 8, padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>🔄 更新</button>
+        </div>
+        {users.length === 0 && !loading ? (
+          <p style={{ fontSize: 13, color: "#9ca3af" }}>認証バッジ付きのユーザーはまだいません。上で @ID を指定して付与してください。</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {users.map(u => {
+              const b = badge(u.account_type);
+              return (
+                <div key={u.handle} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid #EEE", borderRadius: 10, padding: "10px 14px", background: "#fff" }}>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: "#1A0A2E" }}>@{u.handle}</span>
+                  <span style={{ padding: "2px 10px", borderRadius: 999, background: b.bg, color: b.fg, border: `1px solid ${b.ring}`, fontSize: 11.5, fontWeight: 800 }}>{b.label}</span>
+                  {u.bio && <span style={{ fontSize: 12, color: "#9ca3af", maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.bio}</span>}
+                  {u.updated_at && <span style={{ fontSize: 11, color: "#c4c4c4" }}>{String(u.updated_at).slice(0, 10)}</span>}
+                  <button onClick={() => { if (confirm(`@${u.handle} のバッジを解除しますか？`)) setType2(u.handle, "user"); }} disabled={busy}
+                    style={{ marginLeft: "auto", border: "1px solid #FCA5A5", background: "#FEF2F2", color: "#DC2626", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>解除</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

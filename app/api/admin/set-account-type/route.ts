@@ -9,6 +9,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase as db } from "@/lib/supabase";
 import { isAdminRequest } from "@/lib/admin-auth";
 
+// GET: 現在バッジが付いている（認証済みの）ユーザー一覧。
+//   ⚠device_id はベアラ資格情報なので返さない。公開識別子の @handle と種別/bio/更新日のみ。
+export async function GET(req: NextRequest) {
+  if (!db) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
+  if (!isAdminRequest(req, new URL(req.url).searchParams.get("secret"))) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const { data, error } = await db.from("user_handles")
+    .select("handle, account_type, bio, updated_at")
+    .in("account_type", ["official", "store"])
+    .order("updated_at", { ascending: false })
+    .limit(500);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  const users = (data ?? []) as { handle: string; account_type: string; bio: string | null; updated_at: string | null }[];
+  const official = users.filter((u) => u.account_type === "official").length;
+  const store = users.filter((u) => u.account_type === "store").length;
+  return NextResponse.json({ ok: true, users, official, store });
+}
+
 export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
   const body = await req.json().catch(() => null);
