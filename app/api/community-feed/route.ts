@@ -223,6 +223,14 @@ export async function GET(request: Request) {
           const f = s.available_from as string | null, u = s.available_until as string | null;
           return (!f || f <= today) && (!u || u >= today);
         };
+        // 開発時のシード穴場（写真も投稿者も無い空カード）はフィードに出さない（2026-07-15ユーザー依頼）。
+        //   利用者の投稿は写真必須＋device_id記録があるため必ず残る。写真ありは投稿者不明でも残す。
+        const notSeed = (s: Record<string, unknown>) => {
+          const imgs = s.image_urls as unknown[] | null;
+          const hasImg = Array.isArray(imgs) && imgs.length > 0;
+          const hasDev = !!(s.device_id as string | null | undefined)?.trim?.();
+          return hasImg || hasDev;
+        };
         // キーワード横断マッチ: 名前(投稿名/Google名)/本文/タグ/住所に全トークン一致（連結語は2分割許容）
         const sMatched = kwMatch
           ? slist.filter(s => kwMatch(foldKw([
@@ -235,7 +243,7 @@ export async function GET(request: Request) {
         const sHandleMap = await handlesByDevice(supabase, sDevs);
         const sAcctMap = await accountTypesByDevice(supabase, sDevs);
         const sVerMap = await iconVersionsByDevice(supabase, sDevs);
-        suggestionItems = sMatched.filter(inPeriod).map(s => {
+        suggestionItems = sMatched.filter(inPeriod).filter(notSeed).map(s => {
           const rawImgs = (s.image_urls ?? []) as string[];
           const imgs = Array.isArray(rawImgs) ? rawImgs.filter(u => typeof u === "string" && !isLegacyPhotoUrl(u)) : [];
           const dev = typeof s.device_id === "string" ? s.device_id : "";

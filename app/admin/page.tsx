@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TAG_CATEGORIES, MOOD_TAGS, ALL_PREDEFINED_TAGS } from "@/lib/predefined-tags";
 import PrefFeaturedPanel from "./_components/PrefFeaturedPanel";
 import CoveragePanel from "./_components/CoveragePanel";
@@ -161,6 +161,145 @@ interface VitalityStats {
 }
 
 // ─── DB統計パネル ──────────────────────────────────────────────────────────────
+
+// 🧠 学習インサイト: 検索ランキングが実際に学習に使う信号（エンゲージメント/アフィニティ/Moodログ/検索perf）を可視化
+function LearningInsightsPanel({ secret }: { secret: string }) {
+  type Ins = {
+    engagement?: { total: number; byAction: Record<string, number>; topMoods: Array<{ mood: string; count: number; weighted: number }> } | null;
+    affinity?: { rowCount: number; byMood: Array<{ mood: string; top: Array<{ place: string; score: number }> }> } | null;
+    moodlog?: { total: number; avgRating: number | null; photoRate: number; topTags: Array<{ tag: string; count: number }> } | null;
+    searchPerf?: { searches: number; avgGoogleCalls: number; avgRecCount: number; avgElapsedMs: number; bySource: Record<string, number> } | null;
+  };
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<Ins | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const load = useCallback(async (d: number) => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch("/api/admin/learning-insights", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, days: d }) }).then(x => x.json());
+      if (r?.ok) setData(r); else setErr(r?.error ?? "取得に失敗しました");
+    } catch { setErr("取得に失敗しました"); }
+    setBusy(false);
+  }, [secret]);
+  useEffect(() => { load(days); }, [load, days]);
+
+  const card: React.CSSProperties = { background: "#fff", borderRadius: 12, padding: 18, marginBottom: 16, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" };
+  const h: React.CSSProperties = { margin: "0 0 12px", fontSize: 16, fontWeight: 800, color: "#1A0A2E" };
+  const bar = (v: number, max: number, color: string) => (
+    <div style={{ flex: 1, height: 8, background: "#F1EEF9", borderRadius: 99, overflow: "hidden" }}>
+      <div style={{ width: `${max > 0 ? Math.round((v / max) * 100) : 0}%`, height: "100%", background: color, borderRadius: 99 }} />
+    </div>
+  );
+  const AC_LABEL: Record<string, string> = { map_click: "マップ", detail_view: "詳細閲覧", favorite: "お気に入り", visited: "行った", share: "共有" };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>🧠 学習インサイト</h2>
+        <span style={{ fontSize: 12, color: "#9ca3af" }}>検索ランキングが実際に学習に使う信号を可視化</span>
+        <span style={{ marginLeft: "auto" }} />
+        {[7, 30, 90].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #E3D8F5", cursor: "pointer",
+              background: days === d ? "#9B6BFF" : "#fff", color: days === d ? "#fff" : "#7C3AED", fontWeight: 700, fontSize: 12 }}>{d}日</button>
+        ))}
+      </div>
+      {busy && <div style={{ opacity: 0.6, padding: 20 }}>読み込み中…</div>}
+      {err && <div style={{ color: "#dc2626", fontWeight: 700 }}>{err}</div>}
+      {data && !busy && (
+        <>
+          {/* ① エンゲージメント */}
+          <div style={card}>
+            <h3 style={h}>行動エンゲージメント（{data.engagement?.total ?? 0}件・過去{days}日）</h3>
+            {data.engagement && Object.keys(data.engagement.byAction).length > 0 ? (() => {
+              const mx = Math.max(...Object.values(data.engagement.byAction), 1);
+              return Object.entries(data.engagement.byAction).sort((a, b) => b[1] - a[1]).map(([a, c]) => (
+                <div key={a} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                  <div style={{ width: 80, fontSize: 12.5, fontWeight: 700, color: "#4B3B66" }}>{AC_LABEL[a] ?? a}</div>
+                  {bar(c, mx, "#9B6BFF")}
+                  <div style={{ width: 44, textAlign: "right", fontSize: 12.5, fontWeight: 800 }}>{c}</div>
+                </div>
+              ));
+            })() : <div style={{ opacity: 0.5, fontSize: 13 }}>データなし（利用が増えると溜まります）</div>}
+          </div>
+
+          {/* ② 気分別の熱量 */}
+          <div style={card}>
+            <h3 style={h}>気分別の熱量（重み付き＝visited×5/fav×3/detail×1…）</h3>
+            {data.engagement?.topMoods?.length ? (() => {
+              const mx = Math.max(...data.engagement.topMoods.map(m => m.weighted), 1);
+              return data.engagement.topMoods.map(m => (
+                <div key={m.mood} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                  <div style={{ width: 130, fontSize: 12.5, fontWeight: 700, color: "#4B3B66", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.mood}</div>
+                  {bar(m.weighted, mx, "#F56CB3")}
+                  <div style={{ width: 60, textAlign: "right", fontSize: 12, color: "#8B6BF2", fontWeight: 700 }}>{m.weighted}pt/{m.count}</div>
+                </div>
+              ));
+            })() : <div style={{ opacity: 0.5, fontSize: 13 }}>データなし</div>}
+          </div>
+
+          {/* ③ アフィニティ（検索ランキングの実体） */}
+          <div style={card}>
+            <h3 style={h}>気分×場所の学習スコア <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>（recommendが最優先で読む＝ランキングの実体・{data.affinity?.rowCount ?? 0}行）</span></h3>
+            {data.affinity?.byMood?.length ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {data.affinity.byMood.map(({ mood, top }) => (
+                  <div key={mood} style={{ border: "1px solid #F1EEF9", borderRadius: 10, padding: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#7C3AED", marginBottom: 6 }}>{mood}</div>
+                    {top.map((t, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0", color: "#4B3B66" }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>{i + 1}. {t.place}</span>
+                        <b>{t.score}</b>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ opacity: 0.5, fontSize: 13 }}>まだアフィニティが溜まっていません（place_mood_affinity）。行動が増えると気分ごとの勝ちスポットが出ます。</div>}
+          </div>
+
+          {/* ④ Moodログ（新しい学習源） */}
+          <div style={card}>
+            <h3 style={h}>みんなのMoodログ <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>（{data.moodlog?.total ?? 0}投稿・平均★{data.moodlog?.avgRating ?? "-"}・写真率{data.moodlog?.photoRate ?? 0}%）</span></h3>
+            {data.moodlog?.topTags?.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {data.moodlog.topTags.map(t => (
+                  <span key={t.tag} style={{ background: "#F3EEFF", color: "#7C3AED", borderRadius: 99, padding: "5px 11px", fontSize: 12.5, fontWeight: 700 }}>{t.tag} <b>{t.count}</b></span>
+                ))}
+              </div>
+            ) : <div style={{ opacity: 0.5, fontSize: 13 }}>投稿がまだありません</div>}
+          </div>
+
+          {/* ⑤ 検索パフォーマンス */}
+          <div style={card}>
+            <h3 style={h}>検索パフォーマンス（{data.searchPerf?.searches ?? 0}検索・過去{days}日）</h3>
+            {data.searchPerf ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                <Metric label="平均Google呼び出し" value={String(data.searchPerf.avgGoogleCalls)} hint="↓ほどコスト減" />
+                <Metric label="平均返却件数" value={String(data.searchPerf.avgRecCount)} hint="目標15" />
+                <Metric label="平均応答" value={`${(data.searchPerf.avgElapsedMs / 1000).toFixed(1)}s`} hint="↓ほど快適" />
+                <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#6b7280" }}>
+                  ソース内訳: {Object.entries(data.searchPerf.bySource).map(([s, c]) => `${s}=${c}`).join(" / ") || "なし"}
+                </div>
+              </div>
+            ) : <div style={{ opacity: 0.5, fontSize: 13 }}>データなし</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div style={{ background: "#FAF8FF", borderRadius: 10, padding: 14, textAlign: "center" }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: "#7C3AED" }}>{value}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#4B3B66", marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 10.5, color: "#9ca3af" }}>{hint}</div>
+    </div>
+  );
+}
+
 function DbStatsPanel({ secret }: { secret: string }) {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -1103,7 +1242,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "pref-featured" | "coverage" | "review-queue" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights">("stats");
   // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/公開状態を直接編集（報告対応用）──
   type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null };
   const [peKw, setPeKw] = useState("");
@@ -3230,6 +3369,7 @@ export default function AdminPage() {
         <div style={{ display: "flex", gap: "10px", marginBottom: "24px", flexWrap: "wrap" }}>
           {([
             { key: "stats", label: "📊 統計・学習データ" },
+            { key: "insights", label: "🧠 学習インサイト" },
             { key: "add-spot", label: "➕ スポット追加" },
             { key: "import", label: "🔍 一括取り込み" },
             { key: "visited", label: "🚶 訪問学習データ" },
@@ -7046,6 +7186,8 @@ export default function AdminPage() {
         )}
 
         {/* ===== 開発ログタブ ===== */}
+        {tab === "insights" && <LearningInsightsPanel secret={adminSecret} />}
+
         {/* ── 🛠 場所編集タブ ───────────────────────────────────────── */}
         {tab === "place-edit" && (
           <div style={{ background: "#fff", borderRadius: "12px", padding: "20px" }}>
