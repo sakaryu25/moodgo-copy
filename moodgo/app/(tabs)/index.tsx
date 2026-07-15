@@ -107,6 +107,9 @@ export default function Home() {
   // 結果Modalは全画面RN Modal＝内部からのrouter.push(/place)やGroupShareSheetをネイティブに
   // 覆い隠す。遷移/シート表示中だけModalを退避(visible=false)して前面を譲る（lib/overlayNav）。
   const [navAway, setNavAway] = useState(false);
+  // 詳細遷移中に「ホーム地」を覆う同色グラデを、押した瞬間から出しておく（navAwayより先に塗る）。
+  //   ⚠navAway になってから覆いを出すと、Modal退避の1フレームでホームが見えることがあった。
+  const [detailCovering, setDetailCovering] = useState(false);
   // 検索結果→場所詳細の遷移: 先にpushしてModalの裏で遷移を完了させ、その後"無アニメ"で退避する。
   // （旧: 先に退避→push だと退避アニメ中に裏のホームが一瞬見えていた）
   const [resultsAnim, setResultsAnim] = useState<'slide' | 'none'>('slide');
@@ -269,6 +272,7 @@ export default function Home() {
       if (navAwayTimer.current) { clearTimeout(navAwayTimer.current); navAwayTimer.current = null; }
       detailNavigating.current = false;
       setNavAway(false);   // resultsAnim='none'のまま＝結果画面が即時(無アニメ)で復帰する
+      setDetailCovering(false);   // ホーム覆いを解除（Modalが再表示されるので不要）
       setTimeout(() => setResultsAnim('slide'), 400);   // 以後のクイズ開閉はいつも通りslide
       if (!profileLoaded) return;
       (async () => {
@@ -931,6 +935,7 @@ export default function Home() {
   const handlePressDetail = (rec: Recommendation) => {
     if (detailNavigating.current) return;   // Modal退避待ちの間の多重タップ＝二重pushを防止
     detailNavigating.current = true;
+    setDetailCovering(true);   // 押した瞬間にホーム地を覆う（Modal退避時のホームチラ見え防止）
     sendEngagement(rec.title, 'detail_view');  // ② 学習ループ
     // 詳細ページの★評価を「気分に合う/合わない」学習に使うため、現在の検索文脈を一緒に渡す。
     setSelectedPlace(rec, {
@@ -1265,9 +1270,9 @@ export default function Home() {
         {renderContent()}
       </Animated.View>
 
-      {/* /place へ遷移中(navAway)は結果Modalが退避し、裏のホーム画面が一瞬見えてしまう。
-          同じ背景グラデーションで覆って隠す＝検索結果→場所詳細の遷移をシームレスにする。*/}
-      {navAway && (
+      {/* /place へ遷移中は結果Modalが退避し、裏のホーム画面が一瞬見えてしまう。同じ背景グラデで覆って隠す。
+          押した瞬間(detailCovering)から出しておくことで、Modal退避の1フレームでもホームを見せない。*/}
+      {(detailCovering || navAway) && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 200 }]} pointerEvents="none">
           <AppBackground />
         </View>
