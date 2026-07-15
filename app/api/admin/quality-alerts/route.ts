@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
         alerts.push({
           type: "low_star",
           key,
-          detail: `検索結果の星評価が平均${avg.toFixed(1)}（${g.n}件）。検索品質の確認を推奨（npm run verify:search）`,
+          detail: `検索結果の星評価が平均${avg.toFixed(1)}（${g.n}件）＝この気分×エリアの検索結果が低評価。🔎検索品質シグナル(不適切報告)や🎭下の合わない集計で該当スポットを特定し、🛠場所編集/🏷タグ修正/非表示で改善を。`,
           severity: avg <= 1.8 ? "high" : "mid",
         });
       }
@@ -75,6 +75,29 @@ export async function GET(req: NextRequest) {
           severity: badRate >= 0.75 ? "high" : "mid",
         });
       }
+    }
+    // ── 場所×気分レベルの「合わない」検知＝検索改善の実行対象（どの場所を直すか）──
+    const { data: pd } = await supabase.from("mood_place_ratings").select("place_name, mood, verdict").limit(8000);
+    const byPlaceMood = new Map<string, { place: string; mood: string; good: number; bad: number }>();
+    for (const row of pd ?? []) {
+      if (!row.place_name || !row.mood) continue;
+      const k = `${row.place_name}×${row.mood}`;
+      const e = byPlaceMood.get(k) ?? { place: String(row.place_name), mood: String(row.mood), good: 0, bad: 0 };
+      if (row.verdict === "good") e.good++; else if (row.verdict === "bad") e.bad++;
+      byPlaceMood.set(k, e);
+    }
+    const placeAlerts = [...byPlaceMood.values()]
+      .map(e => ({ ...e, total: e.good + e.bad, badRate: (e.good + e.bad) > 0 ? e.bad / (e.good + e.bad) : 0 }))
+      .filter(e => e.total >= 3 && e.badRate >= 0.6)
+      .sort((a, b) => (b.badRate * b.total) - (a.badRate * a.total))
+      .slice(0, 15);
+    for (const e of placeAlerts) {
+      alerts.push({
+        type: "bad_heavy_place",
+        key: `${e.place}×${e.mood}`,
+        detail: `「${e.mood}」で『${e.place}』が合わない率${Math.round(e.badRate * 100)}%（👍${e.good}/👎${e.bad}）＝この気分の検索から下げる/タグ見直しの候補。🛠場所編集・🏷タグ修正で対応。`,
+        severity: e.badRate >= 0.8 ? "high" : "mid",
+      });
     }
   } catch { /* 無視 */ }
 
