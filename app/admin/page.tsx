@@ -3681,6 +3681,37 @@ export default function AdminPage() {
               {t.label}
             </button>
           ))}
+          {/* 別ルートの管理ページへのリンク（特集・人気エリアは独立ページ） */}
+          <a
+            href="/admin/featured-pages"
+            style={{
+              ...btnBase,
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%)",
+              color: "#fff",
+              fontSize: "14px",
+              textDecoration: "none",
+              display: "inline-block",
+              boxShadow: "0 4px 12px rgba(139,92,246,0.25)",
+            }}
+          >
+            ⭐ 特集ページ管理
+          </a>
+          <a
+            href="/admin/popular-areas"
+            style={{
+              ...btnBase,
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%)",
+              color: "#fff",
+              fontSize: "14px",
+              textDecoration: "none",
+              display: "inline-block",
+              boxShadow: "0 4px 12px rgba(139,92,246,0.25)",
+            }}
+          >
+            🗺 人気エリア管理
+          </a>
         </div>
 
         {/* ===== 統計タブ ===== */}
