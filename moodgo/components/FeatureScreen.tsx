@@ -1662,7 +1662,7 @@ export default function FeatureScreen() {
     });
     Animated.timing(t, {
       toValue: 1,
-      duration: 900,
+      duration: 820,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
@@ -1710,37 +1710,40 @@ export default function FeatureScreen() {
   const showBack = stage !== "map";
 
   // ── 補間 ─────────────────────────────────────────────────────────────────
-  // 前半(0→0.5): 現画面がanchorへ向かって拡大しつつフェードアウト（飛び込み）
-  // 後半(0.5→1): 新画面が96.5%＋16px下から等倍へふわっと立ち上がる（着地）
+  // 「突き抜け感」の文法で統一:
+  //   前半(0→0.5): 現画面がanchorへ向かって拡大しつつフェードアウト（飛び込み）
+  //   後半(0.5→1): 新画面も「大きめ→等倍」に収まる＝飛び込んだ勢いのまま通り抜けて着地。
+  //   戻る(zoom<1)は逆に「小さめ→等倍」でカメラが引く方向を維持する。
   const winW = Dimensions.get("window").width;
   const winH = Dimensions.get("window").height;
   const { x: ax, y: ay, zoom } = anchorRef.current;
   const dxOut = (0.5 - ax) * winW * (zoom - 1);
   const dyOut = (0.5 - ay) * winH * (zoom - 1);
-  // ヴェールは前より薄く（画面が白で塗り潰されず、ズームの動きが最後まで見える）
+  const inStart = zoom > 1 ? 1.12 : 0.94;   // 着地開始スケール（進む=大きめから収まる/戻る=小さめから広がる）
+  // ヴェールはさらに薄く（ズームの動きが最後まで見える）
   const veilOpacity = t.interpolate({
     inputRange: [0, 0.4, 0.5, 0.6, 1],
-    outputRange: [0, 0.32, 0.4, 0.32, 0],
+    outputRange: [0, 0.24, 0.3, 0.24, 0],
   });
   const puffOpacity = t.interpolate({
     inputRange: [0, 0.3, 0.5, 0.75, 1],
-    outputRange: [0, 0.5, 0.65, 0.45, 0],
+    outputRange: [0, 0.4, 0.55, 0.35, 0],
   });
   const contentOpacity = t.interpolate({
     inputRange: [0, 0.42, 0.58, 1],
     outputRange: [1, 0, 0, 1],
   });
   const contentScale = t.interpolate({
-    inputRange: [0, 0.499, 0.5, 0.75, 1],
-    outputRange: [1, zoom, 0.965, 0.99, 1],
+    inputRange: [0, 0.499, 0.5, 1],
+    outputRange: [1, zoom, inStart, 1],
   });
   const contentTx = t.interpolate({
     inputRange: [0, 0.499, 0.5, 1],
     outputRange: [0, dxOut, 0, 0],
   });
   const contentTy = t.interpolate({
-    inputRange: [0, 0.499, 0.5, 0.75, 1],
-    outputRange: [0, dyOut, 16, 3, 0],
+    inputRange: [0, 0.499, 0.5, 1],
+    outputRange: [0, dyOut, 0, 0],
   });
 
   return (
