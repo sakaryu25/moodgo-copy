@@ -7049,13 +7049,13 @@ async function handleRecommend(request: Request) {
             /ラーメン|居酒屋|カフェ|喫茶|和食|焼肉/.test(ddText) ? FOOD_DB_FLOOR_RICH :
             /各国|メキシコ|ブラジル|ロシア|ベトナム|タイ|インド|ネパール|エスニック|アジアン/.test(ddText) ? FOOD_DB_FLOOR_NICHE :
             FOOD_DB_FLOOR_OTHER;
-          skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Googleも呼ばない（DB完結）
-          skipYahooOnly = true;                                    // 飲食はYahoo常時オフ（フロア未満でもGoogleのみ保険）
+          skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Google/Yahooも呼ばない（DB完結）
+          skipYahooOnly = false;                                   // Yahoo再有効化(2026-07-16)＝薄いエリアは無料Yahooで補填しGoogle課金を温存
         } else {
           // 他気分もOSM自前DB（公園/温泉/ジム/水族館/神社/服屋…）が全国分揃ったのでDB優先。
-          //   在庫フロア以上ならGoogle/Yahoo不使用でDB完結。Yahoo常時オフ、Googleはフロア未満のみ保険。
+          //   在庫フロア以上ならGoogle/Yahoo不使用でDB完結。フロア未満は無料Yahooを優先しGoogleを温存。
           skipAllSupplements = sbQualified.length >= NONFOOD_DB_FLOOR;
-          skipYahooOnly = true;
+          skipYahooOnly = false;   // Yahoo再有効化(2026-07-16)＝薄いエリアは無料Yahooで補填しGoogle課金を温存
         }
         // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
         //   ユーザー要件「Supabaseから出てきた情報(全件)を必ずOpenAIに渡す」を満たすため
@@ -7125,8 +7125,10 @@ async function handleRecommend(request: Request) {
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiResult] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
-          //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
-          (hasLocation && !skipAllSupplements && !RECOMMEND_DISABLE_GOOGLE)
+          //   B: Supabaseが充足(フロア以上)している場合は呼ばない（コスト削減）
+          //   C: Yahoo再有効化(2026-07-16)に伴い、薄いエリアの補填はまず無料のYahooに任せGoogleを温存。
+          //      Google補足は skipYahooOnly（=Yahooを使わない設定に戻した時）のみ発火する保険に降格。
+          (hasLocation && !skipAllSupplements && !RECOMMEND_DISABLE_GOOGLE && skipYahooOnly)
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
@@ -7211,10 +7213,14 @@ async function handleRecommend(request: Request) {
                 // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
-                  photoMap.set(name, urls);  // 表示用(ライブ・非キャッシュ)。DBにも長期キャッシュにも保存しない
+                  photoMap.set(name, urls);
                   const row = sbRowByName.get(name);
-                  // 【ライセンス】Google写真は永続キャッシュ不可 → DB保存(photoUrl/imageUrls)も
-                  //   enr:長期キャッシュ(30日)もしない。合法な評価/件数だけ保存する。
+                  // コスト削減(ユーザー選択2026-07-16): Google写真の"参照"(photo-proxy URL)を enr: に
+                  //   30日短期キャッシュ＝同じ0枚スポットへの毎検索 searchText を月1回に激減。写真本体では
+                  //   なく参照を一時キャッシュし、表示時に photo-proxy 経由でライブ解決＋帰属表示する。
+                  //   ⚠DBの image_urls への恒久保存はしない（そちらはより永続なので回避＝ライセンス配慮）。
+                  const prev = (phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined) ?? {};
+                  await ltCachePut(`enr:${name.slice(0, 80)}`, { ...prev, photoUrls: urls, checked: true });
                   schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { rating: gRating, ratingCount: gCount });
                 }
               } catch { /* 写真取得失敗は無視 */ }
