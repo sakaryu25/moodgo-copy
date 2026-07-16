@@ -578,9 +578,14 @@ export default function PlaceDetailPage() {
   const storePhotos = useSpotPhotos(rec?.supabaseId, rec?.title);
   const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  // 心霊は保存済みGoogle写真を一切使わない（利用者投稿/プレースホルダーのみ）
-  const basePhotos = (rec && !isSpooky)
-    ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : [])
+  // 写真は「無料の実写真(Wikimedia/自前CDN)」のみ使う。失効したGoogle写真(googleapis)は除外。
+  //   ⚠心霊スポットも無料写真があれば表示する（青山霊園のように #心霊スポット かつ Wikimedia写真を持つ
+  //     スポットで、カードは写真が出るのに詳細が真っ黒（写真なし）になっていた不一致を解消）。
+  //     旧「心霊はGoogle写真を使わない」の意図はGoogle除外なので、Google除外だけ残し無料写真は許可。
+  //     純粋なghostmapスポットは無料写真が無い→従来どおりプレースホルダー（心霊スキン）のまま。
+  const isFreePhoto = (u: string) => !!u && !/googleapis\.com/i.test(u);
+  const basePhotos = rec
+    ? ((rec.photoUrls ?? []).length > 0 ? rec.photoUrls! : rec.photoUrl ? [rec.photoUrl] : []).filter(isFreePhoto)
     : [];
   // 利用者投稿写真（このセッションの投稿＋取得済みの承認・再利用OK写真）
   const userPhotos = [...new Set([...storePhotos, ...fetchedPhotos])];
