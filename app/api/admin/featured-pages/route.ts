@@ -32,6 +32,11 @@ export async function GET(req: NextRequest) {
       banner_icon,
       is_active,
       sort_order,
+      scope_type,
+      scope_key,
+      slot_type,
+      publish_start,
+      publish_end,
       updated_at,
       featured_page_moods ( id ),
       featured_page_spots ( id )
@@ -51,6 +56,7 @@ export async function POST(req: NextRequest) {
 
   const { prefecture, issue, label, banner_title, banner_description,
           banner_image_url, banner_icon, is_active, sort_order,
+          scope_type, scope_key, slot_type, publish_start, publish_end,
           moods = [], spots = [] } = body;
 
   if (!prefecture?.trim()) {
@@ -70,6 +76,12 @@ export async function POST(req: NextRequest) {
       banner_icon: banner_icon ?? "umbrella",
       is_active: is_active ?? true,
       sort_order: sort_order ?? 0,
+      // scope/掲載位置/公開期間（supabase/featured-scope-placement.sql 適用後に有効）
+      scope_type: scope_type ?? "prefecture",
+      scope_key: (scope_key ?? prefecture ?? "").trim(),
+      slot_type: slot_type ?? "hero",
+      publish_start: publish_start || null,
+      publish_end: publish_end || null,
     })
     .select()
     .single();

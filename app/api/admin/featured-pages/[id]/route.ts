@@ -56,17 +56,26 @@ export async function PUT(
     prefecture, issue, label,
     banner_title, banner_description, banner_image_url, banner_icon,
     is_active, sort_order,
+    scope_type, scope_key, slot_type, publish_start, publish_end,
     moods = [],
     spots = [],
   } = body;
 
   // ── 1. バナー更新 ───────────────────────────────────────────────────────
+  // scope/slot/公開期間はbody未指定(undefined)なら既存値を保持（旧クライアント互換）
+  const scopeFields: Record<string, unknown> = {};
+  if (scope_type !== undefined)    scopeFields.scope_type = scope_type;
+  if (scope_key !== undefined)     scopeFields.scope_key = (scope_key ?? "").trim();
+  if (slot_type !== undefined)     scopeFields.slot_type = slot_type;
+  if (publish_start !== undefined) scopeFields.publish_start = publish_start || null;
+  if (publish_end !== undefined)   scopeFields.publish_end = publish_end || null;
   const { error: pageErr } = await supabase
     .from("featured_pages_v2")
     .update({
       prefecture, issue, label,
       banner_title, banner_description, banner_image_url, banner_icon,
       is_active, sort_order,
+      ...scopeFields,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
