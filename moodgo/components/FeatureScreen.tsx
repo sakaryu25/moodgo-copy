@@ -23,6 +23,7 @@ import {
   Easing,
   Image,
   ImageBackground,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -39,6 +40,7 @@ import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { HERO_BAND_H } from "@/lib/headerBand";
 import { useTabReset } from "@/lib/useTabReset";
+import { useSettings } from "@/lib/settingsStore";
 
 // ── 地図画像（assets/images）。アプリ全体で事前読み込みして遅延表示を防ぐ ──────
 const JAPAN_MAP = require("../assets/images/japan-map.png");
@@ -211,7 +213,7 @@ type SpotV2 = {
   events?: { title?: string; start_date?: string; end_date?: string }[];
   hours?: Record<string, { open?: string; close?: string; closed?: boolean } | string | undefined>;
 };
-type FeaturedPageV2 = {
+export type FeaturedPageV2 = {
   id: string;
   prefecture: string;
   issue?: string;
@@ -221,8 +223,25 @@ type FeaturedPageV2 = {
   banner_image_url?: string;
   is_active?: boolean;
   sort_order?: number;
+  // scope/掲載位置/公開期間（supabase/featured-scope-placement.sql 適用後に付与。未適用DBでは undefined）
+  scope_type?: "prefecture" | "region" | "nationwide";
+  scope_key?: string;      // 日本語キー: 神奈川 / 関東 / 全国 など
+  slot_type?: "hero" | "sub_1" | "sub_2" | "normal" | "hidden";
   featured_page_moods?: MoodV2[];
   featured_page_spots?: SpotV2[];
+};
+
+// 特集TOPの「人気エリア」カード（/api/popular-areas）
+type PopularArea = {
+  id: string;
+  name: string;
+  description?: string;
+  image_url?: string;
+  scope_type?: string;
+  scope_key?: string;
+  destination_type?: "pref" | "feature" | "url";
+  destination_value?: string;
+  sort_order?: number;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -578,6 +597,15 @@ const REGION_PREFS: Partial<Record<Tab, Tab[]>> = {
   "四国":         ["徳島", "香川", "愛媛", "高知"],
   "九州・沖縄":   ["福岡", "佐賀", "長崎", "熊本", "大分", "宮崎", "鹿児島", "沖縄"],
 };
+
+// 都道府県 → 所属地方（REGION_PREFS の逆引き。スコープタブ「県/地方/全国」の地方名決定に使う）
+const PREF_TO_REGION: Partial<Record<Tab, Tab>> = (() => {
+  const m: Partial<Record<Tab, Tab>> = {};
+  for (const [region, prefs] of Object.entries(REGION_PREFS) as [Tab, Tab[]][]) {
+    for (const p of prefs) m[p] = region;
+  }
+  return m;
+})();
 
 // 都道府県ごとのデフォルトコンテンツ（API データがない場合に使用）
 function defaultPrefTabData(pref: string): TabContentData {
@@ -953,7 +981,7 @@ function SegmentedTabs({ tabs, selected, onSelect }: SegmentedTabsProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 // HeroFeatureCard
 // ─────────────────────────────────────────────────────────────────────────────
-function openSpot(router: ReturnType<typeof useRouter>, opts: { spotId?: string; slug?: string; title: string; area?: string; desc?: string; image?: string }) {
+export function openSpot(router: ReturnType<typeof useRouter>, opts: { spotId?: string; slug?: string; title: string; area?: string; desc?: string; image?: string }) {
   if (opts.spotId) { router.push(`/feature/spot/${opts.spotId}`); return; }
   if (opts.slug) { router.push(`/feature/${opts.slug}`); return; }
   router.push({
@@ -1229,7 +1257,7 @@ function PullQuote({ text }: { text: string }) {
   );
 }
 
-function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; onOpenSpot: (id: string) => void }) {
+export function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; onOpenSpot: (id: string) => void }) {
   const spots = page.featured_page_spots ?? [];
   const cover = page.banner_image_url || spots[0]?.image_url || IMG.cafe;
   const kicker = page.label || "今月の特集";
@@ -1262,41 +1290,199 @@ function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; onOpenSpo
 // FeatureContentView
 // ─────────────────────────────────────────────────────────────────────────────
 type FeatureContentViewProps = {
-  selectedTab: Tab;
-  selectedRegion: Tab;
-  apiTabData: Partial<Record<Tab, FeaturedPageV2>>;
+  currentPref: Tab;                 // ユーザー設定 or エリア変更で選んだ都道府県
+  pages: FeaturedPageV2[];          // 公開中の全特集ページ（scope情報付き）
+  popularAreas: PopularArea[];      // 人気エリアカード
+  onChangeArea: () => void;         // 「エリア変更」→ 日本地図ステージへ
+  onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
 };
 
-function FeatureContentView({ selectedTab, selectedRegion, apiTabData }: FeatureContentViewProps) {
+// ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）
+const pageScopeKey = (p: FeaturedPageV2): string => (p.scope_key?.trim() || p.prefecture || "");
+const pageSlot = (p: FeaturedPageV2): string => p.slot_type || "hero";
+
+// スコープキー優先順（県→地方→全国）で hero群/sub_1/sub_2 を収集（仕様のフォールバック）。
+function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
+  const pick = (key: string) => pages.filter((p) => pageScopeKey(p) === key && pageSlot(p) !== "hidden");
+  let heroes: FeaturedPageV2[] = [];
+  let sub1: FeaturedPageV2 | undefined;
+  let sub2: FeaturedPageV2 | undefined;
+  for (const key of scopeKeys) {
+    const rows = pick(key);
+    if (!heroes.length) heroes = rows.filter((p) => pageSlot(p) === "hero");
+    if (!sub1) sub1 = rows.find((p) => pageSlot(p) === "sub_1");
+    if (!sub2) sub2 = rows.find((p) => pageSlot(p) === "sub_2");
+    if (heroes.length && sub1 && sub2) break;
+  }
+  // サブ枠が未設定なら hero の2枚目以降で補完（TOPに空きを作らない）。重複は除外。
+  const used = new Set<string>([...(sub1 ? [sub1.id] : []), ...(sub2 ? [sub2.id] : [])]);
+  const spareHeroes = heroes.slice(1).filter((p) => !used.has(p.id));
+  if (!sub1 && spareHeroes.length) sub1 = spareHeroes.shift();
+  if (!sub2 && spareHeroes.length) sub2 = spareHeroes.shift();
+  return { heroes, sub1, sub2 };
+}
+
+const SCREEN_W = Dimensions.get("window").width;
+const HERO_CARD_W = SCREEN_W - 32;
+
+function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>(selectedTab);
+  const region: Tab = PREF_TO_REGION[currentPref] ?? "関東";
+  // スコープ切替: 県 / 地方 / 全国（仕様: 「東京」は入れない固定3段）
+  const tabs: Tab[] = Array.from(new Set<Tab>([currentPref, region, "全国"]));
+  const [activeScope, setActiveScope] = useState<Tab>(currentPref);
+  const [heroIndex, setHeroIndex] = useState(0);
+  useEffect(() => { setActiveScope(currentPref); setHeroIndex(0); }, [currentPref]);
 
-  useEffect(() => { setActiveTab(selectedTab); }, [selectedTab]);
+  // フォールバック連鎖: 県タブ=県→地方→全国 / 地方タブ=地方→全国 / 全国タブ=全国のみ
+  const chain: string[] =
+    activeScope === "全国" ? ["全国"]
+    : activeScope === region ? [region, "全国"]
+    : [activeScope, region, "全国"];
+  const { heroes, sub1, sub2 } = collectScopeContent(pages, chain);
+  const subs = [sub1, sub2].filter(Boolean) as FeaturedPageV2[];
 
-  // 全国 / 地方 / 都道府県 の3タブ（重複排除）。県グリッドから選んだ県も追加。
-  const tabs = Array.from(new Set<Tab>(["全国", selectedRegion, selectedTab, activeTab]));
+  // 人気エリア: 同じフォールバック連鎖で最初に見つかったスコープ分を表示
+  const areas = (() => {
+    for (const key of chain) {
+      const rows = popularAreas.filter((a) => (a.scope_key ?? "") === key);
+      if (rows.length) return rows;
+    }
+    return [] as PopularArea[];
+  })();
 
-  // システムB直結：該当タブのページが無ければ空状態を表示
-  const page = apiTabData[activeTab];
+  const openPage = (p: FeaturedPageV2) => router.push(`/feature/page/${p.id}` as never);
+  const openArea = (a: PopularArea) => {
+    if (a.destination_type === "url" && a.destination_value) { Linking.openURL(a.destination_value).catch(() => {}); return; }
+    if (a.destination_type === "feature" && a.destination_value) { router.push(`/feature/page/${a.destination_value}` as never); return; }
+    const pref = fullPrefToTab(a.destination_value || a.name);
+    if (pref) onSelectPref(pref);
+  };
 
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={[s.contentScroll, { paddingBottom: insets.bottom + 110 }]}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
     >
-      {/* ── エリア切替タブ ── */}
-      <SegmentedTabs tabs={tabs} selected={activeTab} onSelect={setActiveTab} />
+      {/* ── 現在のエリア表示・変更バー ── */}
+      <TouchableOpacity style={ts.areaBar} activeOpacity={0.85} onPress={onChangeArea}>
+        <MapPin size={15} color={C.accent} strokeWidth={2.2} />
+        <Text style={ts.areaBarText}>現在のエリア：{currentPref}</Text>
+        <View style={{ flex: 1 }} />
+        <Text style={ts.areaBarChange}>エリア変更</Text>
+        <ChevronRight size={14} color={C.accent} strokeWidth={2.4} />
+      </TouchableOpacity>
 
-      {page ? (
-        <MagazineFeature page={page} onOpenSpot={(id) => openSpot(router, { spotId: id, title: "" })} />
+      {/* ── メイン特集カルーセル ── */}
+      {heroes.length > 0 ? (
+        <View>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={HERO_CARD_W + 12}
+            decelerationRate="fast"
+            contentContainerStyle={{ paddingHorizontal: 16 }}
+            onMomentumScrollEnd={(e) => setHeroIndex(Math.round(e.nativeEvent.contentOffset.x / (HERO_CARD_W + 12)))}
+          >
+            {heroes.map((p, i) => (
+              <TouchableOpacity key={p.id} activeOpacity={0.92} onPress={() => openPage(p)}
+                style={[ts.heroCard, { width: HERO_CARD_W, marginRight: i === heroes.length - 1 ? 0 : 12 }]}>
+                <ImageBackground source={{ uri: p.banner_image_url || undefined }} style={ts.heroImg} imageStyle={{ borderRadius: 26 }}>
+                  <LinearGradient colors={["rgba(10,8,30,0.05)", "rgba(10,8,30,0.72)"]} style={ts.heroShade} />
+                  <View style={ts.heroBadge}>
+                    <MapPin size={11} color="#fff" strokeWidth={2.4} />
+                    <Text style={ts.heroBadgeText}>{pageScopeKey(p)}エリアの特集</Text>
+                  </View>
+                  <View style={ts.heroBody}>
+                    <Text style={ts.heroTitle} numberOfLines={3}>{p.banner_title || p.label || "特集"}</Text>
+                    {!!p.banner_description && <Text style={ts.heroDesc} numberOfLines={2}>{p.banner_description}</Text>}
+                    <View style={ts.heroCtaRow}>
+                      <View style={ts.heroCta}>
+                        <Text style={ts.heroCtaText}>特集を読む</Text>
+                        <ChevronRight size={14} color={C.accent} strokeWidth={2.6} />
+                      </View>
+                      <View style={{ flex: 1 }} />
+                      {heroes.length > 1 && <Text style={ts.heroCount}>{Math.min(heroIndex + 1, heroes.length)} / {heroes.length}</Text>}
+                    </View>
+                  </View>
+                </ImageBackground>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {heroes.length > 1 && (
+            <View style={ts.dotsRow}>
+              {heroes.map((_, i) => <View key={i} style={[ts.dot, i === heroIndex && ts.dotActive]} />)}
+            </View>
+          )}
+        </View>
       ) : (
         <View style={s.emptyWrap}>
           <MapPin size={36} color={C.subText} strokeWidth={1.6} />
-          <Text style={s.emptyTitle}>{activeTab}の特集は準備中です</Text>
+          <Text style={s.emptyTitle}>{activeScope}の特集は準備中です</Text>
           <Text style={s.emptyText}>近日公開予定。お楽しみに ✨</Text>
         </View>
       )}
+
+      {/* ── サブ特集カード2枚 ── */}
+      {subs.length > 0 && (
+        <View style={ts.subRow}>
+          {subs.map((p) => (
+            <TouchableOpacity key={p.id} style={ts.subCard} activeOpacity={0.9} onPress={() => openPage(p)}>
+              <ImageBackground source={{ uri: p.banner_image_url || undefined }} style={ts.subImg} imageStyle={{ borderRadius: 20 }}>
+                <LinearGradient colors={["rgba(10,8,30,0.06)", "rgba(10,8,30,0.74)"]} style={ts.heroShade} />
+                <View style={ts.subBadge}><Text style={ts.subBadgeText}>{p.label || "おすすめ"}</Text></View>
+                <View style={ts.subBody}>
+                  <Text style={ts.subTitle} numberOfLines={2}>{p.banner_title}</Text>
+                  {!!p.banner_description && <Text style={ts.subDesc} numberOfLines={2}>{p.banner_description}</Text>}
+                  <View style={ts.subCta}>
+                    <Text style={ts.subCtaText}>詳しく見る</Text>
+                    <ChevronRight size={11} color="#fff" strokeWidth={2.6} />
+                  </View>
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ── エリア範囲切替（県 / 地方 / 全国）── */}
+      <SegmentedTabs tabs={tabs} selected={activeScope} onSelect={(t) => { setActiveScope(t); setHeroIndex(0); }} />
+
+      {/* ── 人気エリア ── */}
+      {areas.length > 0 && (
+        <View style={ts.section}>
+          <View style={ts.sectionHead}>
+            <MapPin size={15} color={C.accent} strokeWidth={2.4} />
+            <Text style={ts.sectionTitle}>{activeScope}の人気エリア</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
+            {areas.map((a) => (
+              <TouchableOpacity key={a.id} style={ts.areaCard} activeOpacity={0.88} onPress={() => openArea(a)}>
+                {a.image_url
+                  ? <ExpoImage source={{ uri: a.image_url }} style={ts.areaImg} contentFit="cover" />
+                  : <View style={[ts.areaImg, ts.areaImgFallback]}><MapPin size={20} color={C.accent} strokeWidth={2} /></View>}
+                <Text style={ts.areaName} numberOfLines={1}>{a.name}</Text>
+                {!!a.description && <Text style={ts.areaDesc} numberOfLines={2}>{a.description}</Text>}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* ── 全国から探す ── */}
+      <View style={ts.nationCard}>
+        <View style={{ flex: 1 }}>
+          <Text style={ts.nationTitle}>全国から探す</Text>
+          <Text style={ts.nationDesc}>エリアを選んで、あなたの気分にぴったりの特集を見つけよう。</Text>
+          <TouchableOpacity style={ts.nationBtn} activeOpacity={0.85} onPress={onChangeArea}>
+            <Text style={ts.nationBtnText}>地図から探す</Text>
+            <ChevronRight size={13} color="#fff" strokeWidth={2.6} />
+          </TouchableOpacity>
+        </View>
+        <Image source={JAPAN_MAP} style={ts.nationMap} resizeMode="contain" />
+      </View>
     </ScrollView>
   );
 }
@@ -1361,10 +1547,24 @@ function SoftCloud({ size, gradId }: { size: number; gradId: string }) {
 
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
-  const [stage, setStage] = useState<NavStage>("map");
-  const [selectedRegion, setSelectedRegion] = useState<Tab>("全国");
-  const [selectedTab, setSelectedTab] = useState<Tab>("全国");
-  const [apiTabData, setApiTabData] = useState<Partial<Record<Tab, FeaturedPageV2>>>({});
+  const settings = useSettings();
+  // TOP(content)が起点。地図はエリア変更/全国から探すの導線として残す
+  const [stage, setStage] = useState<NavStage>("content");
+  const [selectedRegion, setSelectedRegion] = useState<Tab>("関東");
+  const [selectedTab, setSelectedTab] = useState<Tab>("神奈川");
+  const [allPages, setAllPages] = useState<FeaturedPageV2[]>([]);
+  const [popularAreas, setPopularAreas] = useState<PopularArea[]>([]);
+  const manualPickRef = useRef(false);   // 地図から手動選択したら設定都道府県での上書きを止める
+
+  // ユーザー設定の都道府県（プロフィール）を現在エリアの初期値に（仕様: 神奈川は固定でなく動的）
+  useEffect(() => {
+    if (manualPickRef.current) return;
+    const pref = fullPrefToTab(settings.profilePrefecture || "");
+    if (pref && PREF_TO_REGION[pref]) {
+      setSelectedTab(pref);
+      setSelectedRegion(PREF_TO_REGION[pref] ?? "関東");
+    }
+  }, [settings.profilePrefecture]);
 
   // 地図画像を先読み（マウント時点でデコード済みにしてラグを防ぐ）
   useEffect(() => { preloadMaps(); }, []);
@@ -1373,7 +1573,13 @@ export default function FeatureScreen() {
     apiFetch("/api/featured-pages")
       .then((r) => r.json())
       .then(({ ok, data }: { ok: boolean; data: FeaturedPageV2[] }) => {
-        if (ok && data?.length) setApiTabData(buildPagesByTab(data));
+        if (ok && data?.length) setAllPages(data);
+      })
+      .catch(() => {});
+    apiFetch("/api/popular-areas")
+      .then((r) => r.json())
+      .then(({ ok, data }: { ok: boolean; data: PopularArea[] }) => {
+        if (ok && Array.isArray(data)) setPopularAreas(data);
       })
       .catch(() => {});
   }, []);
@@ -1381,16 +1587,14 @@ export default function FeatureScreen() {
   // 下部タブの「特集」を再タップ(=既に特集にいる時に押す)したら振り出し(日本地図)に戻す。
   //   他タブから特集に切り替えた時は前の場所を保持(リセットしない)＝useTabResetが再タップだけ判定。
   useTabReset(() => {
-    // 雲ダイブ演出の途中でも即座に日本地図へ。進行中トランジションの
+    // 雲ダイブ演出の途中でも即座に特集TOPへ。進行中トランジションの
     // ステージ差替(apply)を世代番号で無効化し、リセットが上書きされる競合を防ぐ
     resetSeqRef.current += 1;
     t.stopAnimation();
     t.setValue(0);
     busyRef.current = false;
     setBusy(false);
-    setStage("map");
-    setSelectedRegion("全国");
-    setSelectedTab("全国");
+    setStage("content");
   });
 
   // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
@@ -1436,12 +1640,22 @@ export default function FeatureScreen() {
   };
 
   const handleSelectPref = (tab: Tab) => {
+    manualPickRef.current = true;
     setSelectedTab(tab);
+    setSelectedRegion(PREF_TO_REGION[tab] ?? selectedRegion);
     runTransition(() => setStage("content"));
   };
 
+  // 人気エリア(pref)タップ: 演出なしで即エリア切替（同一画面内の切替のため）
+  const handleQuickSelectPref = (tab: Tab) => {
+    manualPickRef.current = true;
+    setSelectedTab(tab);
+    setSelectedRegion(PREF_TO_REGION[tab] ?? selectedRegion);
+  };
+
+  // TOP(content)が起点: 地図←→県選択の戻りは map→content / pref-select→map
   const handleBack = () => {
-    const next: NavStage = stage === "content" ? "pref-select" : "map";
+    const next: NavStage = stage === "pref-select" ? "map" : "content";
     runTransition(() => setStage(next));
   };
 
@@ -1480,11 +1694,11 @@ export default function FeatureScreen() {
         {/* 3段スタック: eyebrow(罫線+小ラベル) → ヒーロータイトル → 1行キャプション（審査パネル採用案）*/}
         {stage === "map" && (
           <>
-            <View style={s.eyebrowRow}>
-              <View style={s.eyebrowRule} />
-              <Text style={s.eyebrowText}>特集・日本全国</Text>
-            </View>
-            <Text style={s.bandTitle}>どこへ行く？</Text>
+            <TouchableOpacity style={s.backBtn} activeOpacity={0.72} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 16 }}>
+              <ChevronLeft size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.5} />
+              <Text style={s.backTextSm}>特集</Text>
+            </TouchableOpacity>
+            <Text style={[s.bandTitle, { marginTop: 4 }]}>どこへ行く？</Text>
             <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
           </>
         )}
@@ -1500,10 +1714,10 @@ export default function FeatureScreen() {
           </>
         )}
         {stage === "content" && (
-          <TouchableOpacity style={s.backBtn} activeOpacity={0.72} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 16 }}>
-            <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
-            <Text style={s.backText}>特集</Text>
-          </TouchableOpacity>
+          <>
+            <Text style={s.bandTitle}>特集</Text>
+            <Text style={s.headerCaption}>どこへ行く？</Text>
+          </>
         )}
       </LinearGradient>
 
@@ -1517,9 +1731,11 @@ export default function FeatureScreen() {
         )}
         {stage === "content" && (
           <FeatureContentView
-            selectedTab={selectedTab}
-            selectedRegion={selectedRegion}
-            apiTabData={apiTabData}
+            currentPref={selectedTab}
+            pages={allPages}
+            popularAreas={popularAreas}
+            onChangeArea={() => runTransition(() => setStage("map"))}
+            onSelectPref={handleQuickSelectPref}
           />
         )}
       </Animated.View>
@@ -2173,4 +2389,79 @@ const s = StyleSheet.create({
     color: C.text,
   },
 
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 特集TOP（スクショ準拠の1画面スクロール）用スタイル
+// ─────────────────────────────────────────────────────────────────────────────
+const ts = StyleSheet.create({
+  // 現在のエリアバー
+  areaBar: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginHorizontal: 16, marginTop: 14, marginBottom: 14,
+    backgroundColor: "#fff", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12,
+    shadowColor: "#7C3AED", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+  },
+  areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#2A2440" },
+  areaBarChange: { fontSize: 12.5, fontWeight: "700", color: C.accent, marginRight: 2 },
+  // メイン特集カルーセル
+  heroCard: { borderRadius: 26, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  heroImg: { width: "100%", aspectRatio: 16 / 11, justifyContent: "flex-end" },
+  heroShade: { ...StyleSheet.absoluteFillObject, borderRadius: 26 },
+  heroBadge: {
+    position: "absolute", top: 14, left: 14, flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  heroBadgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+  heroBody: { padding: 16, paddingBottom: 14 },
+  heroTitle: { fontSize: 24, fontWeight: "800", color: "#fff", lineHeight: 31, letterSpacing: 0.2 },
+  heroDesc: { fontSize: 12.5, color: "rgba(255,255,255,0.88)", lineHeight: 18, marginTop: 6 },
+  heroCtaRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  heroCta: {
+    flexDirection: "row", alignItems: "center", gap: 2,
+    backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+  },
+  heroCtaText: { fontSize: 12.5, fontWeight: "800", color: "#2A2440" },
+  heroCount: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, marginTop: 10 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#D8D2EA" },
+  dotActive: { backgroundColor: C.accent, width: 14 },
+  // サブ特集カード
+  subRow: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 14 },
+  subCard: { flex: 1, borderRadius: 20, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  subImg: { width: "100%", height: 190, justifyContent: "flex-end" },
+  subBadge: {
+    position: "absolute", top: 10, left: 10,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4,
+  },
+  subBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },
+  subBody: { padding: 11 },
+  subTitle: { fontSize: 14.5, fontWeight: "800", color: "#fff", lineHeight: 19 },
+  subDesc: { fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 15, marginTop: 4 },
+  subCta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 8 },
+  subCtaText: { fontSize: 11, fontWeight: "800", color: "#fff" },
+  // セクション（人気エリア）
+  section: { marginTop: 20 },
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginBottom: 10 },
+  sectionTitle: { fontSize: 16.5, fontWeight: "800", color: "#2A2440" },
+  areaCard: { width: 118 },
+  areaImg: { width: 118, height: 88, borderRadius: 14, backgroundColor: "#EFEAF8" },
+  areaImgFallback: { alignItems: "center", justifyContent: "center" },
+  areaName: { fontSize: 13, fontWeight: "800", color: "#2A2440", marginTop: 6 },
+  areaDesc: { fontSize: 10.5, color: C.subText, lineHeight: 14, marginTop: 2 },
+  // 全国から探す
+  nationCard: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    marginHorizontal: 16, marginTop: 24, backgroundColor: "#fff",
+    borderRadius: 22, padding: 16,
+    shadowColor: "#7C3AED", shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+  },
+  nationTitle: { fontSize: 17, fontWeight: "800", color: "#2A2440" },
+  nationDesc: { fontSize: 12, color: C.subText, lineHeight: 17, marginTop: 5 },
+  nationBtn: {
+    flexDirection: "row", alignItems: "center", gap: 2, alignSelf: "flex-start",
+    backgroundColor: "#8B5CF6", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, marginTop: 10,
+  },
+  nationBtnText: { fontSize: 12.5, fontWeight: "800", color: "#fff" },
+  nationMap: { width: 110, height: 96 },
 });
