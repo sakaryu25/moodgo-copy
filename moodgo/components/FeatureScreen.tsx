@@ -38,7 +38,7 @@ import { Asset } from "expo-asset";
 import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import { HERO_BAND_H } from "@/lib/headerBand";
+import { HERO_BAND_H, HERO_BAND_TALL } from "@/lib/headerBand";
 import { useTabReset } from "@/lib/useTabReset";
 import { useSettings } from "@/lib/settingsStore";
 
@@ -1687,9 +1687,10 @@ export default function FeatureScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[s.header, {
-          paddingTop: insets.top + 14,
-          // 特集TOP(content)はカード群が主役なので帯を薄く。地図/県選択は従来の帯高(HERO_BAND_H)を維持
-          minHeight: insets.top + (stage === "content" ? 74 : HERO_BAND_H),
+          paddingTop: insets.top + 12,
+          // 特集TOP(content)はみんなの穴場(BlogView)と同じ帯高(HERO_BAND_TALL)に統一（ユーザー要望2026-07-17）。
+          //   地図/県選択は従来の帯高(HERO_BAND_H)を維持。
+          minHeight: insets.top + (stage === "content" ? HERO_BAND_TALL : HERO_BAND_H),
         }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
@@ -1735,6 +1736,8 @@ export default function FeatureScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {/* タイトルを上・エリアバーを下端に配置（帯高をBlogViewと統一したぶんの余白を吸収） */}
+            <View style={{ flex: 1 }} />
             {/* 現在のエリアバー（帯の中の白ピル・ユーザー要望でヘッダーへ移動 2026-07-17） */}
             <TouchableOpacity
               style={s.headerAreaBar} activeOpacity={0.85}
