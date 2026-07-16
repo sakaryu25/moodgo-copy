@@ -1297,8 +1297,11 @@ type FeatureContentViewProps = {
   onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
 };
 
-// ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）
-const pageScopeKey = (p: FeaturedPageV2): string => (p.scope_key?.trim() || p.prefecture || "");
+// ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）。
+//   DB/adminは正式名(神奈川県/東京都)で保存するがタブは短縮名(神奈川/東京)なので末尾の都府県を剥がして照合。
+//   ※「北海道」はそのまま。「京都府」→「京都」はこの正規化で正しく一致する。
+const pageScopeKey = (p: FeaturedPageV2): string =>
+  (p.scope_key?.trim() || p.prefecture || "").replace(/(都|府|県)$/, "");
 const pageSlot = (p: FeaturedPageV2): string => p.slot_type || "hero";
 
 // スコープキー優先順（県→地方→全国）で hero群/sub_1/sub_2 を収集（仕様のフォールバック）。
