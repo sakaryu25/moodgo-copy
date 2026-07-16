@@ -14,7 +14,7 @@ import { applyAiRanking } from "@/lib/ai-ranking";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { fetchSimilarStats } from "@/lib/feedback-stats";
 import { pickGsiResult } from "@/lib/gsi-geocode";
-import { mergedPlacePhotos } from "@/lib/place-photos";
+import { mergedPlacePhotos, filterLivePhotos } from "@/lib/place-photos";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -244,7 +244,23 @@ function json(data: unknown, init?: ResponseInit) {
 //     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
 //     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
 async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
-  if (!supabase || !Array.isArray(recs) || recs.length === 0) return recs;
+  if (!Array.isArray(recs) || recs.length === 0) return recs;
+  // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
+  //   どの経路(穴場/時間潰し/フリーワード/relax/AI/最終/admin補足/Google補足)を通っても、
+  //   死んだGoogle写真(places.googleapis.com＝課金撤廃で失効400)をカードに出さない。生きた写真だけに
+  //   絞り、photoUrl も生きた先頭に揃える（大手町温泉＝失効Google10枚が生Wikimedia1枚を隠す事例の最終防波堤）。
+  recs = recs.map((r) => {
+    const rr = r as { photoUrls?: unknown; photoUrl?: unknown };
+    const hasArr = Array.isArray(rr.photoUrls);
+    if (!hasArr && typeof rr.photoUrl !== "string") return r;   // 写真フィールドなし＝素通り
+    const live = [...new Set(filterLivePhotos([
+      ...(hasArr ? (rr.photoUrls as string[]) : []),
+      typeof rr.photoUrl === "string" ? rr.photoUrl : "",
+    ]))];
+    if (hasArr && (rr.photoUrls as string[]).length === live.length && (rr.photoUrl ?? "") === (live[0] ?? "")) return r;  // 変化なし
+    return { ...r, photoUrls: live, photoUrl: live[0] ?? "" } as T;
+  });
+  if (!supabase) return recs;
   const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
   try {
     const sids = [...new Set(recs.map(sidOf).filter(Boolean))];
@@ -8045,11 +8061,18 @@ async function handleRecommend(request: Request) {
           recommendations = recommendations.map((rec) => {
             const c = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
             if (!c) return rec;
-            const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
+            const photoUrls = filterLivePhotos(Array.isArray(rec.photoUrls) ? rec.photoUrls : []);
             const upd: typeof rec = { ...rec };
-            if ((c.photoUrls?.length ?? 0) > photoUrls.length) {
-              upd.photoUrls = c.photoUrls!;
-              upd.photoUrl = c.photoUrls![0] ?? rec.photoUrl;
+            // キャッシュ側の死んだGoogle写真を除外してから“生きている枚数”で比較する。
+            //   除外しないと、失効Google10枚が生きたWikimedia1枚を上書きしてカードがグレーになる（大手町温泉の事例）。
+            const cachedLive = filterLivePhotos(c.photoUrls ?? []);
+            if (cachedLive.length > photoUrls.length) {
+              upd.photoUrls = cachedLive;
+              upd.photoUrl = cachedLive[0] ?? rec.photoUrl;
+            } else if (photoUrls.length < (Array.isArray(rec.photoUrls) ? rec.photoUrls.length : 0)) {
+              // rec 側に死んだGoogleが混ざっていた場合も、生きた写真だけに正規化する。
+              upd.photoUrls = photoUrls;
+              upd.photoUrl = photoUrls[0] ?? rec.photoUrl;
             }
             if ((rec.openNow === undefined || !rec.openingHoursText) && c.periods) {
               const st = computeOpenStatus({ openNow: undefined, periods: c.periods });
@@ -8095,11 +8118,15 @@ async function handleRecommend(request: Request) {
                 return;
               }
               // 写真を最大10枚補完
+              //   ⚠Google課金撤廃(2026-07)以降、buildPhotoProxyUrl が返す places.googleapis.com 写真は
+              //   すべてHTTP400で失効。filterLivePhotos で全滅→上書き/恒久保存とも発生しない＝死んだURLを
+              //   カードに出さず、DBにも溜めない。営業時間の補完(下)は生きているので従来通り動く。
               const enrSave: EnrichCacheVal = {};
               if (needPhotos) {
                 const photos = (place.photos ?? []) as Array<{ name?: string }>;
-                const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
-                if (urls.length > photoUrls.length) {
+                const livePhotoUrls = filterLivePhotos(photoUrls);
+                const urls = filterLivePhotos(photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : ""));
+                if (urls.length > livePhotoUrls.length) {
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
                   if (urls[0]) schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                 }

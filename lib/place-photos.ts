@@ -10,7 +10,15 @@
 //   これらが image_urls 先頭に残るため、検索カードはフォールバックで末尾の Wikimedia(photo_url) を表示
 //   できても、詳細ヒーローは先頭の死んだGoogle写真を出してグレーになっていた（SOMPO美術館の事例）。
 //   → googleapis.com を含むURLは死んでいる前提で除外し、無料の実写真(Wikimedia/自前CDN)だけ返す。
-const isDeadGooglePhoto = (u: string): boolean => /googleapis\.com/i.test(u);
+export const isDeadGooglePhoto = (u: string): boolean => /googleapis\.com/i.test(u);
+
+// 死んだGoogle写真(失効400)を落として、生きている無料写真だけを返す。
+//   recommend の写真パイプライン（enrキャッシュ流し込み・ライブ補完・最終正規化）で共通利用。
+//   「枚数が多い方が勝つ」ロジックだと死んだGoogle10枚が生きたWikimedia1枚を上書きしてしまうため、
+//   比較・採用の前に必ずこのフィルタを通して“生きている枚数”で判定する。
+export function filterLivePhotos(urls: ReadonlyArray<string | null | undefined>): string[] {
+  return urls.filter((u): u is string => !!u && !isDeadGooglePhoto(u));
+}
 
 export function mergedPlacePhotos(row: {
   photo_url?: string | null;
