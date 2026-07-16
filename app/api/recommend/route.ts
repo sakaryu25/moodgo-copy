@@ -5824,7 +5824,9 @@ type FinalizeDedupeKey = { key: string; lat?: number; lng?: number; pid?: string
 // 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
 const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
 // 目的地でないPOI（OSM由来のトイレ/給水所/バス停/自販機/喫煙所等）。どの気分でも検索結果に出さない。
-const NON_DESTINATION_RE = /(?:公衆)?トイレ|お手洗い|給水所|給水塔|配水場|公衆便所|バス停|バス停留所|自動販売機|自販機コーナー|公衆電話|喫煙所|変電所|ポンプ場|防災倉庫|ゴミ集積|ゴミ処理/;
+//   パチンコ/パチスロは18禁業態でZ世代お出かけ推薦に不適＝全気分で除外（2026-07-17監査: 川崎わいわいに
+//   「スロットタイガー７」が#わいわい楽しみたいタグで混入していた事例）。「スロットカー」等ホビーは除外しない。
+const NON_DESTINATION_RE = /(?:公衆)?トイレ|お手洗い|給水所|給水塔|配水場|公衆便所|バス停|バス停留所|自動販売機|自販機コーナー|公衆電話|喫煙所|変電所|ポンプ場|防災倉庫|ゴミ集積|ゴミ処理|パチンコ|パチスロ|スロット(?!カー)/;
 // お腹すいた時に除外する老舗系（観光客向けでない古すぎる地元店の抑制）。
 // ※「食堂」「大衆食堂」は正規の定食屋・大衆食堂(〇〇食堂)が多く、docx仕様も除外を求めて
 //   いないため除外対象から外した（定食食堂の取りこぼし防止）。
@@ -6023,9 +6025,23 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     { key: "美術博物", re: /美術館|博物館|資料館|ミュージアム|museum/i },
     { key: "動物園",   re: /動物園|zoo|サファリ/i },
     { key: "映画",     re: /映画|シネマ|cinema|109シネ|TOHOシネ/i },
+    // 集中×都心でチェーンカフェが6連発した対策(2026-07-17監査)。異ブランド(スタバ/ドトール/タリーズ…)でも
+    //   同サブカテとして3件で間引く。「カフェで作業」等を明示選択した検索は requestedSub 免除で従来どおり。
+    { key: "カフェ",   re: /カフェ|cafe|珈琲|coffee|喫茶|スターバックス|スタバ|ドトール|タリーズ|コメダ|ベローチェ|サンマルク|プロント|エクセルシオール|ルノアール|星乃/i },
   ];
-  const nonFoodSubcatOf = (name: string): string => {
+  // タグ→サブカテ（名前にジャンル語が無い店の取りこぼし対策。例:「ミッキー黒川店」「CLUB DAM」は
+  //   名前でカラオケと判定できないが #カラオケ タグで捕捉＝名古屋わいわいでカラオケ5連発した穴を塞ぐ）
+  const TAG_SUBCAT: [string, string][] = [
+    ["#カラオケ", "カラオケ"], ["#ボウリング", "ボウリング"], ["#体験型ゲーム", "ゲーセン"],
+    ["#図書館", "図書館"], ["#book場", "図書館"], ["#水族館", "水族館"],
+    ["#温泉", "温泉"], ["#サウナ", "温泉"], ["#博物館", "美術博物"], ["#動物園", "動物園"],
+    ["#喫茶店", "カフェ"], ["#カフェスイーツ", "カフェ"], ["#カフェ作業", "カフェ"],
+  ];
+  const nonFoodSubcatOf = (name: string, tags?: string[]): string => {
     for (const c of NONFOOD_SUBCATS) if (c.re.test(name)) return c.key;
+    if (Array.isArray(tags)) {
+      for (const [tag, key] of TAG_SUBCAT) if (tags.includes(tag)) return key;
+    }
     return "";  // 分類外はcap対象にしない
   };
   // 領域5(c): 有名定番スコア（レビュー数主体・0..1）。約1万件で≈1.0。
@@ -6049,7 +6065,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     const overflow: T[] = [];
     for (const r of arr) {
       const brand = brandOf(r.title ?? "");
-      const sub = nonFoodSubcatOf(r.title ?? "");
+      const sub = nonFoodSubcatOf(r.title ?? "", r.tags);
       const bc = brand.length >= 3 ? (brandCnt.get(brand) ?? 0) : 0;
       const sc = sub ? (subCnt.get(sub) ?? 0) : 0;
       // ブランドcapは常時（同チェーン3件目以降は後方）。サブカテゴリcapは「選んだジャンル以外」のみ。
@@ -6904,7 +6920,9 @@ async function handleRecommend(request: Request) {
           const have = new Set(sbResults.map(r => r.name));
           for (const t of [...semHits, ...textHits, ...tagHits]) {
             if (have.has(t.name)) continue;
-            if ((t.semanticSim ?? 1) < 0.25) continue;                  // ③ 意味検索由来の弱マッチは除外(text/tag由来はsim無し=1で通過)
+            // ③ 意味検索由来の弱マッチは除外(text/tag由来はsim無し=1で通過)。
+            //   0.25はtext-embedding-3-smallでほぼ全通しだった→0.35へ引き上げ(2026-07-17監査・自由文は意図があるため控えめ)。
+            if ((t.semanticSim ?? 1) < 0.35) continue;
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
           }
@@ -6930,7 +6948,11 @@ async function handleRecommend(request: Request) {
           const have = new Set(sbResults.map(r => r.name));
           for (const t of semHits) {
             if (have.has(t.name)) continue;
-            if ((t.semanticSim ?? 0) < 0.25) continue;                  // 弱い意味マッチは除外
+            // 弱い意味マッチは除外。気分のみ検索は自由文の意図が無いぶん厳しめ:
+            //   0.25→0.45(2026-07-17監査: 在庫薄エリアでサウナ/100均級の無関係が0.25を通過していた)。
+            //   気分タグを実際に持つスポットは類似度に関係なく合流させる(正当ヒットを守る)。
+            const hasMoodTag = !!realMoodTag && Array.isArray(t.tags) && t.tags.includes(realMoodTag);
+            if (!hasMoodTag && (t.semanticSim ?? 0) < 0.45) continue;
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
           }
