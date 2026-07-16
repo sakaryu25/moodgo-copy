@@ -7174,7 +7174,9 @@ async function handleRecommend(request: Request) {
                   headers: {
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": apiKey,
-                    "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount",
+                    // FieldMask最小化(2026-07-16): rating/件数を外し Enterprise→Pro SKU へ単価ダウン。
+                    //   ★評価は place_ratings＋Moodログ、無料写真被覆で代替（0枚スポットの写真だけ取得）。
+                    "X-Goog-FieldMask": "places.photos",
                   },
                   body: JSON.stringify({
                     textQuery: name,
@@ -8103,8 +8105,9 @@ async function handleRecommend(request: Request) {
             //   写真ゼロのスポットだけGoogleに1枚目を問い合わせる（API費用最小化）。残り枚数はフロントの
             //   遅延読み込み（maxLoaded＝1枚目のみ即読込み・スクロールで到達分だけ解決）でコストを抑える。
             const needPhotos = filterLivePhotos(photoUrls).length === 0;
-            const needHours = rec.openNow === undefined || !rec.openingHoursText;
-            if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
+            // FieldMask最小化に伴い営業時間はGoogleから取らない＝needHoursだけでは発火させない
+            //   （写真ゼロのスポットのみ Google searchText を叩く＝Pro SKU で最小コスト）。
+            if (!needPhotos) return;       // 既に写真あり → スキップ（営業時間はOSM/利用者入力）
             // 確認済み（過去30日にGoogleへ問い合わせ済み）の店は再取得しない。
             //   写真が十分(3枚+) or そもそもGoogleに写真/営業時間が無い店＝聞き直しても同じ
             const cVal = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
@@ -8121,7 +8124,9 @@ async function handleRecommend(request: Request) {
                 headers: {
                   "Content-Type": "application/json",
                   "X-Goog-Api-Key": apiKey,
-                  "X-Goog-FieldMask": "places.photos,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.currentOpeningHours.weekdayDescriptions,places.regularOpeningHours.weekdayDescriptions",
+                  // FieldMask最小化(2026-07-16): 営業時間を外し Enterprise→Pro SKU へ単価ダウン。
+                  //   営業時間は OSM＋利用者入力(userHoursOpenNow)で代替（Googleからは写真だけ取得）。
+                  "X-Goog-FieldMask": "places.photos",
                 },
                 body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
                 cache: "no-store", signal: AbortSignal.timeout(6000),
@@ -8148,23 +8153,8 @@ async function handleRecommend(request: Request) {
                 }
                 if (urls.length > 0) enrSave.photoUrls = urls;
               }
-              // 営業時間・営業状態を補完
-              if (needHours && place.currentOpeningHours) {
-                const st = computeOpenStatus(place.currentOpeningHours as { openNow?: boolean; periods?: GooglePeriod[] });
-                const wd = (place.currentOpeningHours?.weekdayDescriptions ?? place.regularOpeningHours?.weekdayDescriptions) as string[] | undefined;
-                recommendations[idx] = {
-                  ...recommendations[idx],
-                  openNow: st.openNow ?? recommendations[idx].openNow,
-                  openStatusBadge: st.badge ?? recommendations[idx].openStatusBadge,
-                  openingHoursText: wd?.join("\n") ?? recommendations[idx].openingHoursText,
-                };
-                const periods = (place.currentOpeningHours as { periods?: GooglePeriod[] })?.periods;
-                if (periods) enrSave.periods = periods;
-                if (wd?.length) {
-                  enrSave.weekday = wd;
-                  schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { openHours: wd.join("\n") });  // 営業時間を恒久保存(TTL)
-                }
-              }
+              // 営業時間のGoogle補完は廃止(2026-07-16 FieldMask最小化)＝営業時間はOSM＋利用者入力で表示。
+              //   Googleへは places.photos だけを要求し Pro SKU 単価に抑える。
               // 長期キャッシュへ保存。データが無い店も checked:true を記憶し
               //   「聞いても無い店」への再問い合わせを止める（次回以降call0）
               const prev = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
