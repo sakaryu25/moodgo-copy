@@ -815,22 +815,24 @@ function RegionPrefSelectView({ region, onSelectPref }: {
               cachePolicy="memory-disk"
             />
           )}
-          {/* 都道府県ボタン — 地理的位置に配置（見た目は地方ボタンと統一: ドット＋ラベル＋シェブロン）*/}
-          {imgW > 0 && overlay.map((item) => (
-            <TouchableOpacity
+          {/* 都道府県ボタン — 地理的位置に配置（見た目は地方ボタンと統一・順番にポップ→浮遊）*/}
+          {imgW > 0 && overlay.map((item, i) => (
+            <FloatingPin
               key={item.label}
-              activeOpacity={0.75}
-              onPress={() => onSelectPref(item.label)}
-              style={[s.mapRegionBtn, {
-                top:  imgTop  + imgH * (item.topPct  / 100),
-                left: imgLeft + imgW * (item.leftPct / 100),
-                shadowColor: regionColor, shadowOpacity: 0.45, shadowRadius: 11,
-              }]}
+              index={i}
+              top={imgTop + imgH * (item.topPct / 100)}
+              left={imgLeft + imgW * (item.leftPct / 100)}
             >
-              <View style={[s.mapRegionDot, { backgroundColor: regionColor }]} />
-              <Text style={s.mapRegionLabel}>{item.label}</Text>
-              <ChevronRight size={11} color={regionColor} strokeWidth={2.8} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => onSelectPref(item.label)}
+                style={[s.mapRegionBtn, { position: "relative", top: 0, left: 0, shadowColor: regionColor, shadowOpacity: 0.45, shadowRadius: 11 }]}
+              >
+                <View style={[s.mapRegionDot, { backgroundColor: regionColor }]} />
+                <Text style={s.mapRegionLabel}>{item.label}</Text>
+                <ChevronRight size={11} color={regionColor} strokeWidth={2.8} />
+              </TouchableOpacity>
+            </FloatingPin>
           ))}
         </View>
       ) : (
@@ -859,6 +861,11 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
   // 地図画像の事前読み込み（デコード）完了を待ってから表示 → ボタンと地図を同時に出す
   const [mapReady, setMapReady] = useState(false);
   useEffect(() => { let m = true; preloadMaps().then(() => { if (m) setMapReady(true); }); return () => { m = false; }; }, []);
+  // 地図のエントランス（少し引きから等倍へふわっと）
+  const mapIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (mapReady) Animated.timing(mapIn, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [mapReady, mapIn]);
 
   // コンテナ内で "contain" したときの実際の画像描画サイズとオフセットを計算
   const scale   = cW > 0 && cH > 0 ? Math.min(cW / 632, cH / 813) : 0;
@@ -883,32 +890,44 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
       )}
       {scale > 0 && mapReady && (
         <>
-          {/* 日本地図メイン（expo-image: 事前読込済みキャッシュから即表示）*/}
-          <ExpoImage
-            source={JAPAN_MAP}
-            style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH }}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-            transition={150}
-          />
+          {/* 日本地図メイン（エントランス: 少し引き→等倍・フェードイン）*/}
+          <Animated.View
+            style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH,
+              opacity: mapIn,
+              transform: [{ scale: mapIn.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}
+          >
+            <ExpoImage
+              source={JAPAN_MAP}
+              style={{ width: "100%", height: "100%" }}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+          </Animated.View>
 
-          {/* エリアボタン — 画像座標系で配置 */}
-          {REGION_OVERLAY.map((r) => {
+          {/* 背景を漂う雲（タップ透過・主張しない濃さ）*/}
+          <DriftingCloud size={190} x={-50} y={cH * 0.08} drift={54} duration={5600} gradId="mapCloud1" />
+          <DriftingCloud size={150} x={cW - 80} y={cH * 0.5} drift={-44} duration={6800} delay={900} gradId="mapCloud2" />
+          <DriftingCloud size={120} x={cW * 0.3} y={cH * 0.8} drift={38} duration={7600} delay={1600} gradId="mapCloud3" />
+
+          {/* エリアボタン — 画像座標系で配置（順番にポップ→ふわふわ浮遊）*/}
+          {REGION_OVERLAY.map((r, i) => {
             const btnTop  = offsetY + imgH * (r.topPct  / 100);
             const btnLeft = offsetX + imgW * (r.leftPct / 100);
             return (
-              <TouchableOpacity
-                key={r.id}
-                activeOpacity={0.75}
-                onPress={() => onSelectRegion(r.tab)}
-                style={[s.mapRegionBtn, { top: btnTop, left: btnLeft, shadowColor: r.color, shadowOpacity: 0.45, shadowRadius: 11 }]}
-              >
-                {/* カラードット */}
-                <View style={[s.mapRegionDot, { backgroundColor: r.color }]} />
-                {(() => { const Icon = REGION_ICON_MAP[r.id]; return Icon ? <Icon size={12} color={r.color} strokeWidth={2} /> : null; })()}
-                <Text style={s.mapRegionLabel}>{r.label}</Text>
-                <ChevronRight size={11} color={r.color} strokeWidth={2.8} />
-              </TouchableOpacity>
+              <FloatingPin key={r.id} index={i} top={btnTop} left={btnLeft}>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => onSelectRegion(r.tab)}
+                  style={[s.mapRegionBtn, { position: "relative", top: 0, left: 0, shadowColor: r.color, shadowOpacity: 0.45, shadowRadius: 11 }]}
+                >
+                  {/* カラードット */}
+                  <View style={[s.mapRegionDot, { backgroundColor: r.color }]} />
+                  {(() => { const Icon = REGION_ICON_MAP[r.id]; return Icon ? <Icon size={12} color={r.color} strokeWidth={2} /> : null; })()}
+                  <Text style={s.mapRegionLabel}>{r.label}</Text>
+                  <ChevronRight size={11} color={r.color} strokeWidth={2.8} />
+                </TouchableOpacity>
+              </FloatingPin>
             );
           })}
         </>
@@ -1555,6 +1574,67 @@ const CLOUD_PUFFS: { x: number; y: number; r: number; dx: number; dy: number; ma
 
 // 縁が透明にフェードするやわらかい雲（radial gradient）。
 // アニメ中のブラーより軽く、ふわっとした見た目になる。
+// ふわっとポップして以後ゆっくり上下に浮遊するピン（地図の地方/県ボタン用）。
+//   index順にスプリングで登場→周期をずらした浮遊ループで「生きてる地図」にする。
+export function FloatingPin({ index, top, left, children }: {
+  index: number; top: number; left: number; children: React.ReactNode;
+}) {
+  const pop = useRef(new Animated.Value(0)).current;
+  const bob = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const bobDur = 1500 + (index % 4) * 260;
+    const popAnim = Animated.sequence([
+      Animated.delay(120 + index * 70),
+      Animated.spring(pop, { toValue: 1, friction: 6, tension: 110, useNativeDriver: true }),
+    ]);
+    const bobAnim = Animated.loop(Animated.sequence([
+      Animated.timing(bob, { toValue: 1, duration: bobDur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(bob, { toValue: 0, duration: bobDur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    popAnim.start(({ finished }) => { if (finished) bobAnim.start(); });
+    return () => { popAnim.stop(); bobAnim.stop(); };
+  }, [pop, bob, index]);
+  return (
+    <Animated.View
+      style={{
+        position: "absolute", top, left,
+        opacity: pop,
+        transform: [
+          { scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) },
+          { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+// 地図の背景をゆっくり漂う雲（タップ透過・低不透明度で主張しない）
+function DriftingCloud({ size, x, y, drift = 46, duration, delay = 0, gradId }: {
+  size: number; x: number; y: number; drift?: number; duration: number; delay?: number; gradId: string;
+}) {
+  const d = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(d, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      Animated.timing(d, { toValue: 0, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    ]));
+    anim.start();
+    return () => anim.stop();
+  }, [d, duration, delay]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{ position: "absolute", top: y, left: x, opacity: 0.4,
+        transform: [{ translateX: d.interpolate({ inputRange: [0, 1], outputRange: [0, drift] }) }] }}
+    >
+      <SoftCloud size={size} gradId={gradId} />
+    </Animated.View>
+  );
+}
+
 function SoftCloud({ size, gradId }: { size: number; gradId: string }) {
   const r = size / 2;
   return (
