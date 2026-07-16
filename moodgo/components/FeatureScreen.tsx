@@ -83,7 +83,6 @@ import {
   Sun,
   Ticket,
   Umbrella,
-  UserRound,
   Utensils,
   Waves,
 } from "lucide-react-native";
@@ -1371,18 +1370,11 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
     >
-      {/* ── 現在のエリア表示・変更バー ── */}
-      <TouchableOpacity style={ts.areaBar} activeOpacity={0.85} onPress={onChangeArea}>
-        <MapPin size={15} color={C.accent} strokeWidth={2.2} />
-        <Text style={ts.areaBarText}>現在のエリア：{currentPref}</Text>
-        <View style={{ flex: 1 }} />
-        <Text style={ts.areaBarChange}>エリア変更</Text>
-        <ChevronRight size={14} color={C.accent} strokeWidth={2.4} />
-      </TouchableOpacity>
+      {/* 現在のエリアバーはグラデヘッダー内へ移動（ユーザー要望2026-07-17） */}
 
       {/* ── メイン特集カルーセル ── */}
       {heroes.length > 0 ? (
-        <View>
+        <View style={{ marginTop: 16 }}>
           <ScrollView
             horizontal
             pagingEnabled
@@ -1725,29 +1717,37 @@ export default function FeatureScreen() {
           </>
         )}
         {stage === "content" && (
-          <View style={s.headerTopRow}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={s.bandTitle}>特集</Text>
-              <Text style={s.headerCaption}>どこへ行く？</Text>
+          <>
+            <View style={s.headerTopRow}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={s.bandTitle}>特集</Text>
+                <Text style={s.headerCaption}>どこへ行く？</Text>
+              </View>
+              {/* 右上: 検索 / 通知（ガラス風の丸ボタン。マイページはユーザー要望で撤去 2026-07-17） */}
+              <View style={s.headerIconRow}>
+                <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
+                  accessibilityRole="button" accessibilityLabel="検索">
+                  <Search size={17} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+                <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.push("/notifications")}
+                  accessibilityRole="button" accessibilityLabel="通知">
+                  <Bell size={17} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
             </View>
-            {/* 右上: 検索 / 通知 / マイページ（ガラス風の丸ボタン・みんなタブと統一） */}
-            <View style={s.headerIconRow}>
-              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
-                accessibilityRole="button" accessibilityLabel="検索">
-                <Search size={17} color="#fff" strokeWidth={2.2} />
-              </TouchableOpacity>
-              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.push("/notifications")}
-                accessibilityRole="button" accessibilityLabel="通知">
-                <Bell size={17} color="#fff" strokeWidth={2.2} />
-              </TouchableOpacity>
-              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/profile")}
-                accessibilityRole="button" accessibilityLabel="マイページ">
-                {settings.iconUrl
-                  ? <ExpoImage source={{ uri: settings.iconUrl }} style={s.headerAvatar} contentFit="cover" />
-                  : <UserRound size={17} color="#fff" strokeWidth={2.2} />}
-              </TouchableOpacity>
-            </View>
-          </View>
+            {/* 現在のエリアバー（帯の中の白ピル・ユーザー要望でヘッダーへ移動 2026-07-17） */}
+            <TouchableOpacity
+              style={s.headerAreaBar} activeOpacity={0.85}
+              onPress={() => runTransition(() => setStage("map"))}
+              accessibilityRole="button" accessibilityLabel="エリア変更"
+            >
+              <MapPin size={14} color="#8B5CF6" strokeWidth={2.4} />
+              <Text style={s.headerAreaText}>現在のエリア：{selectedTab}</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={s.headerAreaChange}>エリア変更</Text>
+              <ChevronRight size={13} color="#8B5CF6" strokeWidth={2.6} />
+            </TouchableOpacity>
+          </>
         )}
       </LinearGradient>
 
@@ -1888,7 +1888,15 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
     overflow: 'hidden',
   },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
+  // 帯内の「現在のエリア」白ピル（ユーザー要望2026-07-17: 本文からヘッダーへ移動）
+  headerAreaBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 14, backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 10,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  headerAreaText: { fontSize: 13, fontWeight: '700', color: '#1F1F1F' },
+  headerAreaChange: { fontSize: 12.5, fontWeight: '800', color: '#8B5CF6', marginRight: 1 },
   // eyebrow(前置きラベル): 白ミニ罫線＋トラッキングの効いた小文字（雑誌の柱の作法）
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrowRule: { width: 18, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' },
@@ -2444,42 +2452,42 @@ const ts = StyleSheet.create({
   },
   areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#1F1F1F" },
   areaBarChange: { fontSize: 12.5, fontWeight: "700", color: C.accent, marginRight: 2 },
-  // メイン特集カルーセル
-  heroCard: { borderRadius: 26, overflow: "hidden", backgroundColor: "#E9E4F5" },
-  heroImg: { width: "100%", aspectRatio: 16 / 11, justifyContent: "flex-end" },
-  heroShade: { ...StyleSheet.absoluteFillObject, borderRadius: 26 },
+  // メイン特集カルーセル（ユーザー要望2026-07-17: 画像を小さく・画面に収まる比率に）
+  heroCard: { borderRadius: 24, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  heroImg: { width: "100%", aspectRatio: 16 / 9, justifyContent: "flex-end" },
+  heroShade: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
   heroBadge: {
-    position: "absolute", top: 14, left: 14, flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+    position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
   },
-  heroBadgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
-  heroBody: { padding: 16, paddingBottom: 14 },
-  heroTitle: { fontSize: 24, fontWeight: "800", color: "#fff", lineHeight: 31, letterSpacing: 0.2 },
-  heroDesc: { fontSize: 12.5, color: "rgba(255,255,255,0.88)", lineHeight: 18, marginTop: 6 },
-  heroCtaRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  heroBadgeText: { fontSize: 10.5, fontWeight: "700", color: "#fff" },
+  heroBody: { padding: 14, paddingBottom: 12 },
+  heroTitle: { fontSize: 20, fontWeight: "800", color: "#fff", lineHeight: 26, letterSpacing: 0.2 },
+  heroDesc: { fontSize: 12, color: "rgba(255,255,255,0.88)", lineHeight: 17, marginTop: 5 },
+  heroCtaRow: { flexDirection: "row", alignItems: "center", marginTop: 10 },
   heroCta: {
     flexDirection: "row", alignItems: "center", gap: 2,
-    backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
   },
-  heroCtaText: { fontSize: 12.5, fontWeight: "800", color: "#2A2440" },
-  heroCount: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
-  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, marginTop: 10 },
+  heroCtaText: { fontSize: 12, fontWeight: "800", color: "#2A2440" },
+  heroCount: { fontSize: 11.5, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, marginTop: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#D8D2EA" },
   dotActive: { backgroundColor: C.accent, width: 14 },
-  // サブ特集カード
+  // サブ特集カード（同上: 高さ190→148で軽く）
   subRow: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 14 },
-  subCard: { flex: 1, borderRadius: 20, overflow: "hidden", backgroundColor: "#E9E4F5" },
-  subImg: { width: "100%", height: 190, justifyContent: "flex-end" },
+  subCard: { flex: 1, borderRadius: 18, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  subImg: { width: "100%", height: 148, justifyContent: "flex-end" },
   subBadge: {
-    position: "absolute", top: 10, left: 10,
-    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4,
+    position: "absolute", top: 9, left: 9,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3.5,
   },
   subBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },
-  subBody: { padding: 11 },
-  subTitle: { fontSize: 14.5, fontWeight: "800", color: "#fff", lineHeight: 19 },
-  subDesc: { fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 15, marginTop: 4 },
-  subCta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 8 },
-  subCtaText: { fontSize: 11, fontWeight: "800", color: "#fff" },
+  subBody: { padding: 10 },
+  subTitle: { fontSize: 13, fontWeight: "800", color: "#fff", lineHeight: 17.5 },
+  subDesc: { fontSize: 10, color: "rgba(255,255,255,0.85)", lineHeight: 14, marginTop: 3 },
+  subCta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 6 },
+  subCtaText: { fontSize: 10.5, fontWeight: "800", color: "#fff" },
   // セクション（人気エリア）
   section: { marginTop: 20 },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginBottom: 10 },
