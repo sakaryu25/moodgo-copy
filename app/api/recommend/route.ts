@@ -5825,6 +5825,71 @@ function sanitizeReasonText(raw?: string | null): string {
     .slice(0, 80);
 }
 
+// スポットの実属性（エリア・種別・気分タグ）から具体的な一言説明を0msで生成する。
+//   「○○のスポット情報」という無味な定型フォールバックを置換し、全カードに情報価値を出す（2026-07-17）。
+//   実説明(DB/OpenAI生成/店舗提供)があればそちらを優先し（pickReason）、無い時だけこれを使う。
+function buildSpecificReason(name: string, tags: string[], address?: string | null): string {
+  const t = new Set((tags || []).map(x => x.replace(/^#/, "")));
+  // エリア: 住所から「市区町村」優先、無ければ都道府県
+  const area = (() => {
+    const a = (address || "").replace(/^日本、?\s*/, "").trim();
+    if (!a) return "";
+    const city = a.match(/(?:東京都|北海道|京都府|大阪府|.{2,3}県)?\s*([^\s、,0-9]{1,6}?[市区町村])/);
+    if (city) return city[1];
+    const pref = a.match(/(東京都|北海道|京都府|大阪府|.{2,3}県)/);
+    return pref ? pref[1] : "";
+  })();
+  // 種別: 名前の接尾辞 → タグ の順
+  const type =
+    /(神社|大社|神宮|八幡宮?|稲荷|天満宮)/.test(name) ? "神社" :
+    /(寺|院|大師|不動尊)$/.test(name) ? "お寺" :
+    /(城$|城跡|城址)/.test(name) ? "城" :
+    /(公園|緑地)$/.test(name) ? "公園" :
+    /(滝|渓谷|峡)$/.test(name) ? "自然スポット" :
+    /(湖|沼|池|湿原)$/.test(name) ? "水辺スポット" :
+    /(海岸|海水浴場|浜|ビーチ|岬)$/.test(name) ? "海辺スポット" :
+    /(山|岳|峰|嶽)$/.test(name) ? "山" :
+    /温泉/.test(name) ? "温泉" :
+    /美術館$/.test(name) ? "美術館" :
+    /(博物館|資料館|記念館|科学館|歴史館)$/.test(name) ? "博物館" :
+    /図書館$/.test(name) ? "図書館" :
+    /水族館$/.test(name) ? "水族館" :
+    /(動物園|牧場)$/.test(name) ? "動物園・牧場" :
+    /(展望台|タワー|ヒルズ)/.test(name) ? "展望スポット" :
+    /(カフェ|珈琲|coffee|cafe)/i.test(name) ? "カフェ" :
+    /(ラーメン|らーめん|中華そば)/.test(name) ? "ラーメン店" :
+    t.has("お腹すいた") || t.has("ご当地グルメ") ? "グルメスポット" :
+    t.has("カフェスイーツ") ? "カフェ" :
+    t.has("ショッピング") ? "お店" :
+    t.has("温泉") ? "温泉" :
+    (t.has("自然公園") || t.has("自然感じたい")) ? "自然スポット" :
+    "スポット";
+  // 気分フレーズ: 優先度順に1つ
+  const vibe =
+    t.has("パワースポット") ? "パワースポットとして人気です。" :
+    (t.has("絶景スポット") || t.has("絶景")) ? "絶景が楽しめます。" :
+    t.has("夜景") ? "きれいな夜景が見られます。" :
+    (t.has("自然感じたい") || t.has("自然公園")) ? "自然を感じてリフレッシュできます。" :
+    t.has("温泉") ? "日頃の疲れを癒やせます。" :
+    t.has("集中したい") ? "静かに落ち着いて過ごせます。" :
+    t.has("まったりしたい") ? "のんびりゆったり過ごせます。" :
+    t.has("わいわい楽しみたい") ? "みんなでわいわい楽しめます。" :
+    t.has("体動かしたい") ? "体を動かしてリフレッシュできます。" :
+    (t.has("ご当地グルメ") || t.has("お腹すいた")) ? "地元で愛される味が楽しめます。" :
+    t.has("鑑賞") ? "見ごたえのある展示が楽しめます。" :
+    t.has("穴場スポット") ? "知る人ぞ知る穴場です。" :
+    "";
+  const head = area ? `${area}の${type}。` : (type !== "スポット" ? `${type}。` : "");
+  return (head + vibe).replace(/^[。\s]+/, "").slice(0, 60);
+}
+
+// 実説明があれば優先、無い/定型フォールバックなら具体的な一言を生成する。
+function pickReason(name: string, tags: string[], address: string | null | undefined, rawDesc?: string | null): string {
+  const clean = sanitizeReasonText(rawDesc);
+  const isStub = !clean || clean === `${name}のスポット情報` || clean.length < 6;
+  return isStub ? buildSpecificReason(name, tags, address) : clean;
+}
+
 function createFinalizeHelpers(ctx: FinalizeContext) {
   const {
     isFoodMood, minRadiusKm, nearCapKm, familyCompanion, alcoholDeepDive, isBadWeather,
@@ -7374,8 +7439,9 @@ async function handleRecommend(request: Request) {
             googleMapsUrl: r.googleMapsUrl,
             // 推薦理由はユーザー要望で非表示化（汎用文は情報価値が低いため）。
             //   AI理由（自由文/AI相談フロー）か、店の実説明があればそれだけ出す。OSMは空＝カード側で非表示。
-            reason: reasons.get(r.name) ?? sanitizeReasonText(r.description),
-            aiReason: reasons.get(r.name) || sanitizeReasonText(r.description) || undefined,
+            // 実説明が無い/定型フォールバックのスポットは、エリア×種別×気分から具体的な一言を0ms生成（2026-07-17）。
+            reason: reasons.get(r.name) ?? pickReason(r.name, (r.tags ?? matchedTags) as string[], r.address, r.description),
+            aiReason: reasons.get(r.name) || pickReason(r.name, (r.tags ?? matchedTags) as string[], r.address, r.description) || undefined,
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,

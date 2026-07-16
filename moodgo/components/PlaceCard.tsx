@@ -324,8 +324,11 @@ export default function PlaceCard({
     sendEngagement(item.title, 'share', moodLabel);  // ② 学習ループ: 共有=強い好意シグナル
   };
 
-  // 説明文：featuresの中で長い文はdescription扱い
-  const description = item.features?.find(f => f.length > 15) ?? '';
+  // 説明文：featuresの中の長文＞具体的な一言理由(reason)の順で採用。
+  //   reasonはサーバーがエリア×種別×気分から具体生成（旧「○○のスポット情報」定型は除外）。
+  const stubReason = (r?: string) => !r || r.length < 6 || /のスポット情報$/.test(r);
+  const description = item.features?.find(f => f.length > 15)
+    ?? (!stubReason(item.reason) ? item.reason! : '');
 
   // 期間限定バッジ: available_from/until があれば「期間限定 M/D〜M/D」。終了日が過ぎていれば「期間限定(終了)」。
   const fmtMD = (d?: string | null) => { const m = d ? /^(\d{4})-(\d{2})-(\d{2})/.exec(d) : null; return m ? `${Number(m[2])}/${Number(m[3])}` : ''; };
