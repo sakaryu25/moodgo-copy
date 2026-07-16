@@ -37,6 +37,8 @@ export type Recommendation = {
   isSponsored?: boolean;
   /** Moodログ集計（MoodGo独自の気分ベース口コミ反応。カードのバッジ表示用） */
   moodLog?: { count: number; topMood?: string; topCompanion?: string; revisit?: number; helpful?: number };
+  /** MoodGo独自バッジ: 定番(classic)/穴場(hidden_gem)/話題(trending)。サーバー側で判定 */
+  mgBadge?: 'classic' | 'hidden_gem' | 'trending';
   hotpepperUrl?: string;
   /** Supabase places.id（UUID）。report-closed API で使用する閉店報告用 */
   supabaseId?: string;

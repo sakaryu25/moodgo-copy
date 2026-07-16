@@ -3,7 +3,8 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CalendarClock, CalendarX, Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
+import { Award, CalendarClock, CalendarX, Camera, Check, Clock, Flame, Gem, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -56,6 +57,15 @@ import { COLORS } from '@/constants/colors';
 // MoodGo brand
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const BRAND = '#C084FC';
+
+// ── MoodGo独自バッジ（定番/穴場/話題）───────────────────────────────────────
+//   ★評価がGoogle撤廃で空になった代わりの信頼シグナル。サーバー(recommend)が判定して
+//   mgBadge で返す。絵文字は使わずlucide＋淡色ピル（期間限定のソリッドバッジと差別化）。
+const MG_BADGE: Record<string, { Icon: LucideIcon; bg: string; border: string; fg: string }> = {
+  classic:    { Icon: Award, bg: '#EFF6FF', border: '#BFDBFE', fg: '#2563EB' },   // 定番=青(有名/実績)
+  hidden_gem: { Icon: Gem,   bg: '#FDF2F8', border: '#FBCFE8', fg: '#DB2777' },   // 穴場=ピンク(発見)
+  trending:   { Icon: Flame, bg: '#FFF7ED', border: '#FED7AA', fg: '#EA580C' },   // 話題=オレンジ(熱)
+};
 
 // ── 営業時間フォーマッター ────────────────────────────────────────────────
 const DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
@@ -138,6 +148,9 @@ const T = {
     moodMatchDone:    '気分に合う！と評価しました',
     moodNotMatchDone: '気分には合わないと評価しました',
     moodQuestion:     (mood: string) => `「${mood}」の気分の時にこの場所は？`,
+    badgeClassic:     '定番',
+    badgeHiddenGem:   '穴場',
+    badgeTrending:    '話題',
   },
   en: {
     openNow:          'Open',
@@ -154,8 +167,17 @@ const T = {
     moodMatchDone:    'Marked as mood match!',
     moodNotMatchDone: 'Marked as not matching',
     moodQuestion:     (mood: string) => `How is this place for "${mood}"?`,
+    badgeClassic:     'Classic',
+    badgeHiddenGem:   'Hidden gem',
+    badgeTrending:    'Trending',
   },
 };
+
+const MG_BADGE_LABEL_KEY = {
+  classic: 'badgeClassic',
+  hidden_gem: 'badgeHiddenGem',
+  trending: 'badgeTrending',
+} as const;
 
 type Props = {
   item: Recommendation;
@@ -575,6 +597,16 @@ export default function PlaceCard({
 
         {/* 評価 + 営業状態 (ピル) */}
         <View style={s.pillRow}>
+          {/* MoodGo独自バッジ（定番/穴場/話題）— ★の代わりの信頼シグナル */}
+          {item.mgBadge && MG_BADGE[item.mgBadge] ? (() => {
+            const b = MG_BADGE[item.mgBadge!];
+            return (
+              <View style={[s.mgBadgePill, { backgroundColor: b.bg, borderColor: b.border }]}>
+                <b.Icon size={11.5} color={b.fg} strokeWidth={2.6} />
+                <Text style={[s.mgBadgeText, { color: b.fg }]}>{t[MG_BADGE_LABEL_KEY[item.mgBadge!]]}</Text>
+              </View>
+            );
+          })() : null}
           {item.rating != null && (
             <View style={s.ratingPill}>
               <Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} />
@@ -849,6 +881,12 @@ const s = StyleSheet.create({
 
   // 評価 + 営業ピル row
   pillRow:    { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  // MoodGo独自バッジ（定番/穴場/話題）: 淡色ピル＋細アイコン
+  mgBadgePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1,
+  },
+  mgBadgeText: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
   ratingPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FFFBEB', borderRadius: 999,

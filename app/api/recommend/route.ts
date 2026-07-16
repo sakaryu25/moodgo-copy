@@ -260,24 +260,50 @@ async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
     if (hasArr && (rr.photoUrls as string[]).length === live.length && (rr.photoUrl ?? "") === (live[0] ?? "")) return r;  // 変化なし
     return { ...r, photoUrls: live, photoUrl: live[0] ?? "" } as T;
   });
-  if (!supabase) return recs;
   const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
+  // ── MoodGoバッジ（②・2026-07-17）: 定番/穴場/話題 ────────────────────────────
+  //   ★評価がGoogle撤廃で全域空になったため、今あるデータだけで信頼シグナルを出す。
+  //   優先度: 話題(trending=Moodログ2件+) > 定番(classic=有名ソース/評価件数) > 穴場(hidden_gem=#穴場スポット+写真あり)。
+  //   穴場はjapan47go由来で大量にあるためレスポンス毎に最大5枚に制限（バッジの希少性=意味を守る）。
+  let hiddenGemLeft = 5;
+  const CLASSIC_SRC = /wikidata|hyakusen|michi-no-eki|curated|env-wetland|tanada/;
+  const withBadge = (r: T, srcType?: string | null): T => {
+    const rr = r as {
+      mgBadge?: string; isSponsored?: boolean; tags?: string[]; rating?: number | null;
+      userRatingCount?: number | null; moodLog?: { count?: number }; photoUrls?: string[];
+    };
+    if (rr.mgBadge || rr.isSponsored) return r;   // 既存バッジ/PR枠には重ねない
+    const tags = Array.isArray(rr.tags) ? rr.tags : [];
+    const cnt = typeof rr.userRatingCount === "number" ? rr.userRatingCount : 0;
+    const rating = typeof rr.rating === "number" ? rr.rating : 0;
+    if ((rr.moodLog?.count ?? 0) >= 2) return { ...r, mgBadge: "trending" } as T;
+    if (CLASSIC_SRC.test(srcType ?? "") || cnt >= 100 || (rating >= 4.2 && cnt >= 30)) return { ...r, mgBadge: "classic" } as T;
+    if (hiddenGemLeft > 0 && tags.includes("#穴場スポット") && (rr.photoUrls?.length ?? 0) > 0) {
+      hiddenGemLeft--;
+      return { ...r, mgBadge: "hidden_gem" } as T;
+    }
+    return r;
+  };
+  if (!supabase) return recs.map((r) => withBadge(r));
   try {
     const sids = [...new Set(recs.map(sidOf).filter(Boolean))];
-    if (sids.length === 0) return recs;
-    const pmap = new Map<string, { from: string | null; until: string | null }>();
+    if (sids.length === 0) return recs.map((r) => withBadge(r));
+    // 期間限定(available_from/until)とバッジ用のsource_typeを同じ1クエリで取得（追加コストゼロ）
+    const pmap = new Map<string, { from: string | null; until: string | null; src: string | null }>();
     for (const chunk of (function* () { for (let i = 0; i < sids.length; i += 300) yield sids.slice(i, i + 300); })()) {
-      const { data } = await supabase.from("places").select("id, available_from, available_until").in("id", chunk);
-      for (const p of (data ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null }>) {
-        if (p.available_from || p.available_until) pmap.set(String(p.id), { from: p.available_from, until: p.available_until });
+      const { data } = await supabase.from("places").select("id, available_from, available_until, source_type").in("id", chunk);
+      for (const p of (data ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null; source_type: string | null }>) {
+        pmap.set(String(p.id), { from: p.available_from, until: p.available_until, src: p.source_type });
       }
     }
-    if (pmap.size === 0) return recs;
     return recs.map((r) => {
       const pv = pmap.get(sidOf(r));
-      return pv ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T) : r;
+      const withAvail = pv && (pv.from || pv.until)
+        ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T)
+        : r;
+      return withBadge(withAvail, pv?.src);
     });
-  } catch { return recs; }
+  } catch { return recs.map((r) => withBadge(r)); }
 }
 
 type ApprovedSuggestion = {
