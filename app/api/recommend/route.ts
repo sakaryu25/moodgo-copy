@@ -5834,9 +5834,11 @@ function buildSpecificReason(name: string, tags: string[], address?: string | nu
   const area = (() => {
     const a = (address || "").replace(/^日本、?\s*/, "").trim();
     if (!a) return "";
-    const city = a.match(/(?:東京都|北海道|京都府|大阪府|.{2,3}県)?\s*([^\s、,0-9]{1,6}?[市区町村])/);
+    // 先頭の都道府県を除去して市区町村だけを簡潔に採る（「神奈川県鎌倉市」→「鎌倉市」）
+    const noPref = a.replace(/^(東京都|北海道|京都府|大阪府|.{2,3}県)\s*/, "");
+    const city = noPref.match(/^([^\s、,0-9]{1,6}?[市区町村])/);
     if (city) return city[1];
-    const pref = a.match(/(東京都|北海道|京都府|大阪府|.{2,3}県)/);
+    const pref = a.match(/^(東京都|北海道|京都府|大阪府|.{2,3}県)/);
     return pref ? pref[1] : "";
   })();
   // 種別: 名前の接尾辞 → タグ の順
