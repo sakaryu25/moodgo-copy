@@ -1690,7 +1690,11 @@ export default function FeatureScreen() {
         colors={GRAD}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[s.header, { paddingTop: insets.top + 14, minHeight: insets.top + HERO_BAND_H }]}
+        style={[s.header, {
+          paddingTop: insets.top + 14,
+          // 特集TOP(content)はカード群が主役なので帯を薄く。地図/県選択は従来の帯高(HERO_BAND_H)を維持
+          minHeight: insets.top + (stage === "content" ? 74 : HERO_BAND_H),
+        }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
         <View style={s.decoCircle2} pointerEvents="none" />
