@@ -6662,7 +6662,7 @@ async function handleRecommend(request: Request) {
             openingHoursText: r.openingHours ?? undefined,
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
-            reason: sanitizeReasonText(r.description),
+            reason: pickReason(r.name, ((r as { tags?: string[] }).tags ?? []), r.address, r.description),
             aiReason: undefined,
             features: isJikan ? ["#時間潰し"] : [],
             distanceText: r.distanceInfo,
@@ -7919,7 +7919,7 @@ async function handleRecommend(request: Request) {
                 openingHoursText: undefined,
                 mapUrl: s.google_maps_uri ?? "",
                 googleMapsUrl: s.google_maps_uri ?? "",
-                reason: sanitizeReasonText(s.description),   // 領域3a: 投稿生テキスト(【目安価格】等)を整形
+                reason: pickReason(name, (s.auto_tags ?? []), s.address ?? null, s.description),   // 領域3a: 実説明優先・無ければ具体一言
                 features: (s.auto_tags ?? []).filter(t => allUserTags.has(t)).slice(0, 5),
                 distanceText: adkm != null ? formatDistTextFromKm(adkm) : "",
                 distanceKm: adkm,
@@ -8304,7 +8304,7 @@ async function handleRecommend(request: Request) {
                   rating: null, userRatingCount: null, openNow: undefined,
                   openStatusBadge: undefined, openingHoursText: undefined,
                   mapUrl: "", googleMapsUrl: "",
-                  reason: sanitizeReasonText(s.description), features: (s.tags ?? []).slice(0, 5),
+                  reason: pickReason(s.name, (s.tags ?? []), s.address ?? null, s.description), features: (s.tags ?? []).slice(0, 5),
                   distanceText: km != null ? formatDistText(km, answers.transport) : "",
                   distanceKm: km, distanceM: null, lat: s.lat ?? undefined, lng: s.lng ?? undefined,
                   durationText: "", stationText: s.nearest_station ?? "",
