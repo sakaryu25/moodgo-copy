@@ -1273,12 +1273,14 @@ export default function Home() {
         {renderContent()}
       </Animated.View>
 
-      {/* /place へ遷移中は結果Modalが退避し、裏のホーム画面が一瞬見えてしまう。同じ背景グラデで覆って隠す。
-          押した瞬間(detailCovering)から出しておくことで、Modal退避の1フレームでもホームを見せない。*/}
+      {/* /place へ遷移中は結果Modalが退避し、その隙間(Modal退避→/place描画のギャップ)で裏のホームが
+          一瞬見える。iOSは全画面Modalの裏の画面(/place)を描画しないため、退避直後に/placeが出るまで
+          必ず1フレーム以上のギャップが生じる根本問題。ここを覆う色を**遷移先(place)と同じ不透明地色
+          #F8F9FB**にする＝隙間フレームが「ホームのグラデ」でなく「詳細と同じ地色」になり“ホームがチラッ”
+          と見えなくなる（旧: AppBackgroundグラデ＝ホームと同じ見た目で、それ自体がホームに見えていた）。
+          不透明ベタなのでホームのカードも確実に隠す。押した瞬間(detailCovering)から出しておく。*/}
       {(detailCovering || navAway) && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 200 }]} pointerEvents="none">
-          <AppBackground />
-        </View>
+        <View style={[StyleSheet.absoluteFill, { zIndex: 200, backgroundColor: '#F8F9FB' }]} pointerEvents="none" />
       )}
 
       {/* AI相談 入力画面（最前面オーバーレイ・TabBarより上に重ねて下部バーを隠す）*/}
