@@ -747,6 +747,8 @@ function RegionPrefSelectView({ region, onSelectPref }: {
   const bgImage    = regionKey ? REGION_BG_IMAGES[regionKey] : undefined;
   const overlay    = bgImage ? REGION_PREF_OVERLAY[region] : undefined;
   const nativeRatio = regionKey ? REGION_IMG_RATIO[regionKey] : undefined;
+  // 県ボタンの見た目を地方ボタンと統一するためのアクセント色（その地方の色）
+  const regionColor = REGION_OVERLAY.find((r) => r.tab === region)?.color ?? "#8B5CF6";
 
   // 北海道・東北 / 九州・沖縄 (縦長) はそのまま、それ以外は 1.25 倍に拡大
   const imgScale = (regionKey === "hokkaido-tohoku" || regionKey === "kyushu") ? 1.0 : 1.25;
@@ -813,18 +815,21 @@ function RegionPrefSelectView({ region, onSelectPref }: {
               cachePolicy="memory-disk"
             />
           )}
-          {/* 都道府県ボタン — 地理的位置に配置 */}
+          {/* 都道府県ボタン — 地理的位置に配置（見た目は地方ボタンと統一: ドット＋ラベル＋シェブロン）*/}
           {imgW > 0 && overlay.map((item) => (
             <TouchableOpacity
               key={item.label}
-              activeOpacity={0.78}
+              activeOpacity={0.75}
               onPress={() => onSelectPref(item.label)}
-              style={[s.prefOverlayBtn, {
+              style={[s.mapRegionBtn, {
                 top:  imgTop  + imgH * (item.topPct  / 100),
                 left: imgLeft + imgW * (item.leftPct / 100),
+                shadowColor: regionColor, shadowOpacity: 0.45, shadowRadius: 11,
               }]}
             >
-              <Text style={s.prefOverlayBtnText}>{item.label}</Text>
+              <View style={[s.mapRegionDot, { backgroundColor: regionColor }]} />
+              <Text style={s.mapRegionLabel}>{item.label}</Text>
+              <ChevronRight size={11} color={regionColor} strokeWidth={2.8} />
             </TouchableOpacity>
           ))}
         </View>
@@ -1341,7 +1346,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
   // 着地アニメ: マウント時にセクションが上から順にふわっとせり上がる（ズームダイブの余韻）
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(enter, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.timing(enter, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [enter]);
   const riseIn = (idx: number) => {
     const from = Math.min(0.45, idx * 0.09);
@@ -1360,13 +1365,14 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
   const { heroes, sub1, sub2 } = collectScopeContent(pages, chain);
   const subs = [sub1, sub2].filter(Boolean) as FeaturedPageV2[];
 
-  // 人気エリア: 同じフォールバック連鎖で最初に見つかったスコープ分を表示
-  const areas = (() => {
+  // 人気エリア: 同じフォールバック連鎖で最初に見つかったスコープ分を表示。
+  //   見出しは実際に表示しているスコープ名にする（福岡に無く全国分を出す時は「全国の人気エリア」）
+  const { areas, areasScope } = (() => {
     for (const key of chain) {
       const rows = popularAreas.filter((a) => (a.scope_key ?? "") === key);
-      if (rows.length) return rows;
+      if (rows.length) return { areas: rows, areasScope: key };
     }
-    return [] as PopularArea[];
+    return { areas: [] as PopularArea[], areasScope: activeScope as string };
   })();
 
   const openPage = (p: FeaturedPageV2) => router.push(`/feature/page/${p.id}` as never);
@@ -1476,7 +1482,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
         <Animated.View style={[ts.section, riseIn(4)]}>
           <View style={ts.sectionHead}>
             <MapPin size={15} color={C.accent} strokeWidth={2.4} />
-            <Text style={ts.sectionTitle}>{activeScope}の人気エリア</Text>
+            <Text style={ts.sectionTitle}>{areasScope}の人気エリア</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
             {areas.map((a) => (
@@ -1656,7 +1662,7 @@ export default function FeatureScreen() {
     });
     Animated.timing(t, {
       toValue: 1,
-      duration: 720,
+      duration: 900,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
