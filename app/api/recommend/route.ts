@@ -6036,13 +6036,17 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 
   // E-3: 写真の質的優先スコア
+  //   ⚠2026-07-16 重み引き上げ: 旧値(0.3〜1.2)は random(0-10)/評価(0-5)/絶景(+6)に埋もれ、
+  //   「近いが写真の無い小スポット(○○跡/児童遊園/緑地)」が写真付きスポットより上位に来て、
+  //   検索カードの多くが“画像なし”になっていた。候補は既に同気分・近傍で関連性が担保されている
+  //   ので、その中で写真ありを実効的に優先する（写真なしも除外せず後方に残す＝0件回避・多様性維持）。
   const photoQualityScore = (r: FinalizeRec): number => {
     const hasUserPhoto = r.hasUserPhotos === true;
     const photoUrls = r.photoUrls ?? [];
     const hasPhoto = !!r.photoUrl || photoUrls.length > 0;
-    if (hasUserPhoto) return 1.2;
-    if (photoUrls.length >= 3) return 0.6;
-    if (hasPhoto) return 0.3;
+    if (hasUserPhoto) return 7;           // 利用者投稿写真=最優先（curated+8に次ぐ）
+    if (photoUrls.length >= 3) return 6;  // 複数写真あり
+    if (hasPhoto) return 5;               // 写真1枚でも“写真なし”より確実に上位へ
     return 0;
   };
 
