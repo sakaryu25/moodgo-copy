@@ -8086,7 +8086,10 @@ async function handleRecommend(request: Request) {
             // OSM由来の店はGoogleエンリッチしない（写真=ジャンル別PH＋利用者投稿／営業時間=OSM情報。searchText削減）
             if ((rec.source ?? "").startsWith("osm")) return;
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
-            const needPhotos = photoUrls.length < 10;
+            // 写真が1枚でもあれば（生きた無料写真）Google補完はしない（ユーザー要望2026-07-16）。
+            //   写真ゼロのスポットだけGoogleに1枚目を問い合わせる（API費用最小化）。残り枚数はフロントの
+            //   遅延読み込み（maxLoaded＝1枚目のみ即読込み・スクロールで到達分だけ解決）でコストを抑える。
+            const needPhotos = filterLivePhotos(photoUrls).length === 0;
             const needHours = rec.openNow === undefined || !rec.openingHoursText;
             if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
             // 確認済み（過去30日にGoogleへ問い合わせ済み）の店は再取得しない。

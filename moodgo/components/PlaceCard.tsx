@@ -252,8 +252,9 @@ export default function PlaceCard({
   // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
   const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
   const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
-  // 心霊で写真がある場合、カルーセル末尾に「提供してください」スライドを追加する
-  const showContribute = spooky && photos.length > 0;
+  // 写真がある全スポットで、カルーセル末尾に「写真を追加」スライドを出す（何枚あっても募集継続）。
+  //   心霊は暗い雰囲気、通常スポットは明るい募集デザイン（詳細ページ place.tsx と統一）。
+  const showContribute = photos.length > 0;
   const pageCount = photos.length + (showContribute ? 1 : 0);
   const onImgError = (uri: string) =>
     setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
@@ -377,8 +378,8 @@ export default function PlaceCard({
                 )}
               </TouchableOpacity>
             ))}
-            {/* 末尾の「写真を提供してください」スライド（スライドすると出る） */}
-            {showContribute && (
+            {/* 末尾の「写真を追加」スライド（スライドすると出る）。心霊=暗い雰囲気／通常=明るい募集 */}
+            {showContribute && (spooky ? (
               <LinearGradient
                 colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
                 style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}
@@ -392,7 +393,24 @@ export default function PlaceCard({
                     : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
                 </TouchableOpacity>
               </LinearGradient>
-            )}
+            ) : (
+              // 通常スポット: 写真があっても末尾に明るい「写真を追加」募集ページ（何枚でも継続）
+              <LinearGradient
+                colors={['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
+                style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder, s.contribBright]}
+              >
+                <Camera size={30} color="#8A6BF0" strokeWidth={1.9} />
+                <Text style={s.phInviteTitle}>あなたの1枚も、この場所に</Text>
+                <Text style={s.phInviteSub}>違う角度・季節・時間帯の写真が魅力を伝えます</Text>
+                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
+                    {uploading
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </LinearGradient>
+            ))}
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
@@ -735,6 +753,8 @@ const s = StyleSheet.create({
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   // 写真なし時のクリーンな「?」プレースホルダー背景（淡いviolet-gray）
   phClean: { backgroundColor: '#F3F0F9', gap: 4, paddingHorizontal: 24 },
+  // 写真ありスポットの末尾「写真を追加」明るい募集スライド
+  contribBright: { gap: 4, paddingHorizontal: 24 },
   phInviteTitle: { color: '#6B5A8A', fontSize: 14, fontWeight: '800', marginTop: 6, letterSpacing: 0.2, textAlign: 'center' },
   phInviteSub: { color: 'rgba(107,90,138,0.78)', fontSize: 11.5, fontWeight: '600', textAlign: 'center' },
   pioneerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, marginBottom: 7 },
