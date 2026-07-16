@@ -113,6 +113,8 @@ export default function Home() {
   // 検索結果→場所詳細の遷移: 先にpushしてModalの裏で遷移を完了させ、その後"無アニメ"で退避する。
   // （旧: 先に退避→push だと退避アニメ中に裏のホームが一瞬見えていた）
   const [resultsAnim, setResultsAnim] = useState<'slide' | 'none'>('slide');
+  // 結果Modalが再表示される度に+1。ResultsViewが詳細から戻った時にスクロール位置を復元する合図。
+  const [resultsShowSeq, setResultsShowSeq] = useState(0);
   const navAwayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailNavigating = useRef(false);   // 退避待ちの間の多重タップ防止
   // NativeTabs移行: 保存/みんな/つぶやき/特集 は独立タブルートに分離。
@@ -1090,6 +1092,7 @@ export default function Home() {
         <SlideUp>
           <ResultsView
             lang={lang}
+            restoreScrollSeq={resultsShowSeq}
             selectedMood={selectedMood}
             selectedArea={selectedArea}
             selectedCompanion={selectedCompanion}
@@ -1302,6 +1305,7 @@ export default function Home() {
         animationType={resultsAnim}
         presentationStyle="fullScreen"
         onRequestClose={resetQuiz}
+        onShow={() => setResultsShowSeq((s) => s + 1)}   /* 再表示のたびResultsViewにスクロール復元を促す */
       >
         {quizNode}
         {resultsNode}

@@ -213,6 +213,8 @@ type Props = {
   lang?: 'ja' | 'en';
   onPressDetail?: (rec: Recommendation) => void;
   onSubmitPlaceRating?: (title: string, verdict: 'good' | 'bad') => void;
+  // 結果Modalが再表示される度に+1（詳細から戻った時にスクロール位置を復元するトリガ）
+  restoreScrollSeq?: number;
 };
 
 // ── Animated loading card ──────────────────────────────────────────────────────
@@ -280,8 +282,27 @@ export default function ResultsView(props: Props) {
     lang = 'ja',
     onPressDetail,
     onSubmitPlaceRating,
+    restoreScrollSeq = 0,
   } = props;
   const t = T[lang];
+
+  // ── スクロール位置の保存/復元 ─────────────────────────────────────────────
+  // 詳細ページから戻る際、結果は全画面ネイティブModalの visible トグルで復帰するが、
+  // iOSは再表示時にScrollViewのcontentOffsetを0へ戻す＝「見ていた場所でなく最上部」に戻る。
+  // onScrollでY位置を保存し、Modal再表示(restoreScrollSeqの増加)で元の位置へ復元する。
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  useEffect(() => {
+    if (!restoreScrollSeq) return;               // 初回表示(0)は復元不要
+    const y = scrollYRef.current;
+    if (y <= 0) return;
+    // 再表示直後はまだ再レイアウト前なので、フレームを跨いでから復元する
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y, animated: false });
+    }));
+  }, [restoreScrollSeq]);
+  // 新しい検索(結果データが変わったら)は先頭から見るので保存位置をリセット
+  useEffect(() => { scrollYRef.current = 0; }, [recommendations]);
 
   const PAGE_SIZE = 8;
   const [resultSort, setResultSort] = React.useState<'default' | 'rating' | 'near'>('default');
@@ -418,6 +439,9 @@ export default function ResultsView(props: Props) {
       </View>
 
       <ScrollView
+        ref={scrollRef}
+        onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
         style={s.scroll}
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
