@@ -38,7 +38,8 @@ import { Asset } from "expo-asset";
 import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
-import { HERO_BAND_H, HERO_BAND_TALL } from "@/lib/headerBand";
+import { HERO_BAND_H } from "@/lib/headerBand";
+import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { useTabReset } from "@/lib/useTabReset";
 import { useSettings } from "@/lib/settingsStore";
 
@@ -1297,6 +1298,8 @@ type FeatureContentViewProps = {
   popularAreas: PopularArea[];      // 人気エリアカード
   onChangeArea: () => void;         // 「エリア変更」→ 日本地図ステージへ
   onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
+  /** ヘッダー帯の格納（親のuseCollapsibleHeader）。ヘッダーはoverlay＝リストはheaderH分逃がす */
+  collapse: ReturnType<typeof useCollapsibleHeader>;
 };
 
 // ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）。
@@ -1330,7 +1333,7 @@ function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
 const SCREEN_W = Dimensions.get("window").width;
 const HERO_CARD_W = SCREEN_W - 32;
 
-function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref }: FeatureContentViewProps) {
+function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const region: Tab = PREF_TO_REGION[currentPref] ?? "関東";
@@ -1366,9 +1369,13 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
   };
 
   return (
-    <ScrollView
+    // ヘッダーはabsolute overlay（親のcollapse）＝リストはpaddingTop: headerH で逃がす。
+    //   Animated.ScrollView + onScroll(useNativeDriver) が格納アニメの駆動源。
+    <Animated.ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
+      contentContainerStyle={{ paddingTop: collapse.headerH, paddingBottom: insets.bottom + 110 }}
+      onScroll={collapse.onScroll}
+      scrollEventThrottle={16}
     >
       {/* 現在のエリアバーはグラデヘッダー内へ移動（ユーザー要望2026-07-17） */}
 
@@ -1481,7 +1488,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
         </View>
         <Image source={JAPAN_MAP} style={ts.nationMap} resizeMode="contain" />
       </View>
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
@@ -1679,18 +1686,30 @@ export default function FeatureScreen() {
     outputRange: [1, 1.06, 1],
   });
 
+  // 下スクロールでヘッダー帯を格納・上スクロールで復帰（みんなの穴場と同じ挙動・ユーザー要望2026-07-17）。
+  //   content時のみ有効。ステージ復帰時は必ず開いた状態に戻す（diffClampの残留で隠れたままを防ぐ）。
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + 150 });
+  const isContent = stage === "content";
+  useEffect(() => { if (isContent) collapse.scrollY.setValue(0); }, [isContent, collapse.scrollY]);
   return (
     <View style={s.safe}>
-      {/* ── グラデーションヘッダー ── */}
+      {/* ── グラデーションヘッダー ──
+          content時はみんなの穴場(BlogView)と同じ「下スクロールで格納・上スクロールで復帰」の
+          absolute overlay（useCollapsibleHeader・ユーザー要望2026-07-17）。地図/県選択は従来の通常フロー。 */}
+      <Animated.View
+        style={isContent ? [s.headerOverlay, { transform: [{ translateY: collapse.translateY }] }] : undefined}
+        onLayout={isContent ? collapse.onHeaderLayout : undefined}
+        pointerEvents="box-none"
+      >
       <LinearGradient
         colors={GRAD}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[s.header, {
           paddingTop: insets.top + 12,
-          // 特集TOP(content)はみんなの穴場(BlogView)と同じ帯高(HERO_BAND_TALL)に統一（ユーザー要望2026-07-17）。
+          // content は内容ぴったりの高さ（キャプション→エリアバーの間隔はスタイルで管理）。
           //   地図/県選択は従来の帯高(HERO_BAND_H)を維持。
-          minHeight: insets.top + (stage === "content" ? HERO_BAND_TALL : HERO_BAND_H),
+          minHeight: isContent ? undefined : insets.top + HERO_BAND_H,
         }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
@@ -1736,9 +1755,7 @@ export default function FeatureScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-            {/* タイトルを上・エリアバーを下端に配置（帯高をBlogViewと統一したぶんの余白を吸収） */}
-            <View style={{ flex: 1 }} />
-            {/* 現在のエリアバー（帯の中の白ピル・ユーザー要望でヘッダーへ移動 2026-07-17） */}
+            {/* 現在のエリアバー（帯の中の白ピル・キャプションとの間隔は詰める=ユーザー要望2026-07-17） */}
             <TouchableOpacity
               style={s.headerAreaBar} activeOpacity={0.85}
               onPress={() => runTransition(() => setStage("map"))}
@@ -1753,6 +1770,7 @@ export default function FeatureScreen() {
           </>
         )}
       </LinearGradient>
+      </Animated.View>
 
       {/* ── メインコンテンツ（トランジション中はズーム＆フェード） ── */}
       <Animated.View style={{ flex: 1, opacity: contentOpacity, transform: [{ scale: contentScale }] }}>
@@ -1769,6 +1787,7 @@ export default function FeatureScreen() {
             popularAreas={popularAreas}
             onChangeArea={() => runTransition(() => setStage("map"))}
             onSelectPref={handleQuickSelectPref}
+            collapse={collapse}
           />
         )}
       </Animated.View>
@@ -1891,10 +1910,12 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
     overflow: 'hidden',
   },
-  // 帯内の「現在のエリア」白ピル（ユーザー要望2026-07-17: 本文からヘッダーへ移動）
+  // content時のヘッダーはoverlay（スクロールで格納）。Stack上に重ねリストはheaderHで逃がす
+  headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
+  // 帯内の「現在のエリア」白ピル（ユーザー要望2026-07-17: 本文からヘッダーへ移動・キャプションとの間隔は詰める）
   headerAreaBar: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginTop: 14, backgroundColor: '#fff', borderRadius: 999,
+    marginTop: 8, backgroundColor: '#fff', borderRadius: 999,
     paddingHorizontal: 14, paddingVertical: 10,
     shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
