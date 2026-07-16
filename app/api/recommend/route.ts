@@ -7160,6 +7160,9 @@ async function handleRecommend(request: Request) {
             for (const name of noPhotoNames) {
               const c = phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined;
               if (c?.photoUrls?.length) photoMap.set(name, c.photoUrls);
+              // Google に問い合わせ済みで写真が無かったスポットは再問い合わせしない（コスト削減）。
+              //   写真そのものはキャッシュせず"確認済み"フラグだけで判定＝ライセンス方針を維持。
+              else if (c?.checked) { /* Google確認済み・写真なし → searchText を投げない */ }
               else phMiss.push(name);
             }
             await Promise.all(phMiss.map(async (name) => {
@@ -7199,6 +7202,10 @@ async function handleRecommend(request: Request) {
                     const row0 = sbRowByName.get(name);
                     schedulePlaceWriteBack(toPlaceMatch(name, row0?.id, row0?.address), { rating: gRating, ratingCount: gCount });
                   }
+                  // 「Googleにも写真が無い」ことを記憶＝次回以降このスポットへ searchText を投げない（コスト削減）。
+                  //   写真は保存せず"確認済み"フラグと（あれば）評価だけ＝ライセンス方針を維持。
+                  const prev = (phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined) ?? {};
+                  await ltCachePut(`enr:${name.slice(0, 80)}`, { ...prev, checked: true });
                   return;
                 }
                 // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
