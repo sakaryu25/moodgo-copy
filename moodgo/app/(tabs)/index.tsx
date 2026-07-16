@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -29,6 +29,7 @@ function SlideUp({ children }: { children: React.ReactNode }) {
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { registerResultsOverlaySuppressor } from '@/lib/overlayNav';
+import { setResultsPortal } from '@/lib/resultsPortal';
 import type { OnsenCategory, PlaceResponse } from '@/types/onsen';
 import type { NatureSubGenre, NatureDistancePref } from '@/types/nature';
 import type { CafeSubCategory, CafeDetail, CafeDistancePref } from '@/types/cafe';
@@ -1266,6 +1267,14 @@ export default function Home() {
     );
   };
 
+  // クイズ/結果を root(_layout)の <ResultsPortalOutlet/> に流し込む（旧・全画面Modalの置換）。
+  // useLayoutEffectで“描画前”に同期＝1フレームの遅延も出さない。started=false（ホーム）はnull＝何も出さない。
+  // /place遷移中(navAway)は visible=false でオーバーレイをopacity0退避＝裏の/placeが即前面化し、
+  // ネイティブModalの「退避→/place描画」の隙間（＝ホームのチラつき）が構造的に発生しない。
+  useLayoutEffect(() => {
+    setResultsPortal(started ? <>{quizNode}{resultsNode}</> : null, started && !navAway);
+  });
+
   return (
     <View style={styles.root}>
       <AppBackground />
@@ -1298,20 +1307,9 @@ export default function Home() {
         {onboardingNode}
       </Modal>
 
-      {/* クイズ/結果: フルスクリーンModalで没入表示（ネイティブタブバーを隠す）。
-          navAway中は退避してrouter.push(/place)やGroupShareSheetに前面を譲る（戻ると再表示）。
-          場所詳細への遷移中は resultsAnim='none'＝pushが裏で終わってから無アニメで退避・復帰
-          （退避アニメで裏のホームを見せない） */}
-      <Modal
-        visible={started && !navAway}
-        animationType={resultsAnim}
-        presentationStyle="fullScreen"
-        onRequestClose={resetQuiz}
-        onShow={() => setResultsShowSeq((s) => s + 1)}   /* 再表示のたびResultsViewにスクロール復元を促す */
-      >
-        {quizNode}
-        {resultsNode}
-      </Modal>
+      {/* クイズ/結果は 全画面Modal をやめ、上の useLayoutEffect で root(_layout) の
+          <ResultsPortalOutlet/> へ流し込む方式に変更（ネイティブModalの presenter 剥がしが
+          原因の「/place遷移でホームがチラッ」を構造的に解消・スクロール位置もマウント維持で保持）。 */}
     </View>
   );
 }

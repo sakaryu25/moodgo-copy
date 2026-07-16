@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useState } from 'react';
 import GroupShareSheet from '@/components/GroupShareSheet';
+import ResultsPortalOutlet from '@/components/ResultsPortalOutlet';
 import SplashScreen from '@/components/SplashScreen';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineBanner from '@/components/OfflineBanner';
@@ -47,6 +48,9 @@ export default function RootLayout() {
               以前の全面(fullScreen=どこでも反応)は誤爆が多く「感度が緩い」ため取りやめ。
               エッジ発火はどのページでも有効なので「ほぼ全ページで右スワイプ」を満たす。 */}
           <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: false }} />
+          {/* 検索クイズ/結果のルート直下オーバーレイ（旧・全画面Modalの置換）。Stackの上に重ね、
+              /place遷移中は自身がopacity0で退避＝裏の/placeが即前面化しホームのチラつきが出ない。 */}
+          <ResultsPortalOutlet />
           {/* LINE風「送信先を選択」シート（shareSpotToGroupから全画面で呼べる） */}
           <GroupShareSheet />
           {/* オフライン時のバナー（全画面に重ねる） */}
