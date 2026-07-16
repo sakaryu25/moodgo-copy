@@ -21,6 +21,21 @@ const PREFECTURES = [
   "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
 ];
 
+// 地方（scope_type='region'）のときの scope_key 候補
+const REGIONS = ["北海道・東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄"];
+
+// 掲載位置（slot_type）の選択肢
+const SLOT_OPTIONS: { value: string; label: string }[] = [
+  { value: "hero",   label: "hero（メイン特集）" },
+  { value: "sub_1",  label: "sub_1（サブ左）" },
+  { value: "sub_2",  label: "sub_2（サブ右）" },
+  { value: "normal", label: "normal（通常）" },
+  { value: "hidden", label: "hidden（TOP非表示）" },
+];
+const SLOT_LABEL: Record<string, string> = {
+  hero: "メイン", sub_1: "サブ左", sub_2: "サブ右", normal: "通常", hidden: "非表示",
+};
+
 const FEATHER_ICONS = [
   "umbrella", "star", "heart", "sun", "cloud", "map-pin", "coffee",
   "camera", "music", "compass", "zap", "smile", "moon", "wind",
@@ -63,6 +78,11 @@ interface PageListItem {
   prefecture: string;
   issue: string;
   is_active: boolean;
+  scope_type?: string | null;      // prefecture / region / nationwide
+  scope_key?: string | null;       // 神奈川県 / 関東 / 全国 など
+  slot_type?: string | null;       // hero / sub_1 / sub_2 / normal / hidden
+  publish_start?: string | null;   // timestamptz（NULL=制限なし）
+  publish_end?: string | null;
   updated_at: string;
   featured_page_moods: { id: string }[];
   featured_page_spots: { id: string }[];
@@ -191,6 +211,11 @@ interface PageDraft {
   banner_icon: string;
   is_active: boolean;
   sort_order: number;
+  scope_type: string;      // prefecture / region / nationwide
+  scope_key: string;       // 神奈川県 / 関東 / 全国 など
+  slot_type: string;       // hero / sub_1 / sub_2 / normal / hidden
+  publish_start: string;   // datetime-local形式（空=制限なし）
+  publish_end: string;
   moods: MoodDraft[];
   spots: SpotDraft[];
 }
@@ -209,6 +234,11 @@ function emptyDraft(prefecture = ""): PageDraft {
     banner_icon: "umbrella",
     is_active: true,
     sort_order: 0,
+    scope_type: prefecture === "全国" ? "nationwide" : "prefecture",
+    scope_key: prefecture,
+    slot_type: "normal",
+    publish_start: "",
+    publish_end: "",
     moods: [
       { title: "ひとりで\n整いたい", icon_name: "body", icon_color: "#9B5ED4", bg_color: "#F3EAFF" },
       { title: "友達と\n話したい夜", icon_name: "chatbubble-ellipses", icon_color: "#D98C30", bg_color: "#FFF4E3" },
@@ -222,6 +252,32 @@ function emptyDraft(prefecture = ""): PageDraft {
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// timestamptz(ISO) → <input type="datetime-local"> 値（ローカル時刻）
+function isoToLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// <input type="datetime-local"> 値 → ISO文字列（空=null）
+function localInputToIso(v: string): string | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+// 公開状態の判定（is_active × 公開期間 × slot）
+function publishStatus(p: { is_active: boolean; slot_type?: string | null; publish_start?: string | null; publish_end?: string | null }) {
+  if (!p.is_active) return { label: "非公開", bg: "#fee2e2", color: "#dc2626" };
+  const now = Date.now();
+  if (p.publish_start && new Date(p.publish_start).getTime() > now) return { label: "公開前", bg: "#fef3c7", color: "#b45309" };
+  if (p.publish_end && new Date(p.publish_end).getTime() <= now) return { label: "期間外", bg: "#fef3c7", color: "#b45309" };
+  if ((p.slot_type ?? "normal") === "hidden") return { label: "TOP非表示", bg: "#e5e7eb", color: "#4b5563" };
+  return { label: "公開中", bg: "#dcfce7", color: "#16a34a" };
 }
 
 // ─── スタイル定数 ──────────────────────────────────────────────────────────
@@ -713,13 +769,18 @@ function PrefSidebar({ pages, selectedId, onSelect, onNew }: {
               <div style={{ fontWeight: 700, fontSize: "13px", color: selectedId === p.id ? PINK : DARK }}>
                 {p.prefecture}
               </div>
-              <div style={{ fontSize: "11px", color: GRAY, marginTop: "2px", display: "flex", gap: "8px" }}>
+              <div style={{ fontSize: "11px", color: GRAY, marginTop: "2px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <span>{p.issue}</span>
                 <span>気分×{p.featured_page_moods?.length ?? 0}</span>
                 <span>スポット×{p.featured_page_spots?.length ?? 0}</span>
-                <span style={p.is_active ? css.badgeActive : css.badgeInactive}>
-                  {p.is_active ? "公開" : "非公開"}
+                {/* 掲載位置バッジ */}
+                <span style={{ background: "#f3eaff", color: "#7c3aed", borderRadius: "999px", padding: "1px 7px", fontWeight: 700 }}>
+                  {SLOT_LABEL[p.slot_type ?? "normal"] ?? p.slot_type}
                 </span>
+                {/* 公開状態バッジ（is_active × 公開期間） */}
+                {(() => { const st = publishStatus(p); return (
+                  <span style={{ background: st.bg, color: st.color, borderRadius: "999px", padding: "1px 7px", fontWeight: 700 }}>{st.label}</span>
+                ); })()}
               </div>
               <div style={{ fontSize: "10px", color: "#aaa", marginTop: "2px" }}>
                 更新: {fmtDate(p.updated_at)}
@@ -963,13 +1024,89 @@ function Editor({ draft, onChange, onSave, onDelete, saving, saved, error }: {
                 <label style={css.label}>都道府県</label>
                 <select
                   value={draft.prefecture}
-                  onChange={(e) => set("prefecture", e.target.value)}
+                  onChange={(e) => onChange({
+                    ...draft,
+                    prefecture: e.target.value,
+                    // 対象範囲が「都道府県」のとき scope_key を同期
+                    scope_key: draft.scope_type === "prefecture" ? e.target.value : draft.scope_key,
+                  })}
                   style={css.select}
                 >
                   {PREFECTURES.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* ── 対象範囲・掲載位置・公開期間 ── */}
+            <div style={{ border: `1px solid ${BORDER}`, borderRadius: "12px", padding: "14px", background: BG, display: "grid", gap: "12px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 800, color: DARK }}>📌 表示先・掲載位置・公開期間</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={css.label}>対象範囲</label>
+                  <select
+                    value={draft.scope_type}
+                    onChange={(e) => {
+                      const st = e.target.value;
+                      const key = st === "nationwide" ? "全国"
+                        : st === "region" ? (REGIONS.includes(draft.scope_key) ? draft.scope_key : "関東")
+                        : draft.prefecture;
+                      onChange({ ...draft, scope_type: st, scope_key: key });
+                    }}
+                    style={css.select}
+                  >
+                    <option value="prefecture">都道府県</option>
+                    <option value="region">地方</option>
+                    <option value="nationwide">全国</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={css.label}>範囲キー (scope_key)</label>
+                  {draft.scope_type === "region" ? (
+                    <select
+                      value={draft.scope_key}
+                      onChange={(e) => onChange({ ...draft, scope_key: e.target.value })}
+                      style={css.select}
+                    >
+                      {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  ) : (
+                    <input value={draft.scope_key} readOnly style={{ ...css.input, background: "#f3f4f6", color: GRAY }} />
+                  )}
+                  <div style={{ fontSize: "11px", color: GRAY, marginTop: "3px" }}>
+                    {draft.scope_type === "prefecture" ? "都道府県セレクトと自動同期します"
+                      : draft.scope_type === "nationwide" ? "全国は固定です" : "表示する地方を選択"}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label style={css.label}>掲載位置</label>
+                <select
+                  value={draft.slot_type}
+                  onChange={(e) => set("slot_type", e.target.value)}
+                  style={css.select}
+                >
+                  {SLOT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <div style={{ fontSize: "11px", color: GRAY, marginTop: "3px" }}>
+                  hero/sub_1/sub_2 は同一範囲内で1件ずつが基本です（重複時は保存前に確認します）
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={css.label}>公開開始</label>
+                  <input type="datetime-local" value={draft.publish_start}
+                    onChange={(e) => set("publish_start", e.target.value)} style={css.input} />
+                </div>
+                <div>
+                  <label style={css.label}>公開終了</label>
+                  <input type="datetime-local" value={draft.publish_end}
+                    onChange={(e) => set("publish_end", e.target.value)} style={css.input} />
+                </div>
+              </div>
+              <div style={{ fontSize: "11px", color: GRAY }}>
+                空欄=制限なし。「公開中トグル」と併用され、両方を満たす期間だけアプリに表示されます。
               </div>
             </div>
           </div>
@@ -1050,6 +1187,12 @@ export default function FeaturedPagesAdmin() {
       banner_icon: d.banner_icon ?? "umbrella",
       is_active: d.is_active,
       sort_order: d.sort_order ?? 0,
+      // 旧行（マイグレーション前）は prefecture からフォールバック
+      scope_type: d.scope_type ?? (d.prefecture === "全国" ? "nationwide" : "prefecture"),
+      scope_key: d.scope_key || d.prefecture || "",
+      slot_type: d.slot_type ?? "normal",
+      publish_start: isoToLocalInput(d.publish_start),
+      publish_end: isoToLocalInput(d.publish_end),
       moods: (d.featured_page_moods ?? []).map((m: any) => ({
         title: m.title, icon_name: m.icon_name, icon_color: m.icon_color, bg_color: m.bg_color,
       })),
@@ -1069,6 +1212,32 @@ export default function FeaturedPagesAdmin() {
   const handleSave = async () => {
     if (!draft) return;
     if (!draft.banner_title.trim()) { setSaveError("バナータイトルは必須です"); return; }
+
+    // hero / sub_1 / sub_2 の同一scope内重複警告（ブロックはせず confirm で確認のみ）
+    if (["hero", "sub_1", "sub_2"].includes(draft.slot_type)) {
+      const dup = pages.filter((p) =>
+        p.id !== draft.id &&
+        (p.scope_key || p.prefecture) === draft.scope_key &&
+        (p.slot_type ?? "") === draft.slot_type
+      );
+      if (dup.length > 0) {
+        const label = SLOT_LABEL[draft.slot_type] ?? draft.slot_type;
+        const ok = confirm(
+          `「${draft.scope_key}」には既に 掲載位置=${label}（${draft.slot_type}）のページが${dup.length}件あります（${dup.map((p) => p.prefecture).join("、")}）。\n` +
+          `同じ位置が複数になりますが、このまま保存しますか？`
+        );
+        if (!ok) return;
+      }
+    }
+
+    // datetime-local → ISO（空=null）に変換して送信
+    const body = {
+      ...draft,
+      publish_start: localInputToIso(draft.publish_start),
+      publish_end: localInputToIso(draft.publish_end),
+      secret,
+    };
+
     setSaving(true);
     setSaved(false);
     setSaveError("");
@@ -1079,7 +1248,7 @@ export default function FeaturedPagesAdmin() {
         const res = await fetch(`/api/admin/featured-pages/${draft.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...draft, secret: secret }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "保存失敗");
       } else {
@@ -1087,7 +1256,7 @@ export default function FeaturedPagesAdmin() {
         const res = await fetch("/api/admin/featured-pages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...draft, secret: secret }),
+          body: JSON.stringify(body),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? "保存失敗");
@@ -1161,6 +1330,9 @@ export default function FeaturedPagesAdmin() {
         <a href="/admin" style={{ color: GRAY, textDecoration: "none", fontSize: "13px" }}>← 管理画面</a>
         <span style={{ color: "#ccc" }}>/</span>
         <span style={css.headerTitle}>🗺️ 県別 特集ページ管理</span>
+        <a href="/admin/popular-areas" style={{ fontSize: "12px", color: PINK, fontWeight: 700, textDecoration: "none" }}>
+          🗺 人気エリア管理 →
+        </a>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
           {loading && <span style={{ fontSize: "12px", color: GRAY }}>読み込み中...</span>}
           <span style={{ fontSize: "12px", color: GRAY }}>{pages.length}件のページ</span>
@@ -1215,6 +1387,23 @@ CREATE TABLE IF NOT EXISTS featured_page_spots (
   sort_order  int DEFAULT 0,
   created_at  timestamptz DEFAULT now()
 );
+
+-- 4. 対象範囲(scope)・掲載位置(slot)・公開期間 ＋ 人気エリア
+--    ※ 完全版（既存行の移行UPDATE・インデックス・初期データ投入を含む）は
+--      リポジトリの supabase/featured-scope-placement.sql を実行してください。
+ALTER TABLE featured_pages_v2
+  -- 対象範囲: prefecture(都道府県) / region(地方) / nationwide(全国)
+  ADD COLUMN IF NOT EXISTS scope_type    text        DEFAULT 'prefecture',
+  -- 範囲キー（日本語）: 神奈川県 等 / 関東 等 / 全国
+  ADD COLUMN IF NOT EXISTS scope_key     text        DEFAULT '',
+  -- 掲載位置: hero(メイン) / sub_1(サブ左) / sub_2(サブ右) / normal(通常) / hidden(TOP非表示)
+  ADD COLUMN IF NOT EXISTS slot_type     text        DEFAULT 'normal',
+  -- 公開期間（NULL=制限なし）。is_active と併用
+  ADD COLUMN IF NOT EXISTS publish_start timestamptz,
+  ADD COLUMN IF NOT EXISTS publish_end   timestamptz;
+
+-- 5. 人気エリア（特集TOPの横スクロールカード、/admin/popular-areas で管理）
+--    完全なCREATE TABLE・初期データは supabase/featured-scope-placement.sql を参照
 
 -- RLS は SUPABASE_SERVICE_KEY 使用のためサーバー側で管理
 -- 必要に応じて Row Level Security を設定してください`}
