@@ -1338,6 +1338,20 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
   const [heroIndex, setHeroIndex] = useState(0);
   useEffect(() => { setActiveScope(currentPref); setHeroIndex(0); }, [currentPref]);
 
+  // 着地アニメ: マウント時にセクションが上から順にふわっとせり上がる（ズームダイブの余韻）
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, { toValue: 1, duration: 640, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [enter]);
+  const riseIn = (idx: number) => {
+    const from = Math.min(0.45, idx * 0.09);
+    const to = Math.min(1, from + 0.5);
+    return {
+      opacity: enter.interpolate({ inputRange: [from, to], outputRange: [0, 1], extrapolate: "clamp" as const }),
+      transform: [{ translateY: enter.interpolate({ inputRange: [from, to], outputRange: [22, 0], extrapolate: "clamp" as const }) }],
+    };
+  };
+
   // フォールバック連鎖: 県タブ=県→地方→全国 / 地方タブ=地方→全国 / 全国タブ=全国のみ
   const chain: string[] =
     activeScope === "全国" ? ["全国"]
@@ -1369,17 +1383,19 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
       contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
     >
       {/* ── 現在のエリア表示・変更バー ── */}
-      <TouchableOpacity style={ts.areaBar} activeOpacity={0.85} onPress={onChangeArea}>
-        <MapPin size={15} color={C.accent} strokeWidth={2.2} />
-        <Text style={ts.areaBarText}>現在のエリア：{currentPref}</Text>
-        <View style={{ flex: 1 }} />
-        <Text style={ts.areaBarChange}>エリア変更</Text>
-        <ChevronRight size={14} color={C.accent} strokeWidth={2.4} />
-      </TouchableOpacity>
+      <Animated.View style={riseIn(0)}>
+        <TouchableOpacity style={ts.areaBar} activeOpacity={0.85} onPress={onChangeArea}>
+          <MapPin size={15} color={C.accent} strokeWidth={2.2} />
+          <Text style={ts.areaBarText}>現在のエリア：{currentPref}</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={ts.areaBarChange}>エリア変更</Text>
+          <ChevronRight size={14} color={C.accent} strokeWidth={2.4} />
+        </TouchableOpacity>
+      </Animated.View>
 
       {/* ── メイン特集カルーセル ── */}
       {heroes.length > 0 ? (
-        <View>
+        <Animated.View style={riseIn(1)}>
           <ScrollView
             horizontal
             pagingEnabled
@@ -1419,18 +1435,18 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
               {heroes.map((_, i) => <View key={i} style={[ts.dot, i === heroIndex && ts.dotActive]} />)}
             </View>
           )}
-        </View>
+        </Animated.View>
       ) : (
-        <View style={s.emptyWrap}>
+        <Animated.View style={[s.emptyWrap, riseIn(1)]}>
           <MapPin size={36} color={C.subText} strokeWidth={1.6} />
           <Text style={s.emptyTitle}>{activeScope}の特集は準備中です</Text>
           <Text style={s.emptyText}>近日公開予定。お楽しみに ✨</Text>
-        </View>
+        </Animated.View>
       )}
 
       {/* ── サブ特集カード2枚 ── */}
       {subs.length > 0 && (
-        <View style={ts.subRow}>
+        <Animated.View style={[ts.subRow, riseIn(2)]}>
           {subs.map((p) => (
             <TouchableOpacity key={p.id} style={ts.subCard} activeOpacity={0.9} onPress={() => openPage(p)}>
               <ImageBackground source={{ uri: p.banner_image_url || undefined }} style={ts.subImg} imageStyle={{ borderRadius: 20 }}>
@@ -1447,15 +1463,17 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
               </ImageBackground>
             </TouchableOpacity>
           ))}
-        </View>
+        </Animated.View>
       )}
 
       {/* ── エリア範囲切替（県 / 地方 / 全国）── */}
-      <SegmentedTabs tabs={tabs} selected={activeScope} onSelect={(t) => { setActiveScope(t); setHeroIndex(0); }} />
+      <Animated.View style={riseIn(3)}>
+        <SegmentedTabs tabs={tabs} selected={activeScope} onSelect={(t) => { setActiveScope(t); setHeroIndex(0); }} />
+      </Animated.View>
 
       {/* ── 人気エリア ── */}
       {areas.length > 0 && (
-        <View style={ts.section}>
+        <Animated.View style={[ts.section, riseIn(4)]}>
           <View style={ts.sectionHead}>
             <MapPin size={15} color={C.accent} strokeWidth={2.4} />
             <Text style={ts.sectionTitle}>{activeScope}の人気エリア</Text>
@@ -1471,11 +1489,11 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
+        </Animated.View>
       )}
 
       {/* ── 全国から探す ── */}
-      <View style={ts.nationCard}>
+      <Animated.View style={[ts.nationCard, riseIn(5)]}>
         <View style={{ flex: 1 }}>
           <Text style={ts.nationTitle}>全国から探す</Text>
           <Text style={ts.nationDesc}>エリアを選んで、あなたの気分にぴったりの特集を見つけよう。</Text>
@@ -1485,7 +1503,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
           </TouchableOpacity>
         </View>
         <Image source={JAPAN_MAP} style={ts.nationMap} resizeMode="contain" />
-      </View>
+      </Animated.View>
     </ScrollView>
   );
 }
@@ -1600,18 +1618,33 @@ export default function FeatureScreen() {
     setStage("content");
   });
 
-  // ── 雲ダイブ・トランジション ───────────────────────────────────────────────
-  // t: 0=通常表示 → 1=トランジション完了（中間 0.5 で雲が画面を覆い、裏でステージ差替）
+  // ── ズームダイブ・トランジション ───────────────────────────────────────────
+  // タップした場所(anchor)へ向かって現画面が拡大しながらフェードアウトし、
+  // 薄い雲ヴェールを挟んで新画面が少し下からせり上がる。t: 0→1(中間0.5で差替)。
   const t = useRef(new Animated.Value(0)).current;
   const busyRef = useRef(false);
   const resetSeqRef = useRef(0);   // タブ再タップリセットの世代番号（進行中applyの無効化に使う）
   const [busy, setBusy] = useState(false);
+  // ズームの狙い点(画面比0..1)とズーム率。タップしたピン位置をセットしてから開始。
+  //   zoom>1=その場所へ飛び込む(進む) / zoom<1=引きで戻る(戻る)
+  const anchorRef = useRef({ x: 0.5, y: 0.5, zoom: 1.9 });
+
+  // オーバーレイ%（地図画像基準のtopPct/leftPct）→ 画面比への概算射影。
+  //   地図はヘッダー下に收まるため縦は0.24〜0.84へ圧縮。方向が合っていれば十分効く。
+  const setAnchorFromOverlay = (topPct?: number, leftPct?: number, zoom = 1.9) => {
+    if (topPct == null || leftPct == null) { anchorRef.current = { x: 0.5, y: 0.5, zoom }; return; }
+    anchorRef.current = {
+      x: Math.min(0.88, Math.max(0.12, leftPct / 100 + 0.16)),
+      y: Math.min(0.86, Math.max(0.14, 0.24 + (topPct / 100) * 0.6)),
+      zoom,
+    };
+  };
 
   // apply（ステージ差替）を雲が画面を覆う中間点で実行する
   const runTransition = (apply: () => void) => {
     if (busyRef.current) return;
     busyRef.current = true;
-    setBusy(true);
+    setBusy(true);   // ここでre-render → anchorRefの新しい狙い点が補間に反映される
     t.setValue(0);
     const seq = resetSeqRef.current;   // 開始時の世代。リセットが入ったら以降のapply/後片付けは行わない
     let swapped = false;
@@ -1623,8 +1656,8 @@ export default function FeatureScreen() {
     });
     Animated.timing(t, {
       toValue: 1,
-      duration: 1200,
-      easing: Easing.inOut(Easing.sin),
+      duration: 720,
+      easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
       t.removeListener(id);
@@ -1637,12 +1670,16 @@ export default function FeatureScreen() {
   };
 
   const handleSelectRegion = (tab: Tab) => {
+    const item = REGION_OVERLAY.find((r) => r.tab === tab);
+    setAnchorFromOverlay(item?.topPct, item?.leftPct, 2.1);
     setSelectedRegion(tab);
     setSelectedTab(tab);
     runTransition(() => setStage("pref-select"));
   };
 
   const handleSelectPref = (tab: Tab) => {
+    const pin = REGION_PREF_OVERLAY[selectedRegion]?.find((i) => i.label === tab);
+    setAnchorFromOverlay(pin?.topPct, pin?.leftPct, 2.1);
     manualPickRef.current = true;
     setSelectedTab(tab);
     setSelectedRegion(PREF_TO_REGION[tab] ?? selectedRegion);
@@ -1656,31 +1693,48 @@ export default function FeatureScreen() {
     setSelectedRegion(PREF_TO_REGION[tab] ?? selectedRegion);
   };
 
-  // TOP(content)が起点: 地図←→県選択の戻りは map→content / pref-select→map
+  // TOP(content)が起点: 地図←→県選択の戻りは map→content / pref-select→map。
+  // 戻りはzoom<1=カメラが引いて戻る演出。
   const handleBack = () => {
+    anchorRef.current = { x: 0.5, y: 0.45, zoom: 0.86 };
     const next: NavStage = stage === "pref-select" ? "map" : "content";
     runTransition(() => setStage(next));
   };
 
   const showBack = stage !== "map";
 
-  // 雲とコンテンツの補間
-  // ヴェールは真っ白の閃光にならないよう、淡いラベンダー白を控えめのピークで。
+  // ── 補間 ─────────────────────────────────────────────────────────────────
+  // 前半(0→0.5): 現画面がanchorへ向かって拡大しつつフェードアウト（飛び込み）
+  // 後半(0.5→1): 新画面が96.5%＋16px下から等倍へふわっと立ち上がる（着地）
+  const winW = Dimensions.get("window").width;
+  const winH = Dimensions.get("window").height;
+  const { x: ax, y: ay, zoom } = anchorRef.current;
+  const dxOut = (0.5 - ax) * winW * (zoom - 1);
+  const dyOut = (0.5 - ay) * winH * (zoom - 1);
+  // ヴェールは前より薄く（画面が白で塗り潰されず、ズームの動きが最後まで見える）
   const veilOpacity = t.interpolate({
     inputRange: [0, 0.4, 0.5, 0.6, 1],
-    outputRange: [0, 0.55, 0.62, 0.55, 0],
+    outputRange: [0, 0.32, 0.4, 0.32, 0],
   });
   const puffOpacity = t.interpolate({
-    inputRange: [0, 0.25, 0.5, 0.8, 1],
-    outputRange: [0, 0.9, 0.95, 0.85, 0],
+    inputRange: [0, 0.3, 0.5, 0.75, 1],
+    outputRange: [0, 0.5, 0.65, 0.45, 0],
   });
   const contentOpacity = t.interpolate({
     inputRange: [0, 0.42, 0.58, 1],
     outputRange: [1, 0, 0, 1],
   });
   const contentScale = t.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 1.06, 1],
+    inputRange: [0, 0.499, 0.5, 0.75, 1],
+    outputRange: [1, zoom, 0.965, 0.99, 1],
+  });
+  const contentTx = t.interpolate({
+    inputRange: [0, 0.499, 0.5, 1],
+    outputRange: [0, dxOut, 0, 0],
+  });
+  const contentTy = t.interpolate({
+    inputRange: [0, 0.499, 0.5, 0.75, 1],
+    outputRange: [0, dyOut, 16, 3, 0],
   });
 
   return (
@@ -1729,7 +1783,7 @@ export default function FeatureScreen() {
       </LinearGradient>
 
       {/* ── メインコンテンツ（トランジション中はズーム＆フェード） ── */}
-      <Animated.View style={{ flex: 1, opacity: contentOpacity, transform: [{ scale: contentScale }] }}>
+      <Animated.View style={{ flex: 1, opacity: contentOpacity, transform: [{ translateX: contentTx }, { translateY: contentTy }, { scale: contentScale }] }}>
         {stage === "map" && (
           <AreaSelectView onSelectRegion={handleSelectRegion} />
         )}
