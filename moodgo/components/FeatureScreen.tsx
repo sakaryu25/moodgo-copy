@@ -61,6 +61,7 @@ export function preloadMaps() {
   return _mapPreload;
 }
 import {
+  Bell,
   Bookmark,
   Building2,
   Camera,
@@ -82,6 +83,7 @@ import {
   Sun,
   Ticket,
   Umbrella,
+  UserRound,
   Utensils,
   Waves,
 } from "lucide-react-native";
@@ -98,15 +100,16 @@ const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const SERIF = Platform.select({ ios: "Hiragino Mincho ProN", android: "serif", default: "serif" });
 
 const C = {
-  accent: "#F26A3D",
-  accentLight: "#FFF1EA",
-  bg: "#FFFFFF",
-  bgSub: "#FAF7F4",
-  text: "#222222",
-  subText: "#888888",
-  border: "#EFE5DF",
+  // アクセントはアプリのブランド紫に統一（スクショ準拠。旧オレンジ#F26A3Dから移行）
+  accent: "#8B5CF6",
+  accentLight: "#F2ECFE",
+  bg: "#F7F7FB",        // 白ではなく少しグレーを混ぜた背景（Apple/Airbnb風の呼吸感）
+  bgSub: "#F7F7FB",
+  text: "#1F1F1F",
+  subText: "#7D7D7D",
+  border: "#ECECF2",
   white: "#FFFFFF",
-  segBg: "#F0E9E4",
+  segBg: "#EFEDF5",
   oceanBlue: "#D5EAF5",
   islandGreen: "#BFDA9F",
 };
@@ -1551,6 +1554,7 @@ function SoftCloud({ size, gradId }: { size: number; gradId: string }) {
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
   const settings = useSettings();
+  const router = useRouter();
   // TOP(content)が起点。地図はエリア変更/全国から探すの導線として残す
   const [stage, setStage] = useState<NavStage>("content");
   const [selectedRegion, setSelectedRegion] = useState<Tab>("関東");
@@ -1721,10 +1725,29 @@ export default function FeatureScreen() {
           </>
         )}
         {stage === "content" && (
-          <>
-            <Text style={s.bandTitle}>特集</Text>
-            <Text style={s.headerCaption}>どこへ行く？</Text>
-          </>
+          <View style={s.headerTopRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={s.bandTitle}>特集</Text>
+              <Text style={s.headerCaption}>どこへ行く？</Text>
+            </View>
+            {/* 右上: 検索 / 通知 / マイページ（ガラス風の丸ボタン・みんなタブと統一） */}
+            <View style={s.headerIconRow}>
+              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
+                accessibilityRole="button" accessibilityLabel="検索">
+                <Search size={17} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.push("/notifications")}
+                accessibilityRole="button" accessibilityLabel="通知">
+                <Bell size={17} color="#fff" strokeWidth={2.2} />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/profile")}
+                accessibilityRole="button" accessibilityLabel="マイページ">
+                {settings.iconUrl
+                  ? <ExpoImage source={{ uri: settings.iconUrl }} style={s.headerAvatar} contentFit="cover" />
+                  : <UserRound size={17} color="#fff" strokeWidth={2.2} />}
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       </LinearGradient>
 
@@ -1857,6 +1880,15 @@ const s = StyleSheet.create({
     fontSize: 12.5, fontWeight: '500', color: 'rgba(255,255,255,0.78)',
     letterSpacing: 0.2, lineHeight: 17, marginTop: 6,
   },
+  // 特集TOPヘッダー: 左タイトル/サブタイトル + 右にガラス風の丸アイコン群
+  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  headerIconBtn: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
+    overflow: 'hidden',
+  },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
   // eyebrow(前置きラベル): 白ミニ罫線＋トラッキングの効いた小文字（雑誌の柱の作法）
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrowRule: { width: 18, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' },
@@ -2093,21 +2125,22 @@ const s = StyleSheet.create({
   },
   segWrap: {
     flexDirection: "row",
-    backgroundColor: C.segBg,
-    borderRadius: 13,
-    padding: 3,
+    backgroundColor: "#fff",
+    borderRadius: 999,
+    padding: 4,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 },
   },
   segTab: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   segTabActive: {
-    backgroundColor: C.accent,
+    backgroundColor: C.accentLight,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.0,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -2117,7 +2150,7 @@ const s = StyleSheet.create({
     color: C.subText,
   },
   segTabTextActive: {
-    color: C.white,
+    color: C.accent,
     fontWeight: "800",
   },
 
@@ -2404,12 +2437,12 @@ const s = StyleSheet.create({
 const ts = StyleSheet.create({
   // 現在のエリアバー
   areaBar: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginHorizontal: 16, marginTop: 14, marginBottom: 14,
-    backgroundColor: "#fff", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12,
-    shadowColor: "#7C3AED", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+    flexDirection: "row", alignItems: "center", gap: 7,
+    marginHorizontal: 16, marginTop: 16, marginBottom: 16,
+    backgroundColor: "#fff", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 13,
+    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2,
   },
-  areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#2A2440" },
+  areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#1F1F1F" },
   areaBarChange: { fontSize: 12.5, fontWeight: "700", color: C.accent, marginRight: 2 },
   // メイン特集カルーセル
   heroCard: { borderRadius: 26, overflow: "hidden", backgroundColor: "#E9E4F5" },
