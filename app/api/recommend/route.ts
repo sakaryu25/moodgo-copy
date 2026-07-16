@@ -6044,9 +6044,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     const hasUserPhoto = r.hasUserPhotos === true;
     const photoUrls = r.photoUrls ?? [];
     const hasPhoto = !!r.photoUrl || photoUrls.length > 0;
-    if (hasUserPhoto) return 7;           // 利用者投稿写真=最優先（curated+8に次ぐ）
-    if (photoUrls.length >= 3) return 6;  // 複数写真あり
-    if (hasPhoto) return 5;               // 写真1枚でも“写真なし”より確実に上位へ
+    if (hasUserPhoto) return 10;          // 利用者投稿写真=最優先
+    if (photoUrls.length >= 3) return 9;  // 複数写真あり
+    if (hasPhoto) return 8;               // 写真1枚でも“写真なし”より確実に上位へ（curated+8と同格）
     return 0;
   };
 
