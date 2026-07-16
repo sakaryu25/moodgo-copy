@@ -854,7 +854,10 @@ export default function PlaceDetailPage() {
   return (
     <View style={s.root}>
       {/* スワイプで前のページに戻る（左端エッジ発火＝硬め・_layout の既定に合わせる）*/}
-      <Stack.Screen options={{ gestureEnabled: true, fullScreenGestureEnabled: false }} />
+      {/* animation:'none' ＝ 検索結果(全画面RN Modal)の裏でpushされた/placeが、Modal退避の瞬間に
+          右スライドで入ってきて「裏のホームがチラッと見える」問題の根治。無アニメで即前面化し
+          スライドの隙間(ホーム露出)を作らない。他経路(community-spot/profile等)からも即時遷移になる。 */}
+      <Stack.Screen options={{ gestureEnabled: true, fullScreenGestureEnabled: false, animation: 'none' }} />
 
       {/* ── スティッキーヘッダー ── */}
       <Animated.View
