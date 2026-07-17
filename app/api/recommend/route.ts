@@ -7570,12 +7570,15 @@ async function handleRecommend(request: Request) {
             const hintP = userPreferenceHints.filter((h) => typeof h === "string" && h.trim()).slice(0, 6);
             // 天気: 屋外/屋内の適否を判断させる材料(⑨)。取得失敗(座標なし/APIエラー)は無視して従来通り。
             const wx = await getWeatherContext(answers.originLat, answers.originLng).catch(() => ({} as WeatherContext));
-            const wxLabel = wx.weatherCode === undefined ? ""
-              : isRainLikeWeather(wx.weatherCode) ? "雨"
-              : isSnowLikeWeather(wx.weatherCode) ? "雪"
-              : wx.weatherCode === 0 ? "快晴"
-              : wx.weatherCode <= 3 ? "晴れ〜薄曇り"
-              : wx.weatherCode <= 48 ? "曇り" : "";
+            const wc = wx.weatherCode;
+            // 小雨(drizzle 51-57)は「雨」と別扱い＝軽い天気。強い雨/雪だけ屋内をやや優先させる。
+            const wxLabel = wc === undefined ? ""
+              : isSnowLikeWeather(wc) ? "雪"
+              : [51, 53, 55, 56, 57].includes(wc) ? "小雨"
+              : isRainLikeWeather(wc) ? "雨"
+              : wc === 0 ? "快晴"
+              : wc <= 3 ? "晴れ〜薄曇り"
+              : wc <= 48 ? "曇り" : "";
             const personaLine = [
               hintP.length ? `傾向:${hintP.join("・")}` : "",
               likedP.length ? `過去に好評:${likedP.join("・")}` : "",
@@ -7597,7 +7600,7 @@ async function handleRecommend(request: Request) {
 4. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然、繁華街・ビル街＝都会的、住宅街＝静か 等）。
 5. 同行者・属性・予算に合うか（友達＝映え/盛り上がる、恋人＝雰囲気、一人＝静けさ、家族＝安心）。
 6. 【この人を知る】ユーザー文脈に「傾向／過去に好評／過去に苦手」があれば強く尊重する——過去に好評だった場所と似た系統を上位へ、苦手だった系統は下位へ。プロフィール傾向にも寄せる。ただし今回の気分・深掘り・希望との合致(1〜4)を覆さない範囲で（＝合う場所の中で、この人好みを優先する）。
-7. 【今の時間帯・天気】に合うか。時間帯: 朝＝モーニング/朝活/自然、夕方〜夜＝夜景/バー/ライトアップ/ディナー、深夜＝深夜営業。天気: 雨・雪なら屋内(博物館/水族館/美術館/カフェ/温泉/ショッピング)を上げ、屋外中心(公園/展望台/海辺/散歩)を下げる。快晴・晴れは屋外も積極的に。明らかに閉まっている種別（朝の夜景バー等）は下げる。
+7. 【今の時間帯・天気】は"弱い補助材料"（テーマ合致を絶対に覆さない・これを理由に定番/名所を大きく下げたり reject しない）。時間帯: 夕方〜夜は夜景/ディナー、深夜は深夜営業に軽く寄せる程度。天気: 強い「雨」「雪」のときだけ、他が同程度なら屋内をわずかに優先。「小雨」「曇り」「晴れ」は無視してよい（屋外の名所・展望台・公園も通常どおり上位に出す）。
 8. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし合致が低い場所を多様性のために上げない。
 9. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
 
