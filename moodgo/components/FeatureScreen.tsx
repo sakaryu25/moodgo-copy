@@ -1414,6 +1414,8 @@ type FeatureContentViewProps = {
   onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
   /** ヘッダー帯の格納（親のuseCollapsibleHeader）。ヘッダーはoverlay＝リストはheaderH分逃がす */
   collapse: ReturnType<typeof useCollapsibleHeader>;
+  /** タブ再タップで先頭へ戻すためのスクロールref（親が保持） */
+  scrollRef: React.RefObject<ScrollView | null>;
 };
 
 // ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）。
@@ -1447,7 +1449,7 @@ function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
 const SCREEN_W = Dimensions.get("window").width;
 const HERO_CARD_W = SCREEN_W - 32;
 
-function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse }: FeatureContentViewProps) {
+function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse, scrollRef }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const region: Tab = PREF_TO_REGION[currentPref] ?? "関東";
@@ -1501,6 +1503,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
     // ヘッダーはabsolute overlay（親のcollapse）＝リストはpaddingTop: headerH で逃がす。
     //   Animated.ScrollView + onScroll(useNativeDriver) が格納アニメの駆動源。
     <Animated.ScrollView
+      ref={scrollRef as React.Ref<ScrollView>}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{ paddingTop: collapse.headerH, paddingBottom: insets.bottom + 110 }}
       onScroll={collapse.onScroll}
@@ -1782,17 +1785,29 @@ export default function FeatureScreen() {
       .catch(() => {});
   }, []);
 
-  // 下部タブの「特集」を再タップ(=既に特集にいる時に押す)したら振り出し(日本地図)に戻す。
+  // 下スクロールでヘッダー帯を格納・上スクロールで復帰（みんなの穴場と同じ挙動・ユーザー要望2026-07-17）。
+  //   content時のみ有効。ステージ復帰時は必ず開いた状態に戻す（diffClampの残留で隠れたままを防ぐ）。
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + 150 });
+  // content(特集TOP)のリストref。タブ再タップで先頭へ戻すために親が保持する。
+  const contentScrollRef = useRef<ScrollView>(null);
+
+  // 下部タブの「特集」を再タップ(=既に特集にいる時に押す)した時の挙動。
+  //   ・地図/県選択にいる → 特集TOP(content)へ戻す。
+  //   ・既に特集TOPにいる → リストを先頭へスクロール＋格納ヘッダーを復帰（ユーザー要望2026-07-17）。
   //   他タブから特集に切り替えた時は前の場所を保持(リセットしない)＝useTabResetが再タップだけ判定。
   useTabReset(() => {
-    // 雲ダイブ演出の途中でも即座に特集TOPへ。進行中トランジションの
-    // ステージ差替(apply)を世代番号で無効化し、リセットが上書きされる競合を防ぐ
+    // 雲ダイブ演出の途中でも即座に。進行中トランジションのステージ差替(apply)を世代番号で無効化。
     resetSeqRef.current += 1;
     t.stopAnimation();
     t.setValue(0);
     busyRef.current = false;
     setBusy(false);
-    setStage("content");
+    if (stage === "content") {
+      contentScrollRef.current?.scrollTo?.({ y: 0, animated: true });
+      collapse.scrollY.setValue(0);   // 格納中のヘッダー帯を即座に開いた状態へ
+    } else {
+      setStage("content");
+    }
   });
 
   // ── ズームダイブ・トランジション ───────────────────────────────────────────
@@ -1921,9 +1936,6 @@ export default function FeatureScreen() {
     outputRange: [0, dyOut, 0, 0],
   });
 
-  // 下スクロールでヘッダー帯を格納・上スクロールで復帰（みんなの穴場と同じ挙動・ユーザー要望2026-07-17）。
-  //   content時のみ有効。ステージ復帰時は必ず開いた状態に戻す（diffClampの残留で隠れたままを防ぐ）。
-  const collapse = useCollapsibleHeader({ initialHeight: insets.top + 150 });
   const isContent = stage === "content";
   useEffect(() => { if (isContent) collapse.scrollY.setValue(0); }, [isContent, collapse.scrollY]);
   return (
@@ -2023,6 +2035,7 @@ export default function FeatureScreen() {
             onChangeArea={() => runTransition(() => setStage("map"))}
             onSelectPref={handleQuickSelectPref}
             collapse={collapse}
+            scrollRef={contentScrollRef}
           />
         )}
       </Animated.View>
