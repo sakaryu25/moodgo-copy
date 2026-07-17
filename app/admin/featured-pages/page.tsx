@@ -1136,12 +1136,17 @@ function Editor({ draft, onChange, onSave, onDelete, saving, saved, error }: {
 // ─── メインコンポーネント ──────────────────────────────────────────────────
 
 export default function FeaturedPagesAdmin() {
+  // 認証は /admin の一度きり。共有シークレット(localStorage["moodgo-admin-secret"])を読むだけで
+  //   パスワードを再要求せず、未ログインなら共通ログイン(/admin)へ送る。
   const [authed, setAuthed] = useState(false);
-  const [pw, setPw] = useState("");
-  const [pwError, setPwError] = useState(false);
   const [secret, setSecret] = useState("");
-  useEffect(() => { try { const s = localStorage.getItem("moodgo-admin-secret"); if (s) { setSecret(s); setAuthed(true); } } catch { /* ignore */ } }, []);
-  const doLogin = () => { const s = pw.trim(); if (s.length === 0) { setPwError(true); return; } setSecret(s); setAuthed(true); setPwError(false); try { localStorage.setItem("moodgo-admin-secret", s); } catch { /* ignore */ } };
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("moodgo-admin-secret");
+      if (s) { setSecret(s); setAuthed(true); }
+      else { window.location.replace("/admin"); }
+    } catch { window.location.replace("/admin"); }
+  }, []);
 
   const [pages, setPages] = useState<PageListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1290,37 +1295,8 @@ export default function FeaturedPagesAdmin() {
     }
   };
 
-  // ── パスワード画面 ─────────────────────────────────────────────────────
-  if (!authed) {
-    return (
-      <div style={{ ...css.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ background: "#fff", borderRadius: "20px", padding: "40px 48px", border: `1px solid ${BORDER}`, textAlign: "center", minWidth: "320px" }}>
-          <div style={{ fontSize: "32px", marginBottom: "8px" }}>🗺️</div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: DARK, marginBottom: "4px" }}>特集ページ管理</div>
-          <div style={{ fontSize: "13px", color: GRAY, marginBottom: "24px" }}>管理者パスワードを入力してください</div>
-          <input
-            type="password"
-            value={pw}
-            onChange={(e) => { setPw(e.target.value); setPwError(false); }}
-            onKeyDown={(e) => { if (e.key === "Enter") { doLogin(); } }}
-            placeholder="パスワード"
-            style={{ ...css.input, marginBottom: "12px", textAlign: "center", fontSize: "16px" }}
-            autoFocus
-          />
-          {pwError && <div style={{ color: "#dc2626", fontSize: "13px", marginBottom: "10px" }}>パスワードが違います</div>}
-          <button
-            onClick={() => { doLogin(); }}
-            style={{ ...css.btnPrimary, width: "100%", justifyContent: "center" }}
-          >
-            ログイン
-          </button>
-          <div style={{ marginTop: "16px" }}>
-            <a href="/admin" style={{ fontSize: "12px", color: GRAY }}>← メイン管理画面へ戻る</a>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // 認証確認中/未ログインのリダイレクト中は空表示（このページ自身はパスワードを出さない）。
+  if (!authed) return null;
 
   // ── メイン画面 ─────────────────────────────────────────────────────────
   return (

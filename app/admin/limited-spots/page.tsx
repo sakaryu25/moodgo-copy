@@ -41,11 +41,17 @@ function splitAt(name: string): { event: string; venue: string } {
 }
 
 export default function LimitedSpotsAdmin() {
+  // 認証は /admin の一度きり。共有シークレット(localStorage["moodgo-admin-secret"])を読むだけで、
+  //   このページ自身はパスワードを再要求しない。未ログインなら共通ログイン(/admin)へ送る。
   const [authed, setAuthed] = useState(false);
-  const [pw, setPw] = useState("");
   const [secret, setSecret] = useState("");
-  useEffect(() => { try { const s = localStorage.getItem("moodgo-admin-secret"); if (s) { setSecret(s); setAuthed(true); } } catch { /* ignore */ } }, []);
-  const doLogin = () => { const s = pw.trim(); if (!s) return; setSecret(s); setAuthed(true); try { localStorage.setItem("moodgo-admin-secret", s); } catch { /* ignore */ } };
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("moodgo-admin-secret");
+      if (s) { setSecret(s); setAuthed(true); }
+      else { window.location.replace("/admin"); }
+    } catch { window.location.replace("/admin"); }
+  }, []);
 
   const [spots, setSpots] = useState<Spot[]>([]);
   const [flagReady, setFlagReady] = useState(true);
@@ -89,18 +95,8 @@ export default function LimitedSpotsAdmin() {
     } catch { patchLocal(s.id, { repost_to_detail: !next }); }
   };
 
-  if (!authed) {
-    return (
-      <div style={css.authWrap}>
-        <div style={css.authCard}>
-          <div style={css.authTitle}>📅 期間限定スポット管理</div>
-          <div style={css.authSub}>管理パスワードを入力してください</div>
-          <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="admin secret" style={css.authInput} autoFocus />
-          <button onClick={doLogin} style={css.authBtn}>ログイン</button>
-        </div>
-      </div>
-    );
-  }
+  // 認証確認中/未ログインのリダイレクト中は空表示（パスワード画面は出さない）。
+  if (!authed) return null;
 
   const t = todayJst();
   const activeCount = spots.filter((s) => !(s.available_until && s.available_until < t) && s.is_active).length;
