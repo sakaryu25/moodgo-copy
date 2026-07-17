@@ -21,6 +21,22 @@ export const VIEWED_LOG_KEY  = 'moodgo-viewed-spots';
 const CAP = 200;
 const VIEWED_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 最近チェックは1週間で自動消去（バッジ=visitedは永続）
 
+// ── 即時反映用の軽量な購読機構 ───────────────────────────────────────────────
+//   プロフィールは focus 毎に再読込するが、詳細(/place)は同じタブスタック上に push され
+//   プロフィールは blur したまま裏に残る。そのため「詳細を見た瞬間」には focus が発火せず、
+//   戻るまで最近チェックに反映されない（＝即反映されない）事象があった。
+//   書き込み直後に通知し、購読側(プロフィール)が blur 中でも即座に再読込することで解消する。
+type SpotLogListener = () => void;
+const spotLogListeners = new Set<SpotLogListener>();
+/** 記録更新の購読。返り値の関数で解除。プロフィール等が最近チェック/バッジを即時反映するのに使う。 */
+export function subscribeSpotLog(cb: SpotLogListener): () => void {
+  spotLogListeners.add(cb);
+  return () => { spotLogListeners.delete(cb); };
+}
+function notifySpotLog(): void {
+  for (const cb of Array.from(spotLogListeners)) { try { cb(); } catch { /* 購読側の失敗は無害 */ } }
+}
+
 // 1週間より古い閲覧記録を除外（visited=達成バッジには適用しない）
 function pruneViewed(list: SpotLogItem[]): SpotLogItem[] {
   const cutoff = Date.now() - VIEWED_TTL_MS;
@@ -62,6 +78,7 @@ export async function addVisitedLog(item: Omit<SpotLogItem, 'at'>): Promise<void
     if (list.some((e) => keyOf(e) === keyOf(item))) return;
     const next = [{ ...item, at: new Date().toISOString() }, ...list].slice(0, CAP);
     await AsyncStorage.setItem(VISITED_LOG_KEY, JSON.stringify(next));
+    notifySpotLog();   // バッジ即時反映
   } catch { /* 記録失敗は無害（バッジが増えないだけ） */ }
 }
 
@@ -72,6 +89,7 @@ export async function removeVisitedLog(item: Pick<SpotLogItem, 'title' | 'placeI
     const next = list.filter((e) => keyOf(e) !== keyOf(item));
     if (next.length !== list.length) {
       await AsyncStorage.setItem(VISITED_LOG_KEY, JSON.stringify(next));
+      notifySpotLog();   // バッジ解除の即時反映
     }
   } catch { /* noop */ }
 }
@@ -86,6 +104,7 @@ export async function addViewedLog(item: Omit<SpotLogItem, 'at'>): Promise<void>
       ...list.filter((e) => keyOf(e) !== keyOf(item)),
     ].slice(0, CAP);
     await AsyncStorage.setItem(VIEWED_LOG_KEY, JSON.stringify(next));
+    notifySpotLog();   // 最近チェックの即時反映（詳細を見た瞬間にプロフィールへ通知）
   } catch { /* noop */ }
 }
 

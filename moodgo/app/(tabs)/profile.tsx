@@ -15,7 +15,7 @@ import {
   Award, Bell, Camera, ChevronLeft, ChevronRight, MapPin, PenLine, Plus,
   Settings as SettingsIcon, Sparkles, UserRound,
 } from 'lucide-react-native';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Dimensions, RefreshControl, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
@@ -29,7 +29,7 @@ import { useTabReset } from '@/lib/useTabReset';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { HISTORY_KEY, loadJSON, saveJSON } from '@/lib/storage';
-import { loadViewedLog, loadVisitedLog, relativeTime, type SpotLogItem } from '@/lib/spotLog';
+import { loadViewedLog, loadVisitedLog, relativeTime, subscribeSpotLog, type SpotLogItem } from '@/lib/spotLog';
 import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -270,6 +270,10 @@ export default function ProfileTab() {
     setBadges(v);
     setViewed(w);
   }, []);
+
+  // 詳細(/place)を見た瞬間・行った！トグル時に即時反映する。プロフィールは blur したまま
+  //   裏に残るため focus 再取得を待たず、記録更新の通知で最近チェック/バッジを再読込する。
+  useEffect(() => subscribeSpotLog(() => { loadLogs(); }), [loadLogs]);
 
   // 通知の未読ドット（フォーカス毎に軽くチェック）
   const [notifUnread, setNotifUnread] = useState(false);
