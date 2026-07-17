@@ -61,7 +61,25 @@ export async function POST(req: NextRequest) {
     const seen = new Set<string>();
     const rows = all.filter((r) => { const id = String((r as { id?: unknown }).id ?? ""); if (!id || seen.has(id)) return false; seen.add(id); return true; })
       .map((r) => ({ ...r, repost_to_detail: hasFlag ? (r as { repost_to_detail?: boolean }).repost_to_detail ?? true : true }));
-    return NextResponse.json({ ok: true, spots: rows, flagReady: hasFlag });
+    // 投稿写真(spot_photos)を place_id で束ねて添付。＠付きMoodログ由来の期間限定スポットは写真が
+    //   places.image_urls ではなく spot_photos(Storage)にあるため、これが無いと「No Image」になる。
+    const ids = rows.map((r) => String((r as { id?: unknown }).id ?? "")).filter(Boolean);
+    const photoMap = new Map<string, string[]>();
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data: ph } = await db.from("spot_photos")
+        .select("place_id, image_url, is_primary, score")
+        .in("place_id", ids.slice(i, i + 300))
+        .eq("moderation_status", "approved").eq("can_use_as_spot_photo", true)
+        .order("is_primary", { ascending: false }).order("score", { ascending: false });
+      for (const p of (ph ?? []) as Array<{ place_id: string; image_url: string }>) {
+        if (!p.image_url) continue;
+        const k = String(p.place_id);
+        const arr = photoMap.get(k) ?? [];
+        if (arr.length < 10) { arr.push(p.image_url); photoMap.set(k, arr); }
+      }
+    }
+    const rowsWithPhotos = rows.map((r) => ({ ...r, user_photos: photoMap.get(String((r as { id?: unknown }).id ?? "")) ?? [] }));
+    return NextResponse.json({ ok: true, spots: rowsWithPhotos, flagReady: hasFlag });
   }
 
   const id = String(body?.id ?? "").trim();

@@ -16,6 +16,7 @@ type Spot = {
   description: string | null;
   image_urls: string[] | null;
   photo_url: string | null;
+  user_photos?: string[];   // 投稿(spot_photos)由来の写真。places.image_urlsが空でもこれで表示する
   available_from: string | null;
   available_until: string | null;
   source_type: string | null;
@@ -168,7 +169,9 @@ function SpotCard({ spot, secret, onToggleRepost, onPatchLocal, onReload, onFlag
 
   const st = statusOf(spot);
   const { event, venue } = splitAt(spot.name);
-  const thumb = (spot.image_urls ?? [])[0] || spot.photo_url || "";
+  // image_urls(admin編集) → 投稿写真(spot_photos) → 旧photo_url の順でサムネイル。
+  const userPhotos = spot.user_photos ?? [];
+  const thumb = (spot.image_urls ?? [])[0] || userPhotos[0] || spot.photo_url || "";
 
   const save = async () => {
     setSaving(true);
@@ -206,7 +209,14 @@ function SpotCard({ spot, secret, onToggleRepost, onPatchLocal, onReload, onFlag
     <div style={{ ...css.card, opacity: spot.is_active ? 1 : 0.6 }}>
       <div style={{ display: "flex", gap: 12 }}>
         {thumb
-          ? <img src={thumb} alt="" style={css.thumb} />
+          ? (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <img src={thumb} alt="" style={css.thumb} />
+              {(spot.image_urls ?? []).length === 0 && userPhotos.length > 0 && (
+                <span style={css.postedTag}>投稿{userPhotos.length}</span>
+              )}
+            </div>
+          )
           : <div style={{ ...css.thumb, ...css.thumbEmpty }}>No Image</div>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -264,6 +274,15 @@ function SpotCard({ spot, secret, onToggleRepost, onPatchLocal, onReload, onFlag
               ))}
             </div>
           )}
+          {userPhotos.length > 0 && (
+            <div>
+              <div style={css.fieldLabel}>投稿写真（{userPhotos.length}枚・利用者がアプリから投稿。検索/場所詳細では自動表示されます）</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                {userPhotos.slice(0, 8).map((u, i) => <img key={i} src={u} alt="" style={css.previewThumb} />)}
+                <button type="button" onClick={() => setImages([...new Set([...userPhotos, ...images.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean)])].join("\n"))} style={css.usePostedBtn}>↑ 画像URLに取り込む</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -315,6 +334,8 @@ const css: Record<string, React.CSSProperties> = {
   fieldLabel: { fontSize: 11.5, color: "#8A8A99", fontWeight: 700, marginBottom: 4 },
   input: { width: "100%", padding: "9px 12px", borderRadius: 9, border: "1px solid #E2E2EA", fontSize: 13.5, outline: "none", boxSizing: "border-box" },
   previewThumb: { width: 56, height: 56, borderRadius: 8, objectFit: "cover", background: "#F0F0F5" },
+  postedTag: { position: "absolute", left: 5, bottom: 5, fontSize: 10, fontWeight: 800, color: "#fff", background: "rgba(15,157,88,0.94)", borderRadius: 6, padding: "1px 6px" },
+  usePostedBtn: { padding: "6px 12px", borderRadius: 8, background: "#EEF6FF", color: "#2563EB", border: "1px solid #BFDBFE", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   authWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F6F3FF", fontFamily: "system-ui, sans-serif" },
   authCard: { background: "#fff", borderRadius: 18, padding: 28, width: 320, boxShadow: "0 10px 40px rgba(124,91,214,0.15)", textAlign: "center" },
   authTitle: { fontSize: 18, fontWeight: 800, color: "#2A2440" },
