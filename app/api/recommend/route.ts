@@ -243,7 +243,7 @@ function json(data: unknown, init?: ResponseInit) {
 //   ⚠recommend には返却経路が複数ある（穴場/時間潰し/フリーワード/relax/AI/最終）。どの経路でも
 //     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
 //     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
-async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
+async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: string): Promise<T[]> {
   if (!Array.isArray(recs) || recs.length === 0) return recs;
   // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
   //   どの経路(穴場/時間潰し/フリーワード/relax/AI/最終/admin補足/Google補足)を通っても、
@@ -260,6 +260,23 @@ async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
     if (hasArr && (rr.photoUrls as string[]).length === live.length && (rr.photoUrl ?? "") === (live[0] ?? "")) return r;  // 変化なし
     return { ...r, photoUrls: live, photoUrl: live[0] ?? "" } as T;
   });
+  // ── ② 気分に合わせた「おすすめ一言」をキャッシュから reason に当てる（全経路共通）─────
+  //   まったり×自然→「大自然の中でゆっくりできる〜がおすすめ！」等。無ければ pickReason のまま。
+  //   毎回 after() で不足分の生成を予約＝次回同気分の検索から反映（レスポンスは遅延ゼロ）。
+  if (moodGroupStr && MOOD_BLURB_PHRASE[moodGroupStr]) {
+    const titles = [...new Set(recs.map((r) => String((r as { title?: string }).title ?? "")).filter(Boolean))];
+    if (titles.length > 0) {
+      const hit = await ltCacheGetMany(titles.map((t) => moodBlurbKey(moodGroupStr, t)));
+      if (hit.size > 0) {
+        recs = recs.map((r) => {
+          const t = String((r as { title?: string }).title ?? "");
+          const c = t ? (hit.get(moodBlurbKey(moodGroupStr, t)) as { blurb?: string } | undefined) : undefined;
+          return c?.blurb ? ({ ...r, reason: c.blurb, aiReason: c.blurb } as T) : r;
+        });
+      }
+      scheduleMoodBlurbGeneration(recs as { title?: string; features?: string[]; tags?: string[] }[], moodGroupStr);
+    }
+  }
   const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
   // ── MoodGoバッジ（②・2026-07-17）: 定番/穴場/話題 ────────────────────────────
   //   ★評価がGoogle撤廃で全域空になったため、今あるデータだけで信頼シグナルを出す。
@@ -5641,6 +5658,73 @@ JSON: {"descriptions": {"スポット名": "説明文", ...}}`,
   try { after(async () => { await run(); }); } catch { void run(); }
 }
 
+// ── ② 気分に合わせた「おすすめ一言」(mood blurb) ──────────────────────────────
+//   その人の気分(moodGroup)に刺さる推薦一文を gpt-4o-mini で生成し、spot×気分でキャッシュ(api_cache・30日)。
+//   例: まったり(relax)×マザー牧場 → 「大自然の中でゆっくりできる、マザー牧場がおすすめ！」。
+//   表示は attachAvailability がキャッシュから reason に当てる（無ければ pickReason のまま）。
+//   応答後に after() で非同期生成＝検索レスポンスは遅延ゼロ、次回同気分の検索から無料で反映。
+const MOOD_BLURB_PHRASE: Record<string, string> = {
+  food: "美味しいものを食べたい", relax: "ゆっくりまったり癒やされたい", nature: "自然を感じたい",
+  play: "わいわい楽しみたい", drive: "ドライブしたい", focus: "集中して作業・勉強したい",
+  sport: "体を動かしたい", travel: "旅行・観光したい", shopping: "買い物を楽しみたい",
+};
+function moodBlurbKey(moodGroupStr: string, title: string): string {
+  return `mblurb:${moodGroupStr}:${title.slice(0, 80)}`;
+}
+function scheduleMoodBlurbGeneration(
+  recs: { title?: string; tags?: string[]; features?: string[] }[],
+  moodGroupStr: string,
+): void {
+  if (!supabase || !openai || !moodGroupStr) return;
+  const ai = openai;
+  const phrase = MOOD_BLURB_PHRASE[moodGroupStr];
+  if (!phrase) return;   // 未知の気分（AI相談等）は生成しない
+  const seen = new Set<string>();
+  const targets: { name: string; tags: string[] }[] = [];
+  for (const r of recs) {
+    const name = String(r.title ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const tags = (Array.isArray(r.features) && r.features.length ? r.features : (Array.isArray(r.tags) ? r.tags : []))
+      .map((x) => String(x).replace(/^#/, "")).filter(Boolean);
+    targets.push({ name, tags });
+  }
+  const dedup = targets.slice(0, 12);   // 1検索あたり上限（after実行＝遅延ゼロ）
+  if (dedup.length === 0) return;
+  const run = async () => {
+    try {
+      // 既にキャッシュ済みは生成しない（コスト削減）
+      const have = await ltCacheGetMany(dedup.map((t) => moodBlurbKey(moodGroupStr, t.name)));
+      const todo = dedup.filter((t) => !((have.get(moodBlurbKey(moodGroupStr, t.name)) as { blurb?: string } | undefined)?.blurb));
+      if (todo.length === 0) return;
+      const list = todo.map((s, i) => `${i + 1}. ${s.name}（${s.tags.slice(0, 6).join("・")}）`).join("\n");
+      const res = await ai.chat.completions.create({
+        model: "gpt-4o-mini", temperature: 0.6, response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `ユーザーは今「${phrase}」という気分で行き先を探しています。
+各スポットについて、その気分にぴったり合う「おすすめの一言」(20〜45字)を書いてください。
+・必ずスポット名を入れ、「〜がおすすめ！」のように前向きに誘う。
+・その気分（${phrase}）にどう応えてくれるかを具体的に。例:「大自然の中でゆっくりできる、マザー牧場がおすすめ！」
+・タグから雰囲気を自然に推測してよいが、誇張や嘘は避ける。断定的な営業文句にしない。
+JSON: {"blurbs": {"スポット名": "一言", ...}}`,
+          },
+          { role: "user", content: list },
+        ],
+        max_tokens: 700,
+      });
+      const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
+      for (const [name, blurb] of Object.entries(parsed.blurbs ?? {})) {
+        if (typeof blurb !== "string") continue;
+        const text = blurb.trim().slice(0, 60);
+        if (text) await ltCachePut(moodBlurbKey(moodGroupStr, name), { blurb: text });
+      }
+    } catch (e) { await logServerError("mood_blurb_gen", e); }
+  };
+  try { after(async () => { await run(); }); } catch { void run(); }
+}
+
 // ── 全経路共通: 承認済み&再利用OKの利用者投稿写真をカードのメイン画像にする ──────────
 //   place_id(UUID) と place_name の両方で照合（Moodログ投稿で place_id がNULLでも名前で拾う）。
 //   利用者写真が3枚以上なら Google等は一切使わず利用者写真のみ（ユーザー要望）。3枚未満は先頭に+既存で補完。
@@ -6729,7 +6813,7 @@ async function handleRecommend(request: Request) {
         const jikanRecs = [...jikanTop.map(r => toJikanRec(r, true)), ...jTake.map(r => toJikanRec(r, false))];
         await applyUserPhotos(jikanRecs as unknown as UserPhotoRec[]);
         return json({
-          recommendations: await attachAvailability(jikanRecs),
+          recommendations: await attachAvailability(jikanRecs, moodGroup(answers.mood)),
           source: "supabase-jikan",
           searchId,
           usedAI: false,
@@ -6775,7 +6859,7 @@ async function handleRecommend(request: Request) {
           await applyUserPhotos(fwRecs as unknown as UserPhotoRec[]);
           diversifyByCategory(fwRecs as unknown as DivRec[]);
           return json({
-            recommendations: await attachAvailability(fwRecs),
+            recommendations: await attachAvailability(fwRecs, moodGroup(answers.mood)),
             source: answers.aiChat ? "ai_chat" : "ai_freeword",
             usedAI: true,
             warning: "",
@@ -8476,7 +8560,7 @@ async function handleRecommend(request: Request) {
           }
         } catch { /* 期間ガード失敗は素通り（検索自体は成立させる） */ }
         // 期間限定バッジ用: 各recの supabaseId から places.available_from/until を載せる（全経路共通ヘルパー）
-        recommendations = await attachAvailability(recommendations);
+        recommendations = await attachAvailability(recommendations, moodGroup(answers.mood));
         // 領域R2(最終確定): LLMリランカー(7819)・多様化の後でも「近め指定の距離外れ値」を末尾へ。
         //   rerankerが遠方を上位に戻すため、ここで cap 超過を安定パーティションで末尾固定する(順序保持)。
         //   far-bias(minRadiusKm>0)・高層ビル目的地・心霊は対象外＝遠方意図/独自データを壊さない。
@@ -8823,7 +8907,7 @@ async function handleRecommend(request: Request) {
           });
           await applyUserPhotos(hiFinal as unknown as UserPhotoRec[]);
           diversifyByCategory(hiFinal as unknown as DivRec[]);
-          return json({ recommendations: await attachAvailability(hiFinal), usedAI: true, warning: "" });
+          return json({ recommendations: await attachAvailability(hiFinal, moodGroup(answers.mood)), usedAI: true, warning: "" });
         }
       }
     }
@@ -9120,7 +9204,7 @@ async function handleRecommend(request: Request) {
       await applyUserPhotos(relaxFinalResults as unknown as UserPhotoRec[]);
       diversifyByCategory(relaxFinalResults as unknown as DivRec[]);
       return json({
-        recommendations: await attachAvailability(relaxFinalResults),
+        recommendations: await attachAvailability(relaxFinalResults, moodGroup(answers.mood)),
         usedAI: !!relaxAiResult,
         warning: relaxFinalResults.length === 0 ? "条件に合うスポットが見つかりませんでした。エリアや条件を変えてお試しください。" : "",
       });
@@ -10091,7 +10175,7 @@ async function handleRecommend(request: Request) {
     await applyUserPhotos(finalResults as unknown as UserPhotoRec[]);
     diversifyByCategory(finalResults as unknown as DivRec[]);
     return json({
-      recommendations: await attachAvailability(finalResults),
+      recommendations: await attachAvailability(finalResults, moodGroup(answers.mood)),
       usedAI: !!aiPlans,
       searchId,
       warning: "",
