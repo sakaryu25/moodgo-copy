@@ -754,10 +754,13 @@ function RegionPrefSelectView({ region, onSelectPref }: {
     Animated.timing(mapIn, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [mapIn, region]);
 
-  // 表示範囲: その地方のbboxに余白を足した viewBox（全国SVGを地方にズームした見せ方）
+  // 表示範囲: その地方のbboxに余白を足した viewBox（全国SVGを地方にズームした見せ方）。
+  //   REGION_VIEWにオーバーライドがある地方(九州・沖縄)はそちらを優先。
+  const view = REGION_VIEW[region];
   const bb = REGION_BBOXES[region] ?? { x: 0, y: 0, w: JAPAN_SVG_W, h: JAPAN_SVG_H };
   const pad = Math.max(bb.w, bb.h) * 0.12;
-  const vb = { x: bb.x - pad, y: bb.y - pad, w: bb.w + pad * 2, h: bb.h + pad * 2 };
+  const vb = view?.vb ?? { x: bb.x - pad, y: bb.y - pad, w: bb.w + pad * 2, h: bb.h + pad * 2 };
+  const shiftOf = (pref: string) => view?.shift?.[pref];
   // contain 配置
   const scale = cW > 0 && cH > 0 ? Math.min(cW / vb.w, cH / vb.h) : 0;
   const svgW = vb.w * scale;
@@ -781,27 +784,32 @@ function RegionPrefSelectView({ region, onSelectPref }: {
               {JAPAN_PREF_PATHS.filter((p) => p.region !== region).map((p) => (
                 <Path key={p.pref} d={p.d} fill="#EFEDF7" stroke="#ffffff" strokeWidth={vb.w / 500} strokeLinejoin="round" />
               ))}
-              {/* この地方の県: 濃淡2段のパステルで塗り分け・県の形をタップで選択 */}
-              {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p, i) => (
-                <Path
-                  key={p.pref}
-                  d={p.d}
-                  fill={pressedPref === p.pref
-                    ? blendWithWhite(regionColor, 0.18)
-                    : blendWithWhite(regionColor, i % 2 === 0 ? 0.42 : 0.58)}
-                  stroke="#ffffff"
-                  strokeWidth={vb.w / 300}
-                  strokeLinejoin="round"
-                  onPressIn={() => setPressedPref(p.pref)}
-                  onPressOut={() => setPressedPref(null)}
-                  onPress={() => onSelectPref(p.pref as Tab)}
-                />
-              ))}
+              {/* この地方の県: 濃淡2段のパステルで塗り分け・県の形をタップで選択。
+                  shift指定のある県(九州ビューの沖縄)は空き海域へ平行移動して表示 */}
+              {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p, i) => {
+                const sh = shiftOf(p.pref);
+                return (
+                  <Path
+                    key={p.pref}
+                    d={p.d}
+                    transform={sh ? `translate(${sh.dx}, ${sh.dy})` : undefined}
+                    fill={pressedPref === p.pref
+                      ? blendWithWhite(regionColor, 0.18)
+                      : blendWithWhite(regionColor, i % 2 === 0 ? 0.42 : 0.58)}
+                    stroke="#ffffff"
+                    strokeWidth={vb.w / 300}
+                    strokeLinejoin="round"
+                    onPressIn={() => setPressedPref(p.pref)}
+                    onPressOut={() => setPressedPref(null)}
+                    onPress={() => onSelectPref(p.pref as Tab)}
+                  />
+                );
+              })}
             </Svg>
           </Animated.View>
           {/* 県ピン — 日本列島画面と同じ白ピル（色ドット＋県名＋シェブロン・順番にポップ→浮遊）*/}
           {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p, i) => {
-            const a = PREF_ANCHORS[p.pref];
+            const a = PREF_PIN_POS[p.pref] ?? PREF_ANCHORS[p.pref];   // 密集地方は沖合の手置き位置を優先
             if (!a) return null;
             const estW = 58 + 13 * p.pref.length;
             const px = left + (a.x - vb.x) * scale - estW / 2;
@@ -853,6 +861,34 @@ const REGION_PIN_POS: Record<string, { x: number; y: number }> = {
   "中国":         { x: 90,  y: 450 },
   "四国":         { x: 200, y: 670 },
   "九州・沖縄":   { x: 108, y: 770 },
+};
+
+// 県ピンの手置きオーバーライド（viewBox座標）。
+//   県の重心が密集する地方は、ピルが重なるため島の周りの海域に扇状に逃がす。
+//   未登録の県は PREF_ANCHORS(重心) をそのまま使う。
+const PREF_PIN_POS: Record<string, { x: number; y: number }> = {
+  // 九州・沖縄: 7県が56×82の極小範囲に密集 → 島の周囲に時計回りで扇形配置
+  "佐賀":   { x: 34,  y: 496 },
+  "福岡":   { x: 152, y: 536 },
+  "長崎":   { x: 18,  y: 584 },
+  "大分":   { x: 174, y: 590 },
+  "熊本":   { x: 22,  y: 666 },
+  "宮崎":   { x: 178, y: 650 },
+  "鹿児島": { x: 95,  y: 728 },
+  "沖縄":   { x: 250, y: 736 },   // 移動後の沖縄本島(下記REGION_VIEW.shift適用後)の上
+};
+
+// 地方ビューの表示オーバーライド。
+//   九州・沖縄: 全国地図では沖縄が右下インセット(遠い)にあるため、bboxのまま表示すると
+//   九州本体が小さくなる。→ 九州中心のviewBoxに絞り、沖縄の島々を九州南東の空き海域へ平行移動。
+const REGION_VIEW: Record<string, {
+  vb: { x: number; y: number; w: number; h: number };
+  shift?: Record<string, { dx: number; dy: number }>;
+}> = {
+  "九州・沖縄": {
+    vb: { x: -45, y: 465, w: 340, h: 400 },
+    shift: { "沖縄": { dx: -155, dy: -85 } },
+  },
 };
 
 // ベクター日本地図（Natural Earth由来の自前SVGパス）。
