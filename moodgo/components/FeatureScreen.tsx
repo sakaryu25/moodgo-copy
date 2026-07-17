@@ -35,9 +35,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
-import Svg, { Defs, RadialGradient, Stop, Circle, Path } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Stop, Circle, Path, Text as SvgText } from "react-native-svg";
 import {
-  JAPAN_SVG_W, JAPAN_SVG_H, JAPAN_PREF_PATHS, OKINAWA_DIVIDER, REGION_ANCHORS,
+  JAPAN_SVG_W, JAPAN_SVG_H, JAPAN_PREF_PATHS, OKINAWA_DIVIDER, REGION_ANCHORS, REGION_BBOXES, PREF_ANCHORS,
 } from "./japanMapPaths";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
@@ -744,115 +744,87 @@ function RegionPrefSelectView({ region, onSelectPref }: {
 }) {
   const [cW, setCW] = useState(0);
   const [cH, setCH] = useState(0);
-
-  const prefs      = REGION_PREFS[region] ?? [];
-  const regionKey  = TAB_REGION_KEY[region];
-  const bgImage    = regionKey ? REGION_BG_IMAGES[regionKey] : undefined;
-  const overlay    = bgImage ? REGION_PREF_OVERLAY[region] : undefined;
-  const nativeRatio = regionKey ? REGION_IMG_RATIO[regionKey] : undefined;
-  // 県ボタンの見た目を地方ボタンと統一するためのアクセント色（その地方の色）
+  const [pressedPref, setPressedPref] = useState<string | null>(null);
   const regionColor = REGION_OVERLAY.find((r) => r.tab === region)?.color ?? "#8B5CF6";
 
-  // 北海道・東北 / 九州・沖縄 (縦長) はそのまま、それ以外は 1.25 倍に拡大
-  const imgScale = (regionKey === "hokkaido-tohoku" || regionKey === "kyushu") ? 1.0 : 1.25;
+  // エントランス（全国地図と同じ: 少し引き→等倍・フェード）
+  const mapIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    mapIn.setValue(0);
+    Animated.timing(mapIn, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [mapIn, region]);
 
-  // contain 配置: 画像の実描画サイズとオフセットを算出
-  let imgW = 0, imgH = 0, imgLeft = 0, imgTop = 0;
-  if (cW > 0 && cH > 0 && nativeRatio) {
-    if (cW / cH < nativeRatio) {
-      imgW = cW; imgH = cW / nativeRatio;
-    } else {
-      imgH = cH; imgW = cH * nativeRatio;
-    }
-    imgW *= imgScale;
-    imgH *= imgScale;
-    imgLeft = (cW - imgW) / 2;
-    imgTop  = (cH - imgH) / 2;
-  }
-
-  const COLS   = 3;
-  const GAP    = 10;
-  const CELL_W = (W - 40 - GAP * (COLS - 1)) / COLS;
+  // 表示範囲: その地方のbboxに余白を足した viewBox（全国SVGを地方にズームした見せ方）
+  const bb = REGION_BBOXES[region] ?? { x: 0, y: 0, w: JAPAN_SVG_W, h: JAPAN_SVG_H };
+  const pad = Math.max(bb.w, bb.h) * 0.12;
+  const vb = { x: bb.x - pad, y: bb.y - pad, w: bb.w + pad * 2, h: bb.h + pad * 2 };
+  // contain 配置
+  const scale = cW > 0 && cH > 0 ? Math.min(cW / vb.w, cH / vb.h) : 0;
+  const svgW = vb.w * scale;
+  const svgH = vb.h * scale;
+  const left = (cW - svgW) / 2;
+  const top  = (cH - svgH) / 2;
+  // 県名ラベルのフォントサイズ（viewBox座標系。地方の広さに応じて可変）
+  const fontSize = Math.max(9, Math.min(vb.w, vb.h) / 15);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bgSub }}>
-      {/* グラデーションオーバーレイ (silhouette がある場合のみ) */}
-      {bgImage && (
-        <LinearGradient
-          colors={["rgba(250,247,244,0.28)", "rgba(250,247,244,0.10)", "rgba(250,247,244,0.35)"]}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
-      )}
-      {/* silhouette なし → japan-map を背景に */}
-      {!bgImage && (
+    <View
+      style={{ flex: 1, backgroundColor: C.bgSub }}
+      onLayout={(e) => { setCW(e.nativeEvent.layout.width); setCH(e.nativeEvent.layout.height); }}
+    >
+      {scale > 0 && (
         <>
-          <ExpoImage
-            source={JAPAN_MAP}
-            style={{ position: "absolute", width: W, height: W * (813 / 632), left: 0, top: 10, opacity: 0.85 }}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-          />
-          <LinearGradient
-            colors={["rgba(250,247,244,0.35)", "rgba(250,247,244,0.15)", "rgba(250,247,244,0.45)"]}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-          />
+          <Animated.View
+            style={{ position: "absolute", left, top, width: svgW, height: svgH,
+              opacity: mapIn,
+              transform: [{ scale: mapIn.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}
+          >
+            <Svg width={svgW} height={svgH} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}>
+              {/* 周辺の他地方: 薄く敷いて位置関係を見せる（タップ不可）*/}
+              {JAPAN_PREF_PATHS.filter((p) => p.region !== region).map((p) => (
+                <Path key={p.pref} d={p.d} fill="#EFEDF7" stroke="#ffffff" strokeWidth={vb.w / 500} strokeLinejoin="round" />
+              ))}
+              {/* この地方の県: 濃淡2段のパステルで塗り分け・県の形をタップで選択 */}
+              {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p, i) => (
+                <Path
+                  key={p.pref}
+                  d={p.d}
+                  fill={pressedPref === p.pref
+                    ? blendWithWhite(regionColor, 0.18)
+                    : blendWithWhite(regionColor, i % 2 === 0 ? 0.42 : 0.58)}
+                  stroke="#ffffff"
+                  strokeWidth={vb.w / 300}
+                  strokeLinejoin="round"
+                  onPressIn={() => setPressedPref(p.pref)}
+                  onPressOut={() => setPressedPref(null)}
+                  onPress={() => onSelectPref(p.pref as Tab)}
+                />
+              ))}
+              {/* 県名ラベル（重心に直接描画・ラベルもタップ可）*/}
+              {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p) => {
+                const a = PREF_ANCHORS[p.pref];
+                if (!a) return null;
+                return (
+                  <SvgText
+                    key={`label-${p.pref}`}
+                    x={a.x}
+                    y={a.y + fontSize * 0.35}
+                    fontSize={fontSize}
+                    fontWeight="bold"
+                    fill="#3A3355"
+                    textAnchor="middle"
+                    onPress={() => onSelectPref(p.pref as Tab)}
+                  >
+                    {p.pref}
+                  </SvgText>
+                );
+              })}
+            </Svg>
+          </Animated.View>
+          {/* 背景を漂う雲（全国地図と同じ世界観）*/}
+          <DriftingCloud size={150} x={-40} y={cH * 0.1} drift={44} duration={6200} gradId="prefCloud1" />
+          <DriftingCloud size={120} x={cW - 70} y={cH * 0.66} drift={-38} duration={7400} delay={1100} gradId="prefCloud2" />
         </>
-      )}
-
-      {/* 見出し(地方バッジ/都道府県を選ぶ/説明)はグラデヘッダー内へ移設済み */}
-
-      {overlay ? (
-        // ── 地図オーバーレイ配置 ──
-        <View
-          style={{ flex: 1, overflow: "visible" }}
-          onLayout={(e) => { setCW(e.nativeEvent.layout.width); setCH(e.nativeEvent.layout.height); }}
-        >
-          {/* シルエット画像 — 中央配置 */}
-          {imgW > 0 && (
-            <ExpoImage
-              source={bgImage}
-              style={{ position: "absolute", left: imgLeft, top: imgTop, width: imgW, height: imgH }}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-            />
-          )}
-          {/* 都道府県ボタン — 地理的位置に配置（見た目は地方ボタンと統一・順番にポップ→浮遊）*/}
-          {imgW > 0 && overlay.map((item, i) => (
-            <FloatingPin
-              key={item.label}
-              index={i}
-              top={imgTop + imgH * (item.topPct / 100)}
-              left={imgLeft + imgW * (item.leftPct / 100)}
-            >
-              <TouchableOpacity
-                activeOpacity={0.75}
-                onPress={() => onSelectPref(item.label)}
-                style={[s.mapRegionBtn, { position: "relative", top: 0, left: 0, shadowColor: regionColor, shadowOpacity: 0.45, shadowRadius: 11 }]}
-              >
-                <View style={[s.mapRegionDot, { backgroundColor: regionColor }]} />
-                <Text style={s.mapRegionLabel}>{item.label}</Text>
-                <ChevronRight size={11} color={regionColor} strokeWidth={2.8} />
-              </TouchableOpacity>
-            </FloatingPin>
-          ))}
-        </View>
-      ) : (
-        // ── フォールバック: グリッド ──
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.regionPrefGrid}>
-          {prefs.map((pref) => (
-            <TouchableOpacity
-              key={pref}
-              style={[s.regionPrefCard, { width: CELL_W }]}
-              onPress={() => onSelectPref(pref)}
-              activeOpacity={0.75}
-            >
-              <MapPin size={20} color={C.accent} strokeWidth={2} />
-              <Text style={s.regionPrefLabel}>{pref}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       )}
     </View>
   );
@@ -1807,8 +1779,12 @@ export default function FeatureScreen() {
   };
 
   const handleSelectPref = (tab: Tab) => {
-    const pin = REGION_PREF_OVERLAY[selectedRegion]?.find((i) => i.label === tab);
-    setAnchorFromOverlay(pin?.topPct, pin?.leftPct, 2.1);
+    // 県の重心を、表示中の地方viewBox内の%に換算してズームの狙い点に
+    const a = PREF_ANCHORS[tab];
+    const bb = REGION_BBOXES[selectedRegion];
+    const topPct  = a && bb ? ((a.y - bb.y) / bb.h) * 100 : undefined;
+    const leftPct = a && bb ? ((a.x - bb.x) / bb.w) * 100 : undefined;
+    setAnchorFromOverlay(topPct, leftPct, 2.1);
     manualPickRef.current = true;
     setSelectedTab(tab);
     setSelectedRegion(PREF_TO_REGION[tab] ?? selectedRegion);
