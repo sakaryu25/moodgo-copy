@@ -2346,8 +2346,14 @@ function isShoppingMallMismatch(name: string, deepDiveL1: string): boolean {
   return !isLargeMallName(name);
 }
 
+// 天気は広域で同じ＆ゆっくり変わる → 座標を約1km(2桁)に丸めて20分メモリキャッシュ。
+//   これで検索ごとにopen-meteoを叩かない（コスト/遅延削減）。インスタンス跨ぎ不要（コールドで消えてよい）。
+const _wxCache = new Map<string, { at: number; wx: WeatherContext }>();
 async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherContext> {
   if (typeof lat !== "number" || typeof lng !== "number") return {};
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached = _wxCache.get(key);
+  if (cached && Date.now() - cached.at < 20 * 60 * 1000) return cached.wx;
 
   try {
     const url = new URL("https://api.open-meteo.com/v1/forecast");
@@ -2356,14 +2362,18 @@ async function getWeatherContext(lat?: number, lng?: number): Promise<WeatherCon
     url.searchParams.set("current", "weather_code,is_day");
     url.searchParams.set("timezone", "Asia/Tokyo");
 
-    const res = await fetch(url.toString(), { cache: "no-store" });
+    // ⚠ タイムアウト必須: recommendのホット経路(コンシェルジュ再ランク)からも呼ぶため、
+    //   open-meteoが遅い/ハングすると検索全体(Promise.all)が詰まる。2.5秒で打ち切り→天気なしで続行。
+    const res = await fetch(url.toString(), { cache: "no-store", signal: AbortSignal.timeout(2500) });
     if (!res.ok) return {};
 
     const data = await res.json().catch(() => null);
-    return {
+    const wx: WeatherContext = {
       weatherCode: data?.current?.weather_code,
       isDay: typeof data?.current?.is_day === "number" ? data.current.is_day === 1 : undefined,
     };
+    _wxCache.set(key, { at: Date.now(), wx });
+    return wx;
   } catch {
     return {};
   }
