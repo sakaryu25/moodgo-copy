@@ -6491,6 +6491,21 @@ function writeSnapshot(key: string, result: Record<string, unknown>): void {
   try { after(async () => { await run(); }); } catch { void run(); }
 }
 // 標準検索のみキャッシュ対象にし、結果に影響する入力でキーを作る（無ければ "" = キャッシュしない）
+// パーソナライズ再ランク(コンシェルジュ)を安全にキャッシュするための「この人固有の好み符号」。
+//   プロフィール傾向(userPreferenceHints)＋過去の高評価/苦手(pastFeedback)を短いハッシュに畳む。
+//   これをsnapshotキーに混ぜないと「先に検索した人向けの並び」を別人が共有＝誤ったパーソナライズになる。
+//   履歴の無い利用者(大多数)は実体ゼロ→ "" を返し、従来どおり mood+座標の共有キャッシュを使う。
+function personaSignature(body: Record<string, unknown>): string {
+  const hints = Array.isArray(body?.userPreferenceHints) ? (body.userPreferenceHints as unknown[]).map(String) : [];
+  const fb = Array.isArray(body?.pastFeedback) ? (body.pastFeedback as Array<{ rating?: number; visitedPlace?: string }>) : [];
+  const likes = fb.filter((f) => (f?.rating ?? 0) >= 4 && f?.visitedPlace).map((f) => String(f.visitedPlace));
+  const dislikes = fb.filter((f) => (f?.rating ?? 0) > 0 && (f?.rating ?? 0) <= 2 && f?.visitedPlace).map((f) => String(f.visitedPlace));
+  const sig = [hints.join("・"), likes.join("・"), dislikes.join("・")].join("|");
+  if (sig.replace(/[|]/g, "").trim().length === 0) return "";  // 実体なし＝共有キャッシュ維持
+  let h = 5381; for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) | 0;  // djb2
+  return "p" + (h >>> 0).toString(36);
+}
+
 function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): string {
   const a = (body?.answers ?? {}) as Record<string, unknown>;
   const lat = a.originLat, lng = a.originLng;
@@ -6503,6 +6518,7 @@ function buildSnapshotKey(body: Record<string, unknown>, deepDive: string): stri
     "v3",
     a.mood ?? "", lat.toFixed(3), lng.toFixed(3), a.radiusKm ?? "",
     a.distanceFeeling ?? "", deepDive, a.companion ?? "", a.transport ?? "",
+    personaSignature(body),  // 好み履歴のある人だけ専用キャッシュに分岐（無い人は""で共有維持）
   ].join("|");
 }
 
@@ -7527,6 +7543,20 @@ async function handleRecommend(request: Request) {
               attr ? `属性:${attr}` : "",
               `希望:${answers.freeWord || refinementText || "なし"}`,
             ].filter(Boolean).join("／");
+            // 【コンシェルジュ化】この利用者を"知る"パーソナル文脈＝過去の高評価/苦手・プロフィール傾向・
+            //   今の時間帯。渡すと並べ替えが「万人向けキュレーター」→「あなたを知る地元の友達」になる(⑧⑨)。
+            //   ※履歴依存で並びが変わるため、snapshotキーは personaSignature でこの人専用に分岐済み(誤共有防止)。
+            const tcNow = getTimeContext();
+            const timeLabel = tcNow.isMorning ? "朝" : tcNow.isDaytime ? "日中" : tcNow.isEvening ? "夕方〜夜" : "深夜";
+            const likedP = pastFeedback.filter((f) => (f.rating ?? 0) >= 4 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
+            const dislikedP = pastFeedback.filter((f) => (f.rating ?? 0) > 0 && (f.rating ?? 0) <= 2 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
+            const hintP = userPreferenceHints.filter((h) => typeof h === "string" && h.trim()).slice(0, 6);
+            const personaLine = [
+              hintP.length ? `傾向:${hintP.join("・")}` : "",
+              likedP.length ? `過去に好評:${likedP.join("・")}` : "",
+              dislikedP.length ? `過去に苦手:${dislikedP.join("・")}` : "",
+              `今の時間帯:${timeLabel}`,
+            ].filter(Boolean).join("／");
             return openai.chat.completions.create({
               // 精度重視: 並べ替えは推薦体験の核なので gpt-4o（候補は短文・出力は番号列のみで低コスト）。
               model: "gpt-4o-mini", temperature: 0.2, max_tokens: 500,  // 並べ替え＋reject(場違い排除)の番号列。出力は番号のみで低コスト
@@ -7540,8 +7570,10 @@ async function handleRecommend(request: Request) {
 3. タグ（#始まり）は場所の種類を表す主材料。説明文があればその内容（景観・雰囲気・名物）も根拠にする。
 4. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然、繁華街・ビル街＝都会的、住宅街＝静か 等）。
 5. 同行者・属性・予算に合うか（友達＝映え/盛り上がる、恋人＝雰囲気、一人＝静けさ、家族＝安心）。
-6. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし1〜2の合致が低い場所を多様性のために上げない。
-7. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
+6. 【この人を知る】ユーザー文脈に「傾向／過去に好評／過去に苦手」があれば強く尊重する——過去に好評だった場所と似た系統を上位へ、苦手だった系統は下位へ。プロフィール傾向にも寄せる。ただし今回の気分・深掘り・希望との合致(1〜4)を覆さない範囲で（＝合う場所の中で、この人好みを優先する）。
+7. 【今の時間帯】に合うか（朝＝モーニング/朝活/自然、夕方〜夜＝夜景/バー/ライトアップ/ディナー、深夜＝深夜営業）も加点材料にする。時間帯に明らかに閉まっている種別（朝の夜景バー等）は下げる。
+8. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし合致が低い場所を多様性のために上げない。
+9. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
 
 出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空]} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。` },
                 { role: "user", content: `${ctxLine}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明】:\n${cand}` },
