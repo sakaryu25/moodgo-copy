@@ -243,6 +243,29 @@ function json(data: unknown, init?: ResponseInit) {
 //   ⚠recommend には返却経路が複数ある（穴場/時間潰し/フリーワード/relax/AI/最終）。どの経路でも
 //     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
 //     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
+// ④ 季節ボーナス: 今の季節に合う季節スポット(桜/花火/紅葉/イルミ等)を距離ボーナスで上位化し、
+//   季節外れ(冬の花火大会・夏の紅葉ライトアップ等)は下げる。期間限定イベントの多くは名前に季節語を
+//   含むため名前一致で「季節の今だけ」を自動で拾う。旬=+2.2km分有利 / 季節外れ=-1.2km。
+const SEASON_KW: { re: RegExp; months: number[] }[] = [
+  { re: /桜|花見|さくら|サクラ/, months: [3, 4] },
+  { re: /梅まつり|梅林|観梅|梅の花|梅園/, months: [2, 3] },
+  { re: /藤棚|藤まつり|ネモフィラ|チューリップ|芝桜|牡丹|ぼたん/, months: [4, 5] },
+  { re: /紫陽花|あじさい|アジサイ|花菖蒲|ホタル|蛍|バラ園|ラベンダー/, months: [6] },
+  { re: /花火|納涼|七夕|ひまわり|向日葵|海水浴|夏祭り|盆踊り/, months: [7, 8] },
+  { re: /紅葉|もみじ|モミジ|こうよう|コスモス|秋祭り|ハロウィン/, months: [10, 11] },
+  { re: /イルミ|イルミネーション|クリスマス|ウィンター|光の(?:祭|世界|イベント|фестиваль)/, months: [11, 12] },
+  { re: /初詣|初日の出|樹氷|雪まつり|かまくら|スキー|スケート|ウィンタースポーツ/, months: [12, 1, 2] },
+];
+function seasonalBonusKm(name?: string | null): number {
+  const hay = name ?? "";
+  if (!hay) return 0;
+  const m = new Date(Date.now() + 9 * 3600_000).getUTCMonth() + 1;  // JST基準の月
+  for (const s of SEASON_KW) {
+    if (s.re.test(hay)) return s.months.includes(m) ? 2.2 : -1.2;
+  }
+  return 0;
+}
+
 // ② mood blurb を recs の reason に当てる共通ヘルパー。
 //   本経路(attachAvailability)＋スナップショット応答(パイプラインskip)の両方から呼び、
 //   キャッシュ済みおすすめ一言を reason/aiReason に反映＋不足分の生成を after() で予約する。
@@ -319,10 +342,13 @@ async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: st
         pmap.set(String(p.id), { from: p.available_from, until: p.available_until, src: p.source_type });
       }
     }
+    // ④ 「今だけ」判定: 公開期間中(from<=今日<=until, nullは開放端)なら limitedNow=true → カードで今だけバッジ
+    const todayJst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
     return recs.map((r) => {
       const pv = pmap.get(sidOf(r));
+      const inWindow = !!pv && (!!pv.from || !!pv.until) && (!pv.from || pv.from <= todayJst) && (!pv.until || pv.until >= todayJst);
       const withAvail = pv && (pv.from || pv.until)
-        ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T)
+        ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until, limitedNow: inWindow } as T)
         : r;
       return withBadge(withAvail, pv?.src);
     });
@@ -8239,9 +8265,9 @@ async function handleRecommend(request: Request) {
               const rb = wilsonLower(b.rating ?? null, b.userRatingCount ?? null);
               if (Math.abs(ra - rb) > 0.05) return rb - ra;
             }
-            // 学習スコアを距離ボーナス換算（👍/エンゲージメントが高い店は最大3km分有利）
-            const la = ratingJudge.learnScore(a.title ?? "") * 3;
-            const lb = ratingJudge.learnScore(b.title ?? "") * 3;
+            // 学習スコアを距離ボーナス換算（👍/エンゲージメントが高い店は最大3km分有利）＋④季節ボーナス
+            const la = ratingJudge.learnScore(a.title ?? "") * 3 + seasonalBonusKm(a.title);
+            const lb = ratingJudge.learnScore(b.title ?? "") * 3 + seasonalBonusKm(b.title);
             return (ka - la) - (kb - lb);
           }).slice(0, 15);
         } else if (minRadiusKm === 0) {
@@ -8284,8 +8310,8 @@ async function handleRecommend(request: Request) {
               // ③ 学習スコア + AI判別順 + ★評価 を距離ボーナス換算（小さいほど上位）
               //   領域R3: ★(Wilson)を最大+1.2km分だけ加点＝同程度の近さなら★付き定番が上に来て
               //   1位が★無になりにくい。★無(公園/図書館等の正規キュレーション)は0で沈めない。
-              const la = ratingJudge.learnScore(a.title ?? "") * 3 + aiBonusKm(a) + wilsonLower(a.rating ?? null, a.userRatingCount ?? null) * 1.2;
-              const lb = ratingJudge.learnScore(b.title ?? "") * 3 + aiBonusKm(b) + wilsonLower(b.rating ?? null, b.userRatingCount ?? null) * 1.2;
+              const la = ratingJudge.learnScore(a.title ?? "") * 3 + aiBonusKm(a) + wilsonLower(a.rating ?? null, a.userRatingCount ?? null) * 1.2 + seasonalBonusKm(a.title);
+              const lb = ratingJudge.learnScore(b.title ?? "") * 3 + aiBonusKm(b) + wilsonLower(b.rating ?? null, b.userRatingCount ?? null) * 1.2 + seasonalBonusKm(b.title);
               return ((kmOfRec(a) - la) - (kmOfRec(b) - lb)) + (Math.random() - 0.5) * jitterKm * 2;
             })
             .slice(0, 15);
