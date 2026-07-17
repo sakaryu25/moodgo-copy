@@ -22,8 +22,10 @@ export async function GET(req: Request) {
   const safe = placeName.replace(/[%_,]/g, "").slice(0, 80);   // PostgREST like/or の記号を除去
 
   try {
-    // 「＠{元スポット名}」で終わる派生イベントで、まだ終わっていないもの
-    const { data: places, error } = await db
+    // 「＠{元スポット名}」で終わる派生イベントで、まだ終わっていないもの。
+    //   repost_to_detail=false は「場所詳細に転載しない」指定＝ここから除外する
+    //   （検索注入はこのフラグを見ないので検索には残る）。列未適用(42703)なら従来通り全件。
+    const baseQuery = () => db
       .from("places")
       .select("id, name, available_from, available_until")
       .eq("source_type", "user")
@@ -32,7 +34,11 @@ export async function GET(req: Request) {
       .not("available_until", "is", null)
       .gte("available_until", today)
       .limit(10);
-    if (error) return NextResponse.json({ ok: true, events: [] });   // 列未適用(42703)等は空で安全に
+    let { data: places, error } = await baseQuery().eq("repost_to_detail", true);
+    if (error?.code === "42703") {   // repost_to_detail 列が未適用 → フラグ無しで従来動作
+      ({ data: places, error } = await baseQuery());
+    }
+    if (error) return NextResponse.json({ ok: true, events: [] });   // その他のエラーも空で安全に
     const rows = (places ?? []) as Array<{ id: string; name: string; available_from: string | null; available_until: string | null }>;
     if (rows.length === 0) return NextResponse.json({ ok: true, events: [] });
 

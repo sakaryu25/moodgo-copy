@@ -3712,6 +3712,21 @@ export default function AdminPage() {
           >
             🗺 人気エリア管理
           </a>
+          <a
+            href="/admin/limited-spots"
+            style={{
+              ...btnBase,
+              padding: "10px 20px",
+              background: "linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%)",
+              color: "#fff",
+              fontSize: "14px",
+              textDecoration: "none",
+              display: "inline-block",
+              boxShadow: "0 4px 12px rgba(139,92,246,0.25)",
+            }}
+          >
+            📅 期間限定スポット管理
+          </a>
         </div>
 
         {/* ===== 統計タブ ===== */}
