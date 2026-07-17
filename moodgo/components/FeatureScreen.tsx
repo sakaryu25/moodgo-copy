@@ -35,7 +35,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
-import Svg, { Defs, RadialGradient, Stop, Circle, Path, Text as SvgText } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Stop, Circle, Path } from "react-native-svg";
 import {
   JAPAN_SVG_W, JAPAN_SVG_H, JAPAN_PREF_PATHS, OKINAWA_DIVIDER, REGION_ANCHORS, REGION_BBOXES, PREF_ANCHORS,
 } from "./japanMapPaths";
@@ -764,9 +764,6 @@ function RegionPrefSelectView({ region, onSelectPref }: {
   const svgH = vb.h * scale;
   const left = (cW - svgW) / 2;
   const top  = (cH - svgH) / 2;
-  // 県名ラベルのフォントサイズ（viewBox座標系。地方の広さに応じて可変）
-  const fontSize = Math.max(9, Math.min(vb.w, vb.h) / 15);
-
   return (
     <View
       style={{ flex: 1, backgroundColor: C.bgSub }}
@@ -800,27 +797,29 @@ function RegionPrefSelectView({ region, onSelectPref }: {
                   onPress={() => onSelectPref(p.pref as Tab)}
                 />
               ))}
-              {/* 県名ラベル（重心に直接描画・ラベルもタップ可）*/}
-              {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p) => {
-                const a = PREF_ANCHORS[p.pref];
-                if (!a) return null;
-                return (
-                  <SvgText
-                    key={`label-${p.pref}`}
-                    x={a.x}
-                    y={a.y + fontSize * 0.35}
-                    fontSize={fontSize}
-                    fontWeight="bold"
-                    fill="#3A3355"
-                    textAnchor="middle"
-                    onPress={() => onSelectPref(p.pref as Tab)}
-                  >
-                    {p.pref}
-                  </SvgText>
-                );
-              })}
             </Svg>
           </Animated.View>
+          {/* 県ピン — 日本列島画面と同じ白ピル（色ドット＋県名＋シェブロン・順番にポップ→浮遊）*/}
+          {JAPAN_PREF_PATHS.filter((p) => p.region === region).map((p, i) => {
+            const a = PREF_ANCHORS[p.pref];
+            if (!a) return null;
+            const estW = 58 + 13 * p.pref.length;
+            const px = left + (a.x - vb.x) * scale - estW / 2;
+            const py = top + (a.y - vb.y) * scale - 19;
+            return (
+              <FloatingPin key={p.pref} index={i} top={py} left={px}>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => onSelectPref(p.pref as Tab)}
+                  style={[s.mapRegionBtn, { position: "relative", top: 0, left: 0, shadowColor: regionColor, shadowOpacity: 0.45, shadowRadius: 11 }]}
+                >
+                  <View style={[s.mapRegionDot, { backgroundColor: regionColor }]} />
+                  <Text style={s.mapRegionLabel}>{p.pref}</Text>
+                  <ChevronRight size={11} color={regionColor} strokeWidth={2.8} />
+                </TouchableOpacity>
+              </FloatingPin>
+            );
+          })}
           {/* 背景を漂う雲（全国地図と同じ世界観）*/}
           <DriftingCloud size={150} x={-40} y={cH * 0.1} drift={44} duration={6200} gradId="prefCloud1" />
           <DriftingCloud size={120} x={cW - 70} y={cH * 0.66} drift={-38} duration={7400} delay={1100} gradId="prefCloud2" />
