@@ -243,6 +243,26 @@ function json(data: unknown, init?: ResponseInit) {
 //   ⚠recommend には返却経路が複数ある（穴場/時間潰し/フリーワード/relax/AI/最終）。どの経路でも
 //     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
 //     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
+// ② mood blurb を recs の reason に当てる共通ヘルパー。
+//   本経路(attachAvailability)＋スナップショット応答(パイプラインskip)の両方から呼び、
+//   キャッシュ済みおすすめ一言を reason/aiReason に反映＋不足分の生成を after() で予約する。
+async function applyMoodBlurbs<T extends object>(recs: T[], moodGroupStr?: string): Promise<T[]> {
+  if (!Array.isArray(recs) || recs.length === 0 || !moodGroupStr || !MOOD_BLURB_PHRASE[moodGroupStr]) return recs;
+  const titles = [...new Set(recs.map((r) => String((r as { title?: string }).title ?? "")).filter(Boolean))];
+  if (titles.length === 0) return recs;
+  const hit = await ltCacheGetMany(titles.map((t) => moodBlurbKey(moodGroupStr, t)));
+  let out = recs;
+  if (hit.size > 0) {
+    out = recs.map((r) => {
+      const t = String((r as { title?: string }).title ?? "");
+      const c = t ? (hit.get(moodBlurbKey(moodGroupStr, t)) as { blurb?: string } | undefined) : undefined;
+      return c?.blurb ? ({ ...r, reason: c.blurb, aiReason: c.blurb } as T) : r;
+    });
+  }
+  scheduleMoodBlurbGeneration(out as { title?: string; features?: string[]; tags?: string[] }[], moodGroupStr);
+  return out;
+}
+
 async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: string): Promise<T[]> {
   if (!Array.isArray(recs) || recs.length === 0) return recs;
   // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
@@ -262,21 +282,7 @@ async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: st
   });
   // ── ② 気分に合わせた「おすすめ一言」をキャッシュから reason に当てる（全経路共通）─────
   //   まったり×自然→「大自然の中でゆっくりできる〜がおすすめ！」等。無ければ pickReason のまま。
-  //   毎回 after() で不足分の生成を予約＝次回同気分の検索から反映（レスポンスは遅延ゼロ）。
-  if (moodGroupStr && MOOD_BLURB_PHRASE[moodGroupStr]) {
-    const titles = [...new Set(recs.map((r) => String((r as { title?: string }).title ?? "")).filter(Boolean))];
-    if (titles.length > 0) {
-      const hit = await ltCacheGetMany(titles.map((t) => moodBlurbKey(moodGroupStr, t)));
-      if (hit.size > 0) {
-        recs = recs.map((r) => {
-          const t = String((r as { title?: string }).title ?? "");
-          const c = t ? (hit.get(moodBlurbKey(moodGroupStr, t)) as { blurb?: string } | undefined) : undefined;
-          return c?.blurb ? ({ ...r, reason: c.blurb, aiReason: c.blurb } as T) : r;
-        });
-      }
-      scheduleMoodBlurbGeneration(recs as { title?: string; features?: string[]; tags?: string[] }[], moodGroupStr);
-    }
-  }
+  recs = await applyMoodBlurbs(recs, moodGroupStr);
   const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
   // ── MoodGoバッジ（②・2026-07-17）: 定番/穴場/話題 ────────────────────────────
   //   ★評価がGoogle撤廃で全域空になったため、今あるデータだけで信頼シグナルを出す。
@@ -6521,7 +6527,13 @@ export async function POST(request: Request): Promise<Response> {
     if (hit) {
       // キャッシュ応答にも毎回新しい searchId を振る（ファネルで1検索を識別するため）
       const searchId = `s_${t0.toString(36)}_${Math.round((t0 * 9301 + 49297) % 233280).toString(36)}`;
-      return NextResponse.json({ ...hit, searchId, _apiCount: { total: 0, cached: true, elapsedMs: Date.now() - t0 } });
+      // ② スナップショット応答にも気分別おすすめ一言を反映（パイプラインをskipするため個別に適用）。
+      //   初回生成→再検索(=スナップショット)で確実に blurb が出るようにする。
+      const hitRecs = (hit as { recommendations?: unknown }).recommendations;
+      const cachedRecs = Array.isArray(hitRecs)
+        ? await applyMoodBlurbs(hitRecs as Record<string, unknown>[], moodGroup(meta.mood))
+        : hitRecs;
+      return NextResponse.json({ ...hit, recommendations: cachedRecs, searchId, _apiCount: { total: 0, cached: true, elapsedMs: Date.now() - t0 } });
     }
   }
 
