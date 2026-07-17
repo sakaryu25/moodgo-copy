@@ -14,7 +14,7 @@ import { applyAiRanking } from "@/lib/ai-ranking";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { fetchSimilarStats } from "@/lib/feedback-stats";
 import { pickGsiResult } from "@/lib/gsi-geocode";
-import { mergedPlacePhotos } from "@/lib/place-photos";
+import { mergedPlacePhotos, filterLivePhotos } from "@/lib/place-photos";
 
 // ── Google API 呼び出し計測（コスト可視化）─────────────────────────────────────
 // リクエスト単位で Google API の呼び出し回数を種別ごとにカウントし、最後にログ出力する。
@@ -244,24 +244,66 @@ function json(data: unknown, init?: ResponseInit) {
 //     「検索結果で期間限定と分かる」ようにするため、全returnの直前でこのヘルパーを通す（DRY）。
 //     列が無い/未適用/supabaseIdなしでもバッジ無しで安全に素通り。
 async function attachAvailability<T extends object>(recs: T[]): Promise<T[]> {
-  if (!supabase || !Array.isArray(recs) || recs.length === 0) return recs;
+  if (!Array.isArray(recs) || recs.length === 0) return recs;
+  // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
+  //   どの経路(穴場/時間潰し/フリーワード/relax/AI/最終/admin補足/Google補足)を通っても、
+  //   死んだGoogle写真(places.googleapis.com＝課金撤廃で失効400)をカードに出さない。生きた写真だけに
+  //   絞り、photoUrl も生きた先頭に揃える（大手町温泉＝失効Google10枚が生Wikimedia1枚を隠す事例の最終防波堤）。
+  recs = recs.map((r) => {
+    const rr = r as { photoUrls?: unknown; photoUrl?: unknown };
+    const hasArr = Array.isArray(rr.photoUrls);
+    if (!hasArr && typeof rr.photoUrl !== "string") return r;   // 写真フィールドなし＝素通り
+    const live = [...new Set(filterLivePhotos([
+      ...(hasArr ? (rr.photoUrls as string[]) : []),
+      typeof rr.photoUrl === "string" ? rr.photoUrl : "",
+    ]))];
+    if (hasArr && (rr.photoUrls as string[]).length === live.length && (rr.photoUrl ?? "") === (live[0] ?? "")) return r;  // 変化なし
+    return { ...r, photoUrls: live, photoUrl: live[0] ?? "" } as T;
+  });
   const sidOf = (r: T) => (r as { supabaseId?: string }).supabaseId ?? "";
+  // ── MoodGoバッジ（②・2026-07-17）: 定番/穴場/話題 ────────────────────────────
+  //   ★評価がGoogle撤廃で全域空になったため、今あるデータだけで信頼シグナルを出す。
+  //   優先度: 話題(trending=Moodログ2件+) > 定番(classic=有名ソース/評価件数) > 穴場(hidden_gem=#穴場スポット+写真あり)。
+  //   穴場はjapan47go由来で大量にあるためレスポンス毎に最大5枚に制限（バッジの希少性=意味を守る）。
+  let hiddenGemLeft = 5;
+  const CLASSIC_SRC = /wikidata|hyakusen|michi-no-eki|curated|env-wetland|tanada/;
+  const withBadge = (r: T, srcType?: string | null): T => {
+    const rr = r as {
+      mgBadge?: string; isSponsored?: boolean; tags?: string[]; rating?: number | null;
+      userRatingCount?: number | null; moodLog?: { count?: number }; photoUrls?: string[];
+    };
+    if (rr.mgBadge || rr.isSponsored) return r;   // 既存バッジ/PR枠には重ねない
+    const tags = Array.isArray(rr.tags) ? rr.tags : [];
+    const cnt = typeof rr.userRatingCount === "number" ? rr.userRatingCount : 0;
+    const rating = typeof rr.rating === "number" ? rr.rating : 0;
+    if ((rr.moodLog?.count ?? 0) >= 2) return { ...r, mgBadge: "trending" } as T;
+    if (CLASSIC_SRC.test(srcType ?? "") || cnt >= 100 || (rating >= 4.2 && cnt >= 30)) return { ...r, mgBadge: "classic" } as T;
+    if (hiddenGemLeft > 0 && tags.includes("#穴場スポット") && (rr.photoUrls?.length ?? 0) > 0) {
+      hiddenGemLeft--;
+      return { ...r, mgBadge: "hidden_gem" } as T;
+    }
+    return r;
+  };
+  if (!supabase) return recs.map((r) => withBadge(r));
   try {
     const sids = [...new Set(recs.map(sidOf).filter(Boolean))];
-    if (sids.length === 0) return recs;
-    const pmap = new Map<string, { from: string | null; until: string | null }>();
+    if (sids.length === 0) return recs.map((r) => withBadge(r));
+    // 期間限定(available_from/until)とバッジ用のsource_typeを同じ1クエリで取得（追加コストゼロ）
+    const pmap = new Map<string, { from: string | null; until: string | null; src: string | null }>();
     for (const chunk of (function* () { for (let i = 0; i < sids.length; i += 300) yield sids.slice(i, i + 300); })()) {
-      const { data } = await supabase.from("places").select("id, available_from, available_until").in("id", chunk);
-      for (const p of (data ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null }>) {
-        if (p.available_from || p.available_until) pmap.set(String(p.id), { from: p.available_from, until: p.available_until });
+      const { data } = await supabase.from("places").select("id, available_from, available_until, source_type").in("id", chunk);
+      for (const p of (data ?? []) as Array<{ id: string; available_from: string | null; available_until: string | null; source_type: string | null }>) {
+        pmap.set(String(p.id), { from: p.available_from, until: p.available_until, src: p.source_type });
       }
     }
-    if (pmap.size === 0) return recs;
     return recs.map((r) => {
       const pv = pmap.get(sidOf(r));
-      return pv ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T) : r;
+      const withAvail = pv && (pv.from || pv.until)
+        ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until } as T)
+        : r;
+      return withBadge(withAvail, pv?.src);
     });
-  } catch { return recs; }
+  } catch { return recs.map((r) => withBadge(r)); }
 }
 
 type ApprovedSuggestion = {
@@ -5782,7 +5824,9 @@ type FinalizeDedupeKey = { key: string; lat?: number; lng?: number; pid?: string
 // 飲食系で除外する施設名（温浴・観光施設）。foodSanitize で使用。
 const FINALIZE_NON_FOOD_NAME_RE = /(温泉|スーパー銭湯|銭湯|岩盤浴|健康ランド|日帰り温泉|スパリゾート|展望台|植物園|動物園|遊園地|水族館)/;
 // 目的地でないPOI（OSM由来のトイレ/給水所/バス停/自販機/喫煙所等）。どの気分でも検索結果に出さない。
-const NON_DESTINATION_RE = /(?:公衆)?トイレ|お手洗い|給水所|給水塔|配水場|公衆便所|バス停|バス停留所|自動販売機|自販機コーナー|公衆電話|喫煙所|変電所|ポンプ場|防災倉庫|ゴミ集積|ゴミ処理/;
+//   パチンコ/パチスロは18禁業態でZ世代お出かけ推薦に不適＝全気分で除外（2026-07-17監査: 川崎わいわいに
+//   「スロットタイガー７」が#わいわい楽しみたいタグで混入していた事例）。「スロットカー」等ホビーは除外しない。
+const NON_DESTINATION_RE = /(?:公衆)?トイレ|お手洗い|給水所|給水塔|配水場|公衆便所|バス停|バス停留所|自動販売機|自販機コーナー|公衆電話|喫煙所|変電所|ポンプ場|防災倉庫|ゴミ集積|ゴミ処理|パチンコ|パチスロ|スロット(?!カー)/;
 // お腹すいた時に除外する老舗系（観光客向けでない古すぎる地元店の抑制）。
 // ※「食堂」「大衆食堂」は正規の定食屋・大衆食堂(〇〇食堂)が多く、docx仕様も除外を求めて
 //   いないため除外対象から外した（定食食堂の取りこぼし防止）。
@@ -5807,6 +5851,73 @@ function sanitizeReasonText(raw?: string | null): string {
     .replace(/[ \t　]{2,}/g, " ")
     .replace(/^[。、・\s]+|[。、・\s]+$/g, "")
     .slice(0, 80);
+}
+
+// スポットの実属性（エリア・種別・気分タグ）から具体的な一言説明を0msで生成する。
+//   「○○のスポット情報」という無味な定型フォールバックを置換し、全カードに情報価値を出す（2026-07-17）。
+//   実説明(DB/OpenAI生成/店舗提供)があればそちらを優先し（pickReason）、無い時だけこれを使う。
+function buildSpecificReason(name: string, tags: string[], address?: string | null): string {
+  const t = new Set((tags || []).map(x => x.replace(/^#/, "")));
+  // エリア: 住所から「市区町村」優先、無ければ都道府県
+  const area = (() => {
+    const a = (address || "").replace(/^日本、?\s*/, "").trim();
+    if (!a) return "";
+    // 先頭の都道府県を除去して市区町村だけを簡潔に採る（「神奈川県鎌倉市」→「鎌倉市」）
+    const noPref = a.replace(/^(東京都|北海道|京都府|大阪府|.{2,3}県)\s*/, "");
+    const city = noPref.match(/^([^\s、,0-9]{1,6}?[市区町村])/);
+    if (city) return city[1];
+    const pref = a.match(/^(東京都|北海道|京都府|大阪府|.{2,3}県)/);
+    return pref ? pref[1] : "";
+  })();
+  // 種別: 名前の接尾辞 → タグ の順
+  const type =
+    /(神社|大社|神宮|八幡宮?|稲荷|天満宮)/.test(name) ? "神社" :
+    /(寺|院|大師|不動尊)$/.test(name) ? "お寺" :
+    /(城$|城跡|城址)/.test(name) ? "城" :
+    /(公園|緑地)$/.test(name) ? "公園" :
+    /(滝|渓谷|峡)$/.test(name) ? "自然スポット" :
+    /(湖|沼|池|湿原)$/.test(name) ? "水辺スポット" :
+    /(海岸|海水浴場|浜|ビーチ|岬)$/.test(name) ? "海辺スポット" :
+    /(山|岳|峰|嶽)$/.test(name) ? "山" :
+    /温泉/.test(name) ? "温泉" :
+    /美術館$/.test(name) ? "美術館" :
+    /(博物館|資料館|記念館|科学館|歴史館)$/.test(name) ? "博物館" :
+    /図書館$/.test(name) ? "図書館" :
+    /水族館$/.test(name) ? "水族館" :
+    /(動物園|牧場)$/.test(name) ? "動物園・牧場" :
+    /(展望台|タワー|ヒルズ)/.test(name) ? "展望スポット" :
+    /(カフェ|珈琲|coffee|cafe)/i.test(name) ? "カフェ" :
+    /(ラーメン|らーめん|中華そば)/.test(name) ? "ラーメン店" :
+    t.has("お腹すいた") || t.has("ご当地グルメ") ? "グルメスポット" :
+    t.has("カフェスイーツ") ? "カフェ" :
+    t.has("ショッピング") ? "お店" :
+    t.has("温泉") ? "温泉" :
+    (t.has("自然公園") || t.has("自然感じたい")) ? "自然スポット" :
+    "スポット";
+  // 気分フレーズ: 優先度順に1つ
+  const vibe =
+    t.has("パワースポット") ? "パワースポットとして人気です。" :
+    (t.has("絶景スポット") || t.has("絶景")) ? "絶景が楽しめます。" :
+    t.has("夜景") ? "きれいな夜景が見られます。" :
+    (t.has("自然感じたい") || t.has("自然公園")) ? "自然を感じてリフレッシュできます。" :
+    t.has("温泉") ? "日頃の疲れを癒やせます。" :
+    t.has("集中したい") ? "静かに落ち着いて過ごせます。" :
+    t.has("まったりしたい") ? "のんびりゆったり過ごせます。" :
+    t.has("わいわい楽しみたい") ? "みんなでわいわい楽しめます。" :
+    t.has("体動かしたい") ? "体を動かしてリフレッシュできます。" :
+    (t.has("ご当地グルメ") || t.has("お腹すいた")) ? "地元で愛される味が楽しめます。" :
+    t.has("鑑賞") ? "見ごたえのある展示が楽しめます。" :
+    t.has("穴場スポット") ? "知る人ぞ知る穴場です。" :
+    "";
+  const head = area ? `${area}の${type}。` : (type !== "スポット" ? `${type}。` : "");
+  return (head + vibe).replace(/^[。\s]+/, "").slice(0, 60);
+}
+
+// 実説明があれば優先、無い/定型フォールバックなら具体的な一言を生成する。
+function pickReason(name: string, tags: string[], address: string | null | undefined, rawDesc?: string | null): string {
+  const clean = sanitizeReasonText(rawDesc);
+  const isStub = !clean || clean === `${name}のスポット情報` || clean.length < 6;
+  return isStub ? buildSpecificReason(name, tags, address) : clean;
 }
 
 function createFinalizeHelpers(ctx: FinalizeContext) {
@@ -5914,9 +6025,23 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     { key: "美術博物", re: /美術館|博物館|資料館|ミュージアム|museum/i },
     { key: "動物園",   re: /動物園|zoo|サファリ/i },
     { key: "映画",     re: /映画|シネマ|cinema|109シネ|TOHOシネ/i },
+    // 集中×都心でチェーンカフェが6連発した対策(2026-07-17監査)。異ブランド(スタバ/ドトール/タリーズ…)でも
+    //   同サブカテとして3件で間引く。「カフェで作業」等を明示選択した検索は requestedSub 免除で従来どおり。
+    { key: "カフェ",   re: /カフェ|cafe|珈琲|coffee|喫茶|スターバックス|スタバ|ドトール|タリーズ|コメダ|ベローチェ|サンマルク|プロント|エクセルシオール|ルノアール|星乃/i },
   ];
-  const nonFoodSubcatOf = (name: string): string => {
+  // タグ→サブカテ（名前にジャンル語が無い店の取りこぼし対策。例:「ミッキー黒川店」「CLUB DAM」は
+  //   名前でカラオケと判定できないが #カラオケ タグで捕捉＝名古屋わいわいでカラオケ5連発した穴を塞ぐ）
+  const TAG_SUBCAT: [string, string][] = [
+    ["#カラオケ", "カラオケ"], ["#ボウリング", "ボウリング"], ["#体験型ゲーム", "ゲーセン"],
+    ["#図書館", "図書館"], ["#book場", "図書館"], ["#水族館", "水族館"],
+    ["#温泉", "温泉"], ["#サウナ", "温泉"], ["#博物館", "美術博物"], ["#動物園", "動物園"],
+    ["#喫茶店", "カフェ"], ["#カフェスイーツ", "カフェ"], ["#カフェ作業", "カフェ"],
+  ];
+  const nonFoodSubcatOf = (name: string, tags?: string[]): string => {
     for (const c of NONFOOD_SUBCATS) if (c.re.test(name)) return c.key;
+    if (Array.isArray(tags)) {
+      for (const [tag, key] of TAG_SUBCAT) if (tags.includes(tag)) return key;
+    }
     return "";  // 分類外はcap対象にしない
   };
   // 領域5(c): 有名定番スコア（レビュー数主体・0..1）。約1万件で≈1.0。
@@ -5940,7 +6065,7 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     const overflow: T[] = [];
     for (const r of arr) {
       const brand = brandOf(r.title ?? "");
-      const sub = nonFoodSubcatOf(r.title ?? "");
+      const sub = nonFoodSubcatOf(r.title ?? "", r.tags);
       const bc = brand.length >= 3 ? (brandCnt.get(brand) ?? 0) : 0;
       const sc = sub ? (subCnt.get(sub) ?? 0) : 0;
       // ブランドcapは常時（同チェーン3件目以降は後方）。サブカテゴリcapは「選んだジャンル以外」のみ。
@@ -6036,13 +6161,17 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
   };
 
   // E-3: 写真の質的優先スコア
+  //   ⚠2026-07-16 重み引き上げ: 旧値(0.3〜1.2)は random(0-10)/評価(0-5)/絶景(+6)に埋もれ、
+  //   「近いが写真の無い小スポット(○○跡/児童遊園/緑地)」が写真付きスポットより上位に来て、
+  //   検索カードの多くが“画像なし”になっていた。候補は既に同気分・近傍で関連性が担保されている
+  //   ので、その中で写真ありを実効的に優先する（写真なしも除外せず後方に残す＝0件回避・多様性維持）。
   const photoQualityScore = (r: FinalizeRec): number => {
     const hasUserPhoto = r.hasUserPhotos === true;
     const photoUrls = r.photoUrls ?? [];
     const hasPhoto = !!r.photoUrl || photoUrls.length > 0;
-    if (hasUserPhoto) return 1.2;
-    if (photoUrls.length >= 3) return 0.6;
-    if (hasPhoto) return 0.3;
+    if (hasUserPhoto) return 10;          // 利用者投稿写真=最優先
+    if (photoUrls.length >= 3) return 9;  // 複数写真あり
+    if (hasPhoto) return 8;               // 写真1枚でも“写真なし”より確実に上位へ（curated+8と同格）
     return 0;
   };
 
@@ -6577,7 +6706,7 @@ async function handleRecommend(request: Request) {
             openingHoursText: r.openingHours ?? undefined,
             mapUrl: r.googleMapsUrl,
             googleMapsUrl: r.googleMapsUrl,
-            reason: sanitizeReasonText(r.description),
+            reason: pickReason(r.name, ((r as { tags?: string[] }).tags ?? []), r.address, r.description),
             aiReason: undefined,
             features: isJikan ? ["#時間潰し"] : [],
             distanceText: r.distanceInfo,
@@ -6791,7 +6920,9 @@ async function handleRecommend(request: Request) {
           const have = new Set(sbResults.map(r => r.name));
           for (const t of [...semHits, ...textHits, ...tagHits]) {
             if (have.has(t.name)) continue;
-            if ((t.semanticSim ?? 1) < 0.25) continue;                  // ③ 意味検索由来の弱マッチは除外(text/tag由来はsim無し=1で通過)
+            // ③ 意味検索由来の弱マッチは除外(text/tag由来はsim無し=1で通過)。
+            //   0.25はtext-embedding-3-smallでほぼ全通しだった→0.35へ引き上げ(2026-07-17監査・自由文は意図があるため控えめ)。
+            if ((t.semanticSim ?? 1) < 0.35) continue;
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
           }
@@ -6817,7 +6948,11 @@ async function handleRecommend(request: Request) {
           const have = new Set(sbResults.map(r => r.name));
           for (const t of semHits) {
             if (have.has(t.name)) continue;
-            if ((t.semanticSim ?? 0) < 0.25) continue;                  // 弱い意味マッチは除外
+            // 弱い意味マッチは除外。気分のみ検索は自由文の意図が無いぶん厳しめ:
+            //   0.25→0.45(2026-07-17監査: 在庫薄エリアでサウナ/100均級の無関係が0.25を通過していた)。
+            //   気分タグを実際に持つスポットは類似度に関係なく合流させる(正当ヒットを守る)。
+            const hasMoodTag = !!realMoodTag && Array.isArray(t.tags) && t.tags.includes(realMoodTag);
+            if (!hasMoodTag && (t.semanticSim ?? 0) < 0.45) continue;
             if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
             sbResults.push(t); have.add(t.name);
           }
@@ -7029,13 +7164,13 @@ async function handleRecommend(request: Request) {
             /ラーメン|居酒屋|カフェ|喫茶|和食|焼肉/.test(ddText) ? FOOD_DB_FLOOR_RICH :
             /各国|メキシコ|ブラジル|ロシア|ベトナム|タイ|インド|ネパール|エスニック|アジアン/.test(ddText) ? FOOD_DB_FLOOR_NICHE :
             FOOD_DB_FLOOR_OTHER;
-          skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Googleも呼ばない（DB完結）
-          skipYahooOnly = true;                                    // 飲食はYahoo常時オフ（フロア未満でもGoogleのみ保険）
+          skipAllSupplements = sbQualified.length >= foodDbFloor;  // フロア以上 → Google/Yahooも呼ばない（DB完結）
+          skipYahooOnly = false;                                   // Yahoo再有効化(2026-07-16)＝薄いエリアは無料Yahooで補填しGoogle課金を温存
         } else {
           // 他気分もOSM自前DB（公園/温泉/ジム/水族館/神社/服屋…）が全国分揃ったのでDB優先。
-          //   在庫フロア以上ならGoogle/Yahoo不使用でDB完結。Yahoo常時オフ、Googleはフロア未満のみ保険。
+          //   在庫フロア以上ならGoogle/Yahoo不使用でDB完結。フロア未満は無料Yahooを優先しGoogleを温存。
           skipAllSupplements = sbQualified.length >= NONFOOD_DB_FLOOR;
-          skipYahooOnly = true;
+          skipYahooOnly = false;   // Yahoo再有効化(2026-07-16)＝薄いエリアは無料Yahooで補填しGoogle課金を温存
         }
         // Supabaseで賄う件数（候補プール＝OpenAI判別の入力＋表示8件＋補填）。
         //   ユーザー要件「Supabaseから出てきた情報(全件)を必ずOpenAIに渡す」を満たすため
@@ -7105,8 +7240,10 @@ async function handleRecommend(request: Request) {
         // ── Google / Yahoo / OpenAI 理由生成 / 写真補完 / OpenAI判別 を全て並列実行 ──
         const [googleSupplements, yahooSupplements, reasons, sbPhotoMap, sbStationMap, sbAiResult] = await Promise.all([
           // Google Places 補足検索（最終15件を確実に埋めるため多めに15件取得＝補填プール用）
-          //   B: Supabaseが充足(15件以上)している場合は呼ばない（コスト削減）
-          (hasLocation && !skipAllSupplements && !RECOMMEND_DISABLE_GOOGLE)
+          //   B: Supabaseが充足(フロア以上)している場合は呼ばない（コスト削減）
+          //   C: Yahoo再有効化(2026-07-16)に伴い、薄いエリアの補填はまず無料のYahooに任せGoogleを温存。
+          //      Google補足は skipYahooOnly（=Yahooを使わない設定に戻した時）のみ発火する保険に降格。
+          (hasLocation && !skipAllSupplements && !RECOMMEND_DISABLE_GOOGLE && skipYahooOnly)
             ? fetchGooglePlacesSupplement(
                 answers.originLat!, answers.originLng!, radiusKm,
                 answers.mood ?? "", sbNames, apiKey, 15,
@@ -7140,6 +7277,9 @@ async function handleRecommend(request: Request) {
             for (const name of noPhotoNames) {
               const c = phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined;
               if (c?.photoUrls?.length) photoMap.set(name, c.photoUrls);
+              // Google に問い合わせ済みで写真が無かったスポットは再問い合わせしない（コスト削減）。
+              //   写真そのものはキャッシュせず"確認済み"フラグだけで判定＝ライセンス方針を維持。
+              else if (c?.checked) { /* Google確認済み・写真なし → searchText を投げない */ }
               else phMiss.push(name);
             }
             await Promise.all(phMiss.map(async (name) => {
@@ -7149,7 +7289,9 @@ async function handleRecommend(request: Request) {
                   headers: {
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": apiKey,
-                    "X-Goog-FieldMask": "places.photos,places.rating,places.userRatingCount",
+                    // FieldMask最小化(2026-07-16): rating/件数を外し Enterprise→Pro SKU へ単価ダウン。
+                    //   ★評価は place_ratings＋Moodログ、無料写真被覆で代替（0枚スポットの写真だけ取得）。
+                    "X-Goog-FieldMask": "places.photos",
                   },
                   body: JSON.stringify({
                     textQuery: name,
@@ -7179,15 +7321,23 @@ async function handleRecommend(request: Request) {
                     const row0 = sbRowByName.get(name);
                     schedulePlaceWriteBack(toPlaceMatch(name, row0?.id, row0?.address), { rating: gRating, ratingCount: gCount });
                   }
+                  // 「Googleにも写真が無い」ことを記憶＝次回以降このスポットへ searchText を投げない（コスト削減）。
+                  //   写真は保存せず"確認済み"フラグと（あれば）評価だけ＝ライセンス方針を維持。
+                  const prev = (phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined) ?? {};
+                  await ltCachePut(`enr:${name.slice(0, 80)}`, { ...prev, checked: true });
                   return;
                 }
                 // photo-proxy URL を組み立て（解決は表示時に遅延 → 高速化）
                 const urls = photoNamesArr.map(n => buildPhotoProxyUrl(n));
                 if (urls.length > 0) {
-                  photoMap.set(name, urls);  // 表示用(ライブ・非キャッシュ)。DBにも長期キャッシュにも保存しない
+                  photoMap.set(name, urls);
                   const row = sbRowByName.get(name);
-                  // 【ライセンス】Google写真は永続キャッシュ不可 → DB保存(photoUrl/imageUrls)も
-                  //   enr:長期キャッシュ(30日)もしない。合法な評価/件数だけ保存する。
+                  // コスト削減(ユーザー選択2026-07-16): Google写真の"参照"(photo-proxy URL)を enr: に
+                  //   30日短期キャッシュ＝同じ0枚スポットへの毎検索 searchText を月1回に激減。写真本体では
+                  //   なく参照を一時キャッシュし、表示時に photo-proxy 経由でライブ解決＋帰属表示する。
+                  //   ⚠DBの image_urls への恒久保存はしない（そちらはより永続なので回避＝ライセンス配慮）。
+                  const prev = (phHit.get(`enr:${name.slice(0, 80)}`) as EnrichCacheVal | undefined) ?? {};
+                  await ltCachePut(`enr:${name.slice(0, 80)}`, { ...prev, photoUrls: urls, checked: true });
                   schedulePlaceWriteBack(toPlaceMatch(name, row?.id, row?.address), { rating: gRating, ratingCount: gCount });
                 }
               } catch { /* 写真取得失敗は無視 */ }
@@ -7339,8 +7489,9 @@ async function handleRecommend(request: Request) {
             googleMapsUrl: r.googleMapsUrl,
             // 推薦理由はユーザー要望で非表示化（汎用文は情報価値が低いため）。
             //   AI理由（自由文/AI相談フロー）か、店の実説明があればそれだけ出す。OSMは空＝カード側で非表示。
-            reason: reasons.get(r.name) ?? sanitizeReasonText(r.description),
-            aiReason: reasons.get(r.name) || sanitizeReasonText(r.description) || undefined,
+            // 実説明が無い/定型フォールバックのスポットは、エリア×種別×気分から具体的な一言を0ms生成（2026-07-17）。
+            reason: reasons.get(r.name) ?? pickReason(r.name, (r.tags ?? matchedTags) as string[], r.address, r.description),
+            aiReason: reasons.get(r.name) || pickReason(r.name, (r.tags ?? matchedTags) as string[], r.address, r.description) || undefined,
             features: matchedTags.slice(0, 5),
             distanceText: r.distanceInfo,
             distanceKm: sbDistKm,
@@ -7818,7 +7969,7 @@ async function handleRecommend(request: Request) {
                 openingHoursText: undefined,
                 mapUrl: s.google_maps_uri ?? "",
                 googleMapsUrl: s.google_maps_uri ?? "",
-                reason: sanitizeReasonText(s.description),   // 領域3a: 投稿生テキスト(【目安価格】等)を整形
+                reason: pickReason(name, (s.auto_tags ?? []), s.address ?? null, s.description),   // 領域3a: 実説明優先・無ければ具体一言
                 features: (s.auto_tags ?? []).filter(t => allUserTags.has(t)).slice(0, 5),
                 distanceText: adkm != null ? formatDistTextFromKm(adkm) : "",
                 distanceKm: adkm,
@@ -8041,11 +8192,18 @@ async function handleRecommend(request: Request) {
           recommendations = recommendations.map((rec) => {
             const c = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
             if (!c) return rec;
-            const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
+            const photoUrls = filterLivePhotos(Array.isArray(rec.photoUrls) ? rec.photoUrls : []);
             const upd: typeof rec = { ...rec };
-            if ((c.photoUrls?.length ?? 0) > photoUrls.length) {
-              upd.photoUrls = c.photoUrls!;
-              upd.photoUrl = c.photoUrls![0] ?? rec.photoUrl;
+            // キャッシュ側の死んだGoogle写真を除外してから“生きている枚数”で比較する。
+            //   除外しないと、失効Google10枚が生きたWikimedia1枚を上書きしてカードがグレーになる（大手町温泉の事例）。
+            const cachedLive = filterLivePhotos(c.photoUrls ?? []);
+            if (cachedLive.length > photoUrls.length) {
+              upd.photoUrls = cachedLive;
+              upd.photoUrl = cachedLive[0] ?? rec.photoUrl;
+            } else if (photoUrls.length < (Array.isArray(rec.photoUrls) ? rec.photoUrls.length : 0)) {
+              // rec 側に死んだGoogleが混ざっていた場合も、生きた写真だけに正規化する。
+              upd.photoUrls = photoUrls;
+              upd.photoUrl = photoUrls[0] ?? rec.photoUrl;
             }
             if ((rec.openNow === undefined || !rec.openingHoursText) && c.periods) {
               const st = computeOpenStatus({ openNow: undefined, periods: c.periods });
@@ -8059,9 +8217,13 @@ async function handleRecommend(request: Request) {
             // OSM由来の店はGoogleエンリッチしない（写真=ジャンル別PH＋利用者投稿／営業時間=OSM情報。searchText削減）
             if ((rec.source ?? "").startsWith("osm")) return;
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
-            const needPhotos = photoUrls.length < 10;
-            const needHours = rec.openNow === undefined || !rec.openingHoursText;
-            if (!needPhotos && !needHours) return;       // 既に充実 → スキップ
+            // 写真が1枚でもあれば（生きた無料写真）Google補完はしない（ユーザー要望2026-07-16）。
+            //   写真ゼロのスポットだけGoogleに1枚目を問い合わせる（API費用最小化）。残り枚数はフロントの
+            //   遅延読み込み（maxLoaded＝1枚目のみ即読込み・スクロールで到達分だけ解決）でコストを抑える。
+            const needPhotos = filterLivePhotos(photoUrls).length === 0;
+            // FieldMask最小化に伴い営業時間はGoogleから取らない＝needHoursだけでは発火させない
+            //   （写真ゼロのスポットのみ Google searchText を叩く＝Pro SKU で最小コスト）。
+            if (!needPhotos) return;       // 既に写真あり → スキップ（営業時間はOSM/利用者入力）
             // 確認済み（過去30日にGoogleへ問い合わせ済み）の店は再取得しない。
             //   写真が十分(3枚+) or そもそもGoogleに写真/営業時間が無い店＝聞き直しても同じ
             const cVal = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
@@ -8078,7 +8240,9 @@ async function handleRecommend(request: Request) {
                 headers: {
                   "Content-Type": "application/json",
                   "X-Goog-Api-Key": apiKey,
-                  "X-Goog-FieldMask": "places.photos,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.currentOpeningHours.weekdayDescriptions,places.regularOpeningHours.weekdayDescriptions",
+                  // FieldMask最小化(2026-07-16): 営業時間を外し Enterprise→Pro SKU へ単価ダウン。
+                  //   営業時間は OSM＋利用者入力(userHoursOpenNow)で代替（Googleからは写真だけ取得）。
+                  "X-Goog-FieldMask": "places.photos",
                 },
                 body: JSON.stringify({ textQuery: q, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
                 cache: "no-store", signal: AbortSignal.timeout(6000),
@@ -8091,33 +8255,22 @@ async function handleRecommend(request: Request) {
                 return;
               }
               // 写真を最大10枚補完
+              //   ⚠Google課金撤廃(2026-07)以降、buildPhotoProxyUrl が返す places.googleapis.com 写真は
+              //   すべてHTTP400で失効。filterLivePhotos で全滅→上書き/恒久保存とも発生しない＝死んだURLを
+              //   カードに出さず、DBにも溜めない。営業時間の補完(下)は生きているので従来通り動く。
               const enrSave: EnrichCacheVal = {};
               if (needPhotos) {
                 const photos = (place.photos ?? []) as Array<{ name?: string }>;
-                const urls = photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : "").filter(Boolean);
-                if (urls.length > photoUrls.length) {
+                const livePhotoUrls = filterLivePhotos(photoUrls);
+                const urls = filterLivePhotos(photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : ""));
+                if (urls.length > livePhotoUrls.length) {
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
                   if (urls[0]) schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                 }
                 if (urls.length > 0) enrSave.photoUrls = urls;
               }
-              // 営業時間・営業状態を補完
-              if (needHours && place.currentOpeningHours) {
-                const st = computeOpenStatus(place.currentOpeningHours as { openNow?: boolean; periods?: GooglePeriod[] });
-                const wd = (place.currentOpeningHours?.weekdayDescriptions ?? place.regularOpeningHours?.weekdayDescriptions) as string[] | undefined;
-                recommendations[idx] = {
-                  ...recommendations[idx],
-                  openNow: st.openNow ?? recommendations[idx].openNow,
-                  openStatusBadge: st.badge ?? recommendations[idx].openStatusBadge,
-                  openingHoursText: wd?.join("\n") ?? recommendations[idx].openingHoursText,
-                };
-                const periods = (place.currentOpeningHours as { periods?: GooglePeriod[] })?.periods;
-                if (periods) enrSave.periods = periods;
-                if (wd?.length) {
-                  enrSave.weekday = wd;
-                  schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { openHours: wd.join("\n") });  // 営業時間を恒久保存(TTL)
-                }
-              }
+              // 営業時間のGoogle補完は廃止(2026-07-16 FieldMask最小化)＝営業時間はOSM＋利用者入力で表示。
+              //   Googleへは places.photos だけを要求し Pro SKU 単価に抑える。
               // 長期キャッシュへ保存。データが無い店も checked:true を記憶し
               //   「聞いても無い店」への再問い合わせを止める（次回以降call0）
               const prev = enrHit.get(`enr:${(rec.title ?? "").slice(0, 80)}`) as EnrichCacheVal | undefined;
@@ -8201,7 +8354,7 @@ async function handleRecommend(request: Request) {
                   rating: null, userRatingCount: null, openNow: undefined,
                   openStatusBadge: undefined, openingHoursText: undefined,
                   mapUrl: "", googleMapsUrl: "",
-                  reason: sanitizeReasonText(s.description), features: (s.tags ?? []).slice(0, 5),
+                  reason: pickReason(s.name, (s.tags ?? []), s.address ?? null, s.description), features: (s.tags ?? []).slice(0, 5),
                   distanceText: km != null ? formatDistText(km, answers.transport) : "",
                   distanceKm: km, distanceM: null, lat: s.lat ?? undefined, lng: s.lng ?? undefined,
                   durationText: "", stationText: s.nearest_station ?? "",

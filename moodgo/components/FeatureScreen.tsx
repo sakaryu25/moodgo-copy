@@ -42,6 +42,7 @@ import {
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { HERO_BAND_H } from "@/lib/headerBand";
+import { useCollapsibleHeader } from "@/lib/useCollapsibleHeader";
 import { useTabReset } from "@/lib/useTabReset";
 import { useSettings } from "@/lib/settingsStore";
 
@@ -64,6 +65,7 @@ export function preloadMaps() {
   return _mapPreload;
 }
 import {
+  Bell,
   Bookmark,
   Building2,
   Camera,
@@ -101,15 +103,16 @@ const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const SERIF = Platform.select({ ios: "Hiragino Mincho ProN", android: "serif", default: "serif" });
 
 const C = {
-  accent: "#F26A3D",
-  accentLight: "#FFF1EA",
-  bg: "#FFFFFF",
-  bgSub: "#FAF7F4",
-  text: "#222222",
-  subText: "#888888",
-  border: "#EFE5DF",
+  // アクセントはアプリのブランド紫に統一（スクショ準拠。旧オレンジ#F26A3Dから移行）
+  accent: "#8B5CF6",
+  accentLight: "#F2ECFE",
+  bg: "#F7F7FB",        // 白ではなく少しグレーを混ぜた背景（Apple/Airbnb風の呼吸感）
+  bgSub: "#F7F7FB",
+  text: "#1F1F1F",
+  subText: "#7D7D7D",
+  border: "#ECECF2",
   white: "#FFFFFF",
-  segBg: "#F0E9E4",
+  segBg: "#EFEDF5",
   oceanBlue: "#D5EAF5",
   islandGreen: "#BFDA9F",
 };
@@ -1369,6 +1372,8 @@ type FeatureContentViewProps = {
   popularAreas: PopularArea[];      // 人気エリアカード
   onChangeArea: () => void;         // 「エリア変更」→ 日本地図ステージへ
   onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
+  /** ヘッダー帯の格納（親のuseCollapsibleHeader）。ヘッダーはoverlay＝リストはheaderH分逃がす */
+  collapse: ReturnType<typeof useCollapsibleHeader>;
 };
 
 // ページの実効scope_key（featured-scope-placement.sql 未適用のDBでは prefecture を代用）。
@@ -1402,7 +1407,7 @@ function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
 const SCREEN_W = Dimensions.get("window").width;
 const HERO_CARD_W = SCREEN_W - 32;
 
-function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref }: FeatureContentViewProps) {
+function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const region: Tab = PREF_TO_REGION[currentPref] ?? "関東";
@@ -1453,24 +1458,19 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
   };
 
   return (
-    <ScrollView
+    // ヘッダーはabsolute overlay（親のcollapse）＝リストはpaddingTop: headerH で逃がす。
+    //   Animated.ScrollView + onScroll(useNativeDriver) が格納アニメの駆動源。
+    <Animated.ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
+      contentContainerStyle={{ paddingTop: collapse.headerH, paddingBottom: insets.bottom + 110 }}
+      onScroll={collapse.onScroll}
+      scrollEventThrottle={16}
     >
-      {/* ── 現在のエリア表示・変更バー ── */}
-      <Animated.View style={riseIn(0)}>
-        <TouchableOpacity style={ts.areaBar} activeOpacity={0.85} onPress={onChangeArea}>
-          <MapPin size={15} color={C.accent} strokeWidth={2.2} />
-          <Text style={ts.areaBarText}>現在のエリア：{currentPref}</Text>
-          <View style={{ flex: 1 }} />
-          <Text style={ts.areaBarChange}>エリア変更</Text>
-          <ChevronRight size={14} color={C.accent} strokeWidth={2.4} />
-        </TouchableOpacity>
-      </Animated.View>
+      {/* 現在のエリアバーはグラデヘッダー内へ移動（ユーザー要望2026-07-17） */}
 
-      {/* ── メイン特集カルーセル ── */}
+      {/* ── メイン特集カルーセル（着地スタッガー付き）── */}
       {heroes.length > 0 ? (
-        <Animated.View style={riseIn(1)}>
+        <Animated.View style={[{ marginTop: 16 }, riseIn(1)]}>
           <ScrollView
             horizontal
             pagingEnabled
@@ -1579,7 +1579,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
         </View>
         <Image source={JAPAN_MAP} style={ts.nationMap} resizeMode="contain" />
       </Animated.View>
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
@@ -1705,6 +1705,7 @@ function SoftCloud({ size, gradId }: { size: number; gradId: string }) {
 export default function FeatureScreen() {
   const insets = useSafeAreaInsets();
   const settings = useSettings();
+  const router = useRouter();
   // TOP(content)が起点。地図はエリア変更/全国から探すの導線として残す
   const [stage, setStage] = useState<NavStage>("content");
   const [selectedRegion, setSelectedRegion] = useState<Tab>("関東");
@@ -1880,17 +1881,30 @@ export default function FeatureScreen() {
     outputRange: [0, dyOut, 0, 0],
   });
 
+  // 下スクロールでヘッダー帯を格納・上スクロールで復帰（みんなの穴場と同じ挙動・ユーザー要望2026-07-17）。
+  //   content時のみ有効。ステージ復帰時は必ず開いた状態に戻す（diffClampの残留で隠れたままを防ぐ）。
+  const collapse = useCollapsibleHeader({ initialHeight: insets.top + 150 });
+  const isContent = stage === "content";
+  useEffect(() => { if (isContent) collapse.scrollY.setValue(0); }, [isContent, collapse.scrollY]);
   return (
     <View style={s.safe}>
-      {/* ── グラデーションヘッダー ── */}
+      {/* ── グラデーションヘッダー ──
+          content時はみんなの穴場(BlogView)と同じ「下スクロールで格納・上スクロールで復帰」の
+          absolute overlay（useCollapsibleHeader・ユーザー要望2026-07-17）。地図/県選択は従来の通常フロー。 */}
+      <Animated.View
+        style={isContent ? [s.headerOverlay, { transform: [{ translateY: collapse.translateY }] }] : undefined}
+        onLayout={isContent ? collapse.onHeaderLayout : undefined}
+        pointerEvents="box-none"
+      >
       <LinearGradient
         colors={GRAD}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[s.header, {
-          paddingTop: insets.top + 14,
-          // 特集TOP(content)はカード群が主役なので帯を薄く。地図/県選択は従来の帯高(HERO_BAND_H)を維持
-          minHeight: insets.top + (stage === "content" ? 74 : HERO_BAND_H),
+          paddingTop: insets.top + 12,
+          // content は内容ぴったりの高さ（キャプション→エリアバーの間隔はスタイルで管理）。
+          //   地図/県選択は従来の帯高(HERO_BAND_H)を維持。
+          minHeight: isContent ? undefined : insets.top + HERO_BAND_H,
         }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
@@ -1919,11 +1933,39 @@ export default function FeatureScreen() {
         )}
         {stage === "content" && (
           <>
-            <Text style={s.bandTitle}>特集</Text>
-            <Text style={s.headerCaption}>どこへ行く？</Text>
+            <View style={s.headerTopRow}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={s.bandTitle}>特集</Text>
+                <Text style={s.headerCaption}>どこへ行く？</Text>
+              </View>
+              {/* 右上: 検索 / 通知（ガラス風の丸ボタン。マイページはユーザー要望で撤去 2026-07-17） */}
+              <View style={s.headerIconRow}>
+                <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
+                  accessibilityRole="button" accessibilityLabel="検索">
+                  <Search size={17} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+                <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.push("/notifications")}
+                  accessibilityRole="button" accessibilityLabel="通知">
+                  <Bell size={17} color="#fff" strokeWidth={2.2} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {/* 現在のエリアバー（帯の中の白ピル・キャプションとの間隔は詰める=ユーザー要望2026-07-17） */}
+            <TouchableOpacity
+              style={s.headerAreaBar} activeOpacity={0.85}
+              onPress={() => runTransition(() => setStage("map"))}
+              accessibilityRole="button" accessibilityLabel="エリア変更"
+            >
+              <MapPin size={14} color="#8B5CF6" strokeWidth={2.4} />
+              <Text style={s.headerAreaText}>現在のエリア：{selectedTab}</Text>
+              <View style={{ flex: 1 }} />
+              <Text style={s.headerAreaChange}>エリア変更</Text>
+              <ChevronRight size={13} color="#8B5CF6" strokeWidth={2.6} />
+            </TouchableOpacity>
           </>
         )}
       </LinearGradient>
+      </Animated.View>
 
       {/* ── メインコンテンツ（トランジション中はズーム＆フェード） ── */}
       <Animated.View style={{ flex: 1, opacity: contentOpacity, transform: [{ translateX: contentTx }, { translateY: contentTy }, { scale: contentScale }] }}>
@@ -1940,6 +1982,7 @@ export default function FeatureScreen() {
             popularAreas={popularAreas}
             onChangeArea={() => runTransition(() => setStage("map"))}
             onSelectPref={handleQuickSelectPref}
+            collapse={collapse}
           />
         )}
       </Animated.View>
@@ -2054,6 +2097,25 @@ const s = StyleSheet.create({
     fontSize: 12.5, fontWeight: '500', color: 'rgba(255,255,255,0.78)',
     letterSpacing: 0.2, lineHeight: 17, marginTop: 6,
   },
+  // 特集TOPヘッダー: 左タイトル/サブタイトル + 右にガラス風の丸アイコン群
+  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  headerIconBtn: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
+    overflow: 'hidden',
+  },
+  // content時のヘッダーはoverlay（スクロールで格納）。Stack上に重ねリストはheaderHで逃がす
+  headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
+  // 帯内の「現在のエリア」白ピル（ユーザー要望2026-07-17: 本文からヘッダーへ移動・キャプションとの間隔は詰める）
+  headerAreaBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 8, backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 10,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  headerAreaText: { fontSize: 13, fontWeight: '700', color: '#1F1F1F' },
+  headerAreaChange: { fontSize: 12.5, fontWeight: '800', color: '#8B5CF6', marginRight: 1 },
   // eyebrow(前置きラベル): 白ミニ罫線＋トラッキングの効いた小文字（雑誌の柱の作法）
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrowRule: { width: 18, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' },
@@ -2290,21 +2352,22 @@ const s = StyleSheet.create({
   },
   segWrap: {
     flexDirection: "row",
-    backgroundColor: C.segBg,
-    borderRadius: 13,
-    padding: 3,
+    backgroundColor: "#fff",
+    borderRadius: 999,
+    padding: 4,
+    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 6 },
   },
   segTab: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 11,
+    borderRadius: 999,
   },
   segTabActive: {
-    backgroundColor: C.accent,
+    backgroundColor: C.accentLight,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.0,
     shadowRadius: 8,
     elevation: 4,
   },
@@ -2314,7 +2377,7 @@ const s = StyleSheet.create({
     color: C.subText,
   },
   segTabTextActive: {
-    color: C.white,
+    color: C.accent,
     fontWeight: "800",
   },
 
@@ -2601,49 +2664,49 @@ const s = StyleSheet.create({
 const ts = StyleSheet.create({
   // 現在のエリアバー
   areaBar: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    marginHorizontal: 16, marginTop: 14, marginBottom: 14,
-    backgroundColor: "#fff", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12,
-    shadowColor: "#7C3AED", shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+    flexDirection: "row", alignItems: "center", gap: 7,
+    marginHorizontal: 16, marginTop: 16, marginBottom: 16,
+    backgroundColor: "#fff", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 13,
+    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2,
   },
-  areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#2A2440" },
+  areaBarText: { fontSize: 13.5, fontWeight: "700", color: "#1F1F1F" },
   areaBarChange: { fontSize: 12.5, fontWeight: "700", color: C.accent, marginRight: 2 },
-  // メイン特集カルーセル
-  heroCard: { borderRadius: 26, overflow: "hidden", backgroundColor: "#E9E4F5" },
-  heroImg: { width: "100%", aspectRatio: 16 / 11, justifyContent: "flex-end" },
-  heroShade: { ...StyleSheet.absoluteFillObject, borderRadius: 26 },
+  // メイン特集カルーセル（ユーザー要望2026-07-17: 画像を小さく・画面に収まる比率に）
+  heroCard: { borderRadius: 24, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  heroImg: { width: "100%", aspectRatio: 16 / 9, justifyContent: "flex-end" },
+  heroShade: { ...StyleSheet.absoluteFillObject, borderRadius: 24 },
   heroBadge: {
-    position: "absolute", top: 14, left: 14, flexDirection: "row", alignItems: "center", gap: 4,
-    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+    position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
   },
-  heroBadgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
-  heroBody: { padding: 16, paddingBottom: 14 },
-  heroTitle: { fontSize: 24, fontWeight: "800", color: "#fff", lineHeight: 31, letterSpacing: 0.2 },
-  heroDesc: { fontSize: 12.5, color: "rgba(255,255,255,0.88)", lineHeight: 18, marginTop: 6 },
-  heroCtaRow: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  heroBadgeText: { fontSize: 10.5, fontWeight: "700", color: "#fff" },
+  heroBody: { padding: 14, paddingBottom: 12 },
+  heroTitle: { fontSize: 20, fontWeight: "800", color: "#fff", lineHeight: 26, letterSpacing: 0.2 },
+  heroDesc: { fontSize: 12, color: "rgba(255,255,255,0.88)", lineHeight: 17, marginTop: 5 },
+  heroCtaRow: { flexDirection: "row", alignItems: "center", marginTop: 10 },
   heroCta: {
     flexDirection: "row", alignItems: "center", gap: 2,
-    backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: "#fff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
   },
-  heroCtaText: { fontSize: 12.5, fontWeight: "800", color: "#2A2440" },
-  heroCount: { fontSize: 12, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
-  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, marginTop: 10 },
+  heroCtaText: { fontSize: 12, fontWeight: "800", color: "#2A2440" },
+  heroCount: { fontSize: 11.5, fontWeight: "700", color: "rgba(255,255,255,0.9)" },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 5, marginTop: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#D8D2EA" },
   dotActive: { backgroundColor: C.accent, width: 14 },
-  // サブ特集カード
+  // サブ特集カード（同上: 高さ190→148で軽く）
   subRow: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 14 },
-  subCard: { flex: 1, borderRadius: 20, overflow: "hidden", backgroundColor: "#E9E4F5" },
-  subImg: { width: "100%", height: 190, justifyContent: "flex-end" },
+  subCard: { flex: 1, borderRadius: 18, overflow: "hidden", backgroundColor: "#E9E4F5" },
+  subImg: { width: "100%", height: 148, justifyContent: "flex-end" },
   subBadge: {
-    position: "absolute", top: 10, left: 10,
-    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4,
+    position: "absolute", top: 9, left: 9,
+    backgroundColor: "rgba(20,16,40,0.45)", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3.5,
   },
   subBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff" },
-  subBody: { padding: 11 },
-  subTitle: { fontSize: 14.5, fontWeight: "800", color: "#fff", lineHeight: 19 },
-  subDesc: { fontSize: 10.5, color: "rgba(255,255,255,0.85)", lineHeight: 15, marginTop: 4 },
-  subCta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 8 },
-  subCtaText: { fontSize: 11, fontWeight: "800", color: "#fff" },
+  subBody: { padding: 10 },
+  subTitle: { fontSize: 13, fontWeight: "800", color: "#fff", lineHeight: 17.5 },
+  subDesc: { fontSize: 10, color: "rgba(255,255,255,0.85)", lineHeight: 14, marginTop: 3 },
+  subCta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 6 },
+  subCtaText: { fontSize: 10.5, fontWeight: "800", color: "#fff" },
   // セクション（人気エリア）
   section: { marginTop: 20 },
   sectionHead: { flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 16, marginBottom: 10 },

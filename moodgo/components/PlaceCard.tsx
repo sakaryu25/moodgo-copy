@@ -3,7 +3,8 @@
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CalendarClock, CalendarX, Camera, Check, Clock, Flame, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
+import { Award, CalendarClock, CalendarX, Camera, Check, Clock, Flame, Gem, Heart, Map, MapPin, MessageCircle, Moon, Navigation, Share2, Star, Train, X } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import PuniPressable from './PuniPressable';
@@ -56,6 +57,15 @@ import { COLORS } from '@/constants/colors';
 // MoodGo brand
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
 const BRAND = '#C084FC';
+
+// ── MoodGo独自バッジ（定番/穴場/話題）───────────────────────────────────────
+//   ★評価がGoogle撤廃で空になった代わりの信頼シグナル。サーバー(recommend)が判定して
+//   mgBadge で返す。絵文字は使わずlucide＋淡色ピル（期間限定のソリッドバッジと差別化）。
+const MG_BADGE: Record<string, { Icon: LucideIcon; bg: string; border: string; fg: string }> = {
+  classic:    { Icon: Award, bg: '#EFF6FF', border: '#BFDBFE', fg: '#2563EB' },   // 定番=青(有名/実績)
+  hidden_gem: { Icon: Gem,   bg: '#FDF2F8', border: '#FBCFE8', fg: '#DB2777' },   // 穴場=ピンク(発見)
+  trending:   { Icon: Flame, bg: '#FFF7ED', border: '#FED7AA', fg: '#EA580C' },   // 話題=オレンジ(熱)
+};
 
 // ── 営業時間フォーマッター ────────────────────────────────────────────────
 const DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
@@ -138,6 +148,9 @@ const T = {
     moodMatchDone:    '気分に合う！と評価しました',
     moodNotMatchDone: '気分には合わないと評価しました',
     moodQuestion:     (mood: string) => `「${mood}」の気分の時にこの場所は？`,
+    badgeClassic:     '定番',
+    badgeHiddenGem:   '穴場',
+    badgeTrending:    '話題',
   },
   en: {
     openNow:          'Open',
@@ -154,8 +167,17 @@ const T = {
     moodMatchDone:    'Marked as mood match!',
     moodNotMatchDone: 'Marked as not matching',
     moodQuestion:     (mood: string) => `How is this place for "${mood}"?`,
+    badgeClassic:     'Classic',
+    badgeHiddenGem:   'Hidden gem',
+    badgeTrending:    'Trending',
   },
 };
+
+const MG_BADGE_LABEL_KEY = {
+  classic: 'badgeClassic',
+  hidden_gem: 'badgeHiddenGem',
+  trending: 'badgeTrending',
+} as const;
 
 type Props = {
   item: Recommendation;
@@ -252,8 +274,9 @@ export default function PlaceCard({
   // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
   const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
   const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
-  // 心霊で写真がある場合、カルーセル末尾に「提供してください」スライドを追加する
-  const showContribute = spooky && photos.length > 0;
+  // 写真がある全スポットで、カルーセル末尾に「写真を追加」スライドを出す（何枚あっても募集継続）。
+  //   心霊は暗い雰囲気、通常スポットは明るい募集デザイン（詳細ページ place.tsx と統一）。
+  const showContribute = photos.length > 0;
   const pageCount = photos.length + (showContribute ? 1 : 0);
   const onImgError = (uri: string) =>
     setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
@@ -323,8 +346,11 @@ export default function PlaceCard({
     sendEngagement(item.title, 'share', moodLabel);  // ② 学習ループ: 共有=強い好意シグナル
   };
 
-  // 説明文：featuresの中で長い文はdescription扱い
-  const description = item.features?.find(f => f.length > 15) ?? '';
+  // 説明文：featuresの中の長文＞具体的な一言理由(reason)の順で採用。
+  //   reasonはサーバーがエリア×種別×気分から具体生成（旧「○○のスポット情報」定型は除外）。
+  const stubReason = (r?: string) => !r || r.length < 6 || /のスポット情報$/.test(r);
+  const description = item.features?.find(f => f.length > 15)
+    ?? (!stubReason(item.reason) ? item.reason! : '');
 
   // 期間限定バッジ: available_from/until があれば「期間限定 M/D〜M/D」。終了日が過ぎていれば「期間限定(終了)」。
   const fmtMD = (d?: string | null) => { const m = d ? /^(\d{4})-(\d{2})-(\d{2})/.exec(d) : null; return m ? `${Number(m[2])}/${Number(m[3])}` : ''; };
@@ -377,8 +403,8 @@ export default function PlaceCard({
                 )}
               </TouchableOpacity>
             ))}
-            {/* 末尾の「写真を提供してください」スライド（スライドすると出る） */}
-            {showContribute && (
+            {/* 末尾の「写真を追加」スライド（スライドすると出る）。心霊=暗い雰囲気／通常=明るい募集 */}
+            {showContribute && (spooky ? (
               <LinearGradient
                 colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
                 style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}
@@ -392,7 +418,24 @@ export default function PlaceCard({
                     : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
                 </TouchableOpacity>
               </LinearGradient>
-            )}
+            ) : (
+              // 通常スポット: 写真があっても末尾に明るい「写真を追加」募集ページ（何枚でも継続）
+              <LinearGradient
+                colors={['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
+                style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder, s.contribBright]}
+              >
+                <Camera size={30} color="#8A6BF0" strokeWidth={1.9} />
+                <Text style={s.phInviteTitle}>あなたの1枚も、この場所に</Text>
+                <Text style={s.phInviteSub}>違う角度・季節・時間帯の写真が魅力を伝えます</Text>
+                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
+                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
+                    {uploading
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </LinearGradient>
+            ))}
           </ScrollView>
         ) : photos.length > 0 ? (
           // photoWidth 計測前の一瞬だけ先頭写真を表示
@@ -554,6 +597,16 @@ export default function PlaceCard({
 
         {/* 評価 + 営業状態 (ピル) */}
         <View style={s.pillRow}>
+          {/* MoodGo独自バッジ（定番/穴場/話題）— ★の代わりの信頼シグナル */}
+          {item.mgBadge && MG_BADGE[item.mgBadge] ? (() => {
+            const b = MG_BADGE[item.mgBadge!];
+            return (
+              <View style={[s.mgBadgePill, { backgroundColor: b.bg, borderColor: b.border }]}>
+                <b.Icon size={11.5} color={b.fg} strokeWidth={2.6} />
+                <Text style={[s.mgBadgeText, { color: b.fg }]}>{t[MG_BADGE_LABEL_KEY[item.mgBadge!]]}</Text>
+              </View>
+            );
+          })() : null}
           {item.rating != null && (
             <View style={s.ratingPill}>
               <Star size={13} color="#F59E0B" fill="#F59E0B" strokeWidth={0} />
@@ -735,6 +788,8 @@ const s = StyleSheet.create({
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   // 写真なし時のクリーンな「?」プレースホルダー背景（淡いviolet-gray）
   phClean: { backgroundColor: '#F3F0F9', gap: 4, paddingHorizontal: 24 },
+  // 写真ありスポットの末尾「写真を追加」明るい募集スライド
+  contribBright: { gap: 4, paddingHorizontal: 24 },
   phInviteTitle: { color: '#6B5A8A', fontSize: 14, fontWeight: '800', marginTop: 6, letterSpacing: 0.2, textAlign: 'center' },
   phInviteSub: { color: 'rgba(107,90,138,0.78)', fontSize: 11.5, fontWeight: '600', textAlign: 'center' },
   pioneerBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 999, marginBottom: 7 },
@@ -826,6 +881,12 @@ const s = StyleSheet.create({
 
   // 評価 + 営業ピル row
   pillRow:    { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  // MoodGo独自バッジ（定番/穴場/話題）: 淡色ピル＋細アイコン
+  mgBadgePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1,
+  },
+  mgBadgeText: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
   ratingPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#FFFBEB', borderRadius: 999,
