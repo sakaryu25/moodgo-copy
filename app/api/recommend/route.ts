@@ -579,6 +579,11 @@ function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined, engAgg?:
       const implicit = eng > 0 ? Math.min(1, Math.log10(1 + eng) / 1.5) : 0;
       return explicit * 1.0 + implicit * 0.6;
     },
+    // 生の👍/👎件数（コンシェルジュ再ランクに「この気分での利用者評価」を見せる用）。無ければnull。
+    summary: (name: string): { good: number; bad: number } | null => {
+      const r = get(name);
+      return r ? { good: r.good, bad: r.bad } : null;
+    },
   };
 }
 
@@ -7513,11 +7518,10 @@ async function handleRecommend(request: Request) {
           })(),
           // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
-          ((): Promise<{ order: number[]; reject: number[] }> => {
-            if (!openai || isProprietaryOnly || scored.length <= 2) return Promise.resolve({ order: [], reject: [] });
-            // 候補に「住所・距離・説明文（実説明のみ）」を載せて判別材料を増やす。
-            //   Supabaseは rating/reviewCount が常にnull（★-）なので評価は使わず、
-            //   テーマ合致を見抜ける具体情報（説明・立地）を渡すのが精度の鍵。
+          (async (): Promise<{ order: number[]; reject: number[] }> => {
+            if (!openai || isProprietaryOnly || scored.length <= 2) return { order: [], reject: [] };
+            // 候補に「住所・距離・タグ・説明・利用者評価(👍/👎)」を載せて判別材料を増やす。
+            //   評価は MoodGo独自の一次情報（この気分での👍/👎）＝Googleに無い定番/不人気の根拠。
             const cand = scored.map((r, i) => {
               // 住所は「都道府県＋市区＋町名」だけに整形（郵便番号・番地は判別ノイズなので除去）。
               //   ※郵便番号は先頭にあるので、番地カット(数字以降)より先に必ず除去する。
@@ -7531,7 +7535,10 @@ async function handleRecommend(request: Request) {
               // 場所の「種類」が分かるよう自前タグを最大5個（#始まり）渡す＝判別精度の主材料。
               const tg = (r.tags ?? []).filter(t => typeof t === "string" && t.startsWith("#")).slice(0, 5).join("/");
               const dist = r.distanceInfo ? String(r.distanceInfo) : "";
-              return `${i}: ${r.name ?? ""}｜${addr}｜${dist}${tg ? "｜" + tg : ""}${realDesc ? "｜" + realDesc : ""}`;
+              // MoodGo独自の利用者評価(この気分での👍/👎)。件数が有る時だけ載せる。
+              const rj = ratingJudge.summary(r.name ?? "");
+              const rev = rj && (rj.good + rj.bad) > 0 ? `｜評価👍${rj.good}👎${rj.bad}` : "";
+              return `${i}: ${r.name ?? ""}｜${addr}｜${dist}${tg ? "｜" + tg : ""}${realDesc ? "｜" + realDesc : ""}${rev}`;
             }).join("\n");
             // ユーザー文脈（気分/深掘りL1+L2/同行者/予算/属性/自由ワード/絞り込み）を最大限渡す。
             const attr = [answers.age, answers.gender].filter(Boolean).join(" ");
@@ -7544,47 +7551,54 @@ async function handleRecommend(request: Request) {
               `希望:${answers.freeWord || refinementText || "なし"}`,
             ].filter(Boolean).join("／");
             // 【コンシェルジュ化】この利用者を"知る"パーソナル文脈＝過去の高評価/苦手・プロフィール傾向・
-            //   今の時間帯。渡すと並べ替えが「万人向けキュレーター」→「あなたを知る地元の友達」になる(⑧⑨)。
+            //   今の時間帯・今の天気。渡すと並べ替えが「万人向けキュレーター」→「あなたを知る地元の友達」になる(⑧⑨)。
             //   ※履歴依存で並びが変わるため、snapshotキーは personaSignature でこの人専用に分岐済み(誤共有防止)。
             const tcNow = getTimeContext();
             const timeLabel = tcNow.isMorning ? "朝" : tcNow.isDaytime ? "日中" : tcNow.isEvening ? "夕方〜夜" : "深夜";
             const likedP = pastFeedback.filter((f) => (f.rating ?? 0) >= 4 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
             const dislikedP = pastFeedback.filter((f) => (f.rating ?? 0) > 0 && (f.rating ?? 0) <= 2 && f.visitedPlace).map((f) => f.visitedPlace).slice(0, 5);
             const hintP = userPreferenceHints.filter((h) => typeof h === "string" && h.trim()).slice(0, 6);
+            // 天気: 屋外/屋内の適否を判断させる材料(⑨)。取得失敗(座標なし/APIエラー)は無視して従来通り。
+            const wx = await getWeatherContext(answers.originLat, answers.originLng).catch(() => ({} as WeatherContext));
+            const wxLabel = wx.weatherCode === undefined ? ""
+              : isRainLikeWeather(wx.weatherCode) ? "雨"
+              : isSnowLikeWeather(wx.weatherCode) ? "雪"
+              : wx.weatherCode === 0 ? "快晴"
+              : wx.weatherCode <= 3 ? "晴れ〜薄曇り"
+              : wx.weatherCode <= 48 ? "曇り" : "";
             const personaLine = [
               hintP.length ? `傾向:${hintP.join("・")}` : "",
               likedP.length ? `過去に好評:${likedP.join("・")}` : "",
               dislikedP.length ? `過去に苦手:${dislikedP.join("・")}` : "",
               `今の時間帯:${timeLabel}`,
+              wxLabel ? `今の天気:${wxLabel}` : "",
             ].filter(Boolean).join("／");
-            return openai.chat.completions.create({
-              // 精度重視: 並べ替えは推薦体験の核なので gpt-4o（候補は短文・出力は番号列のみで低コスト）。
-              model: "gpt-4o-mini", temperature: 0.2, max_tokens: 500,  // 並べ替え＋reject(場違い排除)の番号列。出力は番号のみで低コスト
-              response_format: { type: "json_object" },
-              messages: [
-                { role: "system", content: `あなたは日本中のお出かけ先に精通したプロのキュレーターです。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」を深く読み取り、各候補が"その体験・要望"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
+            try {
+              const rr = await openai.chat.completions.create({
+                model: "gpt-4o-mini", temperature: 0.2, max_tokens: 500,  // 並べ替え＋reject(場違い排除)の番号列。出力は番号のみで低コスト
+                response_format: { type: "json_object" },
+                messages: [
+                  { role: "system", content: `あなたは日本中のお出かけ先に精通した、その人を知る地元の友達のような案内役です。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」に加え、【この人について】の過去の好み・今の時間帯・今の天気まで踏まえ、各候補が"その人の・その体験"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
 
 判断のしかた（重要）:
 1. 自由記述の希望/絞り込みがあれば最優先で汲み取る。表面的な単語一致でなく意図（例「静かに過ごしたい」=落ち着いた静かな場所、「映える」=写真映え）で評価する。
 2. 深掘りテーマへの本質的合致。例「圧倒的な絶景」なら名前・タグ・住所・説明から実際に雄大な景観・眺望がある場所を上位へ。市役所/オフィスビル/商業施設最上階などタグが一致してもテーマと噛み合わない場所は下位へ。
-3. タグ（#始まり）は場所の種類を表す主材料。説明文があればその内容（景観・雰囲気・名物）も根拠にする。
+3. タグ（#始まり）は場所の種類を表す主材料。説明文があればその内容（景観・雰囲気・名物）も根拠にする。「評価👍N👎M」が付く候補は、この気分での実際の評判＝👍優勢は上位寄り・👎優勢は下げる（件数が僅少なら弱い材料として扱う）。
 4. 住所/エリアから立地を推測（海辺・山・高台＝絶景や自然、繁華街・ビル街＝都会的、住宅街＝静か 等）。
 5. 同行者・属性・予算に合うか（友達＝映え/盛り上がる、恋人＝雰囲気、一人＝静けさ、家族＝安心）。
 6. 【この人を知る】ユーザー文脈に「傾向／過去に好評／過去に苦手」があれば強く尊重する——過去に好評だった場所と似た系統を上位へ、苦手だった系統は下位へ。プロフィール傾向にも寄せる。ただし今回の気分・深掘り・希望との合致(1〜4)を覆さない範囲で（＝合う場所の中で、この人好みを優先する）。
-7. 【今の時間帯】に合うか（朝＝モーニング/朝活/自然、夕方〜夜＝夜景/バー/ライトアップ/ディナー、深夜＝深夜営業）も加点材料にする。時間帯に明らかに閉まっている種別（朝の夜景バー等）は下げる。
+7. 【今の時間帯・天気】に合うか。時間帯: 朝＝モーニング/朝活/自然、夕方〜夜＝夜景/バー/ライトアップ/ディナー、深夜＝深夜営業。天気: 雨・雪なら屋内(博物館/水族館/美術館/カフェ/温泉/ショッピング)を上げ、屋外中心(公園/展望台/海辺/散歩)を下げる。快晴・晴れは屋外も積極的に。明らかに閉まっている種別（朝の夜景バー等）は下げる。
 8. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし合致が低い場所を多様性のために上げない。
 9. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
 
 出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空]} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。` },
-                { role: "user", content: `${ctxLine}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明】:\n${cand}` },
-              ],
-            }, { signal: AbortSignal.timeout(5000) })  // 【性能】5秒で打ち切り（遅ければタグ/評価順を維持）
-              .then(rr => {
-                const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
-                const toIdx = (a: unknown): number[] => Array.isArray(a) ? a.map(Number).filter((n: number) => Number.isInteger(n)) : [];
-                return { order: toIdx(parsed.order), reject: toIdx(parsed.reject) };
-              })
-              .catch(() => ({ order: [] as number[], reject: [] as number[] }));
+                  { role: "user", content: `${ctxLine}${personaLine ? "\n【この人について】" + personaLine : ""}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明｜評価】:\n${cand}` },
+                ],
+              }, { signal: AbortSignal.timeout(5000) });  // 【性能】5秒で打ち切り（遅ければタグ/評価順を維持）
+              const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
+              const toIdx = (a: unknown): number[] => Array.isArray(a) ? a.map(Number).filter((n: number) => Number.isInteger(n)) : [];
+              return { order: toIdx(parsed.order), reject: toIdx(parsed.reject) };
+            } catch { return { order: [], reject: [] }; }
           })(),
         ]);
 
