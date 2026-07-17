@@ -35,7 +35,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image as ExpoImage } from "expo-image";
 import { Asset } from "expo-asset";
-import Svg, { Defs, RadialGradient, Stop, Circle } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Stop, Circle, Path } from "react-native-svg";
+import {
+  JAPAN_SVG_W, JAPAN_SVG_H, JAPAN_PREF_PATHS, OKINAWA_DIVIDER, REGION_ANCHORS,
+} from "./japanMapPaths";
 import { useRouter } from "expo-router";
 import { apiFetch } from "@/lib/api";
 import { HERO_BAND_H } from "@/lib/headerBand";
@@ -855,22 +858,72 @@ function RegionPrefSelectView({ region, onSelectPref }: {
   );
 }
 
+// hex色を白と混ぜてパステル化（地図の塗り用。ratio=白の割合）
+function blendWithWhite(hex: string, ratio: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const mix = (c: number) => Math.round(c + (255 - c) * ratio);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+const REGION_FILL: Record<string, string> = {};
+const REGION_FILL_PRESSED: Record<string, string> = {};
+for (const r of REGION_OVERLAY) {
+  REGION_FILL[r.tab] = blendWithWhite(r.color, 0.52);
+  REGION_FILL_PRESSED[r.tab] = blendWithWhite(r.color, 0.24);
+}
+
+// 地方ピンのラベル位置（viewBox座標・沖合の空き海域に手置き）。
+//   重心配置だと本州の中央帯で重なるため、旧デザイン同様の階段状オフショア配置にする。
+const REGION_PIN_POS: Record<string, { x: number; y: number }> = {
+  "北海道・東北": { x: 290, y: 170 },
+  "関東":         { x: 508, y: 470 },
+  "中部":         { x: 165, y: 395 },
+  "近畿":         { x: 330, y: 615 },
+  "中国":         { x: 90,  y: 450 },
+  "四国":         { x: 200, y: 670 },
+  "九州・沖縄":   { x: 108, y: 770 },
+};
+
+// ベクター日本地図（Natural Earth由来の自前SVGパス）。
+//   陸地そのものがタップ可能＝地方の形を直接タップして選択できる。押下中はその地方が濃くなる。
+function JapanMapSvg({ width, height, onSelectRegion }: {
+  width: number; height: number; onSelectRegion?: (tab: Tab) => void;
+}) {
+  const [pressed, setPressed] = useState<string | null>(null);
+  return (
+    <Svg width={width} height={height} viewBox={`0 0 ${JAPAN_SVG_W} ${JAPAN_SVG_H}`}>
+      {JAPAN_PREF_PATHS.map((p) => (
+        <Path
+          key={p.pref}
+          d={p.d}
+          fill={pressed === p.region ? REGION_FILL_PRESSED[p.region] : REGION_FILL[p.region]}
+          stroke="#ffffff"
+          strokeWidth={1.1}
+          strokeLinejoin="round"
+          onPressIn={onSelectRegion ? () => setPressed(p.region) : undefined}
+          onPressOut={onSelectRegion ? () => setPressed(null) : undefined}
+          onPress={onSelectRegion ? () => onSelectRegion(p.region as Tab) : undefined}
+        />
+      ))}
+      {/* 沖縄インセットの区切り線 */}
+      <Path d={OKINAWA_DIVIDER} stroke="#B9AFD4" strokeWidth={1.4} strokeDasharray="5 4" fill="none" />
+    </Svg>
+  );
+}
+
 function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) => void }) {
   const [cW, setCW] = useState(0);
   const [cH, setCH] = useState(0);
-  // 地図画像の事前読み込み（デコード）完了を待ってから表示 → ボタンと地図を同時に出す
-  const [mapReady, setMapReady] = useState(false);
-  useEffect(() => { let m = true; preloadMaps().then(() => { if (m) setMapReady(true); }); return () => { m = false; }; }, []);
-  // 地図のエントランス（少し引きから等倍へふわっと）
+  // 地図のエントランス（少し引きから等倍へふわっと）。SVGなのでデコード待ちは不要
   const mapIn = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (mapReady) Animated.timing(mapIn, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [mapReady, mapIn]);
+    Animated.timing(mapIn, { toValue: 1, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [mapIn]);
 
-  // コンテナ内で "contain" したときの実際の画像描画サイズとオフセットを計算
-  const scale   = cW > 0 && cH > 0 ? Math.min(cW / 632, cH / 813) : 0;
-  const imgW    = 632 * scale;
-  const imgH    = 813 * scale;
+  // コンテナ内で "contain" したときの実際の描画サイズとオフセットを計算（自前SVGのviewBox基準）
+  const scale   = cW > 0 && cH > 0 ? Math.min(cW / JAPAN_SVG_W, cH / JAPAN_SVG_H) : 0;
+  const imgW    = JAPAN_SVG_W * scale;
+  const imgH    = JAPAN_SVG_H * scale;
   const offsetX = (cW - imgW) / 2;
   const offsetY = (cH - imgH) / 2;
 
@@ -882,27 +935,15 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
         setCH(e.nativeEvent.layout.height);
       }}
     >
-      {/* 読込中スケルトン（地図デコード前の空白を防ぐ）*/}
-      {scale > 0 && !mapReady && (
-        <View style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH, borderRadius: 16, backgroundColor: "rgba(155,107,255,0.06)", alignItems: "center", justifyContent: "center" }}>
-          <ExpoImage source={JAPAN_MAP} style={{ width: imgW * 0.7, height: imgH * 0.7, opacity: 0.15 }} contentFit="contain" />
-        </View>
-      )}
-      {scale > 0 && mapReady && (
+      {scale > 0 && (
         <>
-          {/* 日本地図メイン（エントランス: 少し引き→等倍・フェードイン）*/}
+          {/* ベクター日本地図（陸地タップで地方選択・押下中は濃くハイライト）*/}
           <Animated.View
             style={{ position: "absolute", left: offsetX, top: offsetY, width: imgW, height: imgH,
               opacity: mapIn,
               transform: [{ scale: mapIn.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}
           >
-            <ExpoImage
-              source={JAPAN_MAP}
-              style={{ width: "100%", height: "100%" }}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-              transition={150}
-            />
+            <JapanMapSvg width={imgW} height={imgH} onSelectRegion={onSelectRegion} />
           </Animated.View>
 
           {/* 背景を漂う雲（タップ透過・主張しない濃さ）*/}
@@ -910,10 +951,12 @@ function JapanMapWithButtons({ onSelectRegion }: { onSelectRegion: (tab: Tab) =>
           <DriftingCloud size={150} x={cW - 80} y={cH * 0.5} drift={-44} duration={6800} delay={900} gradId="mapCloud2" />
           <DriftingCloud size={120} x={cW * 0.3} y={cH * 0.8} drift={38} duration={7600} delay={1600} gradId="mapCloud3" />
 
-          {/* エリアボタン — 画像座標系で配置（順番にポップ→ふわふわ浮遊）*/}
+          {/* エリアボタン — 沖合の空き海域(REGION_PIN_POS)にラベル中心を合わせて配置（順番にポップ→浮遊）*/}
           {REGION_OVERLAY.map((r, i) => {
-            const btnTop  = offsetY + imgH * (r.topPct  / 100);
-            const btnLeft = offsetX + imgW * (r.leftPct / 100);
+            const a = REGION_PIN_POS[r.tab] ?? REGION_ANCHORS[r.tab] ?? { x: JAPAN_SVG_W / 2, y: JAPAN_SVG_H / 2 };
+            const estW = 58 + 13 * r.label.length;   // ピル幅の概算(ドット+アイコン+文字+シェブロン)
+            const btnLeft = offsetX + a.x * scale - estW / 2;
+            const btnTop  = offsetY + a.y * scale - 19;
             return (
               <FloatingPin key={r.id} index={i} top={btnTop} left={btnLeft}>
                 <TouchableOpacity
@@ -1756,8 +1799,8 @@ export default function FeatureScreen() {
   };
 
   const handleSelectRegion = (tab: Tab) => {
-    const item = REGION_OVERLAY.find((r) => r.tab === tab);
-    setAnchorFromOverlay(item?.topPct, item?.leftPct, 2.1);
+    const a = REGION_ANCHORS[tab];   // SVG地図の地方重心をズームの狙い点に
+    setAnchorFromOverlay(a ? (a.y / JAPAN_SVG_H) * 100 : undefined, a ? (a.x / JAPAN_SVG_W) * 100 : undefined, 2.1);
     setSelectedRegion(tab);
     setSelectedTab(tab);
     runTransition(() => setStage("pref-select"));
