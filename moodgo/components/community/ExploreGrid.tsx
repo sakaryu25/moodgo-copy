@@ -33,12 +33,6 @@ const MOOD_LABEL: Record<string, { ja: string; en: string }> = {
 };
 const FALLBACK_LABEL = { ja: '穴場', en: 'Gem' };
 
-// いいね数の短縮表記（1.2万 / 1.2K）
-function fmtCount(n: number, en: boolean): string {
-  if (en) return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n);
-  return n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + '万' : String(n);
-}
-
 type TileProps = { post: Post; ratio: number; index: number; lang: 'ja' | 'en'; liked: boolean; onPress: () => void; onMenu: () => void };
 
 function ExploreTile({ post, ratio, index, lang, liked, onPress, onMenu }: TileProps) {
@@ -57,7 +51,6 @@ function ExploreTile({ post, ratio, index, lang, liked, onPress, onMenu }: TileP
   const handlePress = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); };
   const translateY = enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
 
-  const likes = post.raw.likes ?? 0;
   const loc = post.prefecture || '';
 
   return (
@@ -84,10 +77,10 @@ function ExploreTile({ post, ratio, index, lang, liked, onPress, onMenu }: TileP
                     <Text style={s.locText} numberOfLines={1}>{loc}</Text>
                   </View>
                 )}
+                {/* いいね済み: ピンクのハートのみ（数字は出さない・ユーザー要望2026-07-17） */}
                 {liked && (
                   <View style={s.likeRow}>
-                    <Heart size={9} color="#fff" fill="#fff" strokeWidth={0} />
-                    <Text style={s.likeText}>{fmtCount(likes, lang === 'en')}</Text>
+                    <Heart size={9} color="#E0559B" fill="#E0559B" strokeWidth={0} />
                   </View>
                 )}
               </View>
@@ -109,10 +102,10 @@ function ExploreTile({ post, ratio, index, lang, liked, onPress, onMenu }: TileP
                     <Text style={[s.locText, s.locTextDark]} numberOfLines={1}>{loc}</Text>
                   </View>
                 )}
+                {/* いいね済み: ピンクのハートのみ（数字は出さない・ユーザー要望2026-07-17） */}
                 {liked && (
                   <View style={s.likeRow}>
                     <Heart size={9} color="#E0559B" fill="#E0559B" strokeWidth={0} />
-                    <Text style={[s.likeText, { color: '#8B88A6' }]}>{fmtCount(likes, lang === 'en')}</Text>
                   </View>
                 )}
               </View>
@@ -199,11 +192,7 @@ const s = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   locTextDark: { color: '#8B88A6', textShadowColor: 'transparent' },
-  likeRow: { flexDirection: 'row', alignItems: 'center', gap: 2.5, flexShrink: 0 },
-  likeText: {
-    color: '#fff', fontSize: 9, fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.3)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
-  },
+  likeRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   moodChip: {
     position: 'absolute', top: 6, left: 6,
     flexDirection: 'row', alignItems: 'center', gap: 3,
