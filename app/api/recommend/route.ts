@@ -6808,7 +6808,13 @@ async function handleRecommend(request: Request) {
       const deepDiveTags = realDrillTags;
       const sbMustTags   = deepDiveTags.length > 0
         ? deepDiveTags                                          // 深掘りタグのみで絞り込み
-        : allMustTags;                                          // 気分タグのみ（深掘りなし）
+        : (moodGroup(answers.mood) === "focus")
+          // 集中×こだわらない/深掘りなし: 気分タグ(#集中したい)だけだと都心の最寄り20件が
+          //   チェーンカフェ偏重→ブランド/サブカテcapで8件に痩せる。作業カフェ(#カフェ作業=
+          //   admin厳選)と自習(#勉強場)をOR合流し、カフェで作業経路と同等の多様な15件を確保する。
+          //   ※カフェで作業/静か専用は各自のdeepDiveTagsを使うのでこの分岐に来ず不変。
+          ? [...new Set([...allMustTags, "#カフェ作業", "#勉強場"])]
+          : allMustTags;                                        // 気分タグのみ（深掘りなし）
       // 在庫の薄いL2/L1タグ（#オムライス18 / #あっさりラーメン14 / #フルーツ51 等）で枯れた時だけ、
       //   同ジャンルの“親タグ”で補う＝Google補完ではなく自前DB（同ジャンル）で15件を埋める。
       //   spatialSearch は mustTags が limit 未満のときのみ fallback を使う＝在庫豊富な親では発火せず既存動作不変。
@@ -7915,12 +7921,22 @@ async function handleRecommend(request: Request) {
           // A-7: admin転載にも同チェーン抑制を適用（ラーメン豚山×3 等を防ぐ。最大2件/チェーン）。
           // admin注入は pickUnique を通らず先頭注入されるため、ここで個別にブランド重複を抑える。
           const adminChainCounts = new Map<string, number>();
+          // 同一スポットの二重注入防止: 同名の承認投稿/転載が複数あっても先頭注入は1件だけにする
+          //   （福浦岸壁×2 等＝旧inactive行のフリーズ座標を持つ投稿が2件あると重複表示されていた）。
+          //   ブランドcap(≤2)は別ブランドの同種抑制用で、完全同名の二重は別途この名前dedupで塞ぐ。
+          const adminNameSeen = new Set<string>();
           const matchingAdmin = matchingAdminSorted
             // 領域4b: 深掘りジャンルに明確に合わない転載は先頭注入しない。
             //   admin注入は finalizeSource(genreFidelityFilter)を通らず素通りするため、
             //   「海沿い」検索に中華街/川崎大師、「自然の中」に神社が先頭固定される主因だった。
             .filter(({ s }) => (effectiveDeepDive && effectiveDeepDive !== "心霊")
               ? nameMatchesGenre(s.google_place_name ?? s.spot_name, effectiveDeepDive) : true)
+            .filter(({ s }) => {
+              const nk = normalizeName(s.google_place_name ?? s.spot_name);
+              if (!nk || adminNameSeen.has(nk)) return false;   // 完全同名は1件のみ
+              adminNameSeen.add(nk);
+              return true;
+            })
             .filter(({ s }) => {
               const brand = brandOf(s.google_place_name ?? s.spot_name);
               if (brand.length < 3) return true;            // ブランド名が短すぎる場合は抑制しない
