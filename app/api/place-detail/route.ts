@@ -64,25 +64,7 @@ async function fetchPlaceDetail(placeId: string, apiKey: string) {
   return res.json();
 }
 
-async function resolvePhotoUrls(photoNames: string[], apiKey: string, max = 8): Promise<string[]> {
-  const names = photoNames.slice(0, max);
-  const results = await Promise.all(
-    names.map(async (name) => {
-      try {
-        const r = await fetch(
-          `https://places.googleapis.com/v1/${name}/media?maxWidthPx=800&skipHttpRedirect=true`,
-          { headers: { "X-Goog-Api-Key": apiKey }, cache: "no-store" }
-        );
-        if (!r.ok) return null;
-        const d = await r.json().catch(() => null);
-        return (d?.photoUri as string) || null;
-      } catch {
-        return null;
-      }
-    })
-  );
-  return results.filter((u): u is string => !!u && u.startsWith("https://"));
-}
+// 写真は事前解決せずプロキシURL（遅延取得）で返すため、resolvePhotoUrls（事前に全media解決＝上流課金）は廃止。
 
 async function findPlaceIdByText(name: string, address: string, apiKey: string): Promise<string | null> {
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -167,7 +149,13 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
     const photoNames: string[] = (d.photos ?? [])
       .filter((p: Record<string, unknown>) => !!p?.name)
       .map((p: Record<string, unknown>) => p.name as string);
-    const photoUrls = await resolvePhotoUrls(photoNames, key, 10);
+    // 写真は事前解決せず「プロキシURL（遅延取得）」で返す＝1枚目は表示時、2枚目以降はスワイプされた時にだけ
+    //   Google /media（Place Photo課金）が発火する（検索カードと同じ遅延方式に統一・コスト減）。
+    //   さらにプロキシは都度解決するので、30日キャッシュ中にCDN URLが失効して写真が死ぬ問題も同時に回避。
+    const detailOrigin = new URL(req.url).origin;
+    const photoUrls = photoNames.slice(0, 10).map(
+      (name) => `${detailOrigin}/api/photo-proxy?url=${encodeURIComponent(`https://places.googleapis.com/v1/${name}/media`)}`
+    );
 
     // 営業時間テキスト
     const hours = d.currentOpeningHours ?? d.regularOpeningHours;
