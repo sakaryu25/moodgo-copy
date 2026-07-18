@@ -34,6 +34,7 @@ import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { getMyHash } from '@/lib/myIdentity';
+import { earnedPhotoBadges, nextPhotoBadge, photoBadgeTitle, type PhotoBadgeTier } from '@/lib/photoBadges';
 import type { Recommendation } from '@/types/app';
 import {
   useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked, setAccountType,
@@ -72,6 +73,8 @@ const T = {
     postsA11y: '投稿一覧を見る',
     visitedA11y: '行った！一覧を見る',
     achieved: '達成',
+    photoCount: (n: number) => `写真${n}枚`,
+    photoHint: (n: number, name: string) => `写真をあと${n}枚投稿で「${name}」バッジGET`,
     spotFallback: 'スポット',
     postFallback: '投稿',
     kindSuggestion: '穴場',
@@ -108,6 +111,8 @@ const T = {
     postsA11y: 'View posts',
     visitedA11y: 'View been-here list',
     achieved: 'earned',
+    photoCount: (n: number) => `${n} ${n === 1 ? 'photo' : 'photos'}`,
+    photoHint: (n: number, name: string) => `Post ${n} more photo${n === 1 ? '' : 's'} for the “${name}” badge`,
     spotFallback: 'Spot',
     postFallback: 'Post',
     kindSuggestion: 'Hidden gem',
@@ -196,6 +201,8 @@ export default function ProfileTab() {
   const accountType = settings.accountType;
   const [posts,    setPosts]    = useState<MyPost[]>([]);
   const [badges,   setBadges]   = useState<SpotLogItem[]>([]);
+  // 承認済み公開投稿数（=写真投稿バッジの獲得判定。/api/user-profile postCount。取得失敗は0）
+  const [photoPostCount, setPhotoPostCount] = useState(0);
   const [viewed,   setViewed]   = useState<SpotLogItem[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -235,6 +242,8 @@ export default function ProfileTab() {
       }).then((r) => r.json());
       const p = d?.profile;
       if (!p) return;
+      // 承認済み公開投稿数＝写真投稿バッジの判定に使う（他人プロフィールと同じ真実 postCount）
+      if (typeof p.postCount === 'number') setPhotoPostCount(p.postCount);
       setAccountType(typeof p.accountType === 'string' ? p.accountType : '');
       const cur = getSettings();
       if (!cur.nickname.trim() && typeof p.name === 'string' && p.name.trim()) saveNickname(p.name.trim());
@@ -335,6 +344,11 @@ export default function ProfileTab() {
   const tileCellFull  = Math.floor((W - SIDE * 2 - GAP * 2) / 3) - 1;         // サブビュー3列
   const badgeCellFull = Math.floor((W - SIDE * 2 - GAP * 3) / 4) - 1;         // サブビュー4列（少数は中央揃え）
 
+  // 写真投稿バッジ（承認済み公開投稿数から算出）＋ 次に狙える段階（収集導線用）
+  const earnedPhotos = earnedPhotoBadges(photoPostCount);
+  const nextPhoto = nextPhotoBadge(photoPostCount);
+  const badgeTotal = earnedPhotos.length + badges.length;   // バッジ総数（空判定に使用）
+
   // ── 部品 ────────────────────────────────────────────────────────────────
   const CardHeader = ({ icon, title, onMore }: { icon: React.ReactNode; title: string; onMore?: () => void }) => (
     <View style={s.cardHeader}>
@@ -413,6 +427,33 @@ export default function ProfileTab() {
     );
   };
 
+  // 写真投稿バッジ（行った！バッジと同じリング/メダル体裁・中央は写真の代わりにlucideアイコン）
+  const PhotoBadgeItem = ({ tier, size }: { tier: PhotoBadgeTier; size: number }) => {
+    const ring = Math.min(70, size - 4);
+    const wrapD = ring - 6;
+    const imgD = ring - 12;
+    const Icon = tier.Icon;
+    return (
+      <TouchableOpacity onPress={() => router.push('/post')} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}>
+        <View style={[s.badgeRing, { width: ring, height: ring }]}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={[s.badgeRingGrad, { width: ring, height: ring, borderRadius: ring / 2 }]}>
+            <View style={[s.badgeImgWrap, { width: wrapD, height: wrapD, borderRadius: wrapD / 2 }]}>
+              <View style={[s.badgeImg, s.badgePh, { width: imgD, height: imgD, borderRadius: imgD / 2 }]}>
+                <Icon size={Math.round(imgD * 0.44)} color={BLUE} strokeWidth={1.9} />
+              </View>
+            </View>
+          </LinearGradient>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
+            <Award size={10} color="#fff" strokeWidth={2.4} />
+          </LinearGradient>
+        </View>
+        <Text style={s.badgeName} numberOfLines={1}>{photoBadgeTitle(tier, settings.lang)}</Text>
+        <Text style={s.badgeDate}>{t.photoCount(tier.need)}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   const ViewedRow = ({ item }: { item: SpotLogItem }) => (
     <TouchableOpacity onPress={() => openSpot(item)} activeOpacity={0.8} style={s.viewedRow}>
       {item.photoUrl ? (
@@ -458,13 +499,14 @@ export default function ProfileTab() {
             )
           )}
           {subView === 'badges' && (
-            badges.length === 0 ? (
+            badgeTotal === 0 ? (
               <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
                 sub={t.emptyBadgesSub} />
             ) : (
               <View style={[s.grid, { gap: GAP, justifyContent: 'center' }]}>
-                {/* 横2列×N・件数が少ないときは中央揃え */}
-                {badges.map((b, i) => <BadgeItem key={`${b.title}-${i}`} item={b} size={badgeCellFull} />)}
+                {/* 4列×N・件数が少ないときは中央揃え（写真投稿バッジ→行った！バッジの順） */}
+                {earnedPhotos.map((tier) => <PhotoBadgeItem key={tier.key} tier={tier} size={badgeCellFull} />)}
+                {badges.map((b, i) => <BadgeItem key={`v-${b.title}-${i}`} item={b} size={badgeCellFull} />)}
               </View>
             )
           )}
@@ -640,17 +682,30 @@ export default function ProfileTab() {
           )}
         </Animated.View>
 
-        {/* ── 🏅 バッジ（行った！から生成） ── */}
+        {/* ── 🏅 バッジ（写真投稿バッジ＋行った！から生成） ── */}
         <Animated.View style={[s.card, sectionStyle(2)]}>
           <CardHeader icon={<Award size={16} color="#F5A623" strokeWidth={2.2} />} title={t.badges}
             onMore={() => setSubView('badges')} />
-          {badges.length === 0 ? (
+          {badgeTotal === 0 ? (
             <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
               sub={t.emptyBadgesSub} />
           ) : (
             <View style={[s.grid, { gap: GAP }]}>
-              {badges.slice(0, 4).map((b, i) => <BadgeItem key={`${b.title}-${i}`} item={b} size={badgeCell} />)}
+              {[
+                ...earnedPhotos.map((tier) => <PhotoBadgeItem key={tier.key} tier={tier} size={badgeCell} />),
+                ...badges.map((b, i) => <BadgeItem key={`v-${b.title}-${i}`} item={b} size={badgeCell} />),
+              ].slice(0, 4)}
             </View>
+          )}
+          {/* 収集導線: 次の段階までの控えめな一言＋投稿画面へ（派手にしない） */}
+          {nextPhoto && (
+            <TouchableOpacity onPress={() => router.push('/post')} activeOpacity={0.85} style={s.badgeHint}>
+              <Camera size={14} color={PINK} strokeWidth={2.2} />
+              <Text style={s.badgeHintText} numberOfLines={2}>
+                {t.photoHint(nextPhoto.need - photoPostCount, photoBadgeTitle(nextPhoto, settings.lang))}
+              </Text>
+              <ChevronRight size={16} color={SUB} strokeWidth={2.2} />
+            </TouchableOpacity>
           )}
         </Animated.View>
 
@@ -829,6 +884,13 @@ const s = StyleSheet.create({
   },
   badgeName: { fontSize: 12.5, fontWeight: '800', color: INK, maxWidth: '92%' },
   badgeDate: { fontSize: 11, fontWeight: '600', color: SUB, marginTop: 2 },
+  // 収集導線（次の写真投稿バッジまでの控えめな一言＋投稿へ）
+  badgeHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12,
+    paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
+    backgroundColor: 'rgba(255,99,169,0.06)', borderWidth: 1, borderColor: 'rgba(255,99,169,0.14)',
+  },
+  badgeHintText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: INK, lineHeight: 17 },
 
   // 最近チェック
   viewedRow: {

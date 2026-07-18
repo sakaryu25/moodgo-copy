@@ -9,7 +9,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Award, ChevronLeft, Footprints, Heart, MapPin, MoreHorizontal, UserRound } from 'lucide-react-native';
+import { Award, Camera, ChevronLeft, ChevronRight, Footprints, Heart, MapPin, MoreHorizontal, UserRound } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Easing,
@@ -28,6 +28,7 @@ import { useSettings } from '@/lib/settingsStore';
 import { useBlocks, blockUser, muteUser, unblockUser } from '@/lib/blockStore';
 import { registerForPushNotificationsAsync } from '@/lib/push';
 import { feedStaleVersion } from '@/lib/feedRefresh';
+import { earnedPhotoBadges, nextPhotoBadge, photoBadgeTitle, type PhotoBadgeTier } from '@/lib/photoBadges';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SIDE = 16;                                   // 画面左右の余白
@@ -144,6 +145,32 @@ function MedalBadge({ spot, onPress }: { spot: VisitedSpot; onPress: () => void 
       {spot.at ? <Text style={s.medalDate}>{fmtAchieved(spot.at)}</Text> : null}
     </Pressable>
   );
+}
+
+// ── 写真投稿バッジ（勲章バッジと同じ体裁・中央は写真の代わりにlucideアイコン）──────
+//   承認済み公開投稿数(postCount)の段階（1/5/10）。他人のプロフィールでも見える。
+function PhotoMedalBadge({ tier, onPress }: { tier: PhotoBadgeTier; onPress?: () => void }) {
+  const Icon = tier.Icon;
+  const inner = (
+    <>
+      <View style={s.medalRingWrap}>
+        <LinearGradient colors={RING_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.medalRing}>
+          <View style={s.medalWhite}>
+            <View style={[s.medalImg, s.medalPh]}><Icon size={24} color="#B7A7E8" strokeWidth={1.7} /></View>
+          </View>
+        </LinearGradient>
+        <LinearGradient colors={RING_GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.medalIcon}>
+          <Award size={13} color="#fff" strokeWidth={2.4} />
+        </LinearGradient>
+      </View>
+      <Text style={s.medalName} numberOfLines={1}>{photoBadgeTitle(tier, 'ja')}</Text>
+      <Text style={s.medalDate}>写真{tier.need}枚</Text>
+    </>
+  );
+  return onPress
+    ? <Pressable onPress={onPress} style={({ pressed }) => [s.medal, pressed && { transform: [{ scale: 0.98 }] }]}
+        accessibilityRole="button" accessibilityLabel={`${photoBadgeTitle(tier, 'ja')}バッジ`}>{inner}</Pressable>
+    : <View style={s.medal}>{inner}</View>;
 }
 
 export default function UserProfileScreen() {
@@ -331,6 +358,10 @@ export default function UserProfileScreen() {
   // 在住地(県)はローカル保存のみ（サーバー未同期）→ 本人閲覧時だけプロフィールタブと同様に表示
   const prefText = isMe && localSettings.showPrefecture ? (localSettings.profilePrefecture ?? '').trim() : '';
   const visitedSpots = profile?.visitedSpots ?? [];
+  // 写真投稿バッジ（承認済み公開投稿数 postCount の段階）＋ 次に狙える段階（本人のみ収集導線）
+  const photoCount = profile?.postCount ?? 0;
+  const photoBadges = earnedPhotoBadges(photoCount);
+  const nextBadge = nextPhotoBadge(photoCount);
 
   return (
     <View style={s.root}>
@@ -455,16 +486,32 @@ export default function UserProfileScreen() {
               </>
             )
           ) : (
-            // 行ったスポット＝勲章バッジ（2列×N・少数は中央揃え）
-            visitedSpots.length === 0 ? (
+            // 行ったスポット＝勲章バッジ。先頭に写真投稿バッジ（承認済み公開投稿数の段階）を並べる。
+            (photoBadges.length === 0 && visitedSpots.length === 0) ? (
               <View style={s.emptyWrap}>
                 <View style={s.emptyIcon}><Award size={22} color={BRAND} strokeWidth={1.8} /></View>
-                <Text style={s.emptyText}>まだ行ったスポットがありません</Text>
+                <Text style={s.emptyText}>まだバッジがありません</Text>
               </View>
             ) : (
-              <View style={s.medalGrid}>
-                {visitedSpots.map((v) => <MedalBadge key={v.id} spot={v} onPress={() => openVisited(v)} />)}
-              </View>
+              <>
+                <View style={s.medalGrid}>
+                  {photoBadges.map((tier) => (
+                    <PhotoMedalBadge key={tier.key} tier={tier} onPress={isMe ? () => router.push('/post') : undefined} />
+                  ))}
+                  {visitedSpots.map((v) => <MedalBadge key={v.id} spot={v} onPress={() => openVisited(v)} />)}
+                </View>
+                {/* 収集導線: 本人だけ、次の段階までの控えめな一言＋投稿画面へ */}
+                {isMe && nextBadge && (
+                  <Pressable onPress={() => router.push('/post')} style={s.badgeHint}
+                    accessibilityRole="button" accessibilityLabel="写真を投稿する">
+                    <Camera size={14} color="#FF5FB2" strokeWidth={2.2} />
+                    <Text style={s.badgeHintText} numberOfLines={2}>
+                      写真をあと{nextBadge.need - photoCount}枚投稿で「{photoBadgeTitle(nextBadge, 'ja')}」バッジGET
+                    </Text>
+                    <ChevronRight size={16} color={SUB} strokeWidth={2.2} />
+                  </Pressable>
+                )}
+              </>
             )
           )}
         </Animated.ScrollView>
@@ -558,6 +605,15 @@ const s = StyleSheet.create({
   },
   medalName: { fontSize: 10.5, fontWeight: '800', color: INK, marginTop: 7, maxWidth: MEDAL_W - 2, textAlign: 'center' },
   medalDate: { fontSize: 9, fontWeight: '600', color: SUB, marginTop: 1 },
+
+  // 収集導線（本人のみ・次の写真投稿バッジまでの控えめな一言＋投稿へ）
+  badgeHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: SIDE, marginTop: 16,
+    paddingVertical: 11, paddingHorizontal: 13, borderRadius: 14,
+    backgroundColor: 'rgba(255,95,178,0.06)', borderWidth: 1, borderColor: 'rgba(255,95,178,0.14)',
+  },
+  badgeHintText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: INK, lineHeight: 17 },
 
   // 空状態
   emptyWrap: { alignItems: 'center', paddingVertical: 70, gap: 12 },
