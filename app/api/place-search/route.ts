@@ -30,17 +30,22 @@ export async function GET(req: Request) {
     const variants = [q, nfkc, toHira(nfkc), toKata(nfkc)].map(clean).filter((v) => v.length >= 2);
     const grams: string[] = [];
     for (let i = 0; i + 4 <= nq.length; i++) grams.push(nq.slice(i, i + 4));   // 正規化名の4-gram窓
-    const terms = Array.from(new Set([...variants, ...grams].map(clean).filter((v) => v.length >= 3))).slice(0, 12);
-    if (terms.length === 0) return NextResponse.json({ ok: true, places: [] });
-    const orExpr = terms.map((v) => `name.ilike.%${v}%`).join(",");
-    const { data } = await supabase
-      .from("places")
-      .select("id, name, address, lat, lng, open_hours, nearest_station")
-      .eq("is_active", true)
-      .or(orExpr)
-      .limit(120);
-
     type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours?: string | null; nearest_station?: string | null };
+    const SEL = "id, name, address, lat, lng, open_hours, nearest_station";
+    // 2系統取得: ①精密(フル名変種)を必ず確保＝件数上限でフル一致が押し出されないように。②広域(4-gram)で一語欠け/超集合を拾う。
+    const preOr = Array.from(new Set(variants.map(clean).filter((v) => v.length >= 2))).map((v) => `name.ilike.%${v}%`).join(",");
+    const gramOr = Array.from(new Set(grams.map(clean).filter((v) => v.length >= 4))).slice(0, 10).map((v) => `name.ilike.%${v}%`).join(",");
+    if (!preOr && !gramOr) return NextResponse.json({ ok: true, places: [] });
+    const sb = supabase;
+    const fetchBy = async (orExpr: string, lim: number): Promise<Row[]> => {
+      if (!orExpr) return [];
+      const { data } = await sb.from("places").select(SEL).eq("is_active", true).or(orExpr).limit(lim);
+      return (data ?? []) as Row[];
+    };
+    const [preRows, gramRows] = await Promise.all([fetchBy(preOr, 30), fetchBy(gramOr, 100)]);
+    const seenId = new Set<string>();
+    const rowsAll = [...preRows, ...gramRows].filter((r) => { if (!r?.id || seenId.has(r.id)) return false; seenId.add(r.id); return true; });
+
     // 文字bigramのDice係数（挿入/欠落/語順ゆれに強い双方向類似度）。
     const bigrams = (s: string) => { const set = new Set<string>(); for (let i = 0; i + 2 <= s.length; i++) set.add(s.slice(i, i + 2)); return set; };
     const dice = (a: string, b: string) => {
@@ -49,10 +54,15 @@ export async function GET(req: Request) {
       for (const g of A) if (B.has(g)) inter++;
       return (2 * inter) / (A.size + B.size);
     };
-    // 類似度: 完全一致=1 / 包含(長い名⊇短い名 どちら向きでも)=0.9 / それ以外はDice。SIM_MIN未満は"似てない"として候補から外す。
+    // 類似度: 完全一致=1 / 実質同名の包含(短い名が長い名の6割以上=超集合/部分集合)=0.9 / それ以外はDice。
+    //   ※短い一般名("ひまわり"が長い入力の一部)は包含でも0.9にしない＝汎用名で本命が埋もれるのを防ぐ。SIM_MIN未満は候補から外す。
     const SIM_MIN = 0.34;
-    const sim = (nn: string) => nn === nq ? 1 : (nn.includes(nq) || nq.includes(nn)) ? 0.9 : dice(nq, nn);
-    const scored = ((data ?? []) as Row[]).map((p) => {
+    const sim = (nn: string) => {
+      if (nn === nq) return 1;
+      if ((nn.includes(nq) || nq.includes(nn)) && Math.min(nn.length, nq.length) / Math.max(nn.length, nq.length) >= 0.6) return 0.9;
+      return dice(nq, nn);
+    };
+    const scored = rowsAll.map((p) => {
       const s = sim(normalizeName(p.name));
       const distM = hasCoord && p.lat != null && p.lng != null
         ? distanceMeters(latP, lngP, p.lat, p.lng)
