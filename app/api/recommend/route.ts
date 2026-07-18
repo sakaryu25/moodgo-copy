@@ -8533,7 +8533,13 @@ async function handleRecommend(request: Request) {
             }
             return upd;
           });
+          // ⚠2026-07-19 P25: 写真ゼロ補完のGoogle searchText(FieldMask=places.photos/Pro SKU)は、取得写真が
+          //   すべて places.googleapis.com＝filterLivePhotos(lib/place-photos.ts)で100%除去され、表示も恒久保存も
+          //   発生しない純粋な死に金（Google課金撤廃で失効400・営業時間補完も8592で廃止済）。既定で無効化＝写真ゼロは
+          //   無料写真(Wikimedia/spot_photos)＋カードのCTAに委譲。復活が必要なら RECOMMEND_ENABLE_PHOTO_SEARCHTEXT=1。
+          const ENABLE_PHOTO_SEARCHTEXT = process.env.RECOMMEND_ENABLE_PHOTO_SEARCHTEXT === "1";
           await Promise.all(recommendations.map(async (rec, idx) => {
+            if (!ENABLE_PHOTO_SEARCHTEXT) return;   // 死に金の写真searchTextを止める（表示・保存に一切影響しない）
             // OSM由来の店はGoogleエンリッチしない（写真=ジャンル別PH＋利用者投稿／営業時間=OSM情報。searchText削減）
             if ((rec.source ?? "").startsWith("osm")) return;
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
