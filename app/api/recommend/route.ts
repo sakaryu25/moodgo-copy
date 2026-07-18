@@ -279,14 +279,15 @@ async function applyMoodBlurbs<T extends object>(recs: T[], moodGroupStr?: strin
   const titles = [...new Set(recs.map((r) => String((r as { title?: string }).title ?? "")).filter(Boolean))];
   if (titles.length === 0) return recs;
   const hit = await ltCacheGetMany(titles.map((t) => moodBlurbKey(moodGroupStr, t)));
-  let out = recs;
-  if (hit.size > 0) {
-    out = recs.map((r) => {
-      const t = String((r as { title?: string }).title ?? "");
-      const c = t ? (hit.get(moodBlurbKey(moodGroupStr, t)) as { blurb?: string } | undefined) : undefined;
-      return c?.blurb ? ({ ...r, reason: c.blurb, aiReason: c.blurb } as T) : r;
-    });
-  }
+  // 🥇 その人向け1行理由(_personaReason=コンシェルジュ再ランクが返した「この人・この気分に効く一言」)を
+  //   最優先で reason に採用。無ければ②の汎用おすすめ一言(mblurbキャッシュ)。どちらも無ければ従来のまま。
+  const out = recs.map((r) => {
+    const persona = (r as { _personaReason?: string })._personaReason;
+    if (persona && persona.trim()) return ({ ...r, reason: persona, aiReason: persona } as T);
+    const t = String((r as { title?: string }).title ?? "");
+    const c = t ? (hit.get(moodBlurbKey(moodGroupStr, t)) as { blurb?: string } | undefined) : undefined;
+    return c?.blurb ? ({ ...r, reason: c.blurb, aiReason: c.blurb } as T) : r;
+  });
   scheduleMoodBlurbGeneration(out as { title?: string; features?: string[]; tags?: string[] }[], moodGroupStr);
   return out;
 }
@@ -7533,8 +7534,8 @@ async function handleRecommend(request: Request) {
           })(),
           // OpenAI: Supabase候補を「利用者にとって良い順」に判別（番号順を返す）。
           //   体験系の気分のみ（飲食=近い順優先 / 心霊=独自少数 は対象外）。失敗時は空＝元の順序維持。
-          (async (): Promise<{ order: number[]; reject: number[] }> => {
-            if (!openai || isProprietaryOnly || scored.length <= 2) return { order: [], reject: [] };
+          (async (): Promise<{ order: number[]; reject: number[]; reasons: Record<number, string> }> => {
+            if (!openai || isProprietaryOnly || scored.length <= 2) return { order: [], reject: [], reasons: {} };
             // 候補に「住所・距離・タグ・説明・利用者評価(👍/👎)」を載せて判別材料を増やす。
             //   評価は MoodGo独自の一次情報（この気分での👍/👎）＝Googleに無い定番/不人気の根拠。
             const cand = scored.map((r, i) => {
@@ -7593,7 +7594,7 @@ async function handleRecommend(request: Request) {
             ].filter(Boolean).join("／");
             try {
               const rr = await openai.chat.completions.create({
-                model: "gpt-4o-mini", temperature: 0.2, max_tokens: 500,  // 並べ替え＋reject(場違い排除)の番号列。出力は番号のみで低コスト
+                model: "gpt-4o-mini", temperature: 0.3, max_tokens: 1400,  // 並べ替え＋reject＋上位15件の「その人向け1行理由」。理由の分だけ出力を確保
                 response_format: { type: "json_object" },
                 messages: [
                   { role: "system", content: `あなたは日本中のお出かけ先に精通した、その人を知る地元の友達のような案内役です。ユーザーの「気分・深掘りテーマ・同行者・予算・属性・自由記述の希望」に加え、【この人について】の過去の好み・今の時間帯・今の天気まで踏まえ、各候補が"その人の・その体験"をどれだけ本当に叶えるかで「最も良い順」に並べ替えます。
@@ -7608,15 +7609,24 @@ async function handleRecommend(request: Request) {
 7. 【今の時間帯・天気】は"弱い補助材料"（テーマ合致を絶対に覆さない・これを理由に定番/名所を大きく下げたり reject しない）。時間帯: 夕方〜夜は夜景/ディナー、深夜は深夜営業に軽く寄せる程度。天気: 強い「雨」「雪」のときだけ、他が同程度なら屋内をわずかに優先。「小雨」「曇り」「晴れ」は無視してよい（屋外の名所・展望台・公園も通常どおり上位に出す）。
 8. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし合致が低い場所を多様性のために上げない。
 9. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
+10. さらに order 上位15件の各候補に、その人の文脈（気分・深掘り・希望・過去の好み・同行者）に「なぜ合うか」を1行で書く（25〜45字・具体的に・自然な口調で「〜がおすすめ！」等の体言止め可・その人の選択に寄せる。例「大自然の中で静かにゆっくりできる、マザー牧場がおすすめ！」「一人でも落ち着いて作業できる、窓際席が良い」）。汎用の紹介文でなく"この人・この気分に効く一言"にする。reject した番号には書かない。
 
-出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空]} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。` },
+出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空], "reasons":{"番号":"その人向けの1行理由"}} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。reasons は order 上位15件のみでよい。` },
                   { role: "user", content: `${ctxLine}${personaLine ? "\n【この人について】" + personaLine : ""}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明｜評価】:\n${cand}` },
                 ],
-              }, { signal: AbortSignal.timeout(5000) });  // 【性能】5秒で打ち切り（遅ければタグ/評価順を維持）
+              }, { signal: AbortSignal.timeout(8000) });  // 【性能】8秒（理由生成の分）。超過時はタグ/評価順＋②一言にフォールバック
               const parsed = JSON.parse(rr.choices?.[0]?.message?.content ?? "{}");
               const toIdx = (a: unknown): number[] => Array.isArray(a) ? a.map(Number).filter((n: number) => Number.isInteger(n)) : [];
-              return { order: toIdx(parsed.order), reject: toIdx(parsed.reject) };
-            } catch { return { order: [], reject: [] }; }
+              // reasons: {"番号":"理由"} を {idx:理由} に正規化（番号は文字列で来る）。60字上限・空は捨てる。
+              const reasons: Record<number, string> = {};
+              if (parsed.reasons && typeof parsed.reasons === "object") {
+                for (const [k, v] of Object.entries(parsed.reasons as Record<string, unknown>)) {
+                  const idx = Number(k);
+                  if (Number.isInteger(idx) && typeof v === "string" && v.trim()) reasons[idx] = v.trim().slice(0, 60);
+                }
+              }
+              return { order: toIdx(parsed.order), reject: toIdx(parsed.reject), reasons };
+            } catch { return { order: [], reject: [], reasons: {} }; }
           })(),
         ]);
 
@@ -7635,6 +7645,16 @@ async function handleRecommend(request: Request) {
           isFoodMood ? scored.map((_, i) => i) : (sbAiResult?.order ?? []),
           sbAiResult?.reject ?? [],
         );
+
+        // 🥇 コンシェルジュの「その人向け1行理由」を各候補に添付。reasons は元 scored の添字キー。
+        //   scored と scoredRanked は同一オブジェクト参照のため添字で付ければ両方(＝最終recs)に効く。
+        //   後段 applyMoodBlurbs が、この persona 理由を②の汎用一言より優先して reason に採用する。
+        if (sbAiResult?.reasons) {
+          for (const [k, v] of Object.entries(sbAiResult.reasons)) {
+            const i = Number(k);
+            if (scored[i] && typeof v === "string" && v.trim()) (scored[i] as { _aiReason?: string })._aiReason = v.trim();
+          }
+        }
 
         // OpenAIで説明文を蓄積: 説明が空の場所に中立的な一言を生成→places.descriptionへ永続化。
         //   応答後(after)にバッチ生成するので検索レスポンスは遅延ゼロ。次回以降は再利用される。
@@ -7655,6 +7675,8 @@ async function handleRecommend(request: Request) {
           return {
             title: r.name,
             address: r.address,
+            // 🥇 コンシェルジュが返した「その人向け1行理由」。applyMoodBlurbs が②の汎用一言より優先して reason に使う。
+            _personaReason: (r as { _aiReason?: string })._aiReason,
             // OpenAI判別順位（0=最良）。後段sortOrShuffleでこの順位を昇格boostに使い、
             //   ランダムシャッフルに埋もれず「OpenAIが選んだ順」を最終結果に反映させる。
             _aiRank: aiRanked ? _aiIdx : undefined,
