@@ -81,6 +81,10 @@ export async function GET(request: Request) {
     let stationSeed = "";
     let hoursSeed = "";
     let googleMapsUriSeed = "";
+    // ⑤ 「埋まっていない項目だけGoogle取得→placesへ保存」用: 既存値のシード＋書き戻し先UUID
+    let phoneSeed = "", websiteSeed = "";
+    let placeImgSeed: string[] = [];
+    let placesUuid = "";
     let availableFrom: string | null = null;
     let availableUntil: string | null = null;
     // 投稿者（@ID表示用）。匿名投稿(spot_public_anonymous)では一切出さない。
@@ -162,19 +166,23 @@ export async function GET(request: Request) {
         // 選択スポット/新スポット仮登録の詳細を読む。available_from/until 列が未作成でも
         //   壊れないよう「フル列→安全列」にフォールバックする。
         let pl = (await supabase.from("places")
-          .select("address, lat, lng, open_hours, nearest_station, available_from, available_until")
+          .select("address, lat, lng, open_hours, nearest_station, phone, website, image_urls, available_from, available_until")
           .eq("id", pid).single()).data as Record<string, unknown> | null;
         if (!pl) {
           pl = (await supabase.from("places")
-            .select("address, lat, lng, open_hours, nearest_station")
+            .select("address, lat, lng, open_hours, nearest_station, phone, website, image_urls")
             .eq("id", pid).single()).data as Record<string, unknown> | null;
         }
         if (pl) {
+          placesUuid = pid;   // ⑤ Google補強の書き戻し先
           baseAddress = String(pl.address ?? "");
           if (pl.lat != null) baseLat = Number(pl.lat);
           if (pl.lng != null) baseLng = Number(pl.lng);
           if (pl.nearest_station) stationSeed = String(pl.nearest_station);   // 友達が入力した最寄駅
           if (pl.open_hours) hoursSeed = String(pl.open_hours);               // 友達が入力した営業時間
+          if (pl.phone) phoneSeed = String(pl.phone);                         // ⑤ 既存の電話（あればGoogle不要）
+          if (pl.website) websiteSeed = String(pl.website);                   // ⑤ 既存の公式サイト
+          if (Array.isArray(pl.image_urls)) placeImgSeed = (pl.image_urls as unknown[]).map(String).filter(Boolean);  // ⑤ 既存の写真
           if (pl.available_from) availableFrom = String(pl.available_from);   // 期間限定(列があれば)
           if (pl.available_until) availableUntil = String(pl.available_until);
         }
@@ -227,7 +235,7 @@ export async function GET(request: Request) {
     const hasUserPhotos = userPhotos.length > 0;
 
     // ── Google Places で補強（穴場・Moodログ共通）───────────────────────────
-    let phone = "", website = "", openingHoursText = hoursSeed, googleMapsUri = googleMapsUriSeed;
+    let phone = phoneSeed, website = websiteSeed, openingHoursText = hoursSeed, googleMapsUri = googleMapsUriSeed;
     let address = baseAddress;
     let placeId: string | undefined;
     let placeLat = baseLat;
@@ -238,9 +246,11 @@ export async function GET(request: Request) {
     let openNow: boolean | null = null;
     let reviews: Array<{ rating: number | null; text: string; authorName: string; authorPhoto: string | null; relativeTime: string }> = [];
 
-    // 住所がある時のみ Google で位置特定して補強（写真・電話等）。
-    // 住所が無ければ名前だけの曖昧検索で別の似た店を拾うのを防ぐため補強しない。
-    if (GOOGLE_API_KEY && placeName && cleanAddr0) {
+    // ⑤ 埋まっていない項目がある時だけ Google で補強（電話/公式/営業時間/写真/座標が全て揃っていればGoogle呼び出しゼロ）。
+    //   住所が無ければ名前だけの曖昧検索で別の似た店を拾うのを防ぐため補強しない。
+    const havePhotos = hasUserPhotos || placeImgSeed.length > 0;
+    const needGoogle = !phone || !website || !openingHoursText || !havePhotos || placeLat == null || placeLng == null;
+    if (GOOGLE_API_KEY && placeName && cleanAddr0 && needGoogle) {
       try {
         const q = `${cleanAddr0} ${placeName}`;
         const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -296,8 +306,22 @@ export async function GET(request: Request) {
       } catch { /* 補強失敗は無視 */ }
     }
 
-    // 利用者写真が無ければ Google 写真で補強
-    if (!hasUserPhotos) userPhotos = googlePhotos;
+    // ⑤ 利用者写真が無ければ、places保存済み写真→Google写真の順で補強
+    if (!hasUserPhotos) userPhotos = placeImgSeed.length > 0 ? placeImgSeed : googlePhotos;
+
+    // ⑤ Googleで新たに取れた項目を places に保存（空だった項目だけ・places-backedのみ）＝次回以降はGoogle呼び出し不要。
+    if (placesUuid && supabase) {
+      const patch: Record<string, unknown> = {};
+      if (!phoneSeed && phone) patch.phone = phone;
+      if (!websiteSeed && website) patch.website = website;
+      if (!hoursSeed && openingHoursText) patch.open_hours = openingHoursText;
+      if (placeImgSeed.length === 0 && googlePhotos.length > 0) patch.image_urls = googlePhotos;
+      if (baseLat == null && typeof placeLat === "number") patch.lat = placeLat;
+      if (baseLng == null && typeof placeLng === "number") patch.lng = placeLng;
+      if (Object.keys(patch).length > 0) {
+        await supabase.from("places").update(patch).eq("id", placesUuid).then(() => {}, () => {});
+      }
+    }
 
     // ── 最寄駅 + 徒歩時間 ───────────────────────────────────────────────────
     let stationText = stationSeed;
