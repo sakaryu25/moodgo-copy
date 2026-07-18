@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
   if (!placeId) {
     return NextResponse.json({ ok: false, error: "placeId is required" }, { status: 400 });
   }
-  return handleDetail(placeId);
+  return handleDetail(placeId, new URL(req.url).origin);
 }
 
 export async function POST(req: NextRequest) {
@@ -129,10 +129,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "placeId or name is required" }, { status: 400 });
   }
 
-  return handleDetail(resolvedId, apiKey);
+  return handleDetail(resolvedId, new URL(req.url).origin, apiKey);
 }
 
-async function handleDetail(placeId: string, apiKey?: string): Promise<NextResponse> {
+async function handleDetail(placeId: string, origin: string, apiKey?: string): Promise<NextResponse> {
   const key = apiKey ?? (process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "");
   if (!key) {
     return NextResponse.json({ ok: false, error: "API key not configured" }, { status: 503 });
@@ -152,7 +152,7 @@ async function handleDetail(placeId: string, apiKey?: string): Promise<NextRespo
     // 写真は事前解決せず「プロキシURL（遅延取得）」で返す＝1枚目は表示時、2枚目以降はスワイプされた時にだけ
     //   Google /media（Place Photo課金）が発火する（検索カードと同じ遅延方式に統一・コスト減）。
     //   さらにプロキシは都度解決するので、30日キャッシュ中にCDN URLが失効して写真が死ぬ問題も同時に回避。
-    const detailOrigin = new URL(req.url).origin;
+    const detailOrigin = origin;
     const photoUrls = photoNames.slice(0, 10).map(
       (name) => `${detailOrigin}/api/photo-proxy?url=${encodeURIComponent(`https://places.googleapis.com/v1/${name}/media`)}`
     );
