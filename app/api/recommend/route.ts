@@ -292,6 +292,26 @@ async function applyMoodBlurbs<T extends object>(recs: T[], moodGroupStr?: strin
   return out;
 }
 
+// ⑥ 穴場を毎回1枠保証: バッジ結果に hidden_gem が無ければ、知られすぎていない候補を1つ穴場に昇格＋一言。
+//   驚き＝満足。上位の主役(0番)は崩さず、写真ありでバッジ未付与の候補を後方から選ぶ。薄い結果(<5件)では無理に作らない。
+function ensureHiddenGem<T extends object>(recs: T[]): T[] {
+  if (!Array.isArray(recs) || recs.length < 5) return recs;
+  if (recs.some((r) => (r as { mgBadge?: string }).mgBadge === "hidden_gem")) return recs;
+  let pick = -1;
+  for (let i = recs.length - 1; i >= 1; i--) {   // i=0(主役)は避け、後方の“発見”を穴場に
+    const rr = recs[i] as { mgBadge?: string; isSponsored?: boolean; photoUrls?: string[] };
+    if (!rr.mgBadge && !rr.isSponsored && (rr.photoUrls?.length ?? 0) > 0) { pick = i; break; }
+  }
+  if (pick < 0) return recs;
+  const gemReason = "地元でひそかに愛される、まだ知られていない穴場。";
+  return recs.map((r, i) => {
+    if (i !== pick) return r;
+    const rr = r as { reason?: string; aiReason?: string };
+    // 既存の個人化理由(persona/②)は壊さず、無い時だけ「なぜ穴場か」を入れる。バッジ(穴場ピル)は必ず付く。
+    return { ...r, mgBadge: "hidden_gem", reason: rr.reason || gemReason, aiReason: rr.aiReason || gemReason } as T;
+  });
+}
+
 async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: string): Promise<T[]> {
   if (!Array.isArray(recs) || recs.length === 0) return recs;
   // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
@@ -336,10 +356,10 @@ async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: st
     }
     return r;
   };
-  if (!supabase) return recs.map((r) => withBadge(r));
+  if (!supabase) return ensureHiddenGem(recs.map((r) => withBadge(r)));
   try {
     const sids = [...new Set(recs.map(sidOf).filter(Boolean))];
-    if (sids.length === 0) return recs.map((r) => withBadge(r));
+    if (sids.length === 0) return ensureHiddenGem(recs.map((r) => withBadge(r)));
     // 期間限定(available_from/until)とバッジ用のsource_typeを同じ1クエリで取得（追加コストゼロ）
     const pmap = new Map<string, { from: string | null; until: string | null; src: string | null }>();
     for (const chunk of (function* () { for (let i = 0; i < sids.length; i += 300) yield sids.slice(i, i + 300); })()) {
@@ -350,15 +370,15 @@ async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: st
     }
     // ④ 「今だけ」判定: 公開期間中(from<=今日<=until, nullは開放端)なら limitedNow=true → カードで今だけバッジ
     const todayJst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-    return recs.map((r) => {
+    return ensureHiddenGem(recs.map((r) => {
       const pv = pmap.get(sidOf(r));
       const inWindow = !!pv && (!!pv.from || !!pv.until) && (!pv.from || pv.from <= todayJst) && (!pv.until || pv.until >= todayJst);
       const withAvail = pv && (pv.from || pv.until)
         ? ({ ...r, availableFrom: pv.from, availableUntil: pv.until, limitedNow: inWindow } as T)
         : r;
       return withBadge(withAvail, pv?.src);
-    });
-  } catch { return recs.map((r) => withBadge(r)); }
+    }));
+  } catch { return ensureHiddenGem(recs.map((r) => withBadge(r))); }
 }
 
 type ApprovedSuggestion = {
