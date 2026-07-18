@@ -229,7 +229,12 @@ const envFloor = (key: string, fallback: number): number => {
 const FOOD_DB_FLOOR_RICH = envFloor("FOOD_DB_FLOOR_RICH", 10);   // 在庫多: ラーメン/居酒屋/カフェ/和食/焼肉
 const FOOD_DB_FLOOR_NICHE = envFloor("FOOD_DB_FLOOR_NICHE", 5);  // ニッチ: 各国料理/エスニック等
 const FOOD_DB_FLOOR_OTHER = envFloor("FOOD_DB_FLOOR_OTHER", 8);  // その他飲食
-const NONFOOD_DB_FLOOR = envFloor("NONFOOD_DB_FLOOR", 8);        // 非飲食: 公園/温泉/ジム/水族館/神社等
+// 非飲食フロアを8→12に引き上げ(2026-07-18): 遊び/わいわい/ゆっくり等の都市活動系は、DBに“ジャンル一致”
+//   候補が8件あっても中身が薄い/雑(緩タグのフーカ/ピラティス/雑貨等)で、reject+finalize後に3-9件へ痩せ→
+//   8件未満はキャッシュされず毎回シャッフルで変わる。フロアを12にすると、その手前で無料のYahoo(必要ならGoogle)
+//   補完が発火し、実在の遊び場(カラオケ/ゲーセン/ボウリング等)がプールに入る＝厚く・安定・rerankerがノイズを弾ける。
+//   飲食/自然など元々在庫が厚い気分は12超で従来どおりDB完結(補完発火せず)＝コスト影響は薄い気分に限定。env上書き可。
+const NONFOOD_DB_FLOOR = envFloor("NONFOOD_DB_FLOOR", 12);       // 非飲食: 公園/温泉/ジム/水族館/神社/遊び場等
 // 最終手段の「ジャンル外(混在)」補填を何件まで許すか（同ジャンル補填は常に15件まで）。
 //   デフォルト15=従来挙動。下げると「正直に少なく出す」＝rejectで消した枠を場違いで埋め戻さない。
 //   floorを下げて結果が薄くなる時の品質ガード。env で段階調整・即巻き戻し可。
