@@ -582,8 +582,108 @@ async function fetchEngagementAgg(): Promise<EngagementAgg> {
   return agg;
 }
 
+// ── ⑧ 協調フィルタ（この気分で好きな人はこれも）──────────────────────────────
+// アイテム間の共起シグナル: 「同じ気分グループで、あるスポットXに反応した人は、他の
+//   どのスポットYにも反応しがちか」を spot_engagement（device_id 付き行）から近似する。
+//   ・per-user の生ログ(device_id=funnel-tracking.sql)がある行だけを共起の素地に使う。
+//     device_id 列が無い/薄い環境では何も加点しない＝現状と完全同一（degrade gracefully）。
+//   ・共起の素地は「device × 気分グループ」単位の basket（place小文字→行動重み）。10分キャッシュ。
+//   ・buildCollabBoost が、このユーザーの「過去に高評価した場所(anchors)」を含む basket を走査し、
+//     一緒に反応された近縁スポットへ 0〜CAP の小さなブーストを返す。これを learnScore に薄く
+//     合成し、距離/学習/persona を覆さない範囲（上限つき）でのみ効かせる。データ薄/無なら常に0。
+//   ・SQL: supabase/collaborative-cooccurrence.sql（索引のみ・未適用でも動作／RPCは任意・未使用）
+type CoocBasket = { mg: string; places: Map<string, number> };
+let _coocCache: { at: number; baskets: CoocBasket[]; devices: number } | null = null;
+async function fetchCoocBaskets(): Promise<{ baskets: CoocBasket[]; devices: number }> {
+  if (_coocCache && Date.now() - _coocCache.at < 10 * 60 * 1000) return _coocCache;
+  let baskets: CoocBasket[] = [];
+  let devices = 0;
+  try {
+    if (supabase) {
+      // device_id 付きの行動ログを直近から取得（funnel-tracking.sql 未適用=列なしならエラー→空）。
+      const q = supabase
+        .from("spot_engagement")
+        .select("place_name, mood, action, device_id")
+        .not("device_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(6000);
+      // 検索のホット経路をブロックしないよう2.5sで打ち切り（超過時は協調ブーストなし＝現状維持）。
+      const timeout = new Promise<{ data: null }>((resolve) =>
+        setTimeout(() => resolve({ data: null }), 2500));
+      const { data } = (await Promise.race([q, timeout])) as { data: Array<Record<string, unknown>> | null };
+      // (device_id, moodGroup) ごとに basket 化。行動は ENGAGEMENT_WEIGHTS で重み付け。
+      const byKey = new Map<string, CoocBasket>();
+      const devSet = new Set<string>();
+      for (const row of data ?? []) {
+        const dev = String(row.device_id ?? "").trim();
+        if (!dev) continue;
+        const mg = moodGroup(String(row.mood ?? "")) || String(row.mood ?? "");
+        if (!mg) continue;
+        const nm = String(row.place_name ?? "").toLowerCase().trim();
+        if (!nm) continue;
+        const w = ENGAGEMENT_WEIGHTS[String(row.action ?? "")] ?? 0;
+        if (w <= 0) continue;
+        devSet.add(dev);
+        const key = `${dev}||${mg}`;
+        let b = byKey.get(key);
+        if (!b) { b = { mg, places: new Map() }; byKey.set(key, b); }
+        b.places.set(nm, (b.places.get(nm) ?? 0) + w);
+      }
+      // 単一スポットしか無い basket は共起に寄与しない → 落として走査/メモリを削減。
+      baskets = [...byKey.values()].filter((b) => b.places.size >= 2);
+      devices = devSet.size;
+    }
+  } catch { /* テーブル/device_id列 未作成は無視（degrade: 協調ブーストなし）*/ }
+  _coocCache = { at: Date.now(), baskets, devices };
+  return _coocCache;
+}
+
+// 協調ブースト器: 現在の気分グループ＋ユーザーのアンカー(過去に高評価した場所)を起点に、
+//   共起の強い近縁スポットへ 0〜COLLAB_CAP のブーストを返す。データ薄/アンカー無しなら常に0。
+type CollabIndex = { boost: (name: string) => number; active: boolean };
+const COLLAB_MIN_DEVICES = 4;   // これ未満の母数では共起が偶然に支配されるので無効化
+const COLLAB_MIN_HIT_BASKETS = 2; // アンカーを含む basket が2人分未満なら単独ユーザー由来 → 無効
+const COLLAB_CAP = 0.28;        // learnScore(explicit最大1.0)より小さく。learnScore*3換算で最大~+0.84km
+function buildCollabBoost(
+  baskets: CoocBasket[], devices: number, mood: string | undefined, anchors: string[],
+): CollabIndex {
+  const inactive: CollabIndex = { boost: () => 0, active: false };
+  if (devices < COLLAB_MIN_DEVICES || baskets.length === 0) return inactive;
+  const mg = moodGroup(mood ?? "") || (mood ?? "");
+  if (!mg) return inactive;
+  const anchorSet = new Set(anchors.map((a) => a.toLowerCase().trim()).filter(Boolean));
+  if (anchorSet.size === 0) return inactive;
+  // 同気分グループでアンカーを含む basket を走査し、共起スポットYへ min(anchor重み, Y重み) を加点。
+  const co = new Map<string, number>();
+  let hitBaskets = 0;
+  for (const b of baskets) {
+    if (b.mg !== mg) continue;
+    let anchorW = 0;
+    for (const a of anchorSet) { const w = b.places.get(a); if (w && w > anchorW) anchorW = w; }
+    if (anchorW <= 0) continue;
+    hitBaskets++;
+    for (const [nm, w] of b.places) {
+      if (anchorSet.has(nm)) continue;   // アンカー自身(=既に行った場所)は再提案しない
+      co.set(nm, (co.get(nm) ?? 0) + Math.min(anchorW, w));
+    }
+  }
+  if (co.size === 0 || hitBaskets < COLLAB_MIN_HIT_BASKETS) return inactive;
+  let maxCo = 0;
+  for (const v of co.values()) if (v > maxCo) maxCo = v;
+  if (maxCo <= 0) return inactive;
+  return {
+    active: true,
+    // 最大共起を1.0に正規化し 0〜COLLAB_CAP へ。共起が弱い候補ほど自然に小さくなる。
+    boost: (name: string): number => {
+      const v = co.get(name.toLowerCase().trim());
+      if (!v || v <= 0) return 0;
+      return Math.min(COLLAB_CAP, (v / maxCo) * COLLAB_CAP);
+    },
+  };
+}
+
 // 現在の気分に対する 除外/降格/昇格(学習スコア) 判定ヘルパーを生成
-function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined, engAgg?: EngagementAgg) {
+function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined, engAgg?: EngagementAgg, collab?: CollabIndex) {
   const mg = moodGroup(mood ?? "") || (mood ?? "");
   const get = (name: string) => agg.get(`${mg}||${name.toLowerCase().trim()}`);
   const getEng = (name: string) => engAgg?.get(`${mg}||${name.toLowerCase().trim()}`) ?? 0;
@@ -603,7 +703,10 @@ function buildRatingJudge(agg: MoodRatingAgg, mood: string | undefined, engAgg?:
       const explicit = (r && r.good >= 2) ? wilsonLowerBinomial(r.good, r.good + r.bad) : 0;
       const eng = getEng(name);
       const implicit = eng > 0 ? Math.min(1, Math.log10(1 + eng) / 1.5) : 0;
-      return explicit * 1.0 + implicit * 0.6;
+      // ⑧ 協調フィルタ: 「この気分で好きな人はこれも」共起ブースト（0〜CAP・データ薄/無なら0）。
+      //   既に上限（COLLAB_CAP）済みなので加点は明示/暗黙より小さく、距離/persona を覆さない。
+      const collabB = collab ? collab.boost(name) : 0;
+      return explicit * 1.0 + implicit * 0.6 + collabB;
     },
     // 生の👍/👎件数（コンシェルジュ再ランクに「この気分での利用者評価」を見せる用）。無ければnull。
     summary: (name: string): { good: number; bad: number } | null => {
@@ -6704,18 +6807,25 @@ async function handleRecommend(request: Request) {
     const { context: globalStatsContext, engagedPlaces, goodVisitedPlaces, badVisitedPlaces } = await fetchGlobalStats(answers);
 
     // 承認済みユーザー投稿スポット＋タグ別キュレーションスポット＋フィードバック集計を取得
-    const [approvedSuggestionsRaw, curatedSpots, moodRatingAgg, engagementAgg] = await Promise.all([
+    const [approvedSuggestionsRaw, curatedSpots, moodRatingAgg, engagementAgg, coocData] = await Promise.all([
       fetchApprovedSuggestions(),
       fetchCuratedSpots(),
       fetchMoodRatingAgg(),
       fetchEngagementAgg(),
+      fetchCoocBaskets(),   // ⑧ 協調フィルタの素地（device×気分の共起 basket・10分キャッシュ・薄/無なら空）
     ]);
     // 管理者の動作確認用テスト投稿(消し忘れ)を検索結果から常に除外。source=adminで優先注入されるため入口で弾く。
     //   例:「【テスト投稿】動作確認用・すぐ消します」。データは消さず表示だけ抑止(admin画面には残る)。
     const TEST_POST_RE = /テスト投稿|すぐ消します|動作確認用|【テスト】|テスト用/;
     const approvedSuggestions = approvedSuggestionsRaw.filter((s) => !TEST_POST_RE.test(s.spot_name ?? ""));
-    // 自己改善ループ: 👎除外/降格 ＋ 👍&エンゲージメント昇格(learnScore) の判定器
-    const ratingJudge = buildRatingJudge(moodRatingAgg, answers.mood, engagementAgg);
+    // ⑧ 協調フィルタ: このユーザーが過去に高評価した場所(anchors)を起点に、同気分で共起の
+    //   強い近縁スポットへ薄く加点する器を作る（learnScore に合成）。anchors無/データ薄なら無効=0。
+    const collabAnchors = pastFeedback
+      .filter((f) => (f.rating ?? 0) >= 4 && f.visitedPlace)
+      .map((f) => String(f.visitedPlace));
+    const collabBoost = buildCollabBoost(coocData.baskets, coocData.devices, answers.mood, collabAnchors);
+    // 自己改善ループ: 👎除外/降格 ＋ 👍&エンゲージメント昇格(learnScore) ＋ ⑧協調フィルタ の判定器
+    const ratingJudge = buildRatingJudge(moodRatingAgg, answers.mood, engagementAgg, collabBoost);
 
     // 管理者が直接追加したスポット（通常スポット vs チェーン店で分離）。
     // curated_spots（タグ別保管）も admin転載と同じ優先注入対象に含める。
