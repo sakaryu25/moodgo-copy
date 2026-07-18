@@ -6926,16 +6926,25 @@ async function handleRecommend(request: Request) {
         const jOk = (pl: { name: string }) => !jBlocked.has(pl.name) && !jSeen.has(pl.name);
         type JRow = (typeof jikanHits)[number];
         const jUsed = new Set<string>();
-        // ① #時間潰し 最優先: 近い順に最大5件
-        const jikanTop = jikanHits.filter(jOk)
+        // 時間潰しの質を上げる分類器（2026-07-19）:
+        //   ・UNFIT="潰せない/無関係"（地味な史跡マーカー/墓/記念碑・石標/美容・医療）→ ①上位5件・②補充の両方から除外。
+        //     （例: 北町奉行所跡・一石橋迷子しらせ石標・アシヤビューティ が #時間潰し に混入していた）
+        //   ・FRIENDLY=時間潰し向き（モール/映画/書店/カフェ/娯楽/文化/展望/銭湯 等。カフェは滞在できるので含む）。
+        //     ②の補充を FRIENDLY 優先で並べ替え、繁華街で最寄りが飲食店に埋まり"お腹すいた"化するのを防ぐ（各層内はランダム）。
+        const JIKAN_UNFIT = /(美容室|美容院|理容|ヘアサロン|ネイル|エステ|クリニック|医院|歯科|病院|薬局|記念碑|石碑|石標|奉行所跡|遺跡|古墳|の墓|墓地|霊園)/;
+        const JIKAN_FRIENDLY = /(モール|百貨店|デパート|ショッピング|アウトレット|商店街|マルイ|ルミネ|パルコ|ヒカリエ|映画|シネマ|シアター|書店|本屋|ブックオフ|TSUTAYA|蔦屋|図書館|カフェ|喫茶|スタバ|スターバックス|ドトール|コメダ|水族館|美術館|博物館|科学館|プラネタリウム|展望|タワー|ゲームセンター|ゲーセン|カラオケ|ボウリング|漫画喫茶|ネットカフェ|マンガ|アミューズメント|遊園地|温泉|銭湯|サウナ|動物園|植物園|ラウンドワン|ダーツ|ビリヤード)/;
+        const JIKAN_FRIENDLY_TAG = /(時間潰し|ショッピング|鑑賞|アミューズメント|カフェ|まったり|博物館|映画|温泉|銭湯|展望|書店)/;
+        const jTagStr = (r: JRow) => (r.tags ?? []).join(" ");
+        const jikanUnfit = (r: JRow) => JIKAN_UNFIT.test(`${r.name} ${jTagStr(r)}`);
+        const jikanFriendly = (r: JRow) => JIKAN_FRIENDLY.test(`${r.name} ${r.category ?? ""} ${r.description ?? ""} ${jTagStr(r)}`) || JIKAN_FRIENDLY_TAG.test(jTagStr(r));
+        const jShuffle = (arr: JRow[]) => { for (let i = arr.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [arr[i], arr[k]] = [arr[k], arr[i]]; } return arr; };
+        // ① #時間潰し 最優先: "潰せない/無関係"を除いて近い順に最大5件
+        const jikanTop = jikanHits.filter(jOk).filter(pl => !jikanUnfit(pl))
           .sort((a, b) => (a.distanceM ?? 9e9) - (b.distanceM ?? 9e9)).slice(0, 5);
         jikanTop.forEach(pl => jUsed.add(pl.name));
-        // ② 残り: 全タグの距離内プール(最寄り60件)からランダムに補充
-        const jRest = poolHits.filter(pl => jOk(pl) && !jUsed.has(pl.name));
-        for (let i = jRest.length - 1; i > 0; i--) {
-          const k = Math.floor(Math.random() * (i + 1));
-          [jRest[i], jRest[k]] = [jRest[k], jRest[i]];
-        }
+        // ② 残り: 距離内プールから補充。時間潰し向き(FRIENDLY)を先頭に寄せ、不足分だけ他カテゴリで埋める（各層ランダム）。UNFITは除外。
+        const jRestPool = poolHits.filter(pl => jOk(pl) && !jUsed.has(pl.name) && !jikanUnfit(pl));
+        const jRest = [...jShuffle(jRestPool.filter(jikanFriendly)), ...jShuffle(jRestPool.filter(pl => !jikanFriendly(pl)))];
         const jTake = jRest.slice(0, Math.max(0, 15 - jikanTop.length));
         const toJikanRec = (r: JRow, isJikan: boolean) => {
           const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
