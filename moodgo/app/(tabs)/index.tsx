@@ -743,6 +743,13 @@ export default function Home() {
     }).catch(() => {});
   };
 
+  // ③「興味ない」ワンタップ: その場でカードを消す＋👎学習（次回検索から降格）。
+  const handleDismiss = (title: string) => {
+    submitPlaceRating(title, 'bad');                                    // 👎学習（/api/mood-rating + pastFeedback）
+    setApiRecommendations(prev => prev.filter(r => r.title !== title)); // その場で除去＝並びが即変わる
+    showToast('興味なしを学習しました', '次回から似た傾向を控えます');
+  };
+
   // ─── Visited feedback (行った！) ─────────────────────────────────────────
 
   const submitVisitedFeedback = async (title: string, rating: number) => {
@@ -1136,6 +1143,7 @@ export default function Home() {
             placeRatings={placeRatings}
             onSetPlaceRatings={setPlaceRatings}
             onSubmitPlaceRating={submitPlaceRating}
+            onDismiss={handleDismiss}
             // ── UI state ─────────────────────────────────────────────────────
             photoIndices={photoIndices}
             onSetPhotoIndices={setPhotoIndices}

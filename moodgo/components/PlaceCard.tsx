@@ -185,6 +185,8 @@ type Props = {
   onToggleFavorite: () => void;
   onBlock?: () => void;
   onReport?: () => void;
+  /** ③「興味ない」ワンタップ: 押すと即このカードを消す＋👎学習（その場で並びが変わる） */
+  onDismiss?: () => void;
   onMarkVisited?: () => void;
   isVisited?: boolean;
   accentColor?: string;
@@ -201,7 +203,7 @@ type Props = {
 };
 
 export default function PlaceCard({
-  item, isFavorited, onToggleFavorite, onBlock, onReport, onMarkVisited, isVisited = false,
+  item, isFavorited, onToggleFavorite, onBlock, onReport, onDismiss, onMarkVisited, isVisited = false,
   accentColor = COLORS.primary, lang = 'ja',
   moodLabel, onPressDetail, spooky = false, darkTheme = false,
   compact = false,
@@ -730,6 +732,11 @@ export default function PlaceCard({
             </PuniPressable>
           </View>
           <View style={s.footRight}>
+            {onDismiss && (
+              <PuniPressable onPress={onDismiss} style={s.footBtn}>
+                <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>{lang === 'ja' ? '興味ない' : 'Not for me'}</Text>
+              </PuniPressable>
+            )}
             {onBlock && (
               <PuniPressable onPress={onBlock} style={s.footBtn}>
                 <Text style={[s.footBtnText, darkTheme && s.footBtnTextDark]}>{t.hide}</Text>

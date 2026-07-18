@@ -213,6 +213,8 @@ type Props = {
   lang?: 'ja' | 'en';
   onPressDetail?: (rec: Recommendation) => void;
   onSubmitPlaceRating?: (title: string, verdict: 'good' | 'bad') => void;
+  /** ③「興味ない」: そのカードを即消し＋👎学習（index側でapiRecommendationsから除去） */
+  onDismiss?: (title: string) => void;
   // 結果Modalが再表示される度に+1（詳細から戻った時にスクロール位置を復元するトリガ）
   restoreScrollSeq?: number;
 };
@@ -270,7 +272,7 @@ export default function ResultsView(props: Props) {
     travelFacilities, travelSubCategoryLabel,
     isLoading, loadingMessage, apiWarning, searchFailed, onRetrySearch,
     favorites, onToggleFavorite, blockedPlaces, onBlockPlace,
-    placeRatings, onSetPlaceRatings,
+    placeRatings, onSetPlaceRatings, onDismiss,
     feedbackRating, feedbackSubmitted, onSubmitFeedback,
     refinementText, onSetRefinementText, isRefining, onRefine,
     onReset, onReviewConditions, onSetReportingSpot, reportingSpot,
@@ -632,6 +634,7 @@ export default function ResultsView(props: Props) {
               ],
             )}
             onReport={() => onSetReportingSpot({ title: item.title, address: item.address ?? '', supabaseId: item.supabaseId })}
+            onDismiss={onDismiss ? () => onDismiss(item.title) : undefined}
             onMarkVisited={() => { setVisitingSpot(item); setVisitingRating(0); }}
             isVisited={visitedTitles.includes(item.title)}
             accentColor={accentColor}
