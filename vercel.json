@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/cleanup-stale-cache",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/quality-sweep",
+      "schedule": "0 20 * * *"
     }
   ]
 }
