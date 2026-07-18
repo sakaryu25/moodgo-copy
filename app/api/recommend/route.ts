@@ -3626,61 +3626,17 @@ async function fetchRouteMatrix(
 
   if (indexedDests.length === 0) return result;
 
-  const body: Record<string, unknown> = {
-    origins: [{
-      waypoint: {
-        location: { latLng: { latitude: origin.latitude, longitude: origin.longitude } },
-      },
-    }],
-    destinations: indexedDests.map(({ loc }) => ({
-      waypoint: {
-        location: { latLng: { latitude: loc.latitude, longitude: loc.longitude } },
-      },
-    })),
-    travelMode,
-  };
-  if (travelMode === "TRANSIT") {
-    body.departureTime = new Date().toISOString();
+  // ⑤ 無料化: Google Routes(routeMatrix)を廃止し、直線距離(haversine)＋移動手段別の実効速度で移動時間を概算する。
+  //   毎検索でRoutes課金ゼロ・座標があれば常に成功＝Googleフォールバック不要。表示は「約X分／約Ykm」で従来と同形式。
+  void apiKey; void formatDuration;
+  const SPEED_KMH: Record<string, number> = { WALK: 4.5, BICYCLE: 14, TRANSIT: 18, DRIVE: 27 };  // 信号/待ち込みの実効速度
+  const speed = SPEED_KMH[travelMode] ?? 20;
+  const roadFactor = 1.3;   // 直線→道なり距離の補正
+  for (const { i, loc } of indexedDests) {
+    const roadM = Math.round(haversineMeters(origin.latitude, origin.longitude, loc.latitude, loc.longitude) * roadFactor);
+    const minutes = Math.max(1, Math.round((roadM / 1000) / speed * 60));
+    result[i] = { durationText: `約${minutes}分`, distanceText: formatDistance(roadM) };
   }
-
-  try {
-    const res = await gfetch("https://routes.googleapis.com/v1/routeMatrix", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      console.warn(`[routeMatrix] ${travelMode} error: ${res.status}`);
-      return result;
-    }
-
-    const data = await res.json() as Array<{
-      destinationIndex?: number;
-      duration?: string;
-      distanceMeters?: number;
-      condition?: string;
-    }>;
-
-    for (const element of data) {
-      if (element.destinationIndex == null) continue;
-      if (element.condition && element.condition !== "ROUTE_EXISTS") continue;
-      const originalIdx = indexedDests[element.destinationIndex]?.i;
-      if (originalIdx == null) continue;
-      result[originalIdx] = {
-        durationText: formatDuration(element.duration),
-        distanceText: formatDistance(element.distanceMeters),
-      };
-    }
-  } catch (err) {
-    console.warn(`[routeMatrix] ${travelMode} fetch failed:`, err);
-  }
-
   return result;
 }
 
