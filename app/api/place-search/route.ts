@@ -33,7 +33,10 @@ export async function GET(req: Request) {
     type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours?: string | null; nearest_station?: string | null };
     const SEL = "id, name, address, lat, lng, open_hours, nearest_station";
     // 2系統取得: ①精密(フル名変種)を必ず確保＝件数上限でフル一致が押し出されないように。②広域(4-gram)で一語欠け/超集合を拾う。
-    const preOr = Array.from(new Set(variants.map(clean).filter((v) => v.length >= 2))).map((v) => `name.ilike.%${v}%`).join(",");
+    // 先頭の行政区(◯◯県/市/区/町/村/郡)を剥いだ"核の名前"も精密検索に加える＝「佐用町南光ひまわり畑」でも「南光ひまわり畑」を必ず引く（汎用gramの上限溢れ対策）。
+    const stripAdmin = (s: string) => s.replace(/^(?:[一-龯ぁ-んァ-ヶー]{1,4}[都道府県])?(?:[一-龯ぁ-んァ-ヶー]{1,4}[市区郡])?(?:[一-龯ぁ-んァ-ヶー]{1,4}[町村])?/, "");
+    const coreVars = [stripAdmin(q), stripAdmin(nfkc)].filter((v) => v.length >= 3);
+    const preOr = Array.from(new Set([...variants, ...coreVars].map(clean).filter((v) => v.length >= 2))).map((v) => `name.ilike.%${v}%`).join(",");
     const gramOr = Array.from(new Set(grams.map(clean).filter((v) => v.length >= 4))).slice(0, 10).map((v) => `name.ilike.%${v}%`).join(",");
     if (!preOr && !gramOr) return NextResponse.json({ ok: true, places: [] });
     const sb = supabase;
