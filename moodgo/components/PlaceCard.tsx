@@ -276,10 +276,17 @@ export default function PlaceCard({
   // 読み込みに失敗したURL（壊れた写真プロキシURL等）を除外し、全滅時はプレースホルダーへ
   const [failedUris, setFailedUris] = useState<Set<string>>(new Set());
   const photos = rawPhotos.filter(u => !!u && !failedUris.has(u));
-  // 写真がある全スポットで、カルーセル末尾に「写真を追加」スライドを出す（何枚あっても募集継続）。
-  //   心霊は暗い雰囲気、通常スポットは明るい募集デザイン（詳細ページ place.tsx と統一）。
-  const showContribute = photos.length > 0;
-  const pageCount = photos.length + (showContribute ? 1 : 0);
+  // 写真の扱い(2026-07-19 ユーザー指定): 「無料/ユーザー写真があればそれだけ表示しGoogleは使わない。
+  //   無ければ1枚目に募集CTA、Google写真は2枚目以降＝スクロール到達時のみ取得(photo-proxy課金を遅延)」。
+  //   Google写真は photo-proxy の url= に places.googleapis.com を含む→無料/ユーザー写真と判別できる。
+  const isGooglePhoto = (u: string) => u.includes('places.googleapis.com');
+  const freePhotos = photos.filter(u => !isGooglePhoto(u));    // ユーザー投稿/Wikimedia/harvest 等＝無料
+  const googlePhotos = photos.filter(u => isGooglePhoto(u));   // Google＝表示時に課金
+  const hasFree = freePhotos.length > 0;
+  const galleryPhotos = hasFree ? freePhotos : googlePhotos;   // 実際に並べる画像（無料があればGoogleは捨てる）
+  const leadCTA = !hasFree;                                    // 無料写真ゼロ＝先頭にCTAスライド（写真はGoogleを2枚目以降へ）
+  const showContribute = hasFree;                              // 末尾「写真を追加」は無料写真がある時だけ
+  const hasGalleryImages = galleryPhotos.length > 0;
   const onImgError = (uri: string) =>
     setFailedUris(prev => (prev.has(uri) ? prev : new Set(prev).add(uri)));
   const [photoIdx, setPhotoIdx] = useState(0);
@@ -288,6 +295,14 @@ export default function PlaceCard({
   const [maxLoaded, setMaxLoaded] = useState(0);
   const photoScrollRef = useRef<ScrollView>(null);
   const [photoWidth, setPhotoWidth] = useState(0);
+  // カルーセルのスライド列: 先頭CTA(無料写真無し) or 末尾CTA(無料写真有り)。img は maxLoaded 到達時のみ<Image>描画＝Google課金を遅延。
+  type PhotoSlide = { kind: 'img'; uri: string } | { kind: 'cta' };
+  const slideList: PhotoSlide[] = leadCTA
+    ? [{ kind: 'cta' }, ...galleryPhotos.map((uri): PhotoSlide => ({ kind: 'img', uri }))]
+    : [...galleryPhotos.map((uri): PhotoSlide => ({ kind: 'img', uri })), ...(showContribute ? [{ kind: 'cta' } as PhotoSlide] : [])];
+  const pageCount = slideList.length;
+  const curSlide = slideList[photoIdx];
+  const curImgUri = curSlide?.kind === 'img' ? curSlide.uri : null;   // 現在スライドが画像ならそのURL（下部グラデ/クレジット用）
   // タップで全画面拡大するビューア（null = 非表示）
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
 
@@ -363,6 +378,35 @@ export default function PlaceCard({
     : periodEnded ? (lang === 'ja' ? '期間限定（終了）' : 'Limited (ended)')
     : (lang === 'ja' ? (periodRange ? `期間限定 ${periodRange}` : '期間限定') : (periodRange ? `Limited ${periodRange}` : 'Limited-time'));
 
+  // 写真募集CTAスライド。placement=lead(先頭・無料写真無し)/tail(末尾・無料写真有り)。心霊は暗いトーン。スライド幅で描画。
+  const renderPhotoCta = (placement: 'lead' | 'tail') => {
+    const gp = genrePlaceholder(item.tags);
+    if (spooky) return (
+      <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
+        style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}>
+        <Moon size={32} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
+        <Text style={s.spookyAskTitle}>{placement === 'lead' ? 'この場所の写真がありません' : '写真を提供してください'}</Text>
+        <Text style={s.spookyAskSub}>あなたの写真でこの場所を伝えてください 🙏</Text>
+        <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.spookyAddBtn}>
+          {uploading ? <ActivityIndicator color="#fff" size="small" /> : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
+        </TouchableOpacity>
+      </LinearGradient>
+    );
+    return (
+      <LinearGradient colors={['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
+        style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder, s.contribBright]}>
+        {placement === 'lead' && gp ? <Text style={s.phGenreEmoji}>{gp.emoji}</Text> : <Camera size={30} color="#8A6BF0" strokeWidth={1.9} />}
+        <Text style={s.phInviteTitle}>{placement === 'lead' ? '一番乗りで1枚どうぞ' : 'あなたの1枚も、この場所に'}</Text>
+        <Text style={s.phInviteSub}>{placement === 'lead' ? 'あなたの写真が、この場所の顔になります📸' : '違う角度・季節・時間帯の写真が魅力を伝えます'}</Text>
+        <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
+          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
+            {uploading ? <ActivityIndicator color="#fff" size="small" /> : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    );
+  };
+
   return (
     <Animated.View style={[s.card, darkTheme && s.cardDark, { transform: [{ scale }] }]}>
 
@@ -371,8 +415,8 @@ export default function PlaceCard({
         style={s.photoWrap}
         onLayout={e => setPhotoWidth(e.nativeEvent.layout.width)}
       >
-        {/* 写真カルーセル（水平ページングScrollView） */}
-        {photos.length > 0 && photoWidth > 0 ? (
+        {/* 写真カルーセル（水平ページングScrollView）。無料写真ありは写真だけ＋末尾CTA、無ければ先頭CTA＋Google写真は2枚目以降(遅延) */}
+        {hasGalleryImages && photoWidth > 0 ? (
           <ScrollView
             ref={photoScrollRef}
             horizontal
@@ -385,65 +429,53 @@ export default function PlaceCard({
             onMomentumScrollEnd={onPhotoScrollEnd}
             style={{ width: photoWidth, height: compact ? 150 : 220 }}
           >
-            {photos.map((uri, i) => (
-              <TouchableOpacity
-                key={uri + i}
-                activeOpacity={0.92}
-                onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(i); } }}
-              >
-                {i <= maxLoaded ? (
-                  <Image
-                    source={{ uri }}
-                    style={{ width: photoWidth, height: compact ? 150 : 220 }}
-                    contentFit="cover"
-                    transition={200}
-                    onError={() => onImgError(uri)}
-                  />
-                ) : (
-                  // 未到達ページ: 画像を読み込まず軽量プレースホルダ（スクロールで読み込む）
-                  <View style={{ width: photoWidth, height: compact ? 150 : 220, backgroundColor: '#EFEAF7' }} />
-                )}
-              </TouchableOpacity>
-            ))}
-            {/* 末尾の「写真を追加」スライド（スライドすると出る）。心霊=暗い雰囲気／通常=明るい募集 */}
-            {showContribute && (spooky ? (
-              <LinearGradient
-                colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-                style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}
-              >
-                <Moon size={32} color="rgba(180,160,255,0.55)" strokeWidth={1.4} />
-                <Text style={s.spookyAskTitle}>写真を提供してください</Text>
-                <Text style={s.spookyAskSub}>あなたの写真でこの場所を伝えてください 🙏</Text>
-                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.8} style={s.spookyAddBtn}>
-                  {uploading
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <><Camera size={15} color="#fff" strokeWidth={2.2} /><Text style={s.spookyAddText}>写真を追加</Text></>}
+            {slideList.map((sl, i) => (
+              sl.kind === 'cta' ? (
+                <View key={'cta' + i}>{renderPhotoCta(leadCTA ? 'lead' : 'tail')}</View>
+              ) : (
+                <TouchableOpacity
+                  key={sl.uri + i}
+                  activeOpacity={0.92}
+                  onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(galleryPhotos.indexOf(sl.uri)); } }}
+                >
+                  {i <= maxLoaded ? (
+                    <Image
+                      source={{ uri: sl.uri }}
+                      style={{ width: photoWidth, height: compact ? 150 : 220 }}
+                      contentFit="cover"
+                      transition={200}
+                      onError={() => onImgError(sl.uri)}
+                    />
+                  ) : (
+                    // 未到達ページ: 画像を読み込まず軽量プレースホルダ（スクロール到達で読み込む＝Google課金を遅延）
+                    <View style={{ width: photoWidth, height: compact ? 150 : 220, backgroundColor: '#EFEAF7' }} />
+                  )}
                 </TouchableOpacity>
-              </LinearGradient>
-            ) : (
-              // 通常スポット: 写真があっても末尾に明るい「写真を追加」募集ページ（何枚でも継続）
-              <LinearGradient
-                colors={['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
-                style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder, s.contribBright]}
-              >
-                <Camera size={30} color="#8A6BF0" strokeWidth={1.9} />
-                <Text style={s.phInviteTitle}>あなたの1枚も、この場所に</Text>
-                <Text style={s.phInviteSub}>違う角度・季節・時間帯の写真が魅力を伝えます</Text>
-                <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
-                  <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
-                    {uploading
-                      ? <ActivityIndicator color="#fff" size="small" />
-                      : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </LinearGradient>
+              )
             ))}
           </ScrollView>
-        ) : photos.length > 0 ? (
-          // photoWidth 計測前の一瞬だけ先頭写真を表示
-          <TouchableOpacity activeOpacity={0.92} onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(0); } }}>
-            <Image source={{ uri: photos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(photos[0])} />
-          </TouchableOpacity>
+        ) : hasGalleryImages ? (
+          // photoWidth 計測前の一瞬: leadCTAはCTA、無料写真ありは先頭写真（Googleは出さない）
+          leadCTA ? (
+            <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
+              {(() => { const p = genrePlaceholder(item.tags); return p
+                ? <Text style={s.phGenreEmoji}>{p.emoji}</Text>
+                : <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />; })()}
+              <Text style={s.phInviteTitle}>一番乗りで1枚どうぞ</Text>
+              <Text style={s.phInviteSub}>あなたの写真が、この場所の顔になります📸</Text>
+              <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
+                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
+                  {uploading
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity activeOpacity={0.92} onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(0); } }}>
+              <Image source={{ uri: galleryPhotos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(galleryPhotos[0])} />
+            </TouchableOpacity>
+          )
         ) : spooky ? (
           // 心霊・スリル系の雰囲気プレースホルダー（暗い霧／月）＋写真提供のお願い
           <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={[s.photo, s.photoPlaceholder]}>
@@ -474,8 +506,8 @@ export default function PlaceCard({
           </View>
         )}
 
-        {/* 下部グラデ（可読性用）— 写真がある時だけ。写真0の招待枠には出さない（"スライドバー"消し）*/}
-        {photos.length > 0 && (
+        {/* 下部グラデ（可読性用）— 現在スライドが画像の時だけ。CTA/招待枠には出さない（"スライドバー"消し）*/}
+        {curImgUri != null && (
           <LinearGradient
             colors={['transparent', 'rgba(15,10,30,0.45)']}
             style={s.photoOverlay}
@@ -483,9 +515,9 @@ export default function PlaceCard({
           />
         )}
 
-        {/* Wikimedia Commons 写真クレジット（CC帰属表示・ファイルページへリンク）— 写真表示中のみ */}
-        {photos.length > 0 && (() => {
-          const fileUrl = commonsFileUrl(photos[photoIdx] ?? photos[0]);
+        {/* Wikimedia Commons 写真クレジット（CC帰属表示・ファイルページへリンク）— 画像スライド表示中のみ */}
+        {curImgUri != null && (() => {
+          const fileUrl = commonsFileUrl(curImgUri);
           return fileUrl ? (
             <TouchableOpacity
               style={s.commonsCredit}
@@ -552,7 +584,7 @@ export default function PlaceCard({
         )}
 
         {/* 写真ゼロ=未開拓スポット強調（写真一番乗りを募集して投稿動機を作る） */}
-        {photos.length === 0 && !spooky ? (
+        {leadCTA && !spooky ? (
           <LinearGradient colors={['#F472B6', '#9B6BFF']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.pioneerBadge}>
             <Camera size={12} color="#fff" strokeWidth={2.6} />
             <Text style={s.pioneerBadgeText}>未開拓スポット・写真一番乗り募集</Text>
@@ -755,9 +787,9 @@ export default function PlaceCard({
       {/* 写真の全画面ビューア（場所詳細/投稿詳細と共通・スワイプで閉じる/サムネ/ズーム）
           ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
       <PhotoViewer
-        visible={viewerIdx !== null && photos.length > 0}
-        photos={photos}
-        initialIdx={Math.min(viewerIdx ?? 0, Math.max(0, photos.length - 1))}
+        visible={viewerIdx !== null && galleryPhotos.length > 0}
+        photos={galleryPhotos}
+        initialIdx={Math.min(viewerIdx ?? 0, Math.max(0, galleryPhotos.length - 1))}
         onClose={() => setViewerIdx(null)}
       />
     </Animated.View>
