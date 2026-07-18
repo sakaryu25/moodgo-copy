@@ -23,34 +23,45 @@ export async function GET(req: Request) {
     // 検索キーの変種（全角半角ゆれ＝NFKC、カナ↔ひらがな）を作り、.or() でまとめて部分一致。
     //   ⚠ .or() の区切りを壊す文字（カンマ/括弧/％/*/\）は各変種から除去する。
     const nfkc = q.normalize("NFKC");
-    const variants = Array.from(new Set(
-      [q, nfkc, toHira(nfkc), toKata(nfkc)]
-        .map((v) => v.trim().replace(/[,()%*\\]/g, ""))
-        .filter((v) => v.length >= 2)
-    ));
-    if (variants.length === 0) return NextResponse.json({ ok: true, places: [] });
-    const orExpr = variants.map((v) => `name.ilike.%${v}%`).join(",");
+    const nq = normalizeName(q);
+    const clean = (v: string) => v.trim().replace(/[,()%*\\]/g, "");
+    // 取得を広げる: 完全変種(全角半角/カナ)＋正規化名の4文字窓(n-gram)アンカーでOR部分一致。
+    //   これで「入力が長い(佐用町南光ひまわり畑)」「一語欠ける(滋賀農業ブルーメの丘←公園が抜け)」でも該当行が引ける。
+    const variants = [q, nfkc, toHira(nfkc), toKata(nfkc)].map(clean).filter((v) => v.length >= 2);
+    const grams: string[] = [];
+    for (let i = 0; i + 4 <= nq.length; i++) grams.push(nq.slice(i, i + 4));   // 正規化名の4-gram窓
+    const terms = Array.from(new Set([...variants, ...grams].map(clean).filter((v) => v.length >= 3))).slice(0, 12);
+    if (terms.length === 0) return NextResponse.json({ ok: true, places: [] });
+    const orExpr = terms.map((v) => `name.ilike.%${v}%`).join(",");
     const { data } = await supabase
       .from("places")
       .select("id, name, address, lat, lng, open_hours, nearest_station")
       .eq("is_active", true)
       .or(orExpr)
-      .limit(60);
+      .limit(120);
 
     type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours?: string | null; nearest_station?: string | null };
-    const nq = normalizeName(q);
+    // 文字bigramのDice係数（挿入/欠落/語順ゆれに強い双方向類似度）。
+    const bigrams = (s: string) => { const set = new Set<string>(); for (let i = 0; i + 2 <= s.length; i++) set.add(s.slice(i, i + 2)); return set; };
+    const dice = (a: string, b: string) => {
+      if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+      const A = bigrams(a), B = bigrams(b); let inter = 0;
+      for (const g of A) if (B.has(g)) inter++;
+      return (2 * inter) / (A.size + B.size);
+    };
+    // 類似度: 完全一致=1 / 包含(長い名⊇短い名 どちら向きでも)=0.9 / それ以外はDice。SIM_MIN未満は"似てない"として候補から外す。
+    const SIM_MIN = 0.34;
+    const sim = (nn: string) => nn === nq ? 1 : (nn.includes(nq) || nq.includes(nn)) ? 0.9 : dice(nq, nn);
     const scored = ((data ?? []) as Row[]).map((p) => {
-      const nn = normalizeName(p.name);
-      // 一致度: 0=正規化完全一致 / 1=前方一致 / 2=部分一致
-      const tier = nn === nq ? 0 : nn.startsWith(nq) ? 1 : 2;
+      const s = sim(normalizeName(p.name));
       const distM = hasCoord && p.lat != null && p.lng != null
         ? distanceMeters(latP, lngP, p.lat, p.lng)
         : null;
-      return { p, tier, distM };
-    });
-    // 並び: 一致度 → 近い順(座標のある候補を優先) → 名前の短い順（本命を上へ）
+      return { p, s, distM };
+    }).filter((x) => x.s >= SIM_MIN);
+    // 並び: 類似度が高い順 → 近い順(座標のある候補を優先) → 名前の短い順（本命を上へ）
     scored.sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
+      if (Math.abs(a.s - b.s) > 0.001) return b.s - a.s;
       if (a.distM != null && b.distM != null && Math.abs(a.distM - b.distM) > 1) return a.distM - b.distM;
       if ((a.distM != null) !== (b.distM != null)) return a.distM != null ? -1 : 1;
       return String(a.p.name ?? "").length - String(b.p.name ?? "").length;
