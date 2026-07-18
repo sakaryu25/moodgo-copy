@@ -4201,7 +4201,8 @@ async function fetchGooglePlacesSupplement(
     // コスト削減C: goodForChildren/goodForGroups/liveMusic(Atmosphere課金=最高SKU)を除外。
     //   これらは D-3 同行者ソートにのみ使う軽微な加点だったため、コスト優先で取得を停止。
     //   （必要なら詳細ページで該当スポットのみ遅延取得する設計に移行可能）
-    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.businessStatus,places.priceLevel,places.location,places.primaryType";
+    // rating/userRatingCount は撤廃: MoodGoはGoogle評価・口コミを一切読み込まない（Moodログ＋行った!集計に一本化・SKUも安価に）
+    const FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.photos,places.googleMapsUri,places.regularOpeningHours,places.currentOpeningHours.openNow,places.currentOpeningHours.periods,places.businessStatus,places.priceLevel,places.location,places.primaryType";
     const searchNearbyAt = async (
       cLat: number, cLng: number, rM: number,
       rank: "POPULARITY" | "DISTANCE" = "POPULARITY",
@@ -5196,7 +5197,7 @@ async function fetchYahooSupplement(
               "X-Goog-Api-Key": googleApiKey,
               // 写真に加えて評価(rating/userRatingCount)もここで補完する
             // YahooはratingAPIを持たないため、GooglePlaces検索で評価を取得してYahoo結果に付与
-            "X-Goog-FieldMask": "places.id,places.photos,places.rating,places.userRatingCount,places.currentOpeningHours,places.priceLevel",
+            "X-Goog-FieldMask": "places.id,places.photos,places.currentOpeningHours,places.priceLevel",
             },
             body: JSON.stringify({
               textQuery: `${r.title} ${r.address ?? ""}`.trim(),
@@ -5466,7 +5467,7 @@ ${ragBlock}
               "Content-Type": "application/json",
               "X-Goog-Api-Key": apiKey,
               // photos を最大10枚・location を追加取得
-              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.businessStatus,places.primaryType,places.types",
+              "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.photos,places.googleMapsUri,places.regularOpeningHours,places.priceLevel,places.location,places.businessStatus,places.primaryType,places.types",
             },
             body: JSON.stringify({
               textQuery: p.query || `${area} ${p.name}`,
@@ -8624,9 +8625,8 @@ async function handleRecommend(request: Request) {
         if (!isProprietaryOnly && supabase) {
           const sbW = supabase;
           const withRating = recommendations.filter(r => r.placeId && typeof r.rating === "number");
-          const needRating = apiKey
-            ? recommendations.filter(r => r.placeId && r.rating == null).slice(0, 10)
-            : [];
+          // Google評価の取得は全面撤廃: 不足分をGoogle Place Detailsで補完しない（needRating常に空＝Google rating取得ゼロ）。
+          const needRating: typeof recommendations = [];
           if (withRating.length > 0 || needRating.length > 0) {
             after(async () => {
               await Promise.all(withRating.map(r =>

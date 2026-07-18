@@ -41,8 +41,7 @@ const FIELD_MASK = [
   "currentOpeningHours",
   "regularOpeningHours",
   "photos",
-  "rating",
-  "userRatingCount",
+  // rating / userRatingCount は廃止: MoodGoはGoogle評価・口コミを取得/表示しない（Moodログ＋行った!集計に一本化・コスト減）
   "priceLevel",
   "location",
   "types",

@@ -248,8 +248,9 @@ export async function GET(request: Request) {
           headers: {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": GOOGLE_API_KEY,
+            // Google評価(rating/userRatingCount)・口コミ(reviews)は撤廃＝FieldMaskから除外（Moodログ＋行った!集計に一本化・SKUも安価に）
             "X-Goog-FieldMask":
-              "places.id,places.formattedAddress,places.location,places.photos,places.googleMapsUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.currentOpeningHours,places.rating,places.userRatingCount,places.reviews",
+              "places.id,places.formattedAddress,places.location,places.photos,places.googleMapsUri,places.internationalPhoneNumber,places.nationalPhoneNumber,places.websiteUri,places.regularOpeningHours,places.currentOpeningHours",
           },
           body: JSON.stringify({
             textQuery: q, languageCode: "ja", regionCode: "JP", maxResultCount: 1,
@@ -285,29 +286,11 @@ export async function GET(request: Request) {
             address = address || (p.formattedAddress ?? "");
             // ユーザー入力の営業時間があればそれを優先し、無い時だけGoogleで補完
             if (!openingHoursText) openingHoursText = (p.regularOpeningHours?.weekdayDescriptions ?? []).join("\n");
-            googleRating = typeof p.rating === "number" ? p.rating : null;
-            reviewCount = typeof p.userRatingCount === "number" ? p.userRatingCount : null;
+            // Google評価・口コミは撤廃（Moodログ＋MoodGo独自の行った!集計に一本化）。営業状態/座標/写真のみ補強。
             openNow = typeof p.currentOpeningHours?.openNow === "boolean" ? p.currentOpeningHours.openNow : null;
             if (typeof p.location?.latitude === "number") { placeLat = p.location.latitude; placeLng = p.location.longitude; }
             const photos = (p.photos ?? []) as Array<{ name: string }>;
             googlePhotos = photos.slice(0, 8).map((ph) => buildProxyUrl(origin, ph.name)).filter(Boolean);
-            // 口コミ（Google は relevance 順 = 「ためになった」順で返す）
-            type RawReview = {
-              rating?: number;
-              text?: { text?: string };
-              authorAttribution?: { displayName?: string; photoUri?: string };
-              relativePublishTimeDescription?: string;
-            };
-            reviews = ((p.reviews ?? []) as RawReview[])
-              .map((r) => ({
-                rating: typeof r.rating === "number" ? r.rating : null,
-                text: r.text?.text ?? "",
-                authorName: r.authorAttribution?.displayName ?? "Google ユーザー",
-                authorPhoto: r.authorAttribution?.photoUri ?? null,
-                relativeTime: r.relativePublishTimeDescription ?? "",
-              }))
-              .filter((r) => r.text.length > 5)
-              .slice(0, 6);
           }
         }
       } catch { /* 補強失敗は無視 */ }
