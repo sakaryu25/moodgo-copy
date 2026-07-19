@@ -277,7 +277,11 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
   if (hasLocation) {
     // 検索半径に応じて取得数を増やす（大きな半径ほど多様性を確保するため母数を増やす）
     // RPC は近い順に返すため、遠方まで広げた場合は多めに取得してシャッフルで多様性を出す
-    const fetchLimit = radiusKm > 100 ? Math.max(limit * 20, 100)
+    // far-bias(遠出): リング[min,radius]を大きめに取り切る。RPCが最遠order+limitでも、リング全体の
+    //   スポット数を超える fetchLimit なら内側まで取れる→farLeanSpreadで全域に散る（外縁密集の解消）。
+    //   実測(小田原)で単一リングfetchLimit=400だとリングの外縁60%だけ返っていた→2500へ引き上げ。
+    const fetchLimit = minRadiusKm > 0 ? 2500
+      : radiusKm > 100 ? Math.max(limit * 20, 100)
       : radiusKm > 20  ? Math.max(limit * 10, 50)
       : limit * 4;
 
@@ -311,26 +315,7 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       for (const r of src) { if (!seen.has(r.id)) { dst.push(r); seen.add(r.id); } }
     };
 
-    // far-bias は「サブリング分割取得」でリング全域をカバーする（2026-07-19）。
-    //   RPCが最遠order+limitでも randomでも、[min,radius]を K 個の狭いサブリングに分けて各々取得すれば
-    //   各サブリングが自分の帯を埋める→merge で全域(例:96〜120kmの全体)が候補に入る。
-    //   単一リング取得だと limit が外縁(最遠)で埋まり内側が欠ける問題(実測:小旅行が110〜120kmに密集)を回避。
-    let rows: NearbyPlaceRow[];
-    if (minRadiusKm > 0) {
-      const K = 3;
-      const step = (radiusKm - minRadiusKm) / K;
-      const subs = await Promise.all(
-        Array.from({ length: K }, (_, i) => {
-          const lo = minRadiusKm + step * i;
-          const hi = i === K - 1 ? radiusKm : minRadiusKm + step * (i + 1);
-          return fetchWithOrSemantics(mustTags, hi * 1000, lo * 1000);
-        }),
-      );
-      rows = [];
-      for (const s of subs) mergeInto(rows, s);
-    } else {
-      rows = await fetchWithOrSemantics(mustTags, radiusM, 0);
-    }
+    let rows = await fetchWithOrSemantics(mustTags, radiusM, minRadiusM);
 
     // フォールバック1: タグを緩める（同じリング/半径内で再試行）
     if (rows.length < limit && fallbackTags.length > 0) {
