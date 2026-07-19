@@ -204,8 +204,21 @@ function DuplicatesPanel({ clusters, onMerge, onClose }: { clusters: DupCluster[
 function ClusterRow({ cluster, onMerge }: { cluster: DupCluster; onMerge: (keepId: string, dupeIds: string[]) => void }) {
   const [keepId, setKeepId] = useState(cluster[0]?.id ?? "");
   const dupeIds = cluster.map((s) => s.id).filter((id) => id !== keepId);
+  // ⚠「会場＋そこで開催中のイベント」を誤って統合しないための注意判定:
+  //   ・開催期間が揃っていない（例: 会場〜7/30 と イベント〜9/30）＝別物の可能性大
+  //   ・一方だけ「＠会場」形式（イベント名＠会場）＝会場とイベントが混在している可能性
+  const datesDiffer = new Set(cluster.map((s) => `${s.available_from ?? ""}~${s.available_until ?? ""}`)).size > 1;
+  const atFlags = cluster.map((s) => /[@＠]/.test(s.name));
+  const atMismatch = atFlags.some(Boolean) && atFlags.some((x) => !x);
+  const risky = datesDiffer || atMismatch;
   return (
-    <div style={{ border: "1px solid #EADFA0", borderRadius: 8, padding: 10, marginBottom: 8, background: "#fff" }}>
+    <div style={{ border: `1px solid ${risky ? "#F5B5B5" : "#EADFA0"}`, borderRadius: 8, padding: 10, marginBottom: 8, background: "#fff" }}>
+      {risky && (
+        <div style={{ background: "#FDECEC", border: "1px solid #F5B5B5", borderRadius: 6, padding: "6px 9px", marginBottom: 6, fontSize: 11.5, color: "#B02020", lineHeight: 1.5 }}>
+          ⚠ {datesDiffer ? "開催期間が揃っていません。" : ""}{atMismatch ? "「会場」と「＠会場のイベント」が混ざっているようです。" : ""}
+          <b>「会場」と「そこで開催中の期間限定イベント」など別物の可能性</b>があります。統合するとイベントが検索から外れます。本当に同一イベントの重複か確認してから統合してください。
+        </div>
+      )}
       {cluster.map((s) => (
         <label key={s.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", cursor: "pointer" }}>
           <input type="radio" name={`keep-${cluster[0]?.id}`} checked={keepId === s.id} onChange={() => setKeepId(s.id)} style={{ marginTop: 3 }} />
