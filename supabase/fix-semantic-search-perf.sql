@@ -1,18 +1,18 @@
--- ─── P1: match_places_semantic の性能修正（意味検索の常時化キーストーン）────────────
--- 問題: 既存 match_places_semantic は半径フィルタに
---   `ST_DistanceSphere(ST_MakePoint(p.lng, p.lat), ST_MakePoint(user_lng, user_lat)) <= radius_m`
---   を使っていた。これは p.lng/p.lat から都度 ST_MakePoint を作る式で、既存の空間索引
---   （GiST 関数索引 `(location::geography)` = fix-nearby-geography-index.sql）を一切使えず、
---   20万件を毎回フルスキャン → statement timeout(57014・実測~8.5秒)で**常に空を返す=看板機能が死んでいた**。
+-- ─── P1: match_places_semantic の性能修正 v2（意味検索の常時化キーストーン）──────────
+-- 経緯: v1 は半径フィルタを ST_DWithin(location::geography) に直したが、渋谷など超高密度エリアでは
+--   半径5〜20km内に数万件が入り、その全件を厳密kNN(embedding <=> query)でソートすると8秒の
+--   statement timeout を超えて落ちていた（@1kmは動くが@5km以上でtimeout・実測）。HNSW索引が無い環境でも
+--   密集地で確実に速くするため、**先に「地理的に近い数千件」だけを地理KNN(GiST索引の <-> )で束ね、
+--   その中だけを意味ベクトルで並べる**二段構えにする。位置ベースのアプリなので「近い中での意味最良」で十分。
+-- これで HNSW/Pro プラン無しでも、どのエリア・半径でもサブ秒で応答する。返却型・引数は不変=後方互換。
 --
--- 修正: 高速な find_nearby_places と全く同じ索引フレンドリーな述語
---   `ST_DWithin(p.location::geography, user_geom::geography, radius_m)` に置換する。
---   これで半径フィルタが GiST 索引を使い、半径内の数百〜数千件だけに絞ってから
---   その集合に対して厳密kNN(embedding <=> query)を取る=「半径先行の厳密最近傍」で高速化。
---   ※ HNSW索引もProプランも不要（半径で絞るので厳密kNNでも軽い）。返却型・引数は不変=後方互換。
---
--- ⚠ Supabase SQL Editor で実行してください。適用後、Vercel環境変数 RECOMMEND_SEMANTIC_ALWAYS=1 で
---    「気分だけ検索でも常時セマンティック融合」を有効化できます（未設定=従来の在庫薄時のみ発火）。
+-- ⚠ Supabase SQL Editor で「この関数を再実行」してください（v1適用済でも create or replace で上書き）。
+--   適用後、Vercel環境変数 RECOMMEND_SEMANTIC_ALWAYS=1 で「気分だけ検索でも常時セマンティック融合」を有効化。
+
+-- 前提索引: 地理KNN( location <-> point )が索引スキャンになるよう geometry型のGiST索引を保証する
+--   （ベクトル用HNSWと違い軽量＝数秒で作成・FREEプランでも可）。既にあれば無害(IF NOT EXISTS)。
+create index if not exists idx_places_location_gist on places using gist (location);
+
 create or replace function match_places_semantic(
   query_embedding vector(1536),
   user_lat double precision,
@@ -22,20 +22,27 @@ create or replace function match_places_semantic(
 ) returns table (place jsonb, distance_m double precision, similarity double precision)
 language plpgsql stable as $$
 declare
-  user_geom geometry;
+  user_geom geometry := ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326);
 begin
-  user_geom := ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326);
   return query
+  -- ① 地理的に近い候補だけを GiST の KNN( <-> ) で束ねる（索引スキャン＝密集地でも高速・上限4000件）
+  with cand as materialized (
+    select p.id, p.embedding, p.location, (to_jsonb(p) - 'embedding') as pj
+    from places p
+    where p.is_active = true
+      and p.embedding is not null
+      and p.location is not null
+    order by p.location <-> user_geom
+    limit 4000
+  )
+  -- ② その候補の中で「半径内」かつ「意味が近い順」に並べて返す（ベクトル計算は最大4000件＝軽い）
   select
-    (to_jsonb(p) - 'embedding') as place,
-    ST_Distance(p.location::geography, user_geom::geography) as distance_m,
-    (1 - (p.embedding <=> query_embedding)) as similarity
-  from places p
-  where p.is_active = true
-    and p.embedding is not null
-    and p.location is not null
-    and ST_DWithin(p.location::geography, user_geom::geography, radius_m)   -- ← 索引を使う述語（本丸）
-  order by p.embedding <=> query_embedding
+    c.pj as place,
+    ST_Distance(c.location::geography, user_geom::geography) as distance_m,
+    (1 - (c.embedding <=> query_embedding)) as similarity
+  from cand c
+  where ST_DWithin(c.location::geography, user_geom::geography, radius_m)
+  order by c.embedding <=> query_embedding
   limit match_limit;
 end;
 $$;
