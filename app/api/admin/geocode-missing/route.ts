@@ -3,9 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase as supabaseAdmin } from "@/lib/supabase";
 import { isAdminRequest, requireAdminFromReq } from "@/lib/admin-auth";
-
-const GOOGLE_API_KEY =
-  process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+import { forwardGeocode } from "@/lib/forward-geocode";   // P22: 完全無料ジオコード(GSI→Yahoo)。Google Geocoding(課金)は使わない
 
 // GET: 座標未登録のスポット一覧を返す
 export async function GET(req: NextRequest) {
@@ -92,27 +90,14 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: false, error: "Invalid params" }, { status: 400 });
 }
 
+// P22: Google Geocoding(課金)を撤廃し、完全無料の forwardGeocode(国土地理院GSI→Yahoo) に置換。
+//   GSIは行政区画一致で誤マッチ(横浜→青森等)を弾き、2源で特定不能な行は null 据え置き(Google再追加せず)。
+//   ※lat/lng を更新すれば location(geometry) はDBトリガで同期される（find_nearby_places の検索対象になる）。
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  if (!GOOGLE_API_KEY) return null;
-  try {
-    const clean = address
-      .replace(/^日本[、,]\s*/, "")
-      .replace(/^〒\d{3}-\d{4}\s*/, "")
-      .trim();
-
-    const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-    url.searchParams.set("address", clean);
-    url.searchParams.set("language", "ja");
-    url.searchParams.set("region", "jp");
-    url.searchParams.set("key", GOOGLE_API_KEY);
-
-    const res = await fetch(url.toString());
-    const data = await res.json();
-    if (data.status !== "OK" || !data.results?.length) return null;
-
-    const loc = data.results[0].geometry.location;
-    return { lat: loc.lat, lng: loc.lng };
-  } catch {
-    return null;
-  }
+  const clean = String(address ?? "")
+    .replace(/^日本[、,]\s*/, "")
+    .replace(/^〒\d{3}-\d{4}\s*/, "")
+    .trim();
+  if (!clean) return null;
+  return forwardGeocode(clean);
 }
