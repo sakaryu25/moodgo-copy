@@ -7457,6 +7457,9 @@ async function handleRecommend(request: Request) {
         // deepDiveL1 / L2 を dynamicQs から取得（Google/Yahoo 検索精度向上に使用）
         const deepDiveL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
         let deepDiveL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
+        // ユーザーが明示的にドロップダウン深掘りを選んだか(freeWord由来の昇格を含めない生の値で判定)。
+        //   freeWordハードジャンルフィルタは「明示深掘り無し」時のみ作動させる(明示選択を尊重)。
+        const hasDropdownDeepDive = (!!deepDiveL1 && deepDiveL1 !== "こだわらない") || (!!deepDiveL2 && deepDiveL2 !== "こだわらない");
         // freeWordに人数指定があり食事系の場合、構造化検索のテキストクエリを宴会系に誘導
         //   （AI経路が不調で構造化に落ちた際も「7人で話せる」を解釈できるように）
         if (isFoodMood && !deepDiveL2 && /[4-9０-９]\s*(?:人|名)|[1-9][0-9]\s*(?:人|名)/.test(answers.freeWord ?? "")) {
@@ -8993,9 +8996,10 @@ async function handleRecommend(request: Request) {
         // freeWordハードジャンルフィルタ(2026-07-20 監査#1/Z世代最大の萎え): ドロップダウン深掘り未選択でも
         //   freeWordが明確にジャンル(古着/サウナ/夜景/韓国/雑貨/海辺/絶景/カフェ)を指す時、非該当を除去。
         //   名前肯定語 or ジャンルタグ一致で「該当」。下限8件は維持(除去しすぎない=薄いより関連ズレの方が萎えるが0件は困る)。
-        if (!effectiveDeepDive) {
+        if (!hasDropdownDeepDive) {
           const fg = freewordGenreRule(answers.freeWord ?? "");
-          // 食事気分でも freeWord が食ジャンル(韓国/カフェ等)を明示したら絞る。深掘り未選択時のみ。
+          // 明示ドロップダウン深掘り無し時のみ作動(freeWord由来でeffectiveDeepDiveが昇格しても本フィルタで再絞り)。
+          //   食事気分でもfreeWordが食ジャンル(韓国/カフェ等)を明示したら絞る。
           if (fg) {
             const isMatch = (r: { title?: string; tags?: string[] }) =>
               fg.pos.test(r.title ?? "") || (r.tags ?? []).some(t => fg.tags.includes(t));
