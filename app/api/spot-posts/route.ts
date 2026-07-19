@@ -510,6 +510,22 @@ export async function POST(req: Request) {
         }
         if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
       }
+      // ⚠会場に期間が付く事故の防止(2026-07-19): 「イベント名＠会場」でない"素の会場名"なのに期間が付いた新スポットは、
+      //   既存の恒久スポット(期間なし)の重複になりやすい（例: 東京ドリームパーク の会場コピーに 3/27〜7/30 が誤コピー）。
+      //   素の名前(＠無し)＋期間ありのとき、近接の恒久会場に名前一致したら「その会場に紐付け」＝重複も、会場への期間付与も防ぐ。
+      //   （effectivePlaceId を既存会場に設定するので、下の create＋期間書き込みブロックが丸ごとスキップされる＝会場は常設のまま）。
+      //   ※「イベント名＠会場」(名前に＠ or parentPlaceIdあり)は従来どおり独立の期間限定スポットのまま作る（除外）。
+      if (!effectivePlaceId && !parentPlaceId && (newAvailFrom || newAvailUntil) && !/[@＠]/.test(placeName)
+          && insLat != null && insLng != null) {
+        const dLat = 0.0009, dLng = 0.0011;   // ~100m窓
+        const { data: near } = await db.from("places")
+          .select("id, name")
+          .eq("is_active", true).is("available_from", null).is("available_until", null)   // 恒久スポットのみ
+          .gte("lat", insLat - dLat).lte("lat", insLat + dLat)
+          .gte("lng", insLng - dLng).lte("lng", insLng + dLng).limit(60);
+        const dup = ((near ?? []) as Array<{ id: string; name?: string }>).find((p) => isSameNameLoose(placeName, String(p.name ?? "")));
+        if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
+      }
       // 新規placeを登録。
       //   (A) 2026-07-19: 新規ユーザースポットも「即検索公開」＝完全な事後モデレーション（NGワードで投稿時ブロック＋
       //     通報3件で自動非表示＋coreName dedup＋adminで随時deactivate）。投稿の達成感を優先しMoodGoの穴場文化を育てる。
