@@ -6713,6 +6713,9 @@ export async function POST(request: Request): Promise<Response> {
         google_nearby: counts.searchNearby,     // 内訳: Nearby Search
         google_photo: counts.photo,             // 内訳: 写真取得
         google_detail: counts.detail,           // 内訳: Place Details(★評価等)。列未作成時はinsert失敗→黙殺(既存挙動)
+        // P27: この検索の searchId を記録＝spot_engagement.search_id と突合して実満足度(CTR/ゼロクリック/クリック順位)を集計。
+        //   列未作成でも logSearchMetric が列落ちを検知して従来列のみでリトライ＝安全。
+        search_id: (body as { searchId?: string })?.searchId ?? null,
         total_calls: total, rec_count: recCount, source, elapsed_ms: elapsed,
       });
       // 8件以上(プロダクト下限)の標準検索をスナップショット保存＝再検索で同じ結果が返り安定＋Google/Yahoo再呼び出しを削減
