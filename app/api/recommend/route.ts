@@ -315,17 +315,17 @@ function ensureHiddenGem<T extends object>(recs: T[]): T[] {
 async function attachAvailability<T extends object>(recs: T[], moodGroupStr?: string): Promise<T[]> {
   if (!Array.isArray(recs) || recs.length === 0) return recs;
   // ── 写真の最終正規化（DRY・全return共通）─────────────────────────────────
-  //   どの経路(穴場/時間潰し/フリーワード/relax/AI/最終/admin補足/Google補足)を通っても、
-  //   死んだGoogle写真(places.googleapis.com＝課金撤廃で失効400)をカードに出さない。生きた写真だけに
-  //   絞り、photoUrl も生きた先頭に揃える（大手町温泉＝失効Google10枚が生Wikimedia1枚を隠す事例の最終防波堤）。
+  //   どの経路(穴場/時間潰し/フリーワード/relax/AI/最終/admin補足/Google補足)を通っても、空URLを除いて重複排除する。
+  //   ⚠2026-07-19 Google写真ライブ表示復活: ここでは googleapis を除去しない（実行時に取ったばかりの生きたGoogle写真を
+  //     2枚目以降に出すため）。DB由来の古い失効Google除去は mergedPlacePhotos 側（rec組み立て時）で担保済み。
   recs = recs.map((r) => {
     const rr = r as { photoUrls?: unknown; photoUrl?: unknown };
     const hasArr = Array.isArray(rr.photoUrls);
     if (!hasArr && typeof rr.photoUrl !== "string") return r;   // 写真フィールドなし＝素通り
-    const live = [...new Set(filterLivePhotos([
+    const live = [...new Set([
       ...(hasArr ? (rr.photoUrls as string[]) : []),
       typeof rr.photoUrl === "string" ? rr.photoUrl : "",
-    ]))];
+    ].filter((u): u is string => typeof u === "string" && !!u.trim()))];
     if (hasArr && (rr.photoUrls as string[]).length === live.length && (rr.photoUrl ?? "") === (live[0] ?? "")) return r;  // 変化なし
     return { ...r, photoUrls: live, photoUrl: live[0] ?? "" } as T;
   });
@@ -8566,13 +8566,15 @@ async function handleRecommend(request: Request) {
             }
             return upd;
           });
-          // ⚠2026-07-19 P25: 写真ゼロ補完のGoogle searchText(FieldMask=places.photos/Pro SKU)は、取得写真が
-          //   すべて places.googleapis.com＝filterLivePhotos(lib/place-photos.ts)で100%除去され、表示も恒久保存も
-          //   発生しない純粋な死に金（Google課金撤廃で失効400・営業時間補完も8592で廃止済）。既定で無効化＝写真ゼロは
-          //   無料写真(Wikimedia/spot_photos)＋カードのCTAに委譲。復活が必要なら RECOMMEND_ENABLE_PHOTO_SEARCHTEXT=1。
-          const ENABLE_PHOTO_SEARCHTEXT = process.env.RECOMMEND_ENABLE_PHOTO_SEARCHTEXT === "1";
+          // Google写真の「ライブ表示」復活(2026-07-19 ユーザー選択): 写真ゼロのスポットだけ Google searchText(places.photos/Pro SKU)で
+          //   写真referenceを取得し、CTAの次(2枚目以降)にスクロール到達時だけ表示する（photo-proxyで解決＝そこで初めて課金）。
+          //   ⚠ライセンス: DB(places.image_urls/photo_url)には保存しない＝「その場表示だけ」（Googleの30日キャッシュ規約内の
+          //     enrキャッシュ(api_cache)には置くが恒久列には書かない）。帰属表示はカードのGoogle由来UIで担保。
+          //   ⚠要件: Google Cloudで Places API(New) 有効化＋課金オン（未有効=403で写真取得できず→CTAのまま=無害）。
+          //   停止するなら RECOMMEND_DISABLE_PHOTO_SEARCHTEXT=1。
+          const ENABLE_PHOTO_SEARCHTEXT = process.env.RECOMMEND_DISABLE_PHOTO_SEARCHTEXT !== "1";
           await Promise.all(recommendations.map(async (rec, idx) => {
-            if (!ENABLE_PHOTO_SEARCHTEXT) return;   // 死に金の写真searchTextを止める（表示・保存に一切影響しない）
+            if (!ENABLE_PHOTO_SEARCHTEXT) return;
             // OSM由来の店はGoogleエンリッチしない（写真=ジャンル別PH＋利用者投稿／営業時間=OSM情報。searchText削減）
             if ((rec.source ?? "").startsWith("osm")) return;
             const photoUrls = Array.isArray(rec.photoUrls) ? rec.photoUrls : [];
@@ -8613,18 +8615,18 @@ async function handleRecommend(request: Request) {
                 await ltCachePut(`enr:${(rec.title ?? "").slice(0, 80)}`, { checked: true });  // 解決不能も記憶
                 return;
               }
-              // 写真を最大10枚補完
-              //   ⚠Google課金撤廃(2026-07)以降、buildPhotoProxyUrl が返す places.googleapis.com 写真は
-              //   すべてHTTP400で失効。filterLivePhotos で全滅→上書き/恒久保存とも発生しない＝死んだURLを
-              //   カードに出さず、DBにも溜めない。営業時間の補完(下)は生きているので従来通り動く。
+              // 写真を最大10枚「ライブ表示用」に補完（Google再有効化・2026-07-19）。
+              //   ⚠ライセンス: DB(places.image_urls/photo_url)には恒久保存しない＝schedulePlaceWriteBackは呼ばない。
+              //     rec.photoUrls に載せるのは「今回の応答で表示する」ためだけ（enrキャッシュは30日規約内・恒久列ではない）。
+              //   ⚠filterLivePhotos は使わない: DB由来の古い(失効)Google除去用のため。ここは今取ったばかりの生きたreference。
               const enrSave: EnrichCacheVal = {};
               if (needPhotos) {
                 const photos = (place.photos ?? []) as Array<{ name?: string }>;
-                const livePhotoUrls = filterLivePhotos(photoUrls);
-                const urls = filterLivePhotos(photos.slice(0, 10).map(p => p.name ? buildPhotoProxyUrl(p.name) : ""));
-                if (urls.length > livePhotoUrls.length) {
+                const freeCount = filterLivePhotos(photoUrls).length;   // 既存の無料写真枚数（Google除く）
+                const urls = photos.slice(0, 10).map(p => (p.name ? buildPhotoProxyUrl(p.name) : "")).filter(Boolean);  // 生きたGoogle写真reference（除去しない）
+                if (urls.length > freeCount) {
+                  // 無料写真ゼロのスポットのみここに来る（needPhotos）＝CTAの次にこのGoogle写真を出す。DBには保存しない。
                   recommendations[idx] = { ...recommendations[idx], photoUrls: urls, photoUrl: urls[0] ?? rec.photoUrl };
-                  if (urls[0]) schedulePlaceWriteBack({ name: rec.title ?? "", address: rec.address }, { photoUrl: urls[0], imageUrls: urls });  // 写真1枚＋複数枚を恒久保存
                 }
                 if (urls.length > 0) enrSave.photoUrls = urls;
               }
