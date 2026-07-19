@@ -8818,6 +8818,15 @@ async function handleRecommend(request: Request) {
           }
         }
 
+        // 近め0件対策(spatialSearchの半径エスカレーション)で要求半径を大きく超えるスポットで埋めた場合も
+        //   「範囲を広げました」を表示する（例:すぐそこ×自然で近隣に該当が無く数km先の自然で代替提示）。
+        if (!widenedSearch && minRadiusKm === 0 && recommendations.length > 0) {
+          const maxKm = Math.max(
+            0,
+            ...recommendations.map(r => typeof r.distanceKm === "number" ? r.distanceKm : 0),
+          );
+          if (maxKm > radiusKm * 1.3) widenedSearch = true;
+        }
         // B-2: 検索幅を広げた場合のワーニングメッセージ
         const widenedWarning = widenedSearch
           ? "条件に合うスポットが少なかったため、範囲を少し広げました。"

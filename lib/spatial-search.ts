@@ -340,6 +340,20 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       }
     }
 
+    // フォールバック4(近め0件対策・2026-07-19): 近め(min=0)で極端に薄い/0件のとき、半径を段階的に
+    //   広げて自前DB(飲食14万/自然8万+)から確実に埋める。「すぐそこ(1km)×自然」等で0件放置せず、
+    //   少し広げた近隣スポットを代替提示できる（route側が距離超過を検知して"範囲を広げました"を表示）。
+    const NEAR_FLOOR = Math.min(limit, 8);
+    if (minRadiusKm === 0 && rows.length < NEAR_FLOOR) {
+      for (const mult of [3, 6, 12]) {
+        if (rows.length >= NEAR_FLOOR) break;
+        mergeInto(rows, await fetchWithOrSemantics(mustTags, radiusM * mult, 0));
+        if (rows.length < NEAR_FLOOR && fallbackTags.length > 0) {
+          mergeInto(rows, await fetchWithOrSemantics(fallbackTags, radiusM * mult, 0));
+        }
+      }
+    }
+
     if (rows.length > 0) {
       // ── Fisher-Yates シャッフル（インプレース）─────────────────────────────
       const shuffle = <T>(arr: T[]): T[] => {
