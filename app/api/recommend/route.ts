@@ -8832,25 +8832,15 @@ async function handleRecommend(request: Request) {
               : (parseFloat((r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/)?.[1] ?? "") || 9999);
           // 距離不明(=9999)はフィルタ対象外として常に残す（距離が取れないだけで除外しない）
           const kmKnown = (r: { distanceKm?: number; distanceText?: string }) => kmF(r) < 9000;
-          // ── ハード距離フィルタ＋安全弁 ───────────────────────────────────────
-          //   要望「選んだ距離内でしっかり出して」を満たすため、cap 超過スポットは
-          //   末尾送り(従来)ではなく除外する。ただし 0件/極端に少ない事故を防ぐため、
-          //   範囲内が MIN_KEEP 未満なら cap を段階的に緩める→それでも不足なら従来の
-          //   band送り(除外せず末尾)へフォールバック。距離不明スポットは常に温存。
-          const MIN_KEEP = 5;
-          const tiers = [capKm, capKm * 1.5, capKm * 2.5];
-          let picked: typeof recommendations | null = null;
-          for (const t of tiers) {
-            const within = recommendations.filter(r => !kmKnown(r) || kmF(r) <= t);
-            if (within.length >= MIN_KEEP) { picked = within; break; }
-          }
-          if (picked && picked.length > 0) {
-            recommendations = picked;
-          } else {
-            // 全段でも MIN_KEEP に満たない超過疎エリア → 除外せず近い順(従来band送り)で温存
-            const within = recommendations.filter(r => !kmKnown(r) || kmF(r) <= capKm);
-            const over = recommendations.filter(r => kmKnown(r) && kmF(r) > capKm);
-            if (within.length > 0) recommendations = [...within, ...over];
+          // ── 距離外れ値を末尾へ（安定パーティション・15件維持）──────────────────
+          //   仕様準拠(2026-07-19 ユーザー選択「末尾+15件維持」): cap 超過スポットは除外せず
+          //   末尾に回して件数を落とさない。near側の相対順序を保ちつつ、遠すぎる外れ値
+          //   (例: 近め指定で7〜9km)だけ後方へ安定移動する。距離不明は within 扱いで温存。
+          const within = recommendations.filter(r => !kmKnown(r) || kmF(r) <= capKm);
+          const over   = recommendations.filter(r => kmKnown(r) && kmF(r) > capKm);
+          // within が空(=全件 cap 超過の超過疎エリア)なら並べ替えても意味が無いので現状維持。
+          if (within.length > 0 && over.length > 0) {
+            recommendations = [...within, ...over];
           }
         } else if (minRadiusKm > 0 && !isFoodMood && !isProprietaryOnly) {
           // far-bias(遠出=ちょっと遠くてもOK以上)の最終確定(2026-07-19 本番実測で回帰発見): finalizeの多様化/rerankerが

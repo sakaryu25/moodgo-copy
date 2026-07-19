@@ -68,17 +68,29 @@ export async function findNearbyPlacesRaw(
   lng: number,
   radiusM: number,
   tags: string[],
-  limit: number = 60
+  limit: number = 60,
+  // 遠リング取得: > 0 で内円(< minRadiusM)を除外しリング[min,radius]を遠い順で取得（大半径far-bias用）。
+  minRadiusM: number = 0
 ): Promise<NearbyPlaceRow[]> {
   if (!supabase) return [];
 
-  const { data, error } = await supabase.rpc("find_nearby_places", {
+  const baseArgs = {
     user_lat:     lat,
     user_lng:     lng,
     radius_m:     radiusM,
     req_tags:     tags,
     result_limit: limit,
-  });
+  };
+  // 近め/通常(min=0)は min_radius_m を送らない＝旧5引数RPCでも動く。far-bias(min>0)のときだけ付与。
+  const args = minRadiusM > 0 ? { ...baseArgs, min_radius_m: minRadiusM } : baseArgs;
+
+  let { data, error } = await supabase.rpc("find_nearby_places", args);
+
+  // 後方互換: RPC未更新(min_radius_m 引数なし)環境では PGRST202 になる → min_radius_m 抜きで再試行し
+  //   従来の最寄り順挙動に degrade（far-bias は add-far-ring-min-radius.sql 適用まで従来どおり動く）。
+  if (error && minRadiusM > 0 && error.code === "PGRST202") {
+    ({ data, error } = await supabase.rpc("find_nearby_places", baseArgs));
+  }
 
   if (error) {
     // PostGIS 未設定 or RPC未作成の場合は静かに空配列を返す
@@ -272,16 +284,16 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
     // ── OR semantics: mustTags が複数の場合、各タグで個別に検索して union ──
     // find_nearby_places RPC は AND 検索のため、複数タグ（わいわい系・運動系など）は
     // タグ1件ずつで検索してマージすることで OR 検索と同等の結果を得る
-    const fetchWithOrSemantics = async (tags: string[], radM: number): Promise<NearbyPlaceRow[]> => {
+    const fetchWithOrSemantics = async (tags: string[], radM: number, minRadM: number = 0): Promise<NearbyPlaceRow[]> => {
       if (tags.length <= 1) {
-        return findNearbyPlacesRaw(lat, lng, radM, tags, fetchLimit);
+        return findNearbyPlacesRaw(lat, lng, radM, tags, fetchLimit, minRadM);
       }
       // 複数タグ → 各タグで個別取得して重複排除しながらマージ（OR semantics）
       const seen = new Set<string>();
       const merged: NearbyPlaceRow[] = [];
       const perTagLimit = Math.ceil(fetchLimit / tags.length) + 10;
       await Promise.all(tags.map(async (tag) => {
-        const tagRows = await findNearbyPlacesRaw(lat, lng, radM, [tag], perTagLimit);
+        const tagRows = await findNearbyPlacesRaw(lat, lng, radM, [tag], perTagLimit, minRadM);
         for (const r of tagRows) {
           if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
         }
@@ -289,27 +301,38 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       return merged;
     };
 
-    let rows = await fetchWithOrSemantics(mustTags, radiusM);
+    // 遠リング取得: far-bias(minRadiusKm>0)では内円を除外したリング[min,radius]を優先取得する。
+    //   RPCは既定で最寄り順＋limit のため、密集地(渋谷等)の大半径だと limit が近場で埋まり
+    //   遠方リングに届かない → min_radius_m を渡してリングを遠い順で直接取得することで解消。
+    const minRadiusM = minRadiusKm > 0 ? minRadiusKm * 1000 : 0;
 
-    // フォールバック1: タグを緩める（元の半径内で再試行）
+    const mergeInto = (dst: NearbyPlaceRow[], src: NearbyPlaceRow[]): void => {
+      const seen = new Set(dst.map(r => r.id));
+      for (const r of src) { if (!seen.has(r.id)) { dst.push(r); seen.add(r.id); } }
+    };
+
+    let rows = await fetchWithOrSemantics(mustTags, radiusM, minRadiusM);
+
+    // フォールバック1: タグを緩める（同じリング/半径内で再試行）
     if (rows.length < limit && fallbackTags.length > 0) {
-      const morRows = await fetchWithOrSemantics(fallbackTags, radiusM);
-      // 重複排除してマージ
-      const seen = new Set(rows.map(r => r.id));
-      for (const r of morRows) {
-        if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); }
-      }
+      mergeInto(rows, await fetchWithOrSemantics(fallbackTags, radiusM, minRadiusM));
     }
 
-    // フォールバック2: far グループが足りない場合のみ半径を1.5倍に広げる
+    // フォールバック2: far グループが足りない場合のみ半径を1.5倍に広げてリング再取得
     const farCount = minRadiusKm > 0
       ? rows.filter(r => (r.distance_m / 1000) >= minRadiusKm).length
       : rows.length;
     if (farCount < limit) {
-      const wideRows = await fetchWithOrSemantics(mustTags, radiusM * 1.5);
-      const seen = new Set(rows.map(r => r.id));
-      for (const r of wideRows) {
-        if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); }
+      mergeInto(rows, await fetchWithOrSemantics(mustTags, radiusM * 1.5, minRadiusM));
+    }
+
+    // フォールバック3(遠リング補完): far-bias で遠方が依然 limit 未満＝「本当に遠方が疎」なエリア。
+    //   近場(min=0)も取得して split の near 配列を確保し、結果が痩せる/0件になるのを防ぐ。
+    //   （遠リングが十分あるとき＝小旅行の箱根/富士方面等はこの近場取得は走らない）
+    if (minRadiusKm > 0) {
+      const farNow = rows.filter(r => (r.distance_m / 1000) >= minRadiusKm).length;
+      if (farNow < limit) {
+        mergeInto(rows, await fetchWithOrSemantics(mustTags, radiusM, 0));
       }
     }
 
