@@ -67,8 +67,11 @@ begin
     -- 期間限定: 公開期間外は検索候補に出さない（null=常時公開）
     and (p.available_from  is null or p.available_from  <= current_date)
     and (p.available_until is null or p.available_until >= current_date)
-  -- min>0(遠出): 遠い順で返し、limit が最遠スポットを優先的に残す。min=0(近め/通常): 従来どおり最寄り順。
-  order by (case when min_radius_m > 0 then -distance_m else distance_m end) asc
+  -- min>0(遠出): リング[min,radius]を「ランダム標本」で返す＝距離が全域(例:96〜120km)に散る。
+  --   最遠だけをlimitで拾うと全て外縁(120km付近の2km幅)に密集するため、母集団を全域から取り、
+  --   遠寄りの並べ替え(遠リングの層化スプレッド)はアプリ側(spatial-search/route)で行う。
+  --   min=0(近め/通常): 従来どおり最寄り順。
+  order by (case when min_radius_m > 0 then random() else distance_m end) asc
   limit result_limit;
 end;
 $$;

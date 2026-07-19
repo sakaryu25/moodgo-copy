@@ -55,3 +55,47 @@ export function formatDistText(km: number, transport?: string | string[], overri
   }
   return `${mode}で約${timeStr} / ${km.toFixed(1)}km`;
 }
+
+// ── 遠出リングの層化スプレッド（far-bias専用・2026-07-19 品質監査で導入）───────────
+//   問題: 遠リング[min,radius]を単純な「遠い順+limit」で並べると、全て外縁(例:小旅行=120km付近の
+//     2km幅)に密集し、距離・方位の多様性が消える(監査で最低スコア)。
+//   対策: [min,radius]を bands 個の距離バンドに層化し、遠いバンドほど厚く配分して巡回抽出する。
+//     → 「遠い順」の意図(遠いバンドが上位)を保ちつつ、全域(96〜120km等)に遠寄りで散らす。
+//   items: 並べ替え対象 / kmOf: 各要素の距離km / loKm..hiKm: リングの内外半径 / tieBreak: 同バンド内の任意副キー(小さいほど上位)。
+export function farLeanSpread<T>(
+  items: T[],
+  kmOf: (x: T) => number,
+  loKm: number,
+  hiKm: number,
+  opts?: { bands?: number; tieBreak?: (x: T) => number },
+): T[] {
+  const bands = Math.max(2, opts?.bands ?? 5);
+  const span = Math.max(hiKm - loKm, 0.001);
+  const tieBreak = opts?.tieBreak;
+  const buckets: T[][] = Array.from({ length: bands }, () => []);
+  for (const it of items) {
+    const km = kmOf(it);
+    // 0 = 最遠バンド(hi寄り), bands-1 = 最近バンド(lo寄り)
+    let b = Math.floor(((hiKm - km) / span) * bands);
+    b = Math.min(bands - 1, Math.max(0, b));
+    buckets[b].push(it);
+  }
+  // 各バンド内: (任意副キー) → 遠い順 → 微ノイズ
+  for (const bk of buckets) {
+    bk.sort((a, c) => {
+      if (tieBreak) { const t = tieBreak(a) - tieBreak(c); if (t !== 0) return t; }
+      return (kmOf(c) - kmOf(a)) + (Math.random() - 0.5) * 2;
+    });
+  }
+  // 遠バンドを厚めに: 1巡目はバンドiから (bands - i) 件（遠いほど多い）、以降は1件ずつ巡回。
+  const out: T[] = [];
+  let pass = 0;
+  while (buckets.some((b) => b.length)) {
+    for (let i = 0; i < bands; i++) {
+      const take = pass === 0 ? Math.max(1, bands - i) : 1;
+      for (let k = 0; k < take && buckets[i].length; k++) out.push(buckets[i].shift() as T);
+    }
+    pass++;
+  }
+  return out;
+}

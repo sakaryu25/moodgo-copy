@@ -7,7 +7,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { calcRadiusKm } from "@/lib/calc-radius";
-import { formatDistText, haversineMeters } from "@/lib/distance";
+import { formatDistText, haversineMeters, farLeanSpread } from "@/lib/distance";
 import type { PlaceResponse } from "@/types/onsen";
 import { searchPlacesByTags } from "@/lib/supabase-places";
 import { mergedPlacePhotos } from "@/lib/place-photos";
@@ -353,12 +353,13 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       if (minRadiusKm > 0) {
         const far  = rows.filter(r => (r.distance_m / 1000) >= minRadiusKm);
         const near = rows.filter(r => (r.distance_m / 1000) <  minRadiusKm);
-        // far: 距離降順 + ランダムノイズで並べ替え（遠いほど上、毎回少し変わる）
-        far.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
-        // near: こちらも距離降順（遠い順）で補完。
-        //   far が空（=選択距離に届くスポットが無い）でも、利用可能な中で最も遠いものが
-        //   先頭に来るようにする。これにより「どこでも行きたい」等で近すぎる場所が
-        //   上位に出る問題を防ぐ。
+        // far: 層化スプレッド（遠寄りだが[min,radius]全域に散らす）。単純な距離降順だと slice(limit) で
+        //   全て外縁に密集する（品質監査2026-07-19で最低スコア）→ farLeanSpread で遠バンド厚め×全域配分。
+        //   リング外縁 hiKm は「取得できた最大距離」を使う（radiusM*1.5 の widen も内包）。
+        const maxFarKm = far.length ? Math.max(...far.map(r => r.distance_m / 1000)) : minRadiusKm;
+        const spread = farLeanSpread(far, r => r.distance_m / 1000, minRadiusKm, Math.max(maxFarKm, minRadiusKm + 1));
+        far.length = 0; far.push(...spread);
+        // near: 距離降順（遠い順）で補完。far が空でも利用可能な中で最も遠いものが先頭に来る。
         near.sort((a, b) => (b.distance_m - a.distance_m) + (Math.random() - 0.5) * 2000);
         rows = [...far, ...near];
       } else {
