@@ -8993,8 +8993,9 @@ async function handleRecommend(request: Request) {
         // freeWordハードジャンルフィルタ(2026-07-20 監査#1/Z世代最大の萎え): ドロップダウン深掘り未選択でも
         //   freeWordが明確にジャンル(古着/サウナ/夜景/韓国/雑貨/海辺/絶景/カフェ)を指す時、非該当を除去。
         //   名前肯定語 or ジャンルタグ一致で「該当」。下限8件は維持(除去しすぎない=薄いより関連ズレの方が萎えるが0件は困る)。
-        if (!effectiveDeepDive && !isFoodMood) {
+        if (!effectiveDeepDive) {
           const fg = freewordGenreRule(answers.freeWord ?? "");
+          // 食事気分でも freeWord が食ジャンル(韓国/カフェ等)を明示したら絞る。深掘り未選択時のみ。
           if (fg) {
             const isMatch = (r: { title?: string; tags?: string[] }) =>
               fg.pos.test(r.title ?? "") || (r.tags ?? []).some(t => fg.tags.includes(t));
