@@ -12,6 +12,7 @@ import type { PlaceResponse } from "@/types/onsen";
 import { searchPlacesByTags } from "@/lib/supabase-places";
 import { mergedPlacePhotos } from "@/lib/place-photos";
 import { scheduleBackgroundVitalityCheck } from "@/lib/place-vitality-check";
+import { isOpenNowFromWeekdayText } from "@/lib/open-hours";   // P9: DB主経路のopen_hours(曜日別テキスト)をオフライン解析
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RPC レスポンス型（supabase-postgis-migration.sql の戻り値と一致）
@@ -147,7 +148,9 @@ export function nearbyRowToPlaceResponse(
     distanceInfo: formatDistText((row.distance_m ?? 0) / 1000, transport),
     // 写真2列(旧photo_url/新image_urls)の統合は lib/place-photos に一元化
     photoUrls:    mergedPlacePhotos(row),
-    openNow:      null,
+    // P9: open_hours(曜日別テキスト)からJSTの今の営業中を判定（確信できた時だけtrue/false・不明はnull＝無害）。
+    //   これで find_nearby_places 主経路の候補にも sortOrShuffle の営業中ボーナス／営業中バッジが効く。
+    openNow:      isOpenNowFromWeekdayText(row.open_hours),
     openingHours: row.open_hours ?? null,
     priceLevel:   null,
     googleMapsUrl,
