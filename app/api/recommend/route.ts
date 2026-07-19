@@ -6339,9 +6339,25 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     //   ただし全体が薄くなり過ぎないよう最低 DIVERSE_FLOOR 件までは overflow から補填。薄いエリアは15件未満を許容。
     //   food/心霊は上で早期returnのため影響なし。ユーザーが明示選択した深掘りジャンル(requestedSub)はcap対象外。
     const DIVERSE_FLOOR = 8;
-    let merged = kept.length >= DIVERSE_FLOOR
-      ? kept
-      : [...kept, ...overflow.slice(0, DIVERSE_FLOOR - kept.length)];
+    let merged: T[];
+    if (kept.length >= DIVERSE_FLOOR) {
+      merged = kept;
+    } else {
+      // 薄いエリアの補填でも同サブカテを積み増しし過ぎない（品質監査2026-07-19: まったり@渋谷で
+      //   非神社の在庫が薄く、補填で神社が7件まで戻っていた）。緩めcap(=5)内を優先して補填し、
+      //   それでも足りない時だけ超過分(leftover)で埋める＝変化に富んだ15件に寄せる。
+      const SUBCAT_CAP_RELAX = 5;
+      const fill: T[] = [];
+      const leftover: T[] = [];
+      for (const r of overflow) {
+        const sub = nonFoodSubcatOf(r.title ?? "", r.tags);
+        const sc = sub ? (subCnt.get(sub) ?? 0) : 0;
+        if (sub && sub !== requestedSub && sc >= SUBCAT_CAP_RELAX) { leftover.push(r); continue; }
+        if (sub) subCnt.set(sub, sc + 1);
+        fill.push(r);
+      }
+      merged = [...kept, ...[...fill, ...leftover].slice(0, DIVERSE_FLOOR - kept.length)];
+    }
     // (c): 著名スポット(レビュー多)が上位5枠に1件も無ければ、最良の1件を3位付近へ昇格。
     const FAME_MIN = 0.6;  // ~250件以上で著名とみなす
     const topHasFame = merged.slice(0, 5).some(r => fameScore(r) >= FAME_MIN);
