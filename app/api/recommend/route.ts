@@ -2184,6 +2184,12 @@ async function interpretFreeword(text: string): Promise<{ keywords: string[]; mo
   } catch { return fallback; }
 }
 
+// P1(2026-07-19): 意味検索の常時融合フラグ。match_places_semantic を索引フレンドリーに直した
+//   supabase/fix-semantic-search-perf.sql を適用した後に RECOMMEND_SEMANTIC_ALWAYS=1 で有効化する。
+//   ONで「気分だけ検索でも」毎回セマンティック近傍を融合（タグ語彙に無い気分＝『エモい夕暮れ』等を拾う）。
+//   未設定(既定)＝従来どおり在庫が薄い時(＜15件・深掘り無し)だけ発火＝SQL未適用でも回帰しない。
+const SEMANTIC_ALWAYS = process.env.RECOMMEND_SEMANTIC_ALWAYS === "1";
+
 // #1 セマンティック検索: クエリ文を埋め込み → match_places_semantic RPC で半径内の意味的近傍を取得。
 //   返却は spatialSearch と同型(PlaceResponse)。RPC/embedding未整備(PGRST202等)は graceful に [] を返す。
 async function semanticSearchPlaces(
@@ -7194,12 +7200,12 @@ async function handleRecommend(request: Request) {
       //   自由文がある時は上の②ブロックで意味検索済み→ここは自由文なしの時だけ実行(二重embed回避)。
       //   気分・深掘り・同行者・niceタグの自然文をembed→match_places_semanticで半径内の意味的近傍を取得し、
       //   similarity>=0.25 のみ合流（弱マッチのノイズとAI判別/理由コストを抑制）。純度は後段 nameMatchesGenre が担保。
-      // 【性能】タグ検索で十分な在庫(15件以上)があれば意味検索はスキップ。
-      //   match_places_semantic はベクトル近傍探索で、places が20万件規模に育つと
-      //   1回数十秒かかりアプリの30sタイムアウトを誘発する。タグで足りているなら不要。
-      //   在庫が薄い時(深掘りニッチ/地方)だけ意味検索で補完する。
+      // 【P1 2026-07-19】RECOMMEND_SEMANTIC_ALWAYS=1(＋fix-semantic-search-perf.sql適用) なら常時融合＝
+      //   気分だけ検索でも毎回セマンティック近傍を合流し「タグ語彙に無い気分(エモい夕暮れ等)」を拾う。
+      //   RPCは索引フレンドリー化で高速(半径先行の厳密kNN)＝タイムアウト解消。深掘り時も融合する。
+      //   未設定(既定)＝従来どおり在庫が薄い時(＜15件・深掘り無し)だけ発火＝SQL未適用でも回帰なし。
       if (!answers.freeWord && !refinementText && hasLocation && openai
-          && sbResults.length < 15 && deepDiveTags.length === 0) {
+          && (SEMANTIC_ALWAYS || (sbResults.length < 15 && deepDiveTags.length === 0))) {
         try {
           const _ddL2 = (answers.dynamicQs ?? []).find(q => q.question === "深掘り詳細")?.answer ?? "";
           const _ddL1 = (answers.dynamicQs ?? []).find(q => q.question === "深掘りカテゴリ")?.answer ?? "";
