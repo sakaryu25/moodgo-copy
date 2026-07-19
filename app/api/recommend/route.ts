@@ -6188,6 +6188,11 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
     if (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))) return true;
     return a.slice(0, 4) === b.slice(0, 4);
   };
+  // P17: 同一複合施設の「棟/イースト・ウエスト等」接尾辞を剥がした"核の名前"。
+  //   ヒルトンプラザ イースト／ウエスト／WEST が全て「ヒルトンプラザ」に畳まれる（座標近接と併用して誤結合を防ぐ）。
+  //   保守的に方向/館/棟の接尾辞のみ剥がす（交差点/スクエア等は残す＝スクランブル交差点↔スクエアは別物のまま）。
+  const CORE_SUFFIX_RE = /(イースト|ウエスト|ウェスト|ノース|サウス|セントラル|east|west|north|south|central|別館|本館|新館|東館|西館|南館|北館|[東西南北]棟|[a-z]棟)+$/i;
+  const coreKey = (k: string): string => { const c = k.replace(CORE_SUFFIX_RE, ""); return c.length >= 4 ? c : k; };
 
   // クロスソース重複排除しながら pool から最大 max 件取得。A-7: 同チェーン最大2件抑制。
   //   sharedBrandCounts を渡すと呼び出し越しにブランドcapを共有する（SB/G/Y/backfillの
@@ -6209,9 +6214,13 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       for (const e of seen) {
         if (e.key === key) { isDup = true; break; }
         if (pid && e.pid === pid) { isDup = true; break; }
-        if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined
-            && haversineMeters(rl, rg, e.lat, e.lng) <= 80 && namesOverlap(key, e.key)) {
-          isDup = true; break;
+        if (rl !== undefined && rg !== undefined && e.lat !== undefined && e.lng !== undefined) {
+          const d = haversineMeters(rl, rg, e.lat, e.lng);
+          if (d <= 80 && namesOverlap(key, e.key)) { isDup = true; break; }
+          // P17: 同一複合施設(棟/イースト・ウエスト等の接尾辞違い)を core 名一致＋近接(≤400m)で1件に畳む。
+          //   ck!==key or ce!==e.key で「少なくとも一方が接尾辞を持っていた」ことを要求＝別スポットの偶然一致を除外。
+          const ck = coreKey(key), ce = coreKey(e.key);
+          if (ck.length >= 4 && d <= 400 && ck === ce && (ck !== key || ce !== e.key)) { isDup = true; break; }
         }
       }
       if (isDup) continue;
@@ -6987,7 +6996,22 @@ async function handleRecommend(request: Request) {
             tags: [] as string[],
           };
         };
-        const jikanRecs = [...jikanTop.map(r => toJikanRec(r, true)), ...jTake.map(r => toJikanRec(r, false))];
+        const jikanRecsRaw = [...jikanTop.map(r => toJikanRec(r, true)), ...jTake.map(r => toJikanRec(r, false))];
+        // P17: 同一複合施設の重複を畳む（梅田ヒルトンプラザ×3・LUCUA×2等）。時間潰しパスはpickUniqueを通らないため個別に。
+        //   核名(棟/イースト・ウエスト等を剥がす)一致＋近接(≤400m)、または同名近接を1件に。保守的=別スポットは残す。
+        const jNorm = (s: string) => (s ?? "").normalize("NFKC").toLowerCase().replace(/[^0-9a-z぀-ヿ一-鿿ｦ-ﾟ]+/g, "");
+        const jCore = (s: string) => { const k = jNorm(s); const c = k.replace(/(イースト|ウエスト|ウェスト|ノース|サウス|セントラル|east|west|north|south|central|別館|本館|新館|東館|西館|南館|北館|[東西南北]棟|[a-z]棟)+$/i, ""); return c.length >= 4 ? c : k; };
+        const jSeenCore: { core: string; lat?: number; lng?: number }[] = [];
+        const jikanRecs = jikanRecsRaw.filter(r => {
+          const core = jCore(r.title); const lat = r.lat, lng = r.lng;
+          for (const e of jSeenCore) {
+            if (e.core !== core || core.length < 4) continue;
+            if (lat == null || lng == null || e.lat == null || e.lng == null) return false;   // 座標欠損は核一致で畳む
+            if (haversineMeters(lat, lng, e.lat, e.lng) <= 400) return false;                  // 核一致＋近接=同一施設
+          }
+          jSeenCore.push({ core, lat: lat ?? undefined, lng: lng ?? undefined });
+          return true;
+        });
         await applyUserPhotos(jikanRecs as unknown as UserPhotoRec[]);
         return json({
           recommendations: await attachAvailability(jikanRecs, moodGroup(answers.mood)),
