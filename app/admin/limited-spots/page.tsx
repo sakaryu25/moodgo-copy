@@ -24,6 +24,10 @@ type Spot = {
   repost_to_detail: boolean;
 };
 
+// 重複チェック用の軽量スポット型（duplicates アクションが返すクラスタ）
+type DupSpot = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; available_from: string | null; available_until: string | null; tags: string[] };
+type DupCluster = DupSpot[];
+
 const API = "/api/admin/limited-spots";
 const RENDER_CAP = 300;   // 一度に描画する最大件数（全件は取得済み・検索で全件から絞り込める）
 const todayJst = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
@@ -60,6 +64,8 @@ export default function LimitedSpotsAdmin() {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
   const [showEnded, setShowEnded] = useState(true);
+  const [dupClusters, setDupClusters] = useState<DupCluster[] | null>(null);   // null=未チェック / []=重複なし
+  const [dupLoading, setDupLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!secret) return;
@@ -96,6 +102,32 @@ export default function LimitedSpotsAdmin() {
     } catch { patchLocal(s.id, { repost_to_detail: !next }); }
   };
 
+  // 重複チェック（名前ゆるふわ一致＋座標近接でクラスタ化）
+  const checkDuplicates = useCallback(async () => {
+    if (!secret) return;
+    setDupLoading(true); setErr("");
+    try {
+      const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "duplicates", secret }) });
+      const d = await r.json();
+      if (!d.ok) { setErr(d.error || "重複チェックに失敗しました"); setDupClusters([]); }
+      else setDupClusters(d.clusters ?? []);
+    } catch { setErr("通信に失敗しました"); }
+    setDupLoading(false);
+  }, [secret]);
+
+  // 統合: 残す1件(keepId)に写真/口コミを寄せ、残り(dupeIds)を非公開化。
+  const mergeCluster = async (keepId: string, dupeIds: string[]) => {
+    if (!dupeIds.length) return;
+    if (!confirm(`${dupeIds.length}件を統合します。写真/Moodログ/評価は残す1件に寄せ、重複側は非公開(検索から除外)にします。よろしいですか？`)) return;
+    try {
+      const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "merge", secret, keepId, dupeIds }) });
+      const d = await r.json();
+      if (!d.ok) { alert(d.error || "統合に失敗しました"); return; }
+      await load();            // 一覧を最新化
+      await checkDuplicates(); // 重複を再計算
+    } catch { alert("通信に失敗しました"); }
+  };
+
   // 認証確認中/未ログインのリダイレクト中は空表示（パスワード画面は出さない）。
   if (!authed) return null;
 
@@ -112,6 +144,7 @@ export default function LimitedSpotsAdmin() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <a href="/admin" style={css.linkBtn}>← 管理トップ</a>
+          <button onClick={checkDuplicates} style={css.reloadBtn} disabled={dupLoading}>{dupLoading ? "確認中…" : "🔁 重複チェック"}</button>
           <button onClick={load} style={css.reloadBtn} disabled={loading}>{loading ? "読込中…" : "↻ 更新"}</button>
         </div>
       </div>
@@ -132,6 +165,10 @@ export default function LimitedSpotsAdmin() {
         <label style={css.chk}><input type="checkbox" checked={showEnded} onChange={(e) => setShowEnded(e.target.checked)} /> 終了分も表示</label>
       </div>
 
+      {dupClusters !== null && (
+        <DuplicatesPanel clusters={dupClusters} onMerge={mergeCluster} onClose={() => setDupClusters(null)} />
+      )}
+
       {err && <div style={css.err}>{err}</div>}
       {!loading && filtered.length === 0 && <div style={css.empty}>該当する期間限定スポットがありません。</div>}
       {filtered.length > RENDER_CAP && (
@@ -144,6 +181,43 @@ export default function LimitedSpotsAdmin() {
         ))}
       </div>
     </div>
+    </div>
+  );
+}
+
+// ── 重複候補パネル: クラスタごとに「残す1件」を選んで統合する ─────────────────────
+function DuplicatesPanel({ clusters, onMerge, onClose }: { clusters: DupCluster[]; onMerge: (keepId: string, dupeIds: string[]) => void; onClose: () => void }) {
+  return (
+    <div style={{ border: "1px solid #E4C200", background: "#FFFBEA", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <b style={{ fontSize: 15 }}>🔁 重複候補 {clusters.length} グループ</b>
+        <button onClick={onClose} style={css.linkBtn}>閉じる</button>
+      </div>
+      {clusters.length === 0
+        ? <div style={{ color: "#0F9D58", fontSize: 13 }}>重複は見つかりませんでした。</div>
+        : <div style={{ fontSize: 12, color: "#8A7A20", marginBottom: 8 }}>名前が似ていて座標が近い（≤400m）ものを束ねました。各グループで「残す1件」を選び、統合してください（写真/口コミは残す1件に寄せ、他は非公開＝検索から除外されます）。</div>}
+      {clusters.map((c, i) => <ClusterRow key={c[0]?.id ?? i} cluster={c} onMerge={onMerge} />)}
+    </div>
+  );
+}
+
+function ClusterRow({ cluster, onMerge }: { cluster: DupCluster; onMerge: (keepId: string, dupeIds: string[]) => void }) {
+  const [keepId, setKeepId] = useState(cluster[0]?.id ?? "");
+  const dupeIds = cluster.map((s) => s.id).filter((id) => id !== keepId);
+  return (
+    <div style={{ border: "1px solid #EADFA0", borderRadius: 8, padding: 10, marginBottom: 8, background: "#fff" }}>
+      {cluster.map((s) => (
+        <label key={s.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", cursor: "pointer" }}>
+          <input type="radio" name={`keep-${cluster[0]?.id}`} checked={keepId === s.id} onChange={() => setKeepId(s.id)} style={{ marginTop: 3 }} />
+          <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+            <div style={{ fontWeight: keepId === s.id ? 800 : 500 }}>{s.name}{keepId === s.id && <span style={{ color: "#0F9D58", marginLeft: 6 }}>← 残す</span>}</div>
+            <div style={{ color: "#8A8A99", fontSize: 11 }}>{s.address || "住所なし"}｜{s.available_from || "?"}〜{s.available_until || "?"}｜{(s.tags ?? []).slice(0, 4).join(" ")}</div>
+          </div>
+        </label>
+      ))}
+      <button onClick={() => onMerge(keepId, dupeIds)} disabled={!dupeIds.length} style={{ ...css.delBtn, marginTop: 6, opacity: dupeIds.length ? 1 : 0.5 }}>
+        この {dupeIds.length} 件を統合（残す1件に寄せる）
+      </button>
     </div>
   );
 }

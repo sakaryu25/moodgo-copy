@@ -120,6 +120,13 @@ export async function POST(req: Request) {
       await db.from("spot_posts").update(patch).eq("id", postId).then(() => {}, () => {});
       if (next >= REPORT_HIDE_THRESHOLD) {
         await db.from("spot_photos").update({ moderation_status: "hidden" }).eq("post_id", postId).then(() => {}, () => {});
+        // (A)事後モデレーション: 即公開に伴い、通報3件でこの投稿由来の「ユーザー作成スポット」は検索からも外す(is_active=false)。
+        //   共有スポット(Google/admin/OSM)は投稿への通報で消さない＝source_type=user のみ対象（誤爆防止）。adminがpending-spotsで再開可。
+        try {
+          const { data: pr } = await db.from("spot_posts").select("place_id").eq("id", postId).maybeSingle();
+          const pid = (pr as { place_id?: string } | null)?.place_id;
+          if (pid) await db.from("places").update({ is_active: false }).eq("id", pid).eq("source_type", "user").then(() => {}, () => {});
+        } catch { /* place無効化失敗は投稿hideを妨げない */ }
       }
       return NextResponse.json({ ok: true, hidden: next >= REPORT_HIDE_THRESHOLD });
     } catch (e) {
@@ -503,15 +510,18 @@ export async function POST(req: Request) {
         }
         if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
       }
-      // 重複が無ければ新規placeを仮登録（admin承認まで is_active=false）。
-      //   期間限定イベント派生(parentPlaceId＋終了日)は承認なしで期間中だけ検索に出す＝is_active=true。
-      //   recommend が is_active=true かつ available_from<=今日<=available_until のみ採用し、期限切れは
-      //   cron/cleanup-stale-cache が完全削除＝自己完結（永続化しない）。
+      // 新規placeを登録。
+      //   (A) 2026-07-19: 新規ユーザースポットも「即検索公開」＝完全な事後モデレーション（NGワードで投稿時ブロック＋
+      //     通報3件で自動非表示＋coreName dedup＋adminで随時deactivate）。投稿の達成感を優先しMoodGoの穴場文化を育てる。
+      //   ただし座標が無いと find_nearby に出ないため、座標がある時だけ is_active=true。座標無し（geocode失敗等）は
+      //     is_active=false で pending-spots(承認待ち)に回し、adminが座標を補って承認する（＝旧来の承認導線を維持）。
+      //   期間限定イベント派生(parentPlaceId＋終了日)は従来どおり期間中だけ検索に出す。cron/cleanup-stale-cacheが期限切れ削除。
       if (!effectivePlaceId) {
+        const hasCoords = typeof insLat === "number" && Number.isFinite(insLat) && typeof insLng === "number" && Number.isFinite(insLng);
         const eventActive = !!(parentPlaceId && newAvailUntil);
         const { data: place } = await db.from("places").insert({
           name: placeName, address: insAddr || "日本", tags: moodTags,
-          area: null, nearest_station: insStation, source_type: "user", is_active: eventActive,
+          area: null, nearest_station: insStation, source_type: "user", is_active: hasCoords || eventActive,
           lat: insLat, lng: insLng, open_hours: insHours,
         }).select("id").single();
         if (place && (place as { id?: string }).id) effectivePlaceId = (place as { id: string }).id;

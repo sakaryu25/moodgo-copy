@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
+import { isLikelySamePlace } from "@/lib/normalize-name";   // 重複検出(名前ゆるふわ一致＋座標近接)
 
 // 一覧/編集で扱う列。repost_to_detail は未適用環境(42703)ではフォールバックで外す。
 const COLS_BASE = "id, name, address, lat, lng, tags, description, image_urls, photo_url, available_from, available_until, source_type, is_active, created_at";
@@ -82,6 +83,57 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, spots: rowsWithPhotos, flagReady: hasFlag });
   }
 
+  // ── 重複検出: 期間限定スポットの中から「同じ場所らしい」クラスタ(2件以上)を返す ──────────
+  //   名前ゆるふわ一致(表記ゆれ/包含)＋座標近接(≤400m)で束ねる（座標欠損は名前一致で束ねる）。
+  //   同じイベントを別々に投稿した二重登録や、表記違いの重複を admin が見つけて統合できるように。
+  if (action === "duplicates") {
+    const PAGE = 1000; const all: Row[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const res = (await db.from("places").select(COLS_BASE)
+        .or("available_from.not.is.null,available_until.not.is.null")
+        .eq("is_active", true)   // 非公開(削除済)は重複候補にしない
+        .order("id", { ascending: true }).range(offset, offset + PAGE - 1)) as unknown as ListResT;
+      if (res.error) return NextResponse.json({ ok: false, error: res.error.message }, { status: 500 });
+      const batch = res.data ?? []; all.push(...batch);
+      if (batch.length < PAGE) break;
+    }
+    type S = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; available_from: string | null; available_until: string | null; tags: string[] };
+    const spots: S[] = all.map((r) => ({
+      id: String(r.id), name: String(r.name ?? ""), address: (r.address as string) ?? null,
+      lat: typeof r.lat === "number" ? r.lat : null, lng: typeof r.lng === "number" ? r.lng : null,
+      available_from: (r.available_from as string) ?? null, available_until: (r.available_until as string) ?? null,
+      tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    }));
+    // 貪欲クラスタリング: 各スポットを既存クラスタの誰かと isLikelySamePlace(名前ゆる一致＋≤400m) で照合。
+    const clusters: S[][] = [];
+    for (const s of spots) {
+      let placed = false;
+      for (const c of clusters) {
+        if (c.some((m) => isLikelySamePlace(m.name, m.lat, m.lng, s.name, s.lat, s.lng, 400))) { c.push(s); placed = true; break; }
+      }
+      if (!placed) clusters.push([s]);
+    }
+    const dupes = clusters.filter((c) => c.length >= 2).sort((a, b) => b.length - a.length);
+    return NextResponse.json({ ok: true, clusters: dupes, count: dupes.length });
+  }
+
+  // ── 統合: keeper に子データ(写真/Moodログ/評価)を寄せ、dupeIds を非公開(is_active:false)にする ──
+  //   期間限定の二重登録を1件にまとめる。写真/口コミが消えないよう place_id を付け替えてから無効化。
+  if (action === "merge") {
+    const keepId = String(body?.keepId ?? "").trim();
+    const dupeIds = Array.isArray(body?.dupeIds)
+      ? (body.dupeIds as unknown[]).map((x) => String(x).trim()).filter((x) => x && x !== keepId)
+      : [];
+    if (!keepId || dupeIds.length === 0) return NextResponse.json({ ok: false, error: "keepId と dupeIds が必要です" }, { status: 400 });
+    // 子データの place_id を keeper へ付け替え（写真/Moodログ/評価が消えないように・merge-duplicatesと同じ方針）。
+    for (const t of ["place_photos", "spot_photos", "spot_posts", "spot_ratings"]) {
+      await db.from(t).update({ place_id: keepId }).in("place_id", dupeIds).then(() => {}, () => {});
+    }
+    const { error } = await db.from("places").update({ is_active: false }).in("id", dupeIds);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, merged: dupeIds.length, keepId });
+  }
+
   const id = String(body?.id ?? "").trim();
   if (!id) return NextResponse.json({ ok: false, error: "id が必要です" }, { status: 400 });
 
@@ -135,5 +187,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, spot: res.data });
   }
 
-  return NextResponse.json({ ok: false, error: "action は list | update | delete | restore | set-repost" }, { status: 400 });
+  return NextResponse.json({ ok: false, error: "action は list | duplicates | merge | update | delete | restore | set-repost" }, { status: 400 });
 }
