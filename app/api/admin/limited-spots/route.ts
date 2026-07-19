@@ -117,18 +117,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, clusters: dupes, count: dupes.length });
   }
 
-  // ── 統合: keeper に子データ(写真/Moodログ/評価)を寄せ、dupeIds を非公開(is_active:false)にする ──
-  //   期間限定の二重登録を1件にまとめる。写真/口コミが消えないよう place_id を付け替えてから無効化。
+  // ── 統合(埋め合わせ型): 残す1件(keeper)に、dupeIdsの「良いところ」を埋め合わせて1件にまとめ、dupeIdsを非公開にする ──
+  //   ・写真(image_urls)/タグ(tags)は全件の和集合＝両方の良い写真・タグを集める。
+  //   ・住所/説明/営業時間/最寄駅/写真URL/公開期間/座標は keeper が空の時だけ dupe の非空で補完（keeperの値は尊重）。
+  //   ・子データ(写真/Moodログ/評価)は place_id を keeper へ付け替え（消えないように）。最後に dupe を is_active=false。
   if (action === "merge") {
     const keepId = String(body?.keepId ?? "").trim();
     const dupeIds = Array.isArray(body?.dupeIds)
       ? (body.dupeIds as unknown[]).map((x) => String(x).trim()).filter((x) => x && x !== keepId)
       : [];
     if (!keepId || dupeIds.length === 0) return NextResponse.json({ ok: false, error: "keepId と dupeIds が必要です" }, { status: 400 });
-    // 子データの place_id を keeper へ付け替え（写真/Moodログ/評価が消えないように・merge-duplicatesと同じ方針）。
+
+    // ① keeper と dupes の中身を取得して「埋め合わせ」パッチを作る。
+    const MCOLS = "id, address, lat, lng, tags, description, image_urls, photo_url, open_hours, nearest_station, available_from, available_until";
+    const { data: mrows } = await db.from("places").select(MCOLS).in("id", [keepId, ...dupeIds]);
+    const rows = (mrows ?? []) as Array<Record<string, unknown>>;
+    const keeper = rows.find((r) => String(r.id) === keepId);
+    if (keeper) {
+      const others = rows.filter((r) => String(r.id) !== keepId);
+      const patch: Record<string, unknown> = {};
+      const strEmpty = (v: unknown) => { const s = String(v ?? "").trim(); return !s || s === "日本"; };
+      const uniq = (arr: unknown[]) => Array.from(new Set(arr.map((x) => String(x ?? "").trim()).filter(Boolean)));
+      // スカラー: keeperが空なら dupe の非空で補完（keeperの非空値は上書きしない）
+      for (const f of ["address", "description", "open_hours", "nearest_station", "photo_url", "available_from", "available_until"] as const) {
+        if (strEmpty(keeper[f])) { const hit = others.find((o) => !strEmpty(o[f])); if (hit) patch[f] = hit[f]; }
+      }
+      // 座標: keeper に無ければ dupe から
+      if (keeper.lat == null || keeper.lng == null) { const hit = others.find((o) => o.lat != null && o.lng != null); if (hit) { patch.lat = hit.lat; patch.lng = hit.lng; } }
+      // 配列: tags / image_urls は全件の和集合（両方の良い写真・タグを残す）
+      const mergedTags = uniq([...((keeper.tags as unknown[]) ?? []), ...others.flatMap((o) => (o.tags as unknown[]) ?? [])]);
+      if (mergedTags.length > uniq((keeper.tags as unknown[]) ?? []).length) patch.tags = mergedTags.slice(0, 40);
+      const mergedImgs = uniq([...((keeper.image_urls as unknown[]) ?? []), ...others.flatMap((o) => (o.image_urls as unknown[]) ?? [])]);
+      if (mergedImgs.length > uniq((keeper.image_urls as unknown[]) ?? []).length) patch.image_urls = mergedImgs.slice(0, 30);
+      if (Object.keys(patch).length > 0) await db.from("places").update(patch).eq("id", keepId).then(() => {}, () => {});
+    }
+
+    // ② 子データ(写真/Moodログ/評価)を keeper へ付け替え。
     for (const t of ["place_photos", "spot_photos", "spot_posts", "spot_ratings"]) {
       await db.from(t).update({ place_id: keepId }).in("place_id", dupeIds).then(() => {}, () => {});
     }
+    // ③ dupe を非公開(is_active:false)に。
     const { error } = await db.from("places").update({ is_active: false }).in("id", dupeIds);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, merged: dupeIds.length, keepId });

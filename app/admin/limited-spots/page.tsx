@@ -118,7 +118,7 @@ export default function LimitedSpotsAdmin() {
   // 統合: 残す1件(keepId)に写真/口コミを寄せ、残り(dupeIds)を非公開化。
   const mergeCluster = async (keepId: string, dupeIds: string[]) => {
     if (!dupeIds.length) return;
-    if (!confirm(`${dupeIds.length}件を統合します。写真/Moodログ/評価は残す1件に寄せ、重複側は非公開(検索から除外)にします。よろしいですか？`)) return;
+    if (!confirm(`${dupeIds.length}件を残す1件に埋め合わせて統合します。\n・写真/タグ/空欄は残す1件に補完（良いとこ取り）\n・写真/Moodログ/評価も残す1件に寄せる\n・統合した${dupeIds.length}件は非公開(検索から除外)\nよろしいですか？`)) return;
     try {
       const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "merge", secret, keepId, dupeIds }) });
       const d = await r.json();
@@ -195,41 +195,58 @@ function DuplicatesPanel({ clusters, onMerge, onClose }: { clusters: DupCluster[
       </div>
       {clusters.length === 0
         ? <div style={{ color: "#0F9D58", fontSize: 13 }}>重複は見つかりませんでした。</div>
-        : <div style={{ fontSize: 12, color: "#8A7A20", marginBottom: 8 }}>名前が似ていて座標が近い（≤400m）ものを束ねました。各グループで「残す1件」を選び、統合してください（写真/口コミは残す1件に寄せ、他は非公開＝検索から除外されます）。</div>}
+        : <div style={{ fontSize: 12, color: "#8A7A20", marginBottom: 8 }}>名前が似ていて座標が近い（≤400m）ものを束ねました。各グループで<b>☑統合するものを選び、◉残す1件</b>を決めて統合します（写真・タグ・空欄を残す1件に<b>埋め合わせ</b>、他は非公開＝検索から除外）。会場など統合したくないものはチェックを外してください。</div>}
       {clusters.map((c, i) => <ClusterRow key={c[0]?.id ?? i} cluster={c} onMerge={onMerge} />)}
     </div>
   );
 }
 
 function ClusterRow({ cluster, onMerge }: { cluster: DupCluster; onMerge: (keepId: string, dupeIds: string[]) => void }) {
+  // included=統合に含めるスポット（既定=全部）。会場など統合したくないものはチェックを外す。
+  const [included, setIncluded] = useState<Set<string>>(() => new Set(cluster.map((s) => s.id)));
   const [keepId, setKeepId] = useState(cluster[0]?.id ?? "");
-  const dupeIds = cluster.map((s) => s.id).filter((id) => id !== keepId);
-  // ⚠「会場＋そこで開催中のイベント」を誤って統合しないための注意判定:
-  //   ・開催期間が揃っていない（例: 会場〜7/30 と イベント〜9/30）＝別物の可能性大
-  //   ・一方だけ「＠会場」形式（イベント名＠会場）＝会場とイベントが混在している可能性
-  const datesDiffer = new Set(cluster.map((s) => `${s.available_from ?? ""}~${s.available_until ?? ""}`)).size > 1;
-  const atFlags = cluster.map((s) => /[@＠]/.test(s.name));
+  const toggle = (id: string) => setIncluded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // keeper が除外されたら、含まれている先頭の1件へ自動で移す。
+  const effKeep = included.has(keepId) ? keepId : (cluster.find((s) => included.has(s.id))?.id ?? "");
+  const dupeIds = cluster.map((s) => s.id).filter((id) => id !== effKeep && included.has(id));
+  // ⚠会場＋開催イベントの誤統合を防ぐ注意判定（「含める分」だけで見る）:
+  //   ・開催期間が揃っていない（会場〜7/30 と イベント〜9/30）／一方だけ「＠会場」形式 ＝別物の可能性
+  const inc = cluster.filter((s) => included.has(s.id));
+  const datesDiffer = new Set(inc.map((s) => `${s.available_from ?? ""}~${s.available_until ?? ""}`)).size > 1;
+  const atFlags = inc.map((s) => /[@＠]/.test(s.name));
   const atMismatch = atFlags.some(Boolean) && atFlags.some((x) => !x);
-  const risky = datesDiffer || atMismatch;
+  const risky = inc.length >= 2 && (datesDiffer || atMismatch);
   return (
     <div style={{ border: `1px solid ${risky ? "#F5B5B5" : "#EADFA0"}`, borderRadius: 8, padding: 10, marginBottom: 8, background: "#fff" }}>
       {risky && (
         <div style={{ background: "#FDECEC", border: "1px solid #F5B5B5", borderRadius: 6, padding: "6px 9px", marginBottom: 6, fontSize: 11.5, color: "#B02020", lineHeight: 1.5 }}>
           ⚠ {datesDiffer ? "開催期間が揃っていません。" : ""}{atMismatch ? "「会場」と「＠会場のイベント」が混ざっているようです。" : ""}
-          <b>「会場」と「そこで開催中の期間限定イベント」など別物の可能性</b>があります。統合するとイベントが検索から外れます。本当に同一イベントの重複か確認してから統合してください。
+          <b>会場と開催イベントなど別物の可能性</b>があります。統合したくないもの（会場など）は<b>チェックを外して</b>ください。
         </div>
       )}
-      {cluster.map((s) => (
-        <label key={s.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", cursor: "pointer" }}>
-          <input type="radio" name={`keep-${cluster[0]?.id}`} checked={keepId === s.id} onChange={() => setKeepId(s.id)} style={{ marginTop: 3 }} />
-          <div style={{ fontSize: 13, lineHeight: 1.4 }}>
-            <div style={{ fontWeight: keepId === s.id ? 800 : 500 }}>{s.name}{keepId === s.id && <span style={{ color: "#0F9D58", marginLeft: 6 }}>← 残す</span>}</div>
-            <div style={{ color: "#8A8A99", fontSize: 11 }}>{s.address || "住所なし"}｜{s.available_from || "?"}〜{s.available_until || "?"}｜{(s.tags ?? []).slice(0, 4).join(" ")}</div>
+      {cluster.map((s) => {
+        const on = included.has(s.id);
+        const isKeep = effKeep === s.id;
+        return (
+          <div key={s.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "4px 0", opacity: on ? 1 : 0.45 }}>
+            <input type="checkbox" checked={on} onChange={() => toggle(s.id)} title="統合に含める" style={{ marginTop: 3 }} />
+            <input type="radio" name={`keep-${cluster[0]?.id}`} checked={isKeep} disabled={!on} onChange={() => setKeepId(s.id)} title="残す1件" style={{ marginTop: 3 }} />
+            <div style={{ fontSize: 13, lineHeight: 1.4 }}>
+              <div style={{ fontWeight: isKeep ? 800 : 500 }}>
+                {s.name}
+                {isKeep && <span style={{ color: "#0F9D58", marginLeft: 6 }}>← 残す</span>}
+                {!on && <span style={{ color: "#B0B0BC", marginLeft: 6 }}>（統合しない）</span>}
+              </div>
+              <div style={{ color: "#8A8A99", fontSize: 11 }}>{s.address || "住所なし"}｜{s.available_from || "?"}〜{s.available_until || "?"}｜{(s.tags ?? []).slice(0, 4).join(" ")}</div>
+            </div>
           </div>
-        </label>
-      ))}
-      <button onClick={() => onMerge(keepId, dupeIds)} disabled={!dupeIds.length} style={{ ...css.delBtn, marginTop: 6, opacity: dupeIds.length ? 1 : 0.5 }}>
-        この {dupeIds.length} 件を統合（残す1件に寄せる）
+        );
+      })}
+      <div style={{ fontSize: 11, color: "#8A8A99", margin: "4px 0 6px", lineHeight: 1.5 }}>
+        ☑チェックした中の「◉残す1件」に、他の<b>写真・タグ・空欄を埋め合わせて</b>1件にまとめます（他は非公開＝検索から除外）。会場など残したいものはチェックを外してください。
+      </div>
+      <button onClick={() => onMerge(effKeep, dupeIds)} disabled={!effKeep || !dupeIds.length} style={{ ...css.delBtn, opacity: (effKeep && dupeIds.length) ? 1 : 0.5 }}>
+        選んだ {dupeIds.length} 件を統合（埋め合わせ）
       </button>
     </div>
   );
