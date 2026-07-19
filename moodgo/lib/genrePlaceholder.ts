@@ -36,6 +36,7 @@ const RULES: { tag: string; ph: GenrePlaceholder }[] = [
   { tag: "#カフェスイーツ", ph: { emoji: "🍰", colors: ["#FFF2F7", "#FFDCEA"], label: "カフェ・スイーツ" } },
   // ── まったり/自然 ──
   { tag: "#温泉",           ph: { emoji: "♨️", colors: ["#FFF1EC", "#FFD9C9"], label: "温泉" } },
+  { tag: "#銭湯",           ph: { emoji: "♨️", colors: ["#FFF3EE", "#FFDECB"], label: "銭湯" } },
   { tag: "#サウナ",         ph: { emoji: "🧖", colors: ["#FBEDE8", "#F0D6C8"], label: "サウナ" } },
   { tag: "#岩盤浴",         ph: { emoji: "🧖", colors: ["#FBEDE8", "#F0D6C8"], label: "岩盤浴" } },
   { tag: "#海辺",           ph: { emoji: "🏖️", colors: ["#E9F6FF", "#CFEBFF"], label: "海辺" } },

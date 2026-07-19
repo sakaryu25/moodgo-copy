@@ -77,6 +77,13 @@ def derive_nature_tags(osm_tags, name):
             tags.add("#岩盤浴")
         # 温泉・銭湯・健康ランド系
         tags.add("#温泉")
+        # 銭湯タグ(2026-07-20): public_bath は公衆浴場＝銭湯。名前が銭湯系施設なら #銭湯。旅館/ホテルの内湯は除く。
+        if (amenity == "public_bath" or re.search(r"銭湯|公衆浴場|スーパー銭湯|健康ランド|クアハウス|極楽湯", name)) \
+                and not re.search(r"旅館|ホテル|hotel|リゾート", name, re.I):
+            tags.add("#銭湯")
+        # スーパー銭湯・健康ランドは通常サウナ併設
+        if re.search(r"スーパー銭湯|健康ランド|クアハウス|テルメ", name):
+            tags.add("#サウナ")
         if leisure == "sauna" or amenity == "sauna":
             tags.add("#サウナ"); tags.discard("#温泉") if not re.search(r"温泉|湯|風呂|スパ|銭湯", name) else None
         if re.search(r"サウナ", name) and not re.search(r"温泉|湯|風呂|銭湯|スパ", name):
