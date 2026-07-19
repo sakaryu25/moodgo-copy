@@ -8852,6 +8852,20 @@ async function handleRecommend(request: Request) {
             const over = recommendations.filter(r => kmKnown(r) && kmF(r) > capKm);
             if (within.length > 0) recommendations = [...within, ...over];
           }
+        } else if (minRadiusKm > 0 && !isFoodMood && !isProprietaryOnly) {
+          // far-bias(遠出=ちょっと遠くてもOK以上)の最終確定(2026-07-19 本番実測で回帰発見): finalizeの多様化/rerankerが
+          //   近場を上位へ戻すため「遠出を選んだのに近所ばかり」になっていた。ここで「遠い順」を最終表示順として保証する
+          //   （near側のhardcap partitionの対＝最後に安定化）。ジャンル一致優先→遠い順→ゆらぎ。距離不明(0扱い)は末尾へ。
+          const kmF2 = (r: { distanceKm?: number; distanceText?: string }): number =>
+            typeof r.distanceKm === "number" ? r.distanceKm
+              : (parseFloat((r.distanceText ?? "").match(/\/\s*([\d.]+)\s*km/)?.[1] ?? "") || 0);
+          const jitterKm = Math.min(radiusKm * 0.1, 15);
+          recommendations = [...recommendations].sort((a, b) => {
+            const ga = nameMatchesGenre(a.title ?? "", effectiveDeepDive) ? 0 : 1;
+            const gb = nameMatchesGenre(b.title ?? "", effectiveDeepDive) ? 0 : 1;
+            if (ga !== gb) return ga - gb;
+            return (kmF2(b) - kmF2(a)) + (Math.random() - 0.5) * jitterKm * 2;   // 遠い順（遠方優先＋ゆらぎ）
+          });
         }
         return json({
           recommendations,
