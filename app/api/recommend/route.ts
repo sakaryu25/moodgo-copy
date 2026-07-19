@@ -6085,6 +6085,34 @@ const REASON_ALT: Record<string, string[]> = {
   "ひと息つけます。": ["ほっと一息つけます。", "休憩にちょうどいい。", "コーヒー片手にくつろげます。", "ひと休みに最適。"],
   "食事が楽しめます。": ["美味しい food にありつけます。", "しっかり食べられます。", "満足感のある一皿。", "お腹を満たせます。"],
 };
+// freeWord(こだわり)由来のハードジャンル判定(2026-07-20 監査#1/Z世代最大の萎え「打った言葉が無視される」)。
+//   ドロップダウン深掘り未選択でも、freeWordが明確にジャンルを指す時に非該当スポットを最終段で除去する。
+//   re=freeWord発火語 / pos=スポット名の肯定語 / tags=そのジャンルのシグナルタグ。名前pos or タグ一致で「該当」。
+const FREEWORD_GENRE: Array<{ re: RegExp; key: string; pos: RegExp; tags: string[] }> = [
+  { re: /古着|ヴィンテージ|ヴィンテ|vintage|アメカジ|セカンドハンド|used\s?clothing|古物商/i, key: "古着",
+    pos: /古着|ヴィンテージ|vintage|used|セカンドハンド|アメカジ|thrift|古物|リメイク|ラグ|RAGTAG|WEGO|フリマ/i, tags: ["#古着・ヴィンテージ", "#服・アクセサリー"] },
+  { re: /サウナ|sauna|サ活|ととの|整い(?:たい)?|整う|ロウリュ|岩盤浴/i, key: "サウナ",
+    pos: /サウナ|sauna|スパ|spa|健康ランド|スーパー銭湯|温浴|ロウリュ|岩盤浴|銭湯|の湯|温泉|湯処|ゆ$/i, tags: ["#サウナ", "#岩盤浴", "#銭湯", "#温泉"] },
+  { re: /夜景|イルミ|ライトアップ|nightview|ナイトビュー/i, key: "夜景",
+    pos: /夜景|展望|タワー|ビュー|view|イルミ|丘|山頂|屋上|ルーフ|テラス|港|ベイ|スカイ|sky|展望台|ヒルズ|大橋/i, tags: ["#夜景", "#展望台", "#絶景スポット"] },
+  { re: /韓国|コリアン?|サムギョプ|タッカルビ|スンドゥブ|チヂミ|トッポギ|ホットク|プルコギ|ビビンバ|チーズ.{0,3}(?:ダッカルビ|ハットグ|ドッグ)/i, key: "韓国",
+    pos: /韓国|コリア|サムギョプ|タッカルビ|スンドゥブ|純豆腐|チゲ|プルコギ|ビビンバ|チヂミ|マッコリ|トッポギ|ホットク|カンジャン|ポチャ|韓|オッパ|チキン/i, tags: ["#韓国", "#韓国料理"] },
+  { re: /雑貨|インテリア雑貨|zakka|生活雑貨|ステーショナリー/i, key: "雑貨",
+    pos: /雑貨|インテリア|zakka|生活|ヴィレッジヴァンガード|ヴィレヴァン|ロフト|LOFT|ハンズ|家具|フランフラン|Francfranc|文具|ステーショナリー|セレクト/i, tags: ["#雑貨・インテリア"] },
+  { re: /海沿い|海辺|海岸|ビーチ|オーシャン|シーサイド|beach|海が見え/i, key: "海辺",
+    pos: /海|ビーチ|beach|海岸|海辺|浜|マリン|オーシャン|岬|漁港|シーサイド|ベイ|渚|なぎさ|サンビーチ|海浜/i, tags: ["#海辺", "#海辺カフェ"] },
+  { re: /絶景|フォトスポット|フォトジェニック|映えスポット|パノラマ/i, key: "絶景",
+    pos: /絶景|展望|パノラマ|ビュー|view|タワー|丘|山頂|岬|渓谷|滝|ダム|大橋|フォト|スカイ|テラス|ヒルズ/i, tags: ["#絶景スポット", "#展望台", "#夜景"] },
+  { re: /カフェ|喫茶|珈琲|coffee|cafe|café|パンケーキ|純喫茶/i, key: "カフェ",
+    pos: /カフェ|cafe|café|coffee|珈琲|コーヒー|喫茶|ロースター|スタンド|ティー|tea|bakery|ベーカリー|パンケーキ|焙煎|ブリュー|エスプレッソ/i, tags: ["#癒しカフェ", "#カフェスイーツ", "#景色良いカフェ", "#海辺カフェ", "#森林カフェ", "#カフェ作業"] },
+];
+function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | null {
+  const t = (freeWord || "").trim();
+  if (!t) return null;
+  for (const g of FREEWORD_GENRE) if (g.re.test(t)) return g;
+  return null;
+}
+
 function dedupeReasons<T extends { reason?: string; aiReason?: string }>(recs: T[]): T[] {
   const seen = new Map<string, number>();
   for (const r of recs) {
@@ -8961,6 +8989,23 @@ async function handleRecommend(request: Request) {
             recommendations, kmF2, minRadiusKm, maxKm,
             { tieBreak: (r) => (nameMatchesGenre(r.title ?? "", effectiveDeepDive) ? 0 : 1) },
           );
+        }
+        // freeWordハードジャンルフィルタ(2026-07-20 監査#1/Z世代最大の萎え): ドロップダウン深掘り未選択でも
+        //   freeWordが明確にジャンル(古着/サウナ/夜景/韓国/雑貨/海辺/絶景/カフェ)を指す時、非該当を除去。
+        //   名前肯定語 or ジャンルタグ一致で「該当」。下限8件は維持(除去しすぎない=薄いより関連ズレの方が萎えるが0件は困る)。
+        if (!effectiveDeepDive && !isFoodMood) {
+          const fg = freewordGenreRule(answers.freeWord ?? "");
+          if (fg) {
+            const isMatch = (r: { title?: string; tags?: string[] }) =>
+              fg.pos.test(r.title ?? "") || (r.tags ?? []).some(t => fg.tags.includes(t));
+            const keep = recommendations.filter(isMatch);
+            const floor = Math.min(8, recommendations.length);
+            if (keep.length >= floor) {
+              recommendations = keep;                                          // 十分該当あり→非該当を完全除去
+            } else if (keep.length > 0) {
+              recommendations = [...keep, ...recommendations.filter(r => !isMatch(r))];  // 薄い→該当を上位・非該当は末尾
+            }
+          }
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
