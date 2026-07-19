@@ -311,7 +311,26 @@ export async function spatialSearch(opts: SpatialSearchOptions): Promise<PlaceRe
       for (const r of src) { if (!seen.has(r.id)) { dst.push(r); seen.add(r.id); } }
     };
 
-    let rows = await fetchWithOrSemantics(mustTags, radiusM, minRadiusM);
+    // far-bias は「サブリング分割取得」でリング全域をカバーする（2026-07-19）。
+    //   RPCが最遠order+limitでも randomでも、[min,radius]を K 個の狭いサブリングに分けて各々取得すれば
+    //   各サブリングが自分の帯を埋める→merge で全域(例:96〜120kmの全体)が候補に入る。
+    //   単一リング取得だと limit が外縁(最遠)で埋まり内側が欠ける問題(実測:小旅行が110〜120kmに密集)を回避。
+    let rows: NearbyPlaceRow[];
+    if (minRadiusKm > 0) {
+      const K = 3;
+      const step = (radiusKm - minRadiusKm) / K;
+      const subs = await Promise.all(
+        Array.from({ length: K }, (_, i) => {
+          const lo = minRadiusKm + step * i;
+          const hi = i === K - 1 ? radiusKm : minRadiusKm + step * (i + 1);
+          return fetchWithOrSemantics(mustTags, hi * 1000, lo * 1000);
+        }),
+      );
+      rows = [];
+      for (const s of subs) mergeInto(rows, s);
+    } else {
+      rows = await fetchWithOrSemantics(mustTags, radiusM, 0);
+    }
 
     // フォールバック1: タグを緩める（同じリング/半径内で再試行）
     if (rows.length < limit && fallbackTags.length > 0) {
