@@ -1458,30 +1458,30 @@ function ComingSoonPreview({ scope, riseIn }: { scope: string; riseIn: (idx: num
   return (
     <>
       {/* ヒーロー（レイアウト見本） */}
-      <Animated.View style={[cs.hero, riseIn(1)]}>
-        <LinearGradient colors={["#F7ECFF", "#EEF1FF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.heroBg}>
-          <View style={cs.badge}><Clock size={12} color="#9B6BFF" strokeWidth={2.8} /><Text style={cs.badgeText}>準備中</Text></View>
-          <Text style={cs.heroTitle} numberOfLines={2}>{scope}の特集をつくっています</Text>
-          <Text style={cs.heroSub}>近日公開予定。こんな感じで登場します</Text>
-          <View style={cs.chipRow}>
-            {CATS.map((c, i) => <View key={i} style={cs.chip}><Text style={cs.chipText}>{c}</Text></View>)}
+      <Animated.View style={[csp.hero, riseIn(1)]}>
+        <LinearGradient colors={["#F7ECFF", "#EEF1FF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.heroBg}>
+          <View style={csp.badge}><Clock size={12} color="#9B6BFF" strokeWidth={2.8} /><Text style={csp.badgeText}>準備中</Text></View>
+          <Text style={csp.heroTitle} numberOfLines={2}>{scope}の特集をつくっています</Text>
+          <Text style={csp.heroSub}>近日公開予定。こんな感じで登場します</Text>
+          <View style={csp.chipRow}>
+            {CATS.map((c, i) => <View key={i} style={csp.chip}><Text style={csp.chipText}>{c}</Text></View>)}
           </View>
-          <View style={cs.heroCta}>
-            <Text style={cs.heroCtaText}>特集を読む</Text>
+          <View style={csp.heroCta}>
+            <Text style={csp.heroCtaText}>特集を読む</Text>
             <ChevronRight size={13} color="#9B6BFF" strokeWidth={2.6} />
           </View>
         </LinearGradient>
       </Animated.View>
 
       {/* サブ特集2枚（見本） */}
-      <Animated.View style={[cs.subRow, riseIn(2)]}>
+      <Animated.View style={[csp.subRow, riseIn(2)]}>
         {[0, 1].map((i) => (
-          <View key={i} style={cs.subCard}>
-            <LinearGradient colors={i === 0 ? ["#FFE3F1", "#F3E5FF"] : ["#E4ECFF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.subImg}>
-              <View style={cs.subBadge}><Text style={cs.subBadgeText}>準備中</Text></View>
-              <View style={cs.subBody}>
-                <View style={[cs.skel, { width: "78%" }]} />
-                <View style={[cs.skel, { width: "52%", marginTop: 7 }]} />
+          <View key={i} style={csp.subCard}>
+            <LinearGradient colors={i === 0 ? ["#FFE3F1", "#F3E5FF"] : ["#E4ECFF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.subImg}>
+              <View style={csp.subBadge}><Text style={csp.subBadgeText}>準備中</Text></View>
+              <View style={csp.subBody}>
+                <View style={[csp.skel, { width: "78%" }]} />
+                <View style={[csp.skel, { width: "52%", marginTop: 7 }]} />
               </View>
             </LinearGradient>
           </View>
@@ -1489,18 +1489,18 @@ function ComingSoonPreview({ scope, riseIn }: { scope: string; riseIn: (idx: num
       </Animated.View>
 
       {/* おすすめの特集（横スクロールの見本） */}
-      <Animated.View style={[cs.section, riseIn(3)]}>
-        <View style={cs.sectionHead}>
+      <Animated.View style={[csp.section, riseIn(3)]}>
+        <View style={csp.sectionHead}>
           <Sparkles size={15} color={C.accent} strokeWidth={2.4} />
-          <Text style={cs.sectionTitle}>おすすめの特集</Text>
-          <View style={cs.miniPill}><Text style={cs.miniPillText}>準備中</Text></View>
+          <Text style={csp.sectionTitle}>おすすめの特集</Text>
+          <View style={csp.miniPill}><Text style={csp.miniPillText}>準備中</Text></View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
           {[0, 1, 2].map((i) => (
-            <View key={i} style={cs.card}>
-              <LinearGradient colors={["#EFE9FB", "#F5EEFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.cardImg} />
-              <View style={[cs.skel, { width: "88%", marginTop: 9 }]} />
-              <View style={[cs.skel, { width: "60%", marginTop: 6 }]} />
+            <View key={i} style={csp.card}>
+              <LinearGradient colors={["#EFE9FB", "#F5EEFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.cardImg} />
+              <View style={[csp.skel, { width: "88%", marginTop: 9 }]} />
+              <View style={[csp.skel, { width: "60%", marginTop: 6 }]} />
             </View>
           ))}
         </ScrollView>
@@ -1509,7 +1509,7 @@ function ComingSoonPreview({ scope, riseIn }: { scope: string; riseIn: (idx: num
   );
 }
 
-const cs = StyleSheet.create({
+const csp = StyleSheet.create({
   hero: { marginHorizontal: 16, marginTop: 8, borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: "rgba(155,107,255,0.14)" },
   heroBg: { paddingVertical: 26, paddingHorizontal: 20, minHeight: 210 },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", backgroundColor: "rgba(155,107,255,0.14)", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5, marginBottom: 14 },

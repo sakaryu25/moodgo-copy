@@ -11,7 +11,7 @@ import { router, type Href } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Image, Linking, Modal, ScrollView,
-  StyleSheet, Switch, Text, TextInput, TouchableOpacity, View,
+  StyleSheet, Switch, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
@@ -21,6 +21,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { useSettings, saveProfileExtras, saveNickname, saveIconUrl, saveHandle } from '@/lib/settingsStore';
 import { apiFetch } from '@/lib/api';
 import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import AppBackground from './AppBackground';
 import AppActionSheet from './AppActionSheet';
 import { PREFECTURE_OPTIONS } from './PrefecturePicker';
@@ -565,7 +566,7 @@ export default function SettingsView({
 
               {/* 名前 */}
               <Text style={s.fieldLabel}>{lang === 'ja' ? '名前（ニックネーム）' : 'Name'}</Text>
-              <TextInput
+              <IMESafeTextInput
                 value={nameInput}
                 onChangeText={setNameInput}
                 placeholder={lang === 'ja' ? '例: りゅうき' : 'e.g. Ryuki'}
@@ -581,7 +582,7 @@ export default function SettingsView({
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? 'ユーザーID' : 'User ID'}</Text>
               <View style={[s.handleRow, handleLockDays > 0 && s.handleRowLocked]}>
                 <Text style={s.handleAt}>@</Text>
-                <TextInput
+                <IMESafeTextInput
                   value={handleInput}
                   onChangeText={onChangeHandle}
                   placeholder={lang === 'ja' ? '例: ryuki_25' : 'e.g. ryuki_25'}
@@ -683,7 +684,7 @@ export default function SettingsView({
 
               {/* 一言メッセージ */}
               <Text style={[s.fieldLabel, { marginTop: 18 }]}>{lang === 'ja' ? '一言メッセージ' : 'Bio'}</Text>
-              <TextInput
+              <IMESafeTextInput
                 value={bioInput}
                 onChangeText={setBioInput}
                 placeholder={lang === 'ja' ? '例: 日本中の穴場スポットを探しています。' : 'e.g. Exploring hidden gems across Japan.'}

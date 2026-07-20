@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +18,7 @@ import {
   Search, Shuffle, Sparkles, Star, Tag, Users, X,
 } from 'lucide-react-native';
 import PuniPressable from './PuniPressable';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 import { sameFav } from '@/lib/favKey';
 import { addVisitedLog } from '@/lib/spotLog';
@@ -692,7 +692,7 @@ export default function ResultsView(props: Props) {
               <Search size={16} color={dark ? '#C9B6FF' : '#111827'} strokeWidth={2.2} />
               <Text style={[s.refinementTitle, dark && s.panelTitleDark]}>{t.refineTitle}</Text>
             </View>
-            <TextInput
+            <IMESafeTextInput
               value={refinementText}
               onChangeText={onSetRefinementText}
               placeholder={t.refinePlaceholder}
@@ -832,7 +832,7 @@ export default function ResultsView(props: Props) {
                     </TouchableOpacity>
                   ))}
                 </View>
-                <TextInput
+                <IMESafeTextInput
                   value={reportNote}
                   onChangeText={onSetReportNote}
                   placeholder={t.notePlaceholder}

@@ -15,13 +15,14 @@ import {
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Easing, FlatList, Keyboard, Modal,
-  Platform, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  Platform, Pressable, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { blockUser } from '@/lib/blockStore';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import { useMyIdentity } from '@/lib/myIdentity';
 import { relativeTime } from '@/lib/spotLog';
 import { showToast } from '@/lib/toast';
@@ -602,7 +603,7 @@ export default function CommentsSection({ targetId }: { targetId: string }) {
         </View>
       ) : null}
       <View style={[s.inputRow, inSheet && s.inputRowSheet]}>
-      <TextInput
+      <IMESafeTextInput
         value={text}
         onChangeText={onChangeText}
         placeholder={replyTo ? t.replyPlaceholder : t.commentPlaceholder}

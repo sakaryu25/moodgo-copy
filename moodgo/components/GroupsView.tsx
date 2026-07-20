@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground, { APP_BG } from '@/components/AppBackground';
 import AppActionSheet from '@/components/AppActionSheet';
 import PuniPressable from '@/components/PuniPressable';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
@@ -1377,7 +1378,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               >
                 <Dices size={20} color="#7C3AED" strokeWidth={2} />
               </PuniPressable>
-              <TextInput
+              <IMESafeTextInput
                 value={comment}
                 onChangeText={setComment}
                 placeholder={t.commentPh}
@@ -1904,7 +1905,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             {/* 作成 */}
             <Text style={[s.label, { marginTop: 20 }]}>{t.createGroup}</Text>
             <View style={s.inputRow}>
-              <TextInput
+              <IMESafeTextInput
                 value={newGroupName}
                 onChangeText={setNewGroupName}
                 placeholder={t.groupNamePh}

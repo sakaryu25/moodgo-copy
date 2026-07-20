@@ -31,9 +31,10 @@ import {
 import { BlurView } from 'expo-blur';
 import React, { useEffect, useRef, useState } from 'react';
 import PuniPressable from './PuniPressable';
+import IMESafeTextInput from './IMESafeTextInput';
 import {
   Animated, Dimensions, Easing, PanResponder,
-  Platform, ScrollView, StyleSheet, Text, TextInput,
+  Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1165,7 +1166,7 @@ export default function QuizFlow(props: Props) {
         </StepEntrance>
         <StepEntrance delay={80}>
           <Text style={s.orDiv}>{lang === 'ja' ? 'または' : 'or'}</Text>
-          <TextInput
+          <IMESafeTextInput
             value={selectedArea}
             onChangeText={(v) => {
               onSelectArea(v);
@@ -1234,7 +1235,7 @@ export default function QuizFlow(props: Props) {
       return (
         <StepEntrance delay={0}>
           <View style={s.freeWordCard}>
-            <TextInput
+            <IMESafeTextInput
               value={freeWord}
               onChangeText={onSetFreeWord}
               placeholder={lang === 'ja'

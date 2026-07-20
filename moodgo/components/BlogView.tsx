@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Linking,
   type NativeScrollEvent, type NativeSyntheticEvent,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, Bookmark, ChevronLeft, Clock3, Flag, Flame, Heart, MapPin, MessageCircle, Navigation, Search, Sparkles, UserRound, Users, Wallet, X } from 'lucide-react-native';
@@ -30,6 +30,7 @@ import { useSettings } from '@/lib/settingsStore';
 import { hasUnread } from '@/lib/notifications';
 import { categoryStyle } from './community/postTypes';
 import CommunityFeed from './CommunityFeed';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 
 const SCREEN_W = Dimensions.get('window').width;
 const GAP = 8;       // カード間の余白（丸みカード感）
@@ -279,7 +280,7 @@ export default function BlogView({ resetKey }: { resetKey?: number }) {
         {/* @ID検索バー（帯の中・白ボックス）*/}
         <View style={s.heroSearchBox}>
           <Search size={15} color="#8B88A6" strokeWidth={2.2} />
-          <TextInput
+          <IMESafeTextInput
             value={uq}
             onChangeText={onChangeUq}
             placeholder={t.searchPlaceholder}

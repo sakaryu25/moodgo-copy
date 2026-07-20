@@ -12,9 +12,10 @@ import * as Haptics from 'expo-haptics';
 import { Ban, Check, Flag, Info, MoreHorizontal, ShieldAlert, Store } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 
@@ -160,7 +161,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
                 })}
               </View>
 
-              <TextInput
+              <IMESafeTextInput
                 value={note}
                 onChangeText={setNote}
                 placeholder={notePlaceholder ?? "詳細（任意）"}
