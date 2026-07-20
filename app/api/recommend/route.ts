@@ -8959,6 +8959,28 @@ async function handleRecommend(request: Request) {
           const kept = recommendations.filter(r => !SHRINE_TEMPLE_RE.test((r.title ?? "").trim()) || isFamous(r));
           if (kept.length > 0) recommendations = kept;
         }
+        // 第2層 映えスコア(2026-07-20 ユーザー要望): 気分/同行者タグしか持たず、UGC/バッジ/映えタグ/期間限定も
+        //   無い“のっぺり”スポットを「どうでも良い場所」とみなす。良質が十分(≥10)あればカット、少なければ
+        //   末尾降格(件数維持)。写真はGoogle403で疎なため判定に使わない(正常店の巻き込み防止)。
+        {
+          const GENERIC_TAGS = new Set([
+            "#まったりしたい", "#自然感じたい", "#わいわい楽しみたい", "#お腹すいた", "#ドライブしたい",
+            "#集中したい", "#体動かしたい", "#遠くに行きたい", "#ショッピング", "#スリル味わいたい",
+            "#1人", "#友達", "#恋人", "#家族", "#大人数", "#無料駐車場", "#駐車場あり", "#都会",
+          ]);
+          const APPEAL_TAG_RE = /夜景|絶景|展望|おしゃれ|映え|レトロ|古着|ヴィンテージ|サウナ|岩盤浴|韓国|話題|穴場|テラス|海辺|フォト|庭園|名所|水族館|プラネタリウム|イルミ|ネオン/;
+          type ScoredRec = { title?: string; tags?: string[]; mgBadge?: string | null; isUserSpot?: boolean; userPhotoCount?: number | null; availableFrom?: string | null; availableUntil?: string | null };
+          const hasCharacter = (r: ScoredRec) => (r.tags ?? []).some(t => typeof t === "string" && t.startsWith("#") && !GENERIC_TAGS.has(t));
+          const hasAppeal = (r: ScoredRec) =>
+            !!r.mgBadge || !!r.isUserSpot || (r.userPhotoCount ?? 0) > 0 || !!r.availableFrom || !!r.availableUntil
+            || (r.tags ?? []).some(t => typeof t === "string" && APPEAL_TAG_RE.test(t));
+          const nopperi = (r: ScoredRec) => !hasCharacter(r) && !hasAppeal(r);
+          const good2 = recommendations.filter(r => !nopperi(r));
+          const filler2 = recommendations.filter(r => nopperi(r));
+          if (filler2.length > 0) {
+            recommendations = good2.length >= 10 ? good2 : [...good2, ...filler2];
+          }
+        }
         // 地味な小さい公園を最終出力の最後尾へ（diversify/assembleの後＝並べ替えが確実に残る）。
         recommendations = demoteFillerParks(recommendations, effectiveDeepDive);
         // 期間限定の最終保証: places本体の期間外スポットを除外（RPC/意味検索/名前救済など
