@@ -136,13 +136,16 @@ export default async function SharePage({ params }: { params: Promise<{ id: stri
               <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "#777" }}>削除されたか、非公開になった可能性があります。</p>
             </>
           )}
-          <div style={{
-            marginTop: 18, textAlign: "center", padding: "14px 16px", borderRadius: 999,
-            background: "linear-gradient(90deg,#F56CB3,#9B6BFF,#4FA3FF)",
-            color: "#fff", fontSize: 15, fontWeight: 800,
-          }}>
+          <a
+            href="https://apps.apple.com/app/id6784712740"
+            style={{
+              display: "block", marginTop: 18, textAlign: "center", padding: "14px 16px", borderRadius: 999,
+              background: "linear-gradient(90deg,#F56CB3,#9B6BFF,#4FA3FF)",
+              color: "#fff", fontSize: 15, fontWeight: 800, textDecoration: "none",
+            }}
+          >
             MoodGoアプリで見る
-          </div>
+          </a>
           <p style={{ margin: "12px 0 0", textAlign: "center", fontSize: 11.5, color: "#9A96A8" }}>
             MoodGo — 気分で見つかる、みんなの穴場スポット
           </p>
