@@ -81,7 +81,8 @@ let ins = 0, skip = 0;
 for (const x of toInsert) {
   if (await existsNear(x.name, x.lat, x.lng)) { skip++; continue; }
   const row = {
-    name: x.name, lat: x.lat, lng: x.lng, address: x.address,
+    name: x.name, lat: x.lat, lng: x.lng,
+    address: x.address || x.city || "", nearest_station: "", description: "古着・ヴィンテージが楽しめるお店。",
     location: `SRID=4326;POINT(${x.lng} ${x.lat})`,
     tags: ["#古着・ヴィンテージ", "#ショッピング", "#服・アクセサリー"],
     source_type: "osm-shopping", is_active: true,
