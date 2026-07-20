@@ -2043,6 +2043,9 @@ export default function FeatureScreen() {
           // content は内容ぴったりの高さ（キャプション→エリアバーの間隔はスタイルで管理）。
           //   地図/県選択は従来の帯高(HERO_BAND_H)を維持。
           minHeight: isContent ? undefined : insets.top + HERO_BAND_H,
+          // 地図/県選択は帯の中で上下の余白を均等に（下端寄せだと空白が偏り「気持ち悪い」＝ユーザー要望2026-07-21・案B）。
+          //   content は従来どおり下端寄せ（現在のエリアバー等の並びを変えない）。
+          justifyContent: isContent ? 'flex-end' : 'center',
         }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
@@ -2054,7 +2057,7 @@ export default function FeatureScreen() {
               <ChevronLeft size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.5} />
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
-            <Text style={[s.bandTitle, { marginTop: 10 }]}>どこへ行く？</Text>
+            <Text style={[s.bandTitle, { marginTop: 14 }]}>どこへ行く？</Text>
             <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
           </>
         )}
@@ -2065,7 +2068,7 @@ export default function FeatureScreen() {
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
             {/* 選んだ地方名が主役（タップの結果が画面に反映される）*/}
-            <Text style={[s.bandTitle, { marginTop: 10 }]}>{selectedRegion}</Text>
+            <Text style={[s.bandTitle, { marginTop: 14 }]}>{selectedRegion}</Text>
             <Text style={s.headerCaption}>気になる都道府県をタップ</Text>
           </>
         )}
