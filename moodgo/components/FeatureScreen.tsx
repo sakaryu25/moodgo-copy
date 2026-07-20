@@ -1449,6 +1449,96 @@ function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
 const SCREEN_W = Dimensions.get("window").width;
 const HERO_CARD_W = SCREEN_W - 32;
 
+// ─── 準備中プレビュー ────────────────────────────────────────────────────────
+// まだ特集を作っていない 県 / 地方 / 全国 では、ただ「準備中」と出すのではなく
+//   実際のレイアウト（ヒーロー＋サブ2枚＋横スクロールのおすすめ）をスケルトンで見せ、
+//   「こんな感じで登場します」と伝える。scope 名で動的生成＝全都道府県・全地方・全国を1つでカバー。
+function ComingSoonPreview({ scope, riseIn }: { scope: string; riseIn: (idx: number) => { opacity: Animated.AnimatedInterpolation<number>; transform: { translateY: Animated.AnimatedInterpolation<number> }[] } }) {
+  const CATS = ["絶景", "カフェ", "おでかけ", "グルメ", "雨の日"];
+  return (
+    <>
+      {/* ヒーロー（レイアウト見本） */}
+      <Animated.View style={[cs.hero, riseIn(1)]}>
+        <LinearGradient colors={["#F7ECFF", "#EEF1FF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.heroBg}>
+          <View style={cs.badge}><Clock size={12} color="#9B6BFF" strokeWidth={2.8} /><Text style={cs.badgeText}>準備中</Text></View>
+          <Text style={cs.heroTitle} numberOfLines={2}>{scope}の特集をつくっています</Text>
+          <Text style={cs.heroSub}>近日公開予定。こんな感じで登場します</Text>
+          <View style={cs.chipRow}>
+            {CATS.map((c, i) => <View key={i} style={cs.chip}><Text style={cs.chipText}>{c}</Text></View>)}
+          </View>
+          <View style={cs.heroCta}>
+            <Text style={cs.heroCtaText}>特集を読む</Text>
+            <ChevronRight size={13} color="#9B6BFF" strokeWidth={2.6} />
+          </View>
+        </LinearGradient>
+      </Animated.View>
+
+      {/* サブ特集2枚（見本） */}
+      <Animated.View style={[cs.subRow, riseIn(2)]}>
+        {[0, 1].map((i) => (
+          <View key={i} style={cs.subCard}>
+            <LinearGradient colors={i === 0 ? ["#FFE3F1", "#F3E5FF"] : ["#E4ECFF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.subImg}>
+              <View style={cs.subBadge}><Text style={cs.subBadgeText}>準備中</Text></View>
+              <View style={cs.subBody}>
+                <View style={[cs.skel, { width: "78%" }]} />
+                <View style={[cs.skel, { width: "52%", marginTop: 7 }]} />
+              </View>
+            </LinearGradient>
+          </View>
+        ))}
+      </Animated.View>
+
+      {/* おすすめの特集（横スクロールの見本） */}
+      <Animated.View style={[cs.section, riseIn(3)]}>
+        <View style={cs.sectionHead}>
+          <Sparkles size={15} color={C.accent} strokeWidth={2.4} />
+          <Text style={cs.sectionTitle}>おすすめの特集</Text>
+          <View style={cs.miniPill}><Text style={cs.miniPillText}>準備中</Text></View>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={cs.card}>
+              <LinearGradient colors={["#EFE9FB", "#F5EEFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={cs.cardImg} />
+              <View style={[cs.skel, { width: "88%", marginTop: 9 }]} />
+              <View style={[cs.skel, { width: "60%", marginTop: 6 }]} />
+            </View>
+          ))}
+        </ScrollView>
+      </Animated.View>
+    </>
+  );
+}
+
+const cs = StyleSheet.create({
+  hero: { marginHorizontal: 16, marginTop: 8, borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: "rgba(155,107,255,0.14)" },
+  heroBg: { paddingVertical: 26, paddingHorizontal: 20, minHeight: 210 },
+  badge: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", backgroundColor: "rgba(155,107,255,0.14)", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5, marginBottom: 14 },
+  badgeText: { fontSize: 11.5, fontWeight: "800", color: "#9B6BFF", letterSpacing: 1 },
+  heroTitle: { fontSize: 21, fontWeight: "900", color: "#2A1E48", letterSpacing: -0.4, lineHeight: 29 },
+  heroSub: { fontSize: 13, fontWeight: "700", color: "#7A6E93", marginTop: 8, lineHeight: 19 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 16 },
+  chip: { backgroundColor: "rgba(255,255,255,0.72)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { fontSize: 12, fontWeight: "800", color: "#8B7BB0" },
+  heroCta: { flexDirection: "row", alignItems: "center", gap: 3, alignSelf: "flex-start", marginTop: 18, backgroundColor: "rgba(255,255,255,0.85)", borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
+  heroCtaText: { fontSize: 13.5, fontWeight: "800", color: "#9B6BFF" },
+
+  subRow: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 14 },
+  subCard: { flex: 1, borderRadius: 18, overflow: "hidden" },
+  subImg: { width: "100%", height: 148, justifyContent: "flex-end", padding: 12 },
+  subBadge: { position: "absolute", top: 10, left: 10, backgroundColor: "rgba(255,255,255,0.82)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  subBadgeText: { fontSize: 10.5, fontWeight: "800", color: "#9B6BFF" },
+  subBody: {},
+  skel: { height: 9, borderRadius: 5, backgroundColor: "rgba(155,107,255,0.18)" },
+
+  section: { marginTop: 22 },
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 7, marginHorizontal: 16, marginBottom: 12 },
+  sectionTitle: { fontSize: 16.5, fontWeight: "800", color: "#2A2440" },
+  miniPill: { backgroundColor: "rgba(155,107,255,0.12)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  miniPillText: { fontSize: 10.5, fontWeight: "800", color: "#9B6BFF" },
+  card: { width: 150 },
+  cardImg: { width: 150, height: 110, borderRadius: 14 },
+});
+
 function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse, scrollRef }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1555,11 +1645,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
           )}
         </Animated.View>
       ) : (
-        <Animated.View style={[s.emptyWrap, riseIn(1)]}>
-          <MapPin size={36} color={C.subText} strokeWidth={1.6} />
-          <Text style={s.emptyTitle}>{activeScope}の特集は準備中です</Text>
-          <Text style={s.emptyText}>近日公開予定。お楽しみに ✨</Text>
-        </Animated.View>
+        <ComingSoonPreview scope={activeScope} riseIn={riseIn} />
       )}
 
       {/* ── サブ特集カード2枚 ── */}
