@@ -246,6 +246,10 @@ export async function GET(request: Request) {
     let openNow: boolean | null = null;
     let reviews: Array<{ rating: number | null; text: string; authorName: string; authorPhoto: string | null; relativeTime: string }> = [];
 
+    // 住所が「都道府県」or「都道府県+市」までしか無い(＝精密な字/番地が無い)＝粗い住所か判定。
+    //   粗い住所は Google の精密住所で上書き＆自己修復してよい(精密住所は投稿者入力を尊重して温存)。
+    const isRoughAddr = (a: string): boolean =>
+      /^(?:日本[、,]?\s*)?(?:〒?\s*\d{3}-?\d{4}\s*)?(?:東京都|北海道|大阪府|京都府|.{2,3}県)(?:.{1,4}?[市区町村郡])?$/.test((a || "").trim());
     // ⑤ 埋まっていない項目がある時だけ Google で補強（電話/公式/営業時間/写真/座標が全て揃っていればGoogle呼び出しゼロ）。
     //   住所が無ければ名前だけの曖昧検索で別の似た店を拾うのを防ぐため補強しない。
     const havePhotos = hasUserPhotos || placeImgSeed.length > 0;
@@ -280,9 +284,14 @@ export async function GET(request: Request) {
           // 投稿の座標から500m超、座標が無ければ市区不一致のGoogle結果は破棄する。
           if (p) {
             const gLat = p.location?.latitude, gLng = p.location?.longitude;
+            // 住所が「都道府県」または「都道府県+市」までしか無い＝座標が市中心の概算のことが多い。
+            //   その場合は近接ガードを緩め(3km)、Googleの精密な住所/座標で自己修復できるようにする
+            //   (2026-07-21: 投稿詳細と場所詳細で住所がズレる「バラバラ」対策。精密住所の投稿は従来どおり500m厳格)。
+            const roughAddr = isRoughAddr(baseAddress);
+            const maxM = roughAddr ? 3000 : 500;
             if (typeof baseLat === "number" && typeof baseLng === "number" &&
                 typeof gLat === "number" && typeof gLng === "number") {
-              if (haversineM(baseLat, baseLng, gLat, gLng) > 500) p = null;
+              if (haversineM(baseLat, baseLng, gLat, gLng) > maxM) p = null;
             } else {
               const cityM = cleanAddr0.match(/^(?:東京都|北海道|大阪府|京都府|.{2,3}県)?(.+?[市区町村郡])/);
               if (cityM && !(p.formattedAddress ?? "").includes(cityM[1])) p = null;
@@ -293,7 +302,8 @@ export async function GET(request: Request) {
             phone = p.nationalPhoneNumber ?? p.internationalPhoneNumber ?? "";
             website = p.websiteUri ?? "";
             googleMapsUri = googleMapsUri || (p.googleMapsUri ?? "");
-            address = address || (p.formattedAddress ?? "");
+            // 住所が空 or 粗い(都道府県/市まで)なら Google の精密住所へ上書き＝投稿詳細と場所詳細の住所を揃える
+            if ((!address || isRoughAddr(address)) && p.formattedAddress) address = p.formattedAddress;
             // ユーザー入力の営業時間があればそれを優先し、無い時だけGoogleで補完
             if (!openingHoursText) openingHoursText = (p.regularOpeningHours?.weekdayDescriptions ?? []).join("\n");
             // Google評価・口コミは撤廃（Moodログ＋MoodGo独自の行った!集計に一本化）。営業状態/座標/写真のみ補強。
@@ -316,8 +326,11 @@ export async function GET(request: Request) {
       if (!websiteSeed && website) patch.website = website;
       if (!hoursSeed && openingHoursText) patch.open_hours = openingHoursText;
       if (placeImgSeed.length === 0 && googlePhotos.length > 0) patch.image_urls = googlePhotos;
-      if (baseLat == null && typeof placeLat === "number") patch.lat = placeLat;
-      if (baseLng == null && typeof placeLng === "number") patch.lng = placeLng;
+      // 住所/座標: DBが空 or 粗いなら Google の精密値で自己修復(精密住所の投稿は温存)。座標も粗い時は精密化。
+      const roughDb = isRoughAddr(baseAddress);
+      if ((!baseAddress || roughDb) && address && !isRoughAddr(address)) patch.address = address;
+      if ((baseLat == null || roughDb) && typeof placeLat === "number") patch.lat = placeLat;
+      if ((baseLng == null || roughDb) && typeof placeLng === "number") patch.lng = placeLng;
       if (Object.keys(patch).length > 0) {
         await supabase.from("places").update(patch).eq("id", placesUuid).then(() => {}, () => {});
       }
