@@ -490,8 +490,10 @@ export async function POST(req: Request) {
         if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
       }
       // R2: 座標一致で見つからなくても、名前が既存placeと完全一致するなら二重作成しない。
-      //   （検索の「これかも？」候補を選ばず同名を手入力したケースの重複を防ぐ）。同名が1件＝それに
-      //   紐付け／複数(チェーン)は座標最寄りを採用／座標も無ければ曖昧なので新規作成に委ねる。
+      //   （検索の「これかも？」候補を選ばず同名を手入力したケースの重複を防ぐ）。
+      //   ⚠2026-07-21 修正: 「屏風岩」等の全国に多数ある地名は、座標を無視して同名1件に紐付けると
+      //     別地域(例: 沼津の屏風岩→京都の屏風岩 300km先)へ誤統合される。座標がある投稿は近接(≤5km)の
+      //     同名のみ紐付け、遠い同名は別スポットとして新規作成する。座標が無い投稿のみ従来の名前一致に委ねる。
       if (!effectivePlaceId && !parentPlaceId && !newAvailFrom && !newAvailUntil && placeName.trim().length >= 2) {
         const { data: byName } = await db.from("places")
           .select("id, name, lat, lng").eq("name", placeName.trim())
@@ -499,14 +501,19 @@ export async function POST(req: Request) {
           .limit(20);
         const rows = (byName ?? []) as Array<{ id: string; name?: string; lat?: number | null; lng?: number | null }>;
         let dup: { id: string; name?: string } | null = null;
-        if (rows.length === 1) dup = rows[0];
-        else if (rows.length > 1 && insLat != null && insLng != null) {
-          let bestD = Infinity;
-          for (const p of rows) {
-            if (p.lat == null || p.lng == null) continue;
-            const d = Math.abs(Number(p.lat) - (insLat as number)) + Math.abs(Number(p.lng) - (insLng as number));
-            if (d < bestD) { bestD = d; dup = p; }
-          }
+        if (insLat != null && insLng != null) {
+          // 座標あり: 近接(≤5km)の同名のみ採用。遠い同名は「たまたま同名の別スポット」＝新規作成に委ねる。
+          const kmOf = (p: { lat?: number | null; lng?: number | null }) => {
+            if (p.lat == null || p.lng == null) return Infinity;
+            const dLat = (Number(p.lat) - (insLat as number)) * 111;
+            const dLng = (Number(p.lng) - (insLng as number)) * 91;   // 日本の緯度で概算
+            return Math.hypot(dLat, dLng);
+          };
+          let bestKm = Infinity;
+          for (const p of rows) { const km = kmOf(p); if (km <= 5 && km < bestKm) { bestKm = km; dup = p; } }
+        } else {
+          // 座標なし(geocode失敗等): 距離判定不能。同名1件のみ紐付け(複数=曖昧なので新規に委ねる)。
+          if (rows.length === 1) dup = rows[0];
         }
         if (dup?.id) { effectivePlaceId = dup.id; linkedExistingName = String(dup.name ?? "") || null; }
       }
