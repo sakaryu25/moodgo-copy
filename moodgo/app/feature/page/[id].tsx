@@ -72,10 +72,10 @@ export default function FeaturePageDetail() {
 
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F7F5FC" },
-  header: { paddingHorizontal: 16, paddingBottom: 12, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 22, borderBottomRightRadius: 22 },
   backBtn: { flexDirection: "row", alignItems: "center", gap: 2, alignSelf: "flex-start" },
-  backText: { fontSize: 14, fontWeight: "800", color: "#fff" },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: "#fff", marginTop: 6 },
+  backText: { fontSize: 14, fontWeight: "800", color: "rgba(255,255,255,0.92)", letterSpacing: 0.3 },
+  headerTitle: { fontSize: 21, fontWeight: "800", color: "#fff", marginTop: 10, letterSpacing: -0.2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 40 },
   errTitle: { fontSize: 16, fontWeight: "800", color: "#2A2440", marginTop: 6 },
   errText: { fontSize: 12.5, color: "#8A82A6", textAlign: "center", lineHeight: 18 },

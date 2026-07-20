@@ -2054,7 +2054,7 @@ export default function FeatureScreen() {
               <ChevronLeft size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.5} />
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
-            <Text style={[s.bandTitle, { marginTop: 4 }]}>どこへ行く？</Text>
+            <Text style={[s.bandTitle, { marginTop: 10 }]}>どこへ行く？</Text>
             <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
           </>
         )}
@@ -2065,7 +2065,7 @@ export default function FeatureScreen() {
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
             {/* 選んだ地方名が主役（タップの結果が画面に反映される）*/}
-            <Text style={[s.bandTitle, { marginTop: 4 }]}>{selectedRegion}</Text>
+            <Text style={[s.bandTitle, { marginTop: 10 }]}>{selectedRegion}</Text>
             <Text style={s.headerCaption}>気になる都道府県をタップ</Text>
           </>
         )}
