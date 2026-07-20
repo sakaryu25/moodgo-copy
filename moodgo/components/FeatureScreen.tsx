@@ -2071,11 +2071,9 @@ export default function FeatureScreen() {
         )}
         {stage === "content" && (
           <>
-            <View style={s.headerTopRow}>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={s.bandTitle}>特集</Text>
-                <Text style={s.headerCaption}>どこへ行く？</Text>
-              </View>
+            {/* タイトル「特集」とアイコンを同一行で縦中央そろえ＝アイコンが特集に対して浮かない(バランス修正) */}
+            <View style={[s.headerTopRow, { marginTop: 6 }]}>
+              <Text style={[s.bandTitle, { flex: 1, paddingRight: 10, marginTop: 0 }]}>特集</Text>
               {/* 右上: 検索 / 通知（ガラス風の丸ボタン。マイページはユーザー要望で撤去 2026-07-17） */}
               <View style={s.headerIconRow}>
                 <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
@@ -2088,6 +2086,8 @@ export default function FeatureScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {/* サブコピーは行の下へ（特集の直下）＝現在のエリアバーの位置は不変 */}
+            <Text style={s.headerCaption}>どこへ行く？</Text>
             {/* 現在のエリアバー（帯の中の白ピル・キャプションとの間隔は詰める=ユーザー要望2026-07-17） */}
             <TouchableOpacity
               style={s.headerAreaBar} activeOpacity={0.85}
@@ -2237,8 +2237,8 @@ const s = StyleSheet.create({
     letterSpacing: 0.2, lineHeight: 17, marginTop: 6,
   },
   // 特集TOPヘッダー: 左タイトル/サブタイトル + 右にガラス風の丸アイコン群
-  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerIconBtn: {
     width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
