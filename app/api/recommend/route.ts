@@ -8950,6 +8950,15 @@ async function handleRecommend(request: Request) {
           const genzKept = recommendations.filter(r => !GENZ_NOISE_RE.test((r.title ?? "").trim()));
           if (genzKept.length > 0) recommendations = genzKept;
         }
+        // 定番(神社/寺)の条件付き降格(2026-07-20 ユーザー選択①有名なら残す②気分次第): まったり/自然/旅行/
+        //   ドライブ以外(楽しみたい/集中/運動/ショッピング/スリル等)では無名の神社/寺を除去=「神社4連発」を断つ。
+        //   #名所/#名所公園/#世界遺産の有名スポットは気分を問わず残す。0件回避の安全弁つき。
+        if (!isFoodMood && !["まったり", "自然", "旅行", "ドライブ", "疲れた・眠い"].includes(answers.mood ?? "")) {
+          const SHRINE_TEMPLE_RE = /神社|神宮|大社|稲荷$|稲荷神社|八幡宮|天満宮|東照宮|大師|不動尊|観音堂|薬師堂|仏閣|寺院|(?:^|[^ぉ-ん])寺$|山門|鳥居|霊場/;
+          const isFamous = (r: { tags?: string[] }) => (r.tags ?? []).some(t => ["#名所", "#名所公園", "#世界遺産"].includes(t));
+          const kept = recommendations.filter(r => !SHRINE_TEMPLE_RE.test((r.title ?? "").trim()) || isFamous(r));
+          if (kept.length > 0) recommendations = kept;
+        }
         // 地味な小さい公園を最終出力の最後尾へ（diversify/assembleの後＝並べ替えが確実に残る）。
         recommendations = demoteFillerParks(recommendations, effectiveDeepDive);
         // 期間限定の最終保証: places本体の期間外スポットを除外（RPC/意味検索/名前救済など
