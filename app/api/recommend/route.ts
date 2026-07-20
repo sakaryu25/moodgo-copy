@@ -6107,8 +6107,10 @@ const FREEWORD_GENRE: Array<{ re: RegExp; key: string; pos: RegExp; tags: string
     pos: /海|ビーチ|beach|海岸|海辺|浜|マリン|オーシャン|岬|漁港|シーサイド|ベイ|渚|なぎさ|サンビーチ|海浜/i, tags: ["#海辺", "#海辺カフェ"] },
   { re: /絶景|フォトスポット|フォトジェニック|映えスポット|パノラマ/i, key: "絶景",
     pos: /絶景|展望|パノラマ|ビュー|view|タワー|丘|山頂|岬|渓谷|滝|ダム|大橋|フォト|スカイ|テラス|ヒルズ/i, tags: ["#絶景スポット", "#展望台", "#夜景"] },
+  // ⚠カフェタグは admin 過剰付与で汚染(Hello Kitty等ランドマークが#海辺カフェ/#癒しカフェ等を6個保持)。
+  //   4,873件が名前にカフェを含むので、汚染タグは使わず名前肯定語のみで絞る=ランドマーク混入を断つ。
   { re: /カフェ|喫茶|珈琲|coffee|cafe|café|パンケーキ|純喫茶/i, key: "カフェ",
-    pos: /カフェ|cafe|café|coffee|珈琲|コーヒー|喫茶|ロースター|スタンド|ティー|tea|bakery|ベーカリー|パンケーキ|焙煎|ブリュー|エスプレッソ/i, tags: ["#癒しカフェ", "#カフェスイーツ", "#景色良いカフェ", "#海辺カフェ", "#森林カフェ", "#カフェ作業"] },
+    pos: /カフェ|cafe|café|coffee|珈琲|コーヒー|喫茶|ロースター|スタンド|ティー|tea|bakery|ベーカリー|パンケーキ|焙煎|ブリュー|エスプレッソ/i, tags: [] },
 ];
 function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | null {
   const t = (freeWord || "").trim();
