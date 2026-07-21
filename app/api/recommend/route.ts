@@ -9271,6 +9271,17 @@ async function handleRecommend(request: Request) {
             _more.sort((a, b) => _kmv(a) - _kmv(b));
             if (_more.length) recommendations = [...recommendations, ..._more].slice(0, 15);
           }
+          // 食ゲート/補充で②のvibe並びが崩れるため、vibe時はチェーン/非映えを末尾へ再降格(安定ソート)。
+          const _vbF = freewordVibe(answers.freeWord ?? "");
+          if (_vbF) {
+            const _tier = (r: { title?: string; tags?: string[] }) => {
+              const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
+              if (_vbF.derank.test(nm) || _vbF.derank.test(tg) || CHAIN_BRAND_RE.test(nm)) return 2;
+              if (_vbF.boost.test(nm) || _vbF.boost.test(tg)) return 0;
+              return 1;
+            };
+            recommendations = [...recommendations].sort((a, b) => _tier(a) - _tier(b));
+          }
         }
         // ④ vibe検索時は動物カフェを1件までに(映え/チル等で猫/犬/カピバラカフェが上位を占領するのを抑制)。
         {
