@@ -26,8 +26,12 @@ const THUMB_GAP = 8;
 const DISMISS_DIST = 110;  // これ以上ドラッグしたら閉じる
 const DISMISS_VEL = 900;   // フリック速度でも閉じる
 
-export default function PhotoViewer({ visible, photos, initialIdx, onClose }: {
+export default function PhotoViewer({ visible, photos, initialIdx, onClose, posters, onPressPoster }: {
   visible: boolean; photos: string[]; initialIdx: number; onClose: () => void;
+  /** 写真URL→投稿者（公開ハッシュ＋アイコンURL）。ある写真だけ右下にアバターを出す */
+  posters?: Record<string, { id: string; icon: string }>;
+  /** アバタータップ（呼び出し側でビューアを閉じて /user/[id] へ遷移する） */
+  onPressPoster?: (posterId: string) => void;
 }) {
   const { width: SW, height: SH } = Dimensions.get('window');
   const insets = useSafeAreaInsets();
@@ -213,6 +217,32 @@ export default function PhotoViewer({ visible, photos, initialIdx, onClose }: {
             </View>
           </Animated.View>
 
+          {/* 投稿者バッジ: 表示中の写真が利用者投稿なら右下にアバター（タップでプロフィールへ）。
+              クロームと同じopacityで消える＝写真鑑賞の邪魔をしない */}
+          {(() => {
+            const poster = posters?.[photos[idx] ?? ''];
+            if (!poster || !onPressPoster) return null;
+            return (
+              <Animated.View
+                style={[pv.posterWrap, {
+                  opacity: chromeOpacity,
+                  bottom: insets.bottom + (photos.length > 1 ? THUMB + 34 : 24),
+                }]}
+                pointerEvents="box-none"
+              >
+                <TouchableOpacity
+                  onPress={() => onPressPoster(poster.id)} activeOpacity={0.8}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button" accessibilityLabel="投稿した人のプロフィールを見る"
+                >
+                  <View style={pv.posterRing}>
+                    <Image source={{ uri: poster.icon }} style={pv.posterImg} contentFit="cover" transition={150} />
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          })()}
+
           {/* 下部クローム: グラデ＋サムネイルストリップ（複数枚のみ） */}
           {photos.length > 1 && (
             <Animated.View style={[pv.bottomChrome, { opacity: chromeOpacity }]} pointerEvents="box-none">
@@ -271,4 +301,13 @@ const pv = StyleSheet.create({
     opacity: 0.55, borderWidth: 2, borderColor: 'transparent',
   },
   thumbActive: { opacity: 1, borderColor: '#fff' },
+
+  // 投稿者バッジ（右下）。白リング＋薄影で暗い写真上でも視認できるように
+  posterWrap: { position: 'absolute', right: 16 },
+  posterRing: {
+    width: 44, height: 44, borderRadius: 22, padding: 2,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4,
+  },
+  posterImg: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#C9BFE8' },
 });

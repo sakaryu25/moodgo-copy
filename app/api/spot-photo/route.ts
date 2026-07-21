@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_SECRET } from "@/lib/admin-auth";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { deviceHash, iconPathFor } from "@/lib/device-hash";
 
 const ADMIN = ADMIN_SECRET;
 const BUCKET = "spot-photos";
@@ -106,13 +107,27 @@ export async function GET(req: Request) {
     // reusable=1: 承認済み&再利用OKのみ（カード/詳細のヒーロー用。pending/private/非再利用は出さない）
     const reusable = searchParams.get("reusable") === "1";
     if (!placeId && !placeName) return NextResponse.json({ ok: true, photos: [], isShinrei: false });
-    let q = supabase.from("spot_photos").select("id, image_url, created_at").order("is_primary", { ascending: false }).order("created_at", { ascending: false });
+    let q = supabase.from("spot_photos").select("id, image_url, device_id, created_at").order("is_primary", { ascending: false }).order("created_at", { ascending: false });
     q = placeId ? q.eq("place_id", placeId) : q.eq("place_name", placeName!);
     if (reusable) q = q.eq("moderation_status", "approved").eq("can_use_as_spot_photo", true);
     else q = q.neq("moderation_status", "hidden").neq("moderation_status", "rejected");   // 一般パスでも非表示/却下写真は返さない
     const { data, error } = await q;
     if (error && !isMissingTable(error)) throw error;
-    const photos = (data ?? []).map(r => r.image_url);
+    const rows = (data ?? []) as Array<{ image_url?: string; device_id?: string | null }>;
+    const photos = rows.map(r => r.image_url);
+
+    // 投稿者バッジ用: 写真URL→投稿者（公開ハッシュ＋アイコン公開URL）。
+    //   生device_idは返さない不変条件（公開ID=deviceHash16hex・アイコンはuser-icons/{hash}.jpg）。
+    //   admin/運営インポート写真(device_id無し)は載せない＝アプリ側はアイコン非表示。
+    const posters: Record<string, { id: string; icon: string }> = {};
+    const vHour = Math.floor(Date.now() / 3_600_000);
+    for (const r of rows) {
+      const url = String(r.image_url ?? "");
+      const did = String(r.device_id ?? "").trim();
+      if (!url || !did || posters[url]) continue;
+      const { data: pub } = supabase.storage.from("user-icons").getPublicUrl(iconPathFor(did));
+      posters[url] = { id: deviceHash(did), icon: `${pub.publicUrl}?v=${vHour}` };
+    }
 
     // places に #心霊スポット タグがあるか判定（古いお気に入り＝tag未保存でも詳細でGoogleを使わないため）
     let isShinrei = false;
@@ -123,7 +138,7 @@ export async function GET(req: Request) {
       }
     } catch { /* 判定失敗は false 扱い */ }
 
-    return NextResponse.json({ ok: true, photos, isShinrei });
+    return NextResponse.json({ ok: true, photos, posters, isShinrei });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

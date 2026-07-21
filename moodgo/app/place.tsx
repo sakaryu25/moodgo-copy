@@ -53,6 +53,7 @@ import { sameFav } from '@/lib/favKey';
 import { addViewedLog } from '@/lib/spotLog';
 import { genrePlaceholder } from '@/lib/genrePlaceholder';
 import { useSettings, type Lang } from '@/lib/settingsStore';
+import { useMyIdentity } from '@/lib/myIdentity';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
@@ -422,6 +423,7 @@ function InfoSkeleton() {
 export default function PlaceDetailPage() {
   const insets = useSafeAreaInsets();
   const { lang } = useSettings();
+  const me = useMyIdentity();   // セッション内で自分が投稿した写真にも即アイコンを出すため
   const t = T[lang];
   const place = getSelectedPlace();
   const detailCtx = getSelectedContext();   // 検索文脈（気分/同行/深掘り）→★評価の学習に使う
@@ -577,6 +579,8 @@ export default function PlaceDetailPage() {
   const isSpooky = tagShinrei || serverShinrei;
   const storePhotos = useSpotPhotos(rec?.supabaseId, rec?.title);
   const [fetchedPhotos, setFetchedPhotos] = useState<string[]>([]);
+  // 写真URL→投稿者（公開ハッシュ＋アイコン）。ビューア右下のアバターに使う
+  const [photoPosters, setPhotoPosters] = useState<Record<string, { id: string; icon: string }>>({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   // 写真は「無料の実写真(Wikimedia/自前CDN)」のみ使う。失効したGoogle写真(googleapis)は除外。
   //   ⚠心霊スポットも無料写真があれば表示する（青山霊園のように #心霊スポット かつ Wikimedia写真を持つ
@@ -594,6 +598,12 @@ export default function PlaceDetailPage() {
   const photos = userPhotos.length >= 3
     ? userPhotos
     : [...new Set([...userPhotos, ...basePhotos])];
+  // ビューアの投稿者バッジ: サーバーのマップ＋セッション内の自分の投稿写真（投稿直後から出す）。
+  //   Google/運営写真はマップに無い＝アイコン非表示のまま
+  const viewerPosters: Record<string, { id: string; icon: string }> = { ...photoPosters };
+  if (me.hash) {
+    for (const u of storePhotos) if (!viewerPosters[u]) viewerPosters[u] = { id: me.hash, icon: me.icon };
+  }
   // 通常スポットの写真ゼロ時の招待枠用: タグ→ジャンル絵文字/淡グラデ（null=汎用）
   const ph = genrePlaceholder(rec?.tags);
   // 心霊で写真がある場合、末尾に「提供してください」スライドを追加
@@ -619,6 +629,7 @@ export default function PlaceDetailPage() {
       .then(d => {
         if (!active || !d?.ok) return;
         if (Array.isArray(d.photos)) setFetchedPhotos(d.photos);
+        if (d.posters && typeof d.posters === 'object') setPhotoPosters(d.posters);
         if (d.isShinrei) setServerShinrei(true);
       })
       .catch(() => {});
@@ -1301,7 +1312,13 @@ export default function PlaceDetailPage() {
       {/* 写真タップの全画面ビューア（投稿詳細と共通・スワイプで閉じる/サムネ/ズーム）
           ⚠常時マウント+visibleトグル（Fabricの透明Modalバグ回避・条件付きマウント禁止） */}
       <PhotoViewer visible={viewerOpen && photos.length > 0} photos={photos}
-        initialIdx={Math.min(photoIdx, Math.max(0, photos.length - 1))} onClose={() => setViewerOpen(false)} />
+        initialIdx={Math.min(photoIdx, Math.max(0, photos.length - 1))} onClose={() => setViewerOpen(false)}
+        posters={viewerPosters}
+        onPressPoster={(id) => {
+          // ビューア（ネイティブModal）を閉じてから遷移＝/user/[id]がModalの裏に隠れない
+          setViewerOpen(false);
+          router.push({ pathname: '/user/[id]', params: { id } });
+        }} />
 
       {/* 情報の間違い報告（場所名/営業時間/最寄り駅/住所）。[place:UUID]マーカーでadminが特定して
           🛠場所編集タブから修正できる。⚠常時マウント+visibleトグル（Fabric透明Modal安全パターン） */}
