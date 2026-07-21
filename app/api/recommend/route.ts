@@ -8045,6 +8045,9 @@ async function handleRecommend(request: Request) {
             // 出すと、実際は叩いてないキャッシュなのに『Googleをライブ検索した(=課金)』と誤解される。
             // ライブGoogle結果のみ別途 source="google"（supabaseId無し）で本物のGoogle検索を表す。
             source: r.source === "user" ? "user" : "admin",
+            // 生のsource_type(user/admin/manual/osm/…)を保持＝最終段で「投稿/adminキュレーション」を
+            //   osm/google/yahooと区別して積極確保するために使う（表示用sourceはosmもadminに丸める）。
+            _rawSource: r.source ?? "",
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,
@@ -9136,6 +9139,45 @@ async function handleRecommend(request: Request) {
             }
           }
         }
+        // ── 投稿/adminキュレーションを積極確保（ユーザー要望2026-07-21・全気分で最高8件まで）──────
+        //   投稿された穴場(source_type=user)＋adminが手動キュレーションした店(admin/manual)を、
+        //   osm/Google/Yahoo より優先して最大8件まで結果に確保する（＝MoodGo自前の投稿/厳選を積極転載）。
+        //   ・距離は壊さない: 近め/食=hardcap圏内のcuratedのみ／遠出=遠リング側のcuratedのみ補充し、近めは近い順に再整列。
+        //   ・freeWordジャンル固定時(古着等)は既に該当店で満たされ該当curatedも上位なのでスキップ(ジャンルロック維持)。
+        //   ・8はターゲット(下限)であって上限cではない＝自前DBが自然に8超でも間引かない。
+        const _curSrc = (r: { _rawSource?: string }) => {
+          const s = (r._rawSource ?? "").toLowerCase();
+          return s === "user" || s === "admin" || s === "manual";
+        };
+        const _curTitles = new Set(supabaseRecs.filter(_curSrc).map(r => r.title ?? "").filter(Boolean));
+        const _isCurT = (r: { title?: string }) => _curTitles.has(r.title ?? "");
+        const _fgActive = !hasDropdownDeepDive && !!freewordGenreRule(answers.freeWord ?? "");
+        if (!_fgActive && recommendations.filter(_isCurT).length < 8) {
+          const _km = (r: { distanceKm?: number; distanceText?: string }): number | null => {
+            if (typeof r.distanceKm === "number") return r.distanceKm;
+            const m = (r.distanceText ?? "").match(/([\d.]+)\s*km/);
+            return m ? parseFloat(m[1]) : null;
+          };
+          const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
+          const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
+            const km = _km(r);
+            if (km == null) return true;
+            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
+            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
+          };
+          const _inSet = new Set(recommendations.map(r => r.title ?? ""));
+          const _need = 8 - recommendations.filter(_isCurT).length;
+          const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
+          if (_extra.length) {
+            const _curNow = recommendations.filter(_isCurT);
+            const _nonCur = recommendations.filter(r => !_isCurT(r));
+            const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
+            let _merged = [..._curNow, ..._extra, ..._keptNon];
+            if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
+            recommendations = _merged.slice(0, 15);
+          }
+        }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
         return json({
@@ -9144,6 +9186,7 @@ async function handleRecommend(request: Request) {
           searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
+          ...((answers as { _debug?: boolean })._debug ? { _debug: { curatedInResult: recommendations.filter(_isCurT).length, curatedInPool: _curTitles.size } } : {}),
           warning: hasLocation
             ? widenedWarning
             : "現在地未使用のため、距離順ではない場合があります。",
