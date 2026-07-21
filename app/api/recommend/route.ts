@@ -7326,7 +7326,12 @@ async function handleRecommend(request: Request) {
       //   除外される（実測: 古着40件は全て #ショッピング＝わいわい/まったり検索の pool に一切入らない）。
       //   → freeWord ジャンルのタグで別枠取得し合流。深掘りドロップダウン選択時(realDrillTags>0)は
       //     ユーザーが明示ジャンルを選んでいるので発火しない（既存動作を優先）。#名所公園 と同型。
-      if (hasLocation && realDrillTags.length === 0) {
+      //   ⚠発火条件は「明示ドロップダウン深掘りを選んでいない」こと。realDrillTags基準だと freeWord が
+      //     タグ化された瞬間に自分で自分を止め、古着/聖地等の“気分をまたぐ横断在庫”を取りに行けなかった
+      //     （古着@下北沢0件の主因）。ドロップダウン未選択なら freeWord ジャンルで確実に別枠取得する。
+      const _noDropdownDD = !(answers.dynamicQs ?? []).some(q =>
+        (q.question === "深掘りカテゴリ" || q.question === "深掘り詳細") && !!q.answer && q.answer !== "こだわらない");
+      if (hasLocation && _noDropdownDD) {
         const fgFetch = freewordGenreRule(answers.freeWord ?? "");
         if (fgFetch && fgFetch.tags.length > 0) {
           try {
@@ -9085,10 +9090,19 @@ async function handleRecommend(request: Request) {
             //   Change1で気分ゲートを越えて別枠取得したジャンル在庫が、距離順cutで15件から溢れても拾える
             //   （例: 古着@下北沢で40件の古着在庫が渋谷のわいわい店に押し出されるのを防ぐ）。
             const inList = new Set(recommendations.map(r => r.title ?? ""));
-            const poolMatches = sbSorted.filter(r => isMatch(r) && !inList.has(r.title ?? ""));
+            // ①整形済み全SBプール(sbSorted)から引き上げ。②さらに finalizeSource が気分純度で落とした分の
+            //   受け皿として整形前プール(supabaseRecs)からも回収する＝Change1で気分ゲート越しに取得した
+            //   横断在庫(古着=#ショッピング等)が nonFood/純度フィルタで消えるのを拾い直す。
+            //   整形前を混ぜる分、ノイズ/センシティブ/観光客向けだけは再適用して安全側に倒す。
+            const safeTitle = (t: string) => !SENSITIVE_UNFIT_RE.test(t) && !GENZ_NOISE_RE.test(t) && !TOURIST_TRAP_RE.test(t);
+            const fromSorted = sbSorted.filter(r => isMatch(r) && !inList.has(r.title ?? ""));
+            const sortedTitles = new Set(fromSorted.map(r => r.title ?? ""));
+            const fromRawPool = supabaseRecs.filter(r =>
+              isMatch(r) && !inList.has(r.title ?? "") && !sortedTitles.has(r.title ?? "") && safeTitle((r.title ?? "").trim()));
+            const poolMatches = [...fromSorted, ...fromRawPool];
             const keepInList = recommendations.filter(isMatch);
             const nonMatch = recommendations.filter(r => !isMatch(r));
-            const allMatch = [...keepInList, ...poolMatches];                   // ジャンル該当(リスト内＋プール引上げ)
+            const allMatch = [...keepInList, ...poolMatches];                   // ジャンル該当(リスト内＋整形済/整形前プール引上げ)
             const floor = Math.min(8, recommendations.length);
             if (allMatch.length >= floor) {
               recommendations = allMatch.slice(0, 15);                          // 十分該当→ジャンルで満たす
