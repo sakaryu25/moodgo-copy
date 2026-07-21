@@ -9261,8 +9261,10 @@ async function handleRecommend(request: Request) {
             }
             const vibeTier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              // derankは名前だけでなくタグも見る(例: #犬カフェ タグが boost の「カフェ」に一致して昇格するのを防ぐ)。
-              if (vb.derank.test(nm) || vb.derank.test(tg) || CHAIN_BRAND_RE.test(nm)) return 2;   // 飯屋/施設/チェーン=後方
+              // ⚠derankは名前のみで判定する。タグの #動物カフェ/#犬カフェ/#猫カフェ は admin取込の一括誤付与が
+              //   全国2600件超(81%が普通のカフェ)で信頼できず、タグderankだと正常なカフェを大量に後方送りしてしまう。
+              //   真の動物カフェ/コンカフェ/施設は名前に語が出るためnameだけで十分。boostはタグも見る(#流行りカフェ等は有効)。
+              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;    // 飯屋/施設/チェーン=後方
               if (vb.boost.test(nm) || vb.boost.test(tg)) return 0;          // 世界観一致=前方
               return 1;
             };
@@ -9299,7 +9301,7 @@ async function handleRecommend(request: Request) {
           if (_vbF) {
             const _tier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              if (_vbF.derank.test(nm) || _vbF.derank.test(tg) || CHAIN_BRAND_RE.test(nm)) return 2;
+              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;   // derankは名前のみ(誤タグ汚染回避・上記②と同方針)
               if (_vbF.boost.test(nm) || _vbF.boost.test(tg)) return 0;
               return 1;
             };
@@ -9307,13 +9309,15 @@ async function handleRecommend(request: Request) {
           }
         }
         // ④ vibe検索時は動物カフェを1件までに(映え/チル等で猫/犬/カピバラカフェが上位を占領するのを抑制)。
+        //   ⚠判定は名前のみ。#動物カフェ等のタグは admin取込の一括誤付与2600件超で信頼できず、
+        //   タグ判定だと普通のカフェを動物カフェ扱いで間引いてしまう(真の動物カフェは名前に語が出る)。
         {
           const vb2 = freewordVibe(answers.freeWord ?? "");
           if (vb2) {
-            const ANIMAL_CAFE_RE = /動物カフェ|猫カフェ|ねこカフェ|ネコカフェ|犬カフェ|いぬカフェ|フクロウ|うさぎ|カピバラ|ハリネズミ|爬虫類|化猫|モモンガ|momonga|capybara/i;
+            const ANIMAL_CAFE_RE = /動物カフェ|猫カフェ|ねこカフェ|ネコカフェ|犬カフェ|いぬカフェ|ドッグカフェ|dog ?cafe|cat ?cafe|フクロウカフェ|うさぎカフェ|カピバラ|ハリネズミ|爬虫類|モモンガ|momonga|capybara|アニマルカフェ/i;
             let seen = 0;
             const capped = recommendations.filter(r => {
-              if (ANIMAL_CAFE_RE.test((r.title ?? "") + " " + (r.tags ?? []).join(" "))) { seen++; return seen <= 1; }
+              if (ANIMAL_CAFE_RE.test(r.title ?? "")) { seen++; return seen <= 1; }
               return true;
             });
             if (capped.length >= Math.min(6, recommendations.length)) recommendations = capped;
