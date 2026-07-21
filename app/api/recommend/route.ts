@@ -7021,10 +7021,14 @@ async function handleRecommend(request: Request) {
       "今日は出かけたい": 20, "ちょっと遠くてもOK": 40, "県またぎもあり": 70,
       "小旅行気分": 120, "どこでも行きたい": 200,
     };
-    // 領域R2: 近め系の距離ハードキャップ(intent基準・km)。これを超える店は最終並びで必ず末尾へ。
-    //   クライアントが radiusKm=15 等を送っても intent で締めるため distanceFeeling 優先。
+    // 近め系の距離ハードキャップ(km)。これを超える店は最終並びで末尾へ回す（近い順を担保しつつ、
+    //   足りない時だけ範囲外backfillで15件を埋める）。
+    //   ⚠ユーザー要望2026-07-21: カードの表示km(「今日は出かけたい=20km以内」等)を“フルに使って近い順”。
+    //     以前は 少し歩ける4/近め6/今日10 と表示より小さく、20km指定でも実質10kmで頭打ちだった。
+    //     → hardcap を各カードの表示km(=DISTANCE_RADIUS_KM)に一致させる。radiusKm自体は元から表示kmで不変。
+    //     遠い設定(ちょっと遠く〜どこでも)は minRadiusKm>0 の遠出バイアス経路のため本capは不使用＝現状維持。
     const DIST_HARDCAP_KM: Record<string, number> = {
-      "すぐそこ": 2, "近場でいい": 3, "少し歩ける": 4, "近めにお出かけ": 6, "今日は出かけたい": 10,
+      "すぐそこ": 1, "近場でいい": 3, "少し歩ける": 5, "近めにお出かけ": 10, "今日は出かけたい": 20,
     };
     const DISTANCE_MIN_KM: Record<string, number> = {
       // 領域1: 近め系（すぐそこ〜今日は出かけたい）は遠出バイアスを掛けず「近い順」で出す。
@@ -7044,8 +7048,10 @@ async function handleRecommend(request: Request) {
         ? (DISTANCE_RADIUS_KM[answers.distanceFeeling] ?? getRadiusKmFromTransportAndTime(answers.transport, answers.time))
         : getRadiusKmFromTransportAndTime(answers.transport, answers.time);
     const useQuizRadius = !!(answers.radiusKm || answers.distanceFeeling);
-    // 遠端バイアス(minRadiusKm)は距離設定を必ず尊重。「お腹すいた」のみ最寄り優先(0)。
-    const minRadiusKm = ((answers.mood === "お腹すいた") || !useQuizRadius)
+    // 遠端バイアス(minRadiusKm)は距離設定を尊重。全気分統一(2026-07-21ユーザー要望「全て統一」):
+    //   お腹すいたも他気分と同じく距離設定を尊重する（旧: お腹すいたは常に0＝遠出を無視していた）。
+    //   距離設定未指定時のみ0（最寄り優先）。
+    const minRadiusKm = (!useQuizRadius)
       ? 0
       : (DISTANCE_MIN_KM[answers.distanceFeeling ?? ""] ?? (radiusKm <= 3 ? 0 : radiusKm * 0.8));
 
@@ -7059,8 +7065,8 @@ async function handleRecommend(request: Request) {
         const { spatialSearch } = await import("@/lib/spatial-search");
         const jLat = answers.originLat, jLng = answers.originLng;
         const [jikanHits, poolHits] = await Promise.all([
-          spatialSearch({ mustTags: ["#時間潰し"], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm: 0, transport: answers.transport, limit: 20, googleApiKey: apiKey }),
-          spatialSearch({ mustTags: [], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm: 0, transport: answers.transport, limit: 60, googleApiKey: apiKey }),
+          spatialSearch({ mustTags: ["#時間潰し"], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm, transport: answers.transport, limit: 20, googleApiKey: apiKey }),
+          spatialSearch({ mustTags: [], fallbackTags: [], lat: jLat, lng: jLng, radiusKm, minRadiusKm, transport: answers.transport, limit: 60, googleApiKey: apiKey }),
         ]);
         // グローバルブロック済みは除外（管理者が検索から外した場所）
         const jBlocked = new Set<string>();
@@ -7085,14 +7091,22 @@ async function handleRecommend(request: Request) {
         const jTagStr = (r: JRow) => (r.tags ?? []).join(" ");
         const jikanUnfit = (r: JRow) => JIKAN_UNFIT.test(`${r.name} ${jTagStr(r)}`);
         const jikanFriendly = (r: JRow) => JIKAN_FRIENDLY.test(`${r.name} ${r.category ?? ""} ${r.description ?? ""} ${jTagStr(r)}`) || JIKAN_FRIENDLY_TAG.test(jTagStr(r));
-        const jShuffle = (arr: JRow[]) => { for (let i = arr.length - 1; i > 0; i--) { const k = Math.floor(Math.random() * (i + 1)); [arr[i], arr[k]] = [arr[k], arr[i]]; } return arr; };
-        // ① #時間潰し 最優先: "潰せない/無関係"を除いて近い順に最大5件
-        const jikanTop = jikanHits.filter(jOk).filter(pl => !jikanUnfit(pl))
-          .sort((a, b) => (a.distanceM ?? 9e9) - (b.distanceM ?? 9e9)).slice(0, 5);
+        // 全気分統一(2026-07-21ユーザー要望「全て統一」): 時間潰しも距離ロジックを働かせる＝近め=近い順/遠出=遠い順。
+        //   （旧: minRadiusKm:0固定＋ランダム補充で遠出バイアスが無効だった）
+        const jFar = minRadiusKm > 0;
+        const jDist = (r: JRow) => r.distanceM ?? (jFar ? 0 : 9e9);
+        const jByDist = (a: JRow, b: JRow) => jFar ? (jDist(b) - jDist(a)) : (jDist(a) - jDist(b));
+        // ① #時間潰し 最優先: 距離順(近め=近い/遠出=遠い)で最大5件
+        const jikanTop = jikanHits.filter(jOk).filter(pl => !jikanUnfit(pl)).sort(jByDist).slice(0, 5);
         jikanTop.forEach(pl => jUsed.add(pl.name));
-        // ② 残り: 距離内プールから補充。時間潰し向き(FRIENDLY)を先頭に寄せ、不足分だけ他カテゴリで埋める（各層ランダム）。UNFITは除外。
+        // ② 残り: 距離ロジック(近め=近い順/遠出=遠い順)を主に補充。近め時のみ、投稿/adminキュレーション＋
+        //   時間潰し向き(FRIENDLY)を近距離帯で少し前に出す小ボーナス（ユーザー要望「投稿+admin積極転載」）。UNFIT除外。
         const jRestPool = poolHits.filter(pl => jOk(pl) && !jUsed.has(pl.name) && !jikanUnfit(pl));
-        const jRest = [...jShuffle(jRestPool.filter(jikanFriendly)), ...jShuffle(jRestPool.filter(pl => !jikanFriendly(pl)))];
+        const jIsCur = (r: JRow) => { const s = ((r as { source?: string }).source ?? "").toLowerCase(); return s === "user" || s === "admin" || s === "manual"; };
+        const jBonusKm = (r: JRow) => (jIsCur(r) ? 2 : 0) + (jikanFriendly(r) ? 1 : 0);
+        const jRest = jFar
+          ? [...jRestPool].sort((a, b) => jDist(b) - jDist(a))                                             // 遠出=遠い順
+          : [...jRestPool].sort((a, b) => (jDist(a) / 1000 - jBonusKm(a)) - (jDist(b) / 1000 - jBonusKm(b))); // 近め=近い順＋curated/FRIENDLY小加点
         const jTake = jRest.slice(0, Math.max(0, 15 - jikanTop.length));
         const toJikanRec = (r: JRow, isJikan: boolean) => {
           const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
@@ -7264,7 +7278,8 @@ async function handleRecommend(request: Request) {
       // 高層ビル料理は「目的地型グルメ」: 最寄り優先の10kmキャップを適用しない
       //   （展望レストランは都心部に集中し、近所のラーメン店で埋まる事故の元だった）
       const isDestinationFood = (answers.dynamicQs ?? []).some(q => q.answer?.includes("高層ビル料理"));
-      const sbRadiusKm = (isFoodMood && !isDestinationFood) ? Math.min(radiusKm, 10) : radiusKm;
+      // 全気分統一(2026-07-21): お腹すいたも表示km(radiusKm)をそのまま使う（旧: 食事は10km固定で遠出を無視していた）。
+      const sbRadiusKm = radiusKm;
 
       // D-4: 天気情報をSupabase-firstパスでも取得（屋内/屋外ソート補正に使用）
       const sbWeather = hasLocation
@@ -8041,6 +8056,9 @@ async function handleRecommend(request: Request) {
             // 出すと、実際は叩いてないキャッシュなのに『Googleをライブ検索した(=課金)』と誤解される。
             // ライブGoogle結果のみ別途 source="google"（supabaseId無し）で本物のGoogle検索を表す。
             source: r.source === "user" ? "user" : "admin",
+            // 生のsource_type(user/admin/manual/osm/…)を保持＝最終段で「投稿/adminキュレーション」を
+            //   osm/google/yahooと区別して積極確保するために使う（表示用sourceはosmもadminに丸める）。
+            _rawSource: r.source ?? "",
             isUserSpot: false,
             hasUserPhotos: false,
             userPhotoCount: 0,
@@ -8644,7 +8662,7 @@ async function handleRecommend(request: Request) {
         //   各ソース内は近い順だが、ソース連結(sb+g+y+backfill)＋widen＋admin注入で
         //   遠い店が上位に来ることがある。食事は最寄り最優先なので最後に全体ソートする。
         //   （admin転載も食事では近い順に従わせる。営業中は同距離帯で優先）
-        if (isFoodMood && !isDestinationFood) {
+        if (isFoodMood && !isDestinationFood && minRadiusKm === 0) {   // 近め食のみ近い順。遠出食(min>0)は下の遠出バイアスへ（全気分統一2026-07-21）
           // ※ 高層ビル料理(目的地型)は近い順ソートを行わない。
           //   3km設定等で「ジャンル一致(9km先のタワー)→混在補填(近所の定食屋)」の順に
           //   組んだ結果を距離で再ソートすると、近所の一般店がタワーより上に来てしまうため。
@@ -9083,7 +9101,7 @@ async function handleRecommend(request: Request) {
           if (within.length > 0 && over.length > 0) {
             recommendations = [...within, ...over];
           }
-        } else if (minRadiusKm > 0 && !isFoodMood && !isProprietaryOnly) {
+        } else if (minRadiusKm > 0 && !isProprietaryOnly) {   // 遠出(食含む・全気分統一2026-07-21): ジャンル一致→遠い順
           // far-bias(遠出)の最終表示順(2026-07-19): finalizeの多様化/rerankerが近場を上位へ戻すため
           //   「遠出を選んだのに近所ばかり」になっていた→遠寄りを最終保証。ただし単純な遠い順だと全て外縁に
           //   密集する(小旅行=全120km・監査で最低スコア)ため farLeanSpread で[min,radius]全域に遠寄りで散らす。
@@ -9130,6 +9148,45 @@ async function handleRecommend(request: Request) {
             } else if (allMatch.length > 0) {
               recommendations = [...allMatch, ...nonMatch].slice(0, 15);        // 薄い→該当を上位・非該当で15件補完
             }
+          }
+        }
+        // ── 投稿/adminキュレーションを積極確保（ユーザー要望2026-07-21・全気分で最高8件まで）──────
+        //   投稿された穴場(source_type=user)＋adminが手動キュレーションした店(admin/manual)を、
+        //   osm/Google/Yahoo より優先して最大8件まで結果に確保する（＝MoodGo自前の投稿/厳選を積極転載）。
+        //   ・距離は壊さない: 近め/食=hardcap圏内のcuratedのみ／遠出=遠リング側のcuratedのみ補充し、近めは近い順に再整列。
+        //   ・freeWordジャンル固定時(古着等)は既に該当店で満たされ該当curatedも上位なのでスキップ(ジャンルロック維持)。
+        //   ・8はターゲット(下限)であって上限cではない＝自前DBが自然に8超でも間引かない。
+        const _curSrc = (r: { _rawSource?: string }) => {
+          const s = (r._rawSource ?? "").toLowerCase();
+          return s === "user" || s === "admin" || s === "manual";
+        };
+        const _curTitles = new Set(supabaseRecs.filter(_curSrc).map(r => r.title ?? "").filter(Boolean));
+        const _isCurT = (r: { title?: string }) => _curTitles.has(r.title ?? "");
+        const _fgActive = !hasDropdownDeepDive && !!freewordGenreRule(answers.freeWord ?? "");
+        if (!_fgActive && recommendations.filter(_isCurT).length < 8) {
+          const _km = (r: { distanceKm?: number; distanceText?: string }): number | null => {
+            if (typeof r.distanceKm === "number") return r.distanceKm;
+            const m = (r.distanceText ?? "").match(/([\d.]+)\s*km/);
+            return m ? parseFloat(m[1]) : null;
+          };
+          const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
+          const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
+            const km = _km(r);
+            if (km == null) return true;
+            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
+            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
+          };
+          const _inSet = new Set(recommendations.map(r => r.title ?? ""));
+          const _need = 8 - recommendations.filter(_isCurT).length;
+          const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
+          if (_extra.length) {
+            const _curNow = recommendations.filter(_isCurT);
+            const _nonCur = recommendations.filter(r => !_isCurT(r));
+            const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
+            let _merged = [..._curNow, ..._extra, ..._keptNon];
+            if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
+            recommendations = _merged.slice(0, 15);
           }
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
