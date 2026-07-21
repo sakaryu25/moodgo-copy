@@ -7320,6 +7320,34 @@ async function handleRecommend(request: Request) {
         } catch { /* 著名公園取得失敗は通常候補で続行 */ }
       }
 
+      // ── freeWord ジャンル補完取得（監査#1 / Z世代最大の萎え「打った言葉が無視される」の根治）──
+      //   古着/サウナ/夜景/韓国/雑貨/海辺/絶景 を freeWord で指定しても、その在庫は気分タグが
+      //   検索気分と異なると spatialSearch の mustTags(気分/深掘り)ゲートで sbResults から丸ごと
+      //   除外される（実測: 古着40件は全て #ショッピング＝わいわい/まったり検索の pool に一切入らない）。
+      //   → freeWord ジャンルのタグで別枠取得し合流。深掘りドロップダウン選択時(realDrillTags>0)は
+      //     ユーザーが明示ジャンルを選んでいるので発火しない（既存動作を優先）。#名所公園 と同型。
+      if (hasLocation && realDrillTags.length === 0) {
+        const fgFetch = freewordGenreRule(answers.freeWord ?? "");
+        if (fgFetch && fgFetch.tags.length > 0) {
+          try {
+            const hitsArr = await Promise.all(fgFetch.tags.slice(0, 4).map(gTag =>
+              spatialSearch({
+                mustTags: [gTag], fallbackTags: [],
+                lat: answers.originLat ?? 0, lng: answers.originLng ?? 0,
+                radiusKm: sbRadiusKm, minRadiusKm: sbMinRadiusKm,
+                transport: answers.transport, limit: 15, googleApiKey: apiKey,
+              }).catch(() => [] as typeof sbResults),
+            ));
+            const have = new Set(sbResults.map(r => r.name));
+            for (const hits of hitsArr) for (const t of hits) {
+              if (have.has(t.name)) continue;
+              if (((t.distanceM ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
+              sbResults.push(t); have.add(t.name);
+            }
+          } catch { /* freeWordジャンル補完失敗は通常候補で続行 */ }
+        }
+      }
+
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
@@ -9053,12 +9081,19 @@ async function handleRecommend(request: Request) {
           if (fg) {
             const isMatch = (r: { title?: string; tags?: string[] }) =>
               fg.pos.test(r.title ?? "") || (r.tags ?? []).some(t => fg.tags.includes(t));
-            const keep = recommendations.filter(isMatch);
+            // 現在の15件だけでなく“全SBプール(sbSorted)”からジャンル該当を引き上げる。
+            //   Change1で気分ゲートを越えて別枠取得したジャンル在庫が、距離順cutで15件から溢れても拾える
+            //   （例: 古着@下北沢で40件の古着在庫が渋谷のわいわい店に押し出されるのを防ぐ）。
+            const inList = new Set(recommendations.map(r => r.title ?? ""));
+            const poolMatches = sbSorted.filter(r => isMatch(r) && !inList.has(r.title ?? ""));
+            const keepInList = recommendations.filter(isMatch);
+            const nonMatch = recommendations.filter(r => !isMatch(r));
+            const allMatch = [...keepInList, ...poolMatches];                   // ジャンル該当(リスト内＋プール引上げ)
             const floor = Math.min(8, recommendations.length);
-            if (keep.length >= floor) {
-              recommendations = keep;                                          // 十分該当あり→非該当を完全除去
-            } else if (keep.length > 0) {
-              recommendations = [...keep, ...recommendations.filter(r => !isMatch(r))];  // 薄い→該当を上位・非該当は末尾
+            if (allMatch.length >= floor) {
+              recommendations = allMatch.slice(0, 15);                          // 十分該当→ジャンルで満たす
+            } else if (allMatch.length > 0) {
+              recommendations = [...allMatch, ...nonMatch].slice(0, 15);        // 薄い→該当を上位・非該当で15件補完
             }
           }
         }

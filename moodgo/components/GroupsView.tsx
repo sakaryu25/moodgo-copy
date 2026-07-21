@@ -27,7 +27,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground, { APP_BG } from '@/components/AppBackground';
+import AppActionSheet from '@/components/AppActionSheet';
 import PuniPressable from '@/components/PuniPressable';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { openInGoogleMaps } from '@/lib/openMaps';
@@ -662,6 +664,8 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   };
 
   // ── グループ作成 ──
+  // 作成完了ダイアログ（アプリ調のグラデシート・旧: 素のAlert.alert）
+  const [created, setCreated] = useState<{ name: string; code: string } | null>(null);
   const handleCreate = async () => {
     const name = newGroupName.trim();
     if (!name || busy) return;
@@ -678,14 +682,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
       setNewGroupName('');
       setShowAdd(false);
       await fetchGroups(deviceId);
-      Alert.alert(
-        t.createdTitle,
-        t.createdMsg(data.group.invite_code),
-        [
-          { text: t.shareCode, onPress: () => Share.share({ message: t.inviteShare(data.group.name, data.group.invite_code) }) },
-          { text: t.ok },
-        ],
-      );
+      setCreated({ name: data.group.name, code: data.group.invite_code });
     } catch { Alert.alert(t.error, t.errNetwork); }
     finally { setBusy(false); }
   };
@@ -1381,7 +1378,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
               >
                 <Dices size={20} color="#7C3AED" strokeWidth={2} />
               </PuniPressable>
-              <TextInput
+              <IMESafeTextInput
                 value={comment}
                 onChangeText={setComment}
                 placeholder={t.commentPh}
@@ -1908,7 +1905,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
             {/* 作成 */}
             <Text style={[s.label, { marginTop: 20 }]}>{t.createGroup}</Text>
             <View style={s.inputRow}>
-              <TextInput
+              <IMESafeTextInput
                 value={newGroupName}
                 onChangeText={setNewGroupName}
                 placeholder={t.groupNamePh}
@@ -1961,6 +1958,21 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
         posterId={reportTarget?.device_id}
         onBlockUser={handleBlockUser}
         onClose={() => setReportTarget(null)}
+      />
+      {/* グループ作成完了（アプリ調のグラデシート・常時マウント） */}
+      <AppActionSheet
+        visible={!!created}
+        title={t.createdTitle.replace(/🎉/g, '').trim()}
+        message={created ? t.createdMsg(created.code) : undefined}
+        gradientHeader
+        options={created ? [{
+          label: t.shareCode,
+          primary: true,
+          icon: <Send size={19} color="#FFFFFF" strokeWidth={2.3} />,
+          onPress: () => Share.share({ message: t.inviteShare(created.name, created.code) }),
+        }] : []}
+        cancelLabel={t.ok}
+        onClose={() => setCreated(null)}
       />
     </View>
   );

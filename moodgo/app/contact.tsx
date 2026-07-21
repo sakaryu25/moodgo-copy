@@ -9,7 +9,7 @@ import { Bug, Check, ChevronLeft, MessageSquarePlus, Send, Sparkles, UserRound }
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +18,7 @@ import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
 import { showToast } from '@/lib/toast';
 import PuniPressable from '@/components/PuniPressable';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 
 const PINK = '#F56CB3';
 const PURPLE = '#9B6BFF';
@@ -150,16 +151,16 @@ export default function ContactScreen() {
           <Text style={s.hint}>{current.hint}</Text>
 
           <Text style={s.label}>お名前<Text style={s.optional}>（任意）</Text></Text>
-          <TextInput value={name} onChangeText={setName} placeholder="例：山田 太郎" placeholderTextColor="#C4B5FD"
+          <IMESafeTextInput value={name} onChangeText={setName} placeholder="例：山田 太郎" placeholderTextColor="#C4B5FD"
             style={s.input} maxLength={50} />
 
           <Text style={s.label}>メールアドレス<Text style={s.optional}>（任意・返信が必要な場合）</Text></Text>
-          <TextInput value={email} onChangeText={setEmail} placeholder="例：example@email.com" placeholderTextColor="#C4B5FD"
+          <IMESafeTextInput value={email} onChangeText={setEmail} placeholder="例：example@email.com" placeholderTextColor="#C4B5FD"
             style={[s.input, !emailOk && s.inputError]} autoCapitalize="none" keyboardType="email-address" maxLength={120} />
           {!emailOk && <Text style={s.errorText}>メールアドレスの形式をご確認ください</Text>}
 
           <Text style={s.label}>{cat === 'bug' ? '不具合の内容' : 'お問い合わせ内容'}<Text style={s.required}> *</Text></Text>
-          <TextInput value={message} onChangeText={setMessage}
+          <IMESafeTextInput value={message} onChangeText={setMessage}
             placeholder={cat === 'bug' ? '例：投稿ボタンを押すと画面が固まる。◯◯を開いて△△したときに起きます。' : 'ご自由にご記入ください'}
             placeholderTextColor="#C4B5FD" style={[s.input, s.textarea]} multiline textAlignVertical="top" maxLength={2000} />
           <Text style={s.counter}>{message.length} / 2000</Text>

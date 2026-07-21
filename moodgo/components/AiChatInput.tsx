@@ -15,13 +15,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Text as SvgText } from 'react-native-svg';
 import AppBackground, { APP_BG } from './AppBackground';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 
 const PINK = '#F56CB3';
 const PURPLE = '#9B6BFF';
@@ -112,7 +112,7 @@ export default function AiChatInput({ onBack, onSubmit }: Props) {
         </View>
 
         {/* 入力欄 */}
-        <TextInput
+        <IMESafeTextInput
           value={text}
           onChangeText={setText}
           placeholder="例：友達と行ける雰囲気のいい居酒屋"

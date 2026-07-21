@@ -6,7 +6,7 @@ import { Check, ChevronRight, MapPin, UserRound, X } from 'lucide-react-native';
 import React, { useRef, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Animated, Dimensions, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
@@ -16,6 +16,7 @@ import { PREFECTURE_OPTIONS } from './PrefecturePicker';
 import { getDeviceId } from '@/lib/abtest';
 import { apiFetch } from '@/lib/api';
 import { saveHandle } from '@/lib/settingsStore';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 
 const HANDLE_RE = /^[a-z0-9_]{3,20}$/;   // 半角英数と_ のみ・3〜20文字（/api/user-handle と一致）
 
@@ -205,7 +206,7 @@ export default function ProfileSetup({ onDone }: Props) {
             <Text style={s.sectionLabel}>ユーザーID（必須）</Text>
             <View style={[s.handleRow, handleStatus === 'ok' && s.handleRowOk, (handleStatus === 'taken' || handleStatus === 'invalid') && s.handleRowBad]}>
               <Text style={s.handleAt}>@</Text>
-              <TextInput
+              <IMESafeTextInput
                 value={handle}
                 onChangeText={onChangeHandle}
                 placeholder="eiga_suki"

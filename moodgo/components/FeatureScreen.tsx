@@ -1449,6 +1449,96 @@ function collectScopeContent(pages: FeaturedPageV2[], scopeKeys: string[]) {
 const SCREEN_W = Dimensions.get("window").width;
 const HERO_CARD_W = SCREEN_W - 32;
 
+// ─── 準備中プレビュー ────────────────────────────────────────────────────────
+// まだ特集を作っていない 県 / 地方 / 全国 では、ただ「準備中」と出すのではなく
+//   実際のレイアウト（ヒーロー＋サブ2枚＋横スクロールのおすすめ）をスケルトンで見せ、
+//   「こんな感じで登場します」と伝える。scope 名で動的生成＝全都道府県・全地方・全国を1つでカバー。
+function ComingSoonPreview({ scope, riseIn }: { scope: string; riseIn: (idx: number) => { opacity: Animated.AnimatedInterpolation<number>; transform: { translateY: Animated.AnimatedInterpolation<number> }[] } }) {
+  const CATS = ["絶景", "カフェ", "おでかけ", "グルメ", "雨の日"];
+  return (
+    <>
+      {/* ヒーロー（レイアウト見本） */}
+      <Animated.View style={[csp.hero, riseIn(1)]}>
+        <LinearGradient colors={["#F7ECFF", "#EEF1FF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.heroBg}>
+          <View style={csp.badge}><Clock size={12} color="#9B6BFF" strokeWidth={2.8} /><Text style={csp.badgeText}>準備中</Text></View>
+          <Text style={csp.heroTitle} numberOfLines={2}>{scope}の特集をつくっています</Text>
+          <Text style={csp.heroSub}>近日公開予定。こんな感じで登場します</Text>
+          <View style={csp.chipRow}>
+            {CATS.map((c, i) => <View key={i} style={csp.chip}><Text style={csp.chipText}>{c}</Text></View>)}
+          </View>
+          <View style={csp.heroCta}>
+            <Text style={csp.heroCtaText}>特集を読む</Text>
+            <ChevronRight size={13} color="#9B6BFF" strokeWidth={2.6} />
+          </View>
+        </LinearGradient>
+      </Animated.View>
+
+      {/* サブ特集2枚（見本） */}
+      <Animated.View style={[csp.subRow, riseIn(2)]}>
+        {[0, 1].map((i) => (
+          <View key={i} style={csp.subCard}>
+            <LinearGradient colors={i === 0 ? ["#FFE3F1", "#F3E5FF"] : ["#E4ECFF", "#EAF6FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.subImg}>
+              <View style={csp.subBadge}><Text style={csp.subBadgeText}>準備中</Text></View>
+              <View style={csp.subBody}>
+                <View style={[csp.skel, { width: "78%" }]} />
+                <View style={[csp.skel, { width: "52%", marginTop: 7 }]} />
+              </View>
+            </LinearGradient>
+          </View>
+        ))}
+      </Animated.View>
+
+      {/* おすすめの特集（横スクロールの見本） */}
+      <Animated.View style={[csp.section, riseIn(3)]}>
+        <View style={csp.sectionHead}>
+          <Sparkles size={15} color={C.accent} strokeWidth={2.4} />
+          <Text style={csp.sectionTitle}>おすすめの特集</Text>
+          <View style={csp.miniPill}><Text style={csp.miniPillText}>準備中</Text></View>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={csp.card}>
+              <LinearGradient colors={["#EFE9FB", "#F5EEFF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={csp.cardImg} />
+              <View style={[csp.skel, { width: "88%", marginTop: 9 }]} />
+              <View style={[csp.skel, { width: "60%", marginTop: 6 }]} />
+            </View>
+          ))}
+        </ScrollView>
+      </Animated.View>
+    </>
+  );
+}
+
+const csp = StyleSheet.create({
+  hero: { marginHorizontal: 16, marginTop: 8, borderRadius: 24, overflow: "hidden", borderWidth: 1, borderColor: "rgba(155,107,255,0.14)" },
+  heroBg: { paddingVertical: 26, paddingHorizontal: 20, minHeight: 210 },
+  badge: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", backgroundColor: "rgba(155,107,255,0.14)", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 5, marginBottom: 14 },
+  badgeText: { fontSize: 11.5, fontWeight: "800", color: "#9B6BFF", letterSpacing: 1 },
+  heroTitle: { fontSize: 21, fontWeight: "900", color: "#2A1E48", letterSpacing: -0.4, lineHeight: 29 },
+  heroSub: { fontSize: 13, fontWeight: "700", color: "#7A6E93", marginTop: 8, lineHeight: 19 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 16 },
+  chip: { backgroundColor: "rgba(255,255,255,0.72)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { fontSize: 12, fontWeight: "800", color: "#8B7BB0" },
+  heroCta: { flexDirection: "row", alignItems: "center", gap: 3, alignSelf: "flex-start", marginTop: 18, backgroundColor: "rgba(255,255,255,0.85)", borderRadius: 999, paddingHorizontal: 15, paddingVertical: 9 },
+  heroCtaText: { fontSize: 13.5, fontWeight: "800", color: "#9B6BFF" },
+
+  subRow: { flexDirection: "row", gap: 12, marginHorizontal: 16, marginTop: 14 },
+  subCard: { flex: 1, borderRadius: 18, overflow: "hidden" },
+  subImg: { width: "100%", height: 148, justifyContent: "flex-end", padding: 12 },
+  subBadge: { position: "absolute", top: 10, left: 10, backgroundColor: "rgba(255,255,255,0.82)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  subBadgeText: { fontSize: 10.5, fontWeight: "800", color: "#9B6BFF" },
+  subBody: {},
+  skel: { height: 9, borderRadius: 5, backgroundColor: "rgba(155,107,255,0.18)" },
+
+  section: { marginTop: 22 },
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 7, marginHorizontal: 16, marginBottom: 12 },
+  sectionTitle: { fontSize: 16.5, fontWeight: "800", color: "#2A2440" },
+  miniPill: { backgroundColor: "rgba(155,107,255,0.12)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  miniPillText: { fontSize: 10.5, fontWeight: "800", color: "#9B6BFF" },
+  card: { width: 150 },
+  cardImg: { width: 150, height: 110, borderRadius: 14 },
+});
+
 function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse, scrollRef }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1555,11 +1645,7 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
           )}
         </Animated.View>
       ) : (
-        <Animated.View style={[s.emptyWrap, riseIn(1)]}>
-          <MapPin size={36} color={C.subText} strokeWidth={1.6} />
-          <Text style={s.emptyTitle}>{activeScope}の特集は準備中です</Text>
-          <Text style={s.emptyText}>近日公開予定。お楽しみに ✨</Text>
-        </Animated.View>
+        <ComingSoonPreview scope={activeScope} riseIn={riseIn} />
       )}
 
       {/* ── サブ特集カード2枚 ── */}
@@ -1957,6 +2043,9 @@ export default function FeatureScreen() {
           // content は内容ぴったりの高さ（キャプション→エリアバーの間隔はスタイルで管理）。
           //   地図/県選択は従来の帯高(HERO_BAND_H)を維持。
           minHeight: isContent ? undefined : insets.top + HERO_BAND_H,
+          // 地図/県選択は帯の中で上下の余白を均等に（下端寄せだと空白が偏り「気持ち悪い」＝ユーザー要望2026-07-21・案B）。
+          //   content は従来どおり下端寄せ（現在のエリアバー等の並びを変えない）。
+          justifyContent: isContent ? 'flex-end' : 'center',
         }]}
       >
         <View style={s.decoCircle1} pointerEvents="none" />
@@ -1968,7 +2057,7 @@ export default function FeatureScreen() {
               <ChevronLeft size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.5} />
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
-            <Text style={[s.bandTitle, { marginTop: 4 }]}>どこへ行く？</Text>
+            <Text style={[s.bandTitle, { marginTop: 14 }]}>どこへ行く？</Text>
             <Text style={s.headerCaption}>地図のエリアをタップして、その地方の特集をめくる</Text>
           </>
         )}
@@ -1979,17 +2068,15 @@ export default function FeatureScreen() {
               <Text style={s.backTextSm}>特集</Text>
             </TouchableOpacity>
             {/* 選んだ地方名が主役（タップの結果が画面に反映される）*/}
-            <Text style={[s.bandTitle, { marginTop: 4 }]}>{selectedRegion}</Text>
+            <Text style={[s.bandTitle, { marginTop: 14 }]}>{selectedRegion}</Text>
             <Text style={s.headerCaption}>気になる都道府県をタップ</Text>
           </>
         )}
         {stage === "content" && (
           <>
-            <View style={s.headerTopRow}>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={s.bandTitle}>特集</Text>
-                <Text style={s.headerCaption}>どこへ行く？</Text>
-              </View>
+            {/* タイトル「特集」とアイコンを同一行で縦中央そろえ＝アイコンが特集に対して浮かない(バランス修正) */}
+            <View style={[s.headerTopRow, { marginTop: 6 }]}>
+              <Text style={[s.bandTitle, { flex: 1, paddingRight: 10, marginTop: 0 }]}>特集</Text>
               {/* 右上: 検索 / 通知（ガラス風の丸ボタン。マイページはユーザー要望で撤去 2026-07-17） */}
               <View style={s.headerIconRow}>
                 <TouchableOpacity style={s.headerIconBtn} activeOpacity={0.8} onPress={() => router.navigate("/")}
@@ -2002,6 +2089,8 @@ export default function FeatureScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {/* サブコピーは行の下へ（特集の直下）＝現在のエリアバーの位置は不変 */}
+            <Text style={s.headerCaption}>どこへ行く？</Text>
             {/* 現在のエリアバー（帯の中の白ピル・キャプションとの間隔は詰める=ユーザー要望2026-07-17） */}
             <TouchableOpacity
               style={s.headerAreaBar} activeOpacity={0.85}
@@ -2151,8 +2240,8 @@ const s = StyleSheet.create({
     letterSpacing: 0.2, lineHeight: 17, marginTop: 6,
   },
   // 特集TOPヘッダー: 左タイトル/サブタイトル + 右にガラス風の丸アイコン群
-  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerIconBtn: {
     width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',

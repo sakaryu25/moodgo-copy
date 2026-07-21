@@ -9,7 +9,7 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Award, Camera, ChevronLeft, ChevronRight, Footprints, Heart, MapPin, MoreHorizontal, UserRound } from 'lucide-react-native';
+import { Award, Ban, Camera, ChevronLeft, ChevronRight, Flag, Footprints, Heart, MapPin, MoreHorizontal, RotateCcw, UserRound, VolumeX } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Animated, Dimensions, Easing,
@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
+import AppActionSheet, { type SheetOption } from '@/components/AppActionSheet';
 import ThumbImage from '@/components/ThumbImage';
 import PuniPressable from '@/components/PuniPressable';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -279,39 +280,41 @@ export default function UserProfileScreen() {
     } finally { if (isMounted.current) setBusy(false); }
   }, [posterId, following, busy, isMe]);
 
+  // アプリ調のアクションシート（旧: 素のAlert.alert）。ミュート/ブロック/通報は既存の結線をそのまま呼ぶ。
+  const [menuVisible, setMenuVisible] = useState(false);
   const openMenu = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const name = profile?.name || 'このユーザー';
-    // 自分のプロフィールではブロック等を出さない
-    if (isMe || !posterId) {
-      Alert.alert(name, undefined, [{ text: 'キャンセル', style: 'cancel' }]);
-      return;
-    }
-    // すでにブロック/ミュート中 → 解除
-    if (isBlocked || isMuted) {
-      Alert.alert(name, isBlocked ? 'ブロック中です' : 'ミュート中です', [
-        { text: isBlocked ? 'ブロックを解除' : 'ミュートを解除', onPress: () => { unblockUser(posterId); showToast('解除しました', `${name}の表示を元に戻しました`); } },
-        { text: 'キャンセル', style: 'cancel' },
-      ]);
-      return;
-    }
-    // ミュート（静かに非表示）/ ブロック（相互フォロー解除して遮断）/ 通報
-    Alert.alert(name, undefined, [
-      { text: 'ミュート', onPress: () => { muteUser(posterId); showToast('ミュートしました', 'この人の投稿を静かに非表示にしました'); } },
-      { text: 'ブロック', style: 'destructive', onPress: () => { blockUser(posterId); showToast('ブロックしました', 'この人の投稿・コメントを非表示にしました'); router.back(); } },
-      { text: 'この投稿者を通報', style: 'destructive', onPress: async () => {
-        try {
-          const deviceId = await getDeviceId();
-          const d = await apiFetch('/api/reports', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ spot_name: `ユーザー: ${profile?.handle ? '@' + profile.handle : (profile?.name || name)}`, reason: '不適切なユーザー', note: `posterId=${posterId}`, device_id: deviceId }),
-          }).then((r) => r.json());
-          showToast(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
-        } catch { showToast('通報できませんでした', '時間をおいてお試しください'); }
-      } },
-      { text: 'キャンセル', style: 'cancel' },
-    ]);
+    setMenuVisible(true);
   };
+  const ICON = 20;
+  const menuTitle = profile?.name || 'このユーザー';
+  const menuOptions: SheetOption[] = useMemo(() => {
+    if (isMe || !posterId) return [];
+    if (isBlocked || isMuted) {
+      return [{
+        label: isBlocked ? 'ブロックを解除' : 'ミュートを解除',
+        icon: <RotateCcw size={ICON} color="#3B2A63" strokeWidth={2.2} />,
+        onPress: () => { unblockUser(posterId); showToast('解除しました', `${menuTitle}の表示を元に戻しました`); },
+      }];
+    }
+    return [
+      { label: 'ミュート', icon: <VolumeX size={ICON} color="#3B2A63" strokeWidth={2.2} />,
+        onPress: () => { muteUser(posterId); showToast('ミュートしました', 'この人の投稿を静かに非表示にしました'); } },
+      { label: 'ブロック', destructive: true, icon: <Ban size={ICON} color="#EF4444" strokeWidth={2.2} />,
+        onPress: () => { blockUser(posterId); showToast('ブロックしました', 'この人の投稿・コメントを非表示にしました'); router.back(); } },
+      { label: 'この投稿者を通報', destructive: true, icon: <Flag size={ICON} color="#EF4444" strokeWidth={2.2} />,
+        onPress: async () => {
+          try {
+            const deviceId = await getDeviceId();
+            const d = await apiFetch('/api/reports', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ spot_name: `ユーザー: ${profile?.handle ? '@' + profile.handle : (profile?.name || menuTitle)}`, reason: '不適切なユーザー', note: `posterId=${posterId}`, device_id: deviceId }),
+            }).then((r) => r.json());
+            showToast(d?.ok ? '通報しました' : '通報できませんでした', d?.ok ? 'ご協力ありがとうございます' : '時間をおいてお試しください');
+          } catch { showToast('通報できませんでした', '時間をおいてお試しください'); }
+        } },
+    ];
+  }, [isMe, posterId, isBlocked, isMuted, menuTitle, profile?.handle, profile?.name]);
 
   const posts = profile?.posts ?? [];
   const visible = useMemo(() => posts.slice(0, shown), [posts, shown]);
@@ -516,6 +519,16 @@ export default function UserProfileScreen() {
           )}
         </Animated.ScrollView>
       )}
+      {/* 投稿者メニュー（アプリ調のアクションシート・常時マウント） */}
+      <AppActionSheet
+        visible={menuVisible}
+        title={menuTitle}
+        message={isBlocked ? 'ブロック中です' : isMuted ? 'ミュート中です' : undefined}
+        options={menuOptions}
+        cancelLabel="キャンセル"
+        gradientHeader
+        onClose={() => setMenuVisible(false)}
+      />
     </View>
   );
 }

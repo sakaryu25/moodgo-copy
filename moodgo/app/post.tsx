@@ -8,7 +8,7 @@ import { ArrowLeft, BookOpen, Calendar, Camera, Check, Clock, Lock, MapPin, Plus
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import AppBackground, { APP_BG } from '@/components/AppBackground';
+import IMESafeTextInput from '@/components/IMESafeTextInput';
 import LiquidSuccess from '@/components/LiquidSuccess';
 import { apiFetch } from '@/lib/api';
 import { getDeviceId } from '@/lib/abtest';
@@ -910,7 +911,7 @@ export default function PostScreen() {
           {/* ① スポット名（既存スポット検索つき: 打つと同じ場所の候補が出る。編集時は検索なしで自由編集） */}
           <Text style={s.label}>{t.spotNameLabel}<Text style={s.req}>*</Text></Text>
           {editMode ? (
-            <TextInput style={s.input} value={spotName} onChangeText={setSpotName} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" maxLength={100} />
+            <IMESafeTextInput style={s.input} value={spotName} onChangeText={setSpotName} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" maxLength={100} />
           ) : lockedFromParam ? (
             <View style={s.pickedRow}>
               <MapPin size={15} color="#7C3AED" strokeWidth={2.4} />
@@ -936,7 +937,7 @@ export default function PostScreen() {
             <>
               <View style={s.searchWrap}>
                 <Search size={16} color="#A78BCA" strokeWidth={2.2} />
-                <TextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" />
+                <IMESafeTextInput style={s.searchInput} value={spotName} onChangeText={onNameChange} placeholder={t.spotNamePh} placeholderTextColor="#B9ABD2" />
                 {searching && <ActivityIndicator size="small" color="#9B6BFF" />}
               </View>
               {/* 場所は必ずこの候補から選ぶ（重複抑止）。見つからない時だけ下の「新しいスポットとして追加」 */}
@@ -969,7 +970,7 @@ export default function PostScreen() {
 
           {/* ② 紹介文（必須） */}
           <Text style={s.label}>{t.captionLabel}<Text style={s.req}>*</Text></Text>
-          <TextInput style={[s.input, { minHeight: 96 }]} value={caption} onChangeText={setCaption} placeholder={t.captionPh} placeholderTextColor="#B9ABD2" multiline maxLength={1000} />
+          <IMESafeTextInput style={[s.input, { minHeight: 96 }]} value={caption} onChangeText={setCaption} placeholder={t.captionPh} placeholderTextColor="#B9ABD2" multiline maxLength={1000} />
 
           {/* ③ 気分タグ（必須） */}
           <Text style={s.label}>{t.moodLabel}<Text style={s.req}>*</Text>{t.moodLabelSuffix}</Text>
@@ -1012,7 +1013,7 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <TextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={priceNote} onChangeText={setPriceNote} placeholder={t.priceNotePh} placeholderTextColor="#B9ABD2" maxLength={120} />
+          <IMESafeTextInput style={[s.input, { marginTop: 8, minHeight: 48 }]} value={priceNote} onChangeText={setPriceNote} placeholder={t.priceNotePh} placeholderTextColor="#B9ABD2" maxLength={120} />
 
           {/* ⑤ 掲載期間（任意・新スポットのみ・編集では非表示） */}
           {!isExisting && (!editMode || placeEditable) && (
@@ -1036,7 +1037,7 @@ export default function PostScreen() {
               {(availFrom || availUntil) ? (
                 <>
                   <Text style={[s.label, { marginTop: 14 }]}>{t.periodWhatLabel}<Text style={s.req}>*</Text></Text>
-                  <TextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.periodWhatPh} placeholderTextColor="#B9ABD2" maxLength={60} />
+                  <IMESafeTextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.periodWhatPh} placeholderTextColor="#B9ABD2" maxLength={60} />
                   <Text style={s.note}>{t.periodWhatNote}</Text>
                 </>
               ) : null}
@@ -1075,7 +1076,7 @@ export default function PostScreen() {
               {(availFrom || availUntil) ? (
                 <>
                   <Text style={[s.label, { marginTop: 14 }]}>{t.eventNameLabel}<Text style={s.req}>*</Text></Text>
-                  <TextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.eventNamePh} placeholderTextColor="#B9ABD2" maxLength={60} />
+                  <IMESafeTextInput style={[s.input, { minHeight: 48 }]} value={eventName} onChangeText={setEventName} placeholder={t.eventNamePh} placeholderTextColor="#B9ABD2" maxLength={60} />
                   {eventName.trim() ? <Text style={s.note}>{t.eventNamePreview(eventName.trim(), spotName)}</Text> : null}
                   <Text style={[s.note, { color: '#C2410C' }]}>{t.eventEndNote}</Text>
                 </>
@@ -1096,7 +1097,7 @@ export default function PostScreen() {
                 </View>
               ) : (
               <View style={s.addrRow}>
-                <TextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder={t.addrPh} placeholderTextColor="#B9ABD2" />
+                <IMESafeTextInput style={[s.input, { flex: 1, minHeight: 0 }]} value={address} onChangeText={setAddress} placeholder={t.addrPh} placeholderTextColor="#B9ABD2" />
                 <TouchableOpacity style={s.locBtn} onPress={useLocation} disabled={locating} activeOpacity={0.8}>
                   {locating ? <ActivityIndicator size="small" color="#fff" /> : <MapPin size={15} color="#fff" strokeWidth={2.4} />}
                   <Text style={s.locBtnText}>{locating ? t.locating : t.locate}</Text>
@@ -1161,7 +1162,7 @@ export default function PostScreen() {
                   <Lock size={13} color="#B9ABD2" strokeWidth={2.2} />
                 </View>
               ) : (
-              <TextInput style={[s.input, { marginTop: 12, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
+              <IMESafeTextInput style={[s.input, { marginTop: 12, minHeight: 48 }]} value={station} onChangeText={setStation} placeholder={t.stationPh} placeholderTextColor="#B9ABD2" />
               )}
             </>
           )}
@@ -1193,7 +1194,7 @@ export default function PostScreen() {
             <>
               <Text style={s.label}>{t.contactLabel}</Text>
               <Text style={s.hint}>{t.contactHint}</Text>
-              <TextInput style={[s.input, { minHeight: 48 }]} value={contact} onChangeText={setContact} placeholder={t.contactPh} placeholderTextColor="#B9ABD2" autoCapitalize="none" autoCorrect={false} maxLength={120} />
+              <IMESafeTextInput style={[s.input, { minHeight: 48 }]} value={contact} onChangeText={setContact} placeholder={t.contactPh} placeholderTextColor="#B9ABD2" autoCapitalize="none" autoCorrect={false} maxLength={120} />
             </>
           )}
 
