@@ -6123,6 +6123,33 @@ function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | nu
   return null;
 }
 
+// ── Z世代vibe辞書(2026-07-21 55人監査): freeWordが映え/韓国っぽ/チル/レトロ等の"界隈"を指す時、
+//   boost=世界観一致を前方へ / derank=飯屋/施設/チェーンを後方へ / unfit=その文脈で完全に除外(0件回避付き)。
+const VIBE_LEXICON: Array<{ key: string; re: RegExp; boost: RegExp; derank: RegExp; unfit?: RegExp }> = [
+  { key: "映え", re: /映え|ばえ|フォトジェニック|フォトスポット|インスタ映え|映えスイーツ|映えカフェ|かわいい|可愛い/i,
+    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|ヒルズ|タワー|展望|ビュー|view|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|トゥンカロン|ハットグ|ベーカリー|bakery/i,
+    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック/i,
+    unfit: /慰霊|慰霊碑|慰霊像|忠魂|殉難|遭難|災害|震災|戦没|平和祈念|自習室|試験場|運転免許|職業安定所|ハローワーク|税務署/i },
+  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ/i,
+    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|チーズ|明洞|カフェ|白基調/i,
+    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$/i },
+  { key: "チル", re: /チル|chill|ゆるっと|落ち着け|癒され|ひとり時間|ぼっち|静かに過ご/i,
+    boost: /カフェ|cafe|喫茶|珈琲|coffee|純喫茶|サウナ|銭湯|の湯|湯処|ブック|book|テラス|庭園|garden|静/i,
+    derank: /カラオケ|パチンコ|ゲーセン|ゲームセンター|百貨店|デパート|ドンキ|ドン・キホーテ|フードコート|量販|家電|ヨドバシ|ビックカメラ/i },
+  { key: "レトロ", re: /レトロ|純喫茶|昭和レトロ|エモ|ノスタル|ヴィンテージ喫茶|喫茶店/i,
+    boost: /喫茶|珈琲|coffee|純喫茶|クリームソーダ|プリン|レトロ|昭和|茶房|茶寮|ソーダ/i,
+    derank: /スターバックス|スタバ|ドトール|タリーズ|コメダ|エクセルシオール|サンマルク|プロント|ベローチェ/i },
+];
+function freewordVibe(fw: string): typeof VIBE_LEXICON[number] | null {
+  const t = (fw || "").trim(); if (!t) return null;
+  for (const v of VIBE_LEXICON) if (v.re.test(t)) return v;
+  return null;
+}
+// チェーン/買取リユースのブランド名(映え/穴場/サブカル/vibe文脈で末尾送り＝除去でなくderankで0件回避)。
+const CHAIN_BRAND_RE = /天下一品|餃子の王将|大阪王将|日高屋|幸楽苑|リンガーハット|吉野家|松屋(?:フーズ)?|すき家|なか卯|やよい軒|大戸屋|安安|牛角|叙々苑|さぼてん|和幸|わたみ|和民|白木屋|魚民|笑笑|千年の宴|鳥貴族|磯丸水産|スターバックス|スタバ|ドトール|タリーズ|エクセルシオール|サンマルク|星乃珈琲|コメダ|プロント|ベローチェ|ミスタードーナツ|マクドナルド|ケンタッキー|モスバーガー|ガスト|サイゼリヤ|ジョナサン|ロイヤルホスト|WEGO|RINKAN|セカンドストリート|2nd ?STREET|TreFacStyle|トレファク|ブックオフ|BOOK ?OFF|ハードオフ|大黒屋/i;
+// エリア名/駅名/施設館名/カテゴリ名だけの壊れPOI(スポットとして不適格＝除外)。
+const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|(?:^|[^ぁ-ん])(?:大阪駅|東京駅|名古屋駅|博多駅|新大久保駅|渋谷駅)$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
+
 function dedupeReasons<T extends { reason?: string; aiReason?: string }>(recs: T[]): T[] {
   const seen = new Map<string, number>();
   for (const r of recs) {
@@ -9188,6 +9215,37 @@ async function handleRecommend(request: Request) {
             if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
             recommendations = _merged.slice(0, 15);
           }
+        }
+        // ── 55人Z世代監査(2026-07-21)の是正: 壊れPOI除去 → freeWord vibe再ランク → 飲食freeWord経路の食ゲート。
+        // ① エリア名/駅/カテゴリ名だけの壊れPOIを除去(0件回避)。
+        {
+          const kept = recommendations.filter(r => !BROKEN_POI_RE.test((r.title ?? "").trim()));
+          if (kept.length > 0) recommendations = kept;
+        }
+        // ② freeWordがvibe(映え/韓国っぽ/チル/レトロ)を指す時: 界隈UNFIT除外＋世界観を前方/飯屋チェーンを後方へ
+        //   (安定ソートなので各層内の距離順は維持)。「打った言葉が無視される/おじさんチェーン混入」の是正。
+        {
+          const vb = freewordVibe(answers.freeWord ?? "");
+          if (vb) {
+            if (vb.unfit) {
+              const uk = recommendations.filter(r => !vb.unfit!.test((r.title ?? "").trim()));
+              if (uk.length >= Math.min(6, recommendations.length)) recommendations = uk;
+            }
+            const vibeTier = (r: { title?: string; tags?: string[] }) => {
+              const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
+              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;   // 飯屋/施設/チェーン=後方
+              if (vb.boost.test(nm) || vb.boost.test(tg)) return 0;          // 世界観一致=前方
+              return 1;
+            };
+            recommendations = [...recommendations].sort((a, b) => vibeTier(a) - vibeTier(b));
+          }
+        }
+        // ③ 飲食気分のfreeWord経路リーク是正: お腹すいたは非飲食(展望台/慰霊/図書館/家電等)を除外(0件回避)。
+        //   freeWordテキスト一致やキュレーション注入が食ゲートを迂回して混入(実測: お腹すいた×映えでSHIBUYA SKY)を断つ。
+        if (isFoodMood && !isDestinationFood) {
+          const fk = recommendations.filter(r =>
+            isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t)));
+          if (fk.length >= Math.min(6, recommendations.length)) recommendations = fk;
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
