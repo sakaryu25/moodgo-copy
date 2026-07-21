@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Clock, MapPin, MessagesSquare } from 'lucide-react-native';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -31,9 +31,6 @@ import AiChatFab from './AiChatFab';
 import CommunityFeed from './CommunityFeed';
 import PuniPressable from './PuniPressable';
 import { MOODS } from './QuizFlow';
-import { apiFetch } from '@/lib/api';
-import { loadJSON, saveJSON } from '@/lib/storage';
-import { useSettings } from '@/lib/settingsStore';
 import Svg, {
   Defs,
   G,
@@ -231,39 +228,6 @@ const HOME_MOOD_CHIPS = HOME_MOOD_CHIP_KEYS
 
 export default function HomeView({ lang, onStart, onStartWithMood, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki, scrollRef }: Props) {
   const insets = useSafeAreaInsets();
-  const { profilePrefecture } = useSettings();
-
-  // ── 特集バナーのAPI連動（本番のhero特集タイトル/画像を表示。失敗時は従来の固定バナー）──
-  //   キャッシュ即表示→裏で最新化（プロフィール等と同じパターン）。
-  const [featBanner, setFeatBanner] = useState<{ id: string; title: string; image: string } | null>(null);
-  useEffect(() => {
-    let active = true;
-    const strip = (v?: string) => String(v ?? '').replace(/[都府県]$/, '');
-    (async () => {
-      try {
-        const cached = await loadJSON<{ id: string; title: string; image: string } | null>('moodgo-home-featured-banner-v1', null);
-        if (active && cached?.title) setFeatBanner(cached);
-      } catch { /* noop */ }
-      try {
-        const d = await apiFetch('/api/featured-pages').then((r) => r.json());
-        if (!active || !Array.isArray(d?.data)) return;
-        const pages = (d.data as Array<Record<string, any>>).filter((p) => p.slot_type !== 'hidden');
-        const heroes = pages.filter((p) => (p.slot_type ?? 'hero') === 'hero');
-        const myPref = strip(profilePrefecture);
-        // 自分の県のhero → 全国hero → 先頭hero → 先頭ページ（無ければ固定バナーのまま）
-        const pick =
-          (myPref && heroes.find((p) => strip(p.scope_key || p.prefecture) === myPref)) ||
-          heroes.find((p) => (p.scope_key || p.prefecture) === '全国') ||
-          heroes[0] || pages[0] || null;
-        if (pick && pick.banner_title) {
-          const next = { id: String(pick.id), title: String(pick.banner_title), image: String(pick.banner_image_url ?? '') };
-          setFeatBanner(next);
-          saveJSON('moodgo-home-featured-banner-v1', next);
-        }
-      } catch { /* 取得失敗はキャッシュ/固定バナーのまま */ }
-    })();
-    return () => { active = false; };
-  }, [profilePrefecture]);
 
   // START ボタンのプレスアニメ
 
@@ -386,10 +350,10 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
             </View>
           )}
 
-          {/* ── Featured card（本番のhero特集を表示・取得失敗時は従来の固定バナー）── */}
+          {/* ── Featured card ── */}
           <View style={s.featuredCard}>
             <ImageBackground
-              source={featBanner?.image ? { uri: featBanner.image } : require('../assets/images/home-featured.png')}
+              source={require('../assets/images/home-featured.png')}
               style={s.featuredBg}
               imageStyle={{ borderRadius: 20 }}
               resizeMode="cover"
@@ -400,23 +364,16 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
               >
                 <View style={s.featuredContent}>
                   <Text style={s.featuredLabel}>今月のMoodGo特集 ──</Text>
-                  <Text style={s.featuredTitle} numberOfLines={3}>
-                    {featBanner?.title
-                      ? featBanner.title
-                      : lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
+                  <Text style={s.featuredTitle}>
+                    {lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
                   </Text>
                   <PuniPressable
                     style={s.featuredBtn}
                     containerStyle={{ alignSelf: 'flex-start' }}
-                    onPress={() => {
-                      if (featBanner?.id) router.push(`/feature/page/${featBanner.id}` as never);
-                      else onShowFeatured();
-                    }}
+                    onPress={onShowFeatured}
                   >
                     <Text style={s.featuredBtnText}>
-                      {featBanner?.id
-                        ? (lang === 'en' ? 'Read the feature →' : '特集を読む　→')
-                        : (lang === 'en' ? "See what's inside →" : '何があるか見てみる　→')}
+                      {lang === 'en' ? "See what's inside →" : '何があるか見てみる　→'}
                     </Text>
                   </PuniPressable>
                 </View>
