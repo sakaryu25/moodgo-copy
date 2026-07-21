@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '@/components/AppBackground';
-import MyPostsGlassCard from '@/components/MyPostsGlassCard';
+import MoodBookProfileCard from '@/components/moodbook/MoodBookProfileCard';
 import PuniPressable from '@/components/PuniPressable';
 import SettingsView from '@/components/SettingsView';
 import { useTabReset } from '@/lib/useTabReset';
@@ -650,36 +650,17 @@ export default function ProfileTab() {
           </PuniPressable>
         </Animated.View>
 
-        {/* ── ✨ 自分の投稿（投稿あり=Glassmorphismカード / ロード中・0件=既存デザイン）── */}
+        {/* ── 📖 Mood Book（「自分の投稿」を進化: 投稿が思い出のページになる）──
+             投稿一覧(/my-posts)へはカード下部の導線と統計「投稿」から引き続き行ける */}
         <Animated.View style={sectionStyle(1)}>
-          {loading || posts.length === 0 ? (
-            <View style={s.card}>
-              <CardHeader icon={<Sparkles size={16} color={PINK} strokeWidth={2.2} />} title={t.myPosts}
-                onMore={() => router.push('/my-posts')} />
-              {loading ? (
-                <View style={s.loadingWrap}><ActivityIndicator color={BLUE} size="small" /></View>
-              ) : (
-                <Empty
-                  icon={<PenLine size={22} color={BLUE} strokeWidth={1.8} />}
-                  title={t.emptyPostsTitle}
-                  sub={t.emptyPostsSub}
-                  action={
-                    // 全国みんなの穴場と同じ投稿画面(/post)をそのまま開く（新規画面は作らない）
-                    <PuniPressable onPress={() => router.push('/post')} style={s.outlineBtn}>
-                      <Plus size={15} color={BLUE} strokeWidth={2.4} />
-                      <Text style={s.outlineBtnText}>{t.postCta}</Text>
-                    </PuniPressable>
-                  }
-                />
-              )}
-            </View>
-          ) : (
-            <MyPostsGlassCard
-              posts={posts}
-              onMore={() => router.push('/my-posts')}
-              onPressPost={(p) => openPost(p as MyPost)}
-            />
-          )}
+          <MoodBookProfileCard
+            postIds={posts.map((p) => p.id)}
+            postsLoading={loading}
+            onOpenBook={(id) => router.push({ pathname: '/books/[bookId]', params: { bookId: id } })}
+            onSeeAll={() => router.push('/books')}
+            onOpenPosts={() => router.push('/my-posts')}
+            onCompose={() => router.push('/post')}
+          />
         </Animated.View>
 
         {/* ── 🏅 バッジ（写真投稿バッジ＋行った！から生成） ── */}

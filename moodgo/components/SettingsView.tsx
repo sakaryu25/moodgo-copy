@@ -428,6 +428,7 @@ export default function SettingsView({
             await AsyncStorage.multiRemove([
               NICKNAME_KEY, USER_ICON_KEY, FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY,
               PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY, HANDLE_KEY, 'moodgo-device-id',
+              'moodgo-my-posts-cache-v1', 'moodgo-moodbook-overview-v1',   // 削除済み投稿/BOOKがキャッシュから再表示されないように
             ]);
           } catch { localOk = false; }
           if (serverOk && localOk) {

@@ -4,7 +4,7 @@
 //   - 新スポット(名前を入力)→ /api/suggestions（穴場＝運営が審査して掲載）
 // どちらもユーザーから見れば「投稿する」1つだけ。裏のテーブルは触らず分岐するだけ＝安全。
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Camera, Check, Clock, Lock, MapPin, Plus, Search, Send, Star, Tag, X } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Calendar, Camera, Check, Clock, Lock, MapPin, Plus, Search, Send, Star, Tag, X } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -24,6 +24,7 @@ import { getDeviceId } from '@/lib/abtest';
 import { findNgWord } from '@/lib/ngwords';
 import { showToast } from '@/lib/toast';
 import { markFeedStale } from '@/lib/feedRefresh';
+import { addPostToDefaultBook } from '@/lib/moodBooks';
 import { DEEP_DIVE } from '@/components/QuizFlow';
 import { useSettings } from '@/lib/settingsStore';
 import { registerForPushNotificationsAsync } from '@/lib/push';
@@ -39,6 +40,10 @@ const T = {
     doneExistingSub: 'ありがとうございます！あなたの投稿は「全国みんなの穴場」とスポットのページにすぐ表示されます。',
     doneNewSub: 'ありがとうございます！あなたの投稿は「全国みんなの穴場」にすぐ表示されます。',
     doneLinkedSub: (name: string) => `近くに既存の「${name}」があったため、重複を防いでそこにまとめました。あなたの投稿はそのスポットのページに表示されます。ありがとうございます！`,
+    addToBook: 'この思い出をMood Bookに追加',
+    addedToBook: (title: string) => `「${title}」に追加しました`,
+    addToBookFailTitle: 'BOOKに追加できませんでした',
+    addToBookFailSub: '時間をおいてプロフィールから追加できます',
     close: '閉じる',
     leadText: 'あなたが知っている素敵な場所を投稿しよう。\n掲載された場合は特典をプレゼント予定です🎁',
     spotNameLabel: 'スポット名 ',
@@ -165,6 +170,10 @@ const T = {
     doneExistingSub: 'Thank you! Your post will appear right away in "Hidden gems nationwide" and on the spot\'s page.',
     doneNewSub: 'Thank you! Your post will appear right away in "Hidden gems nationwide".',
     doneLinkedSub: (name: string) => `We found an existing "${name}" nearby, so we merged your post there to avoid a duplicate. It appears on that spot's page. Thank you!`,
+    addToBook: 'Add this memory to Mood Book',
+    addedToBook: (title: string) => `Added to "${title}"`,
+    addToBookFailTitle: "Couldn't add to book",
+    addToBookFailSub: 'You can add it later from your profile',
     close: 'Close',
     leadText: 'Share a great place you know.\nWe plan to send a reward if it gets featured 🎁',
     spotNameLabel: 'Spot name ',
@@ -352,6 +361,10 @@ export default function PostScreen() {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);   // 二重送信防止の同期フラグ（stateは非同期で連打の2回目に間に合わない）
   const [linkedTo, setLinkedTo] = useState<string | null>(null);   // 重複防止で既存スポットに紐付いた時その名前（完了画面で案内）
+  // 完了画面の「Mood Bookに追加」用（my-posts形式のid=ml-...。編集モードでは出さない）
+  const [createdPostId, setCreatedPostId] = useState<string | null>(null);
+  const [bookState, setBookState] = useState<'' | 'busy' | 'done'>('');
+  const [bookTitle, setBookTitle] = useState('');
   const [priceChip, setPriceChip] = useState('');   // 目安の値段（チップ・任意）
   const [priceNote, setPriceNote] = useState('');   // 値段の自由記入（任意）
   const [contact, setContact] = useState('');       // 連絡先（任意・掲載特典の連絡用）
@@ -811,6 +824,7 @@ export default function PostScreen() {
       // プッシュ通知の許可＋トークン登録を行う（拒否済み/シミュレータはno-op）
       registerForPushNotificationsAsync().catch(() => {});
       if (typeof d.linkedTo === 'string' && d.linkedTo) setLinkedTo(d.linkedTo);   // 近接＋表記ゆれで既存スポットにまとめられた
+      if (newPostId) setCreatedPostId(`ml-${newPostId}`);   // Mood Book追加用（my-posts形式のid）
       setDone(true);   // 完了画面へ切替（トースト+即戻るをやめ、受付を明確に伝える）
     } catch { showToast(t.tPostFailSub2Title, t.tPostFailSub2); setSubmitting(false); }
   };
@@ -848,6 +862,36 @@ export default function PostScreen() {
               ? t.doneExistingSub
               : t.doneNewSub}
           </Text>
+          {/* Mood Bookへワンタップ追加（新規投稿時のみ・一番最近のBOOKへ、無ければ自動作成） */}
+          {createdPostId && (
+            <TouchableOpacity
+              onPress={async () => {
+                if (bookState !== '') return;
+                setBookState('busy');
+                try {
+                  const r = await addPostToDefaultBook(createdPostId, lang === 'ja' ? '思い出BOOK' : 'My Book');
+                  setBookTitle(r.bookTitle);
+                  setBookState('done');
+                } catch {
+                  setBookState('');
+                  showToast(t.addToBookFailTitle, t.addToBookFailSub);   // 失敗を無音にしない
+                }
+              }}
+              style={[s.bookBtn, bookState === 'done' && s.bookBtnDone]} activeOpacity={0.85}
+              accessibilityRole="button" accessibilityLabel={t.addToBook}
+            >
+              {bookState === 'busy' ? (
+                <ActivityIndicator size="small" color="#8B5CF6" />
+              ) : bookState === 'done' ? (
+                <Check size={16} color="#8B5CF6" strokeWidth={2.6} />
+              ) : (
+                <BookOpen size={16} color="#8B5CF6" strokeWidth={2.2} />
+              )}
+              <Text style={s.bookBtnText}>
+                {bookState === 'done' ? t.addedToBook(bookTitle) : t.addToBook}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => router.back()} style={s.doneBtnWrap} activeOpacity={0.85}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.doneBtn}>
               <Text style={s.doneBtnText}>{t.close}</Text>
@@ -1328,6 +1372,13 @@ const s = StyleSheet.create({
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
   doneTitle: { fontSize: 20, fontWeight: '800', color: '#1E0753' },
   doneSub: { fontSize: 13.5, color: '#6B5E85', textAlign: 'center', lineHeight: 21 },
+  bookBtn: {
+    marginTop: 4, alignSelf: 'stretch', flexDirection: 'row', gap: 7,
+    alignItems: 'center', justifyContent: 'center', paddingVertical: 13,
+    borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(139,92,246,0.4)', backgroundColor: '#fff',
+  },
+  bookBtnDone: { borderColor: 'rgba(139,92,246,0.2)', backgroundColor: 'rgba(139,92,246,0.06)' },
+  bookBtnText: { fontSize: 14, fontWeight: '800', color: '#8B5CF6' },
   doneBtnWrap: { marginTop: 14, alignSelf: 'stretch', borderRadius: 16, overflow: 'hidden' },
   doneBtn: { paddingVertical: 15, alignItems: 'center', borderRadius: 16 },
   doneBtnText: { color: '#fff', fontSize: 15.5, fontWeight: '800' },
