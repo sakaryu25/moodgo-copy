@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
-import { deviceHash, iconPathFor } from "@/lib/device-hash";
+import { iconPathFor } from "@/lib/device-hash";
 
 // ── 永続レート制限（api_cacheテーブル利用・Vercelの複数インスタンスでも回避不可）──
 //   メモリ内rateLimitはサーバーレスでインスタンス毎に分離され回避可能（監査2026-07-05）。
@@ -75,21 +75,7 @@ export async function POST(req: Request) {
       } catch (e) { deleted[t] = `skip(${String(e).slice(0, 30)})`; }
     }
 
-    // 3) Mood Book（mood_books は device_hash キーのため TABLES_BY_DEVICE では消えない。
-    //    ページは book_id 経由の2段階削除。スナップショット(custom_text/写真URL等)もUGC）
-    try {
-      const hash = deviceHash(deviceId);
-      const { data: books } = await db.from("mood_books").select("id").eq("device_hash", hash);
-      const bookIds = (books ?? []).map((b) => String((b as { id?: string }).id)).filter(Boolean);
-      if (bookIds.length > 0) {
-        const { count: pc } = await db.from("mood_book_pages").delete({ count: "exact" }).in("book_id", bookIds);
-        deleted["mood_book_pages"] = pc ?? 0;
-      }
-      const { count: bc } = await db.from("mood_books").delete({ count: "exact" }).eq("device_hash", hash);
-      deleted["mood_books"] = bc ?? 0;
-    } catch (e) { deleted["mood_books"] = `skip(${String(e).slice(0, 30)})`; }
-
-    // 4) プロフィール画像（新: ハッシュ名 / 旧: 生deviceId名 の両方を削除）
+    // 3) プロフィール画像（新: ハッシュ名 / 旧: 生deviceId名 の両方を削除）
     try {
       await db.storage.from("user-icons").remove([iconPathFor(deviceId), `${deviceId}.jpg`]).then(() => {}, () => {});
       deleted["user_icon"] = "removed";
