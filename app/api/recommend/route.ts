@@ -9247,6 +9247,31 @@ async function handleRecommend(request: Request) {
             isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t)));
           if (fk.length >= Math.min(6, recommendations.length)) recommendations = fk;
         }
+        // ④ 映えvibe時は動物カフェを1件までに(映え検索で猫/犬/カピバラカフェが上位を占領するのを抑制)。
+        {
+          const vb2 = freewordVibe(answers.freeWord ?? "");
+          if (vb2 && vb2.key === "映え") {
+            const ANIMAL_CAFE_RE = /動物カフェ|猫カフェ|ねこカフェ|ネコカフェ|犬カフェ|いぬカフェ|フクロウ|うさぎ|カピバラ|ハリネズミ|爬虫類|化猫|モモンガ|momonga|capybara/i;
+            let seen = 0;
+            const capped = recommendations.filter(r => {
+              if (ANIMAL_CAFE_RE.test((r.title ?? "") + " " + (r.tags ?? []).join(" "))) { seen++; return seen <= 1; }
+              return true;
+            });
+            if (capped.length >= Math.min(6, recommendations.length)) recommendations = capped;
+          }
+        }
+        // ⑤ 表記ゆれ重複の最終畳み込み(Ragtag×3/Desert Snow×2/ヨプ王豚×2等): 正規化名が一致 or 接頭辞(≥5字)一致で1件に。
+        {
+          const norm = (t: string) => (t ?? "").normalize("NFKC").toLowerCase().replace(/[\s　'’".,・\-]+/g, "");
+          const kept: typeof recommendations = [];
+          for (const r of recommendations) {
+            const n = norm(r.title ?? "");
+            if (n.length < 3) { kept.push(r); continue; }
+            const dup = kept.some(k => { const kn = norm(k.title ?? ""); if (kn.length < 3) return false; return kn === n || (n.length >= 5 && kn.length >= 5 && (n.startsWith(kn) || kn.startsWith(n))); });
+            if (!dup) kept.push(r);
+          }
+          if (kept.length >= Math.min(8, recommendations.length)) recommendations = kept;
+        }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
         return json({
