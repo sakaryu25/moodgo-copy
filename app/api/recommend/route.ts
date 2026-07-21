@@ -9251,9 +9251,26 @@ async function handleRecommend(request: Request) {
         //   映えfreeWordが展望台/絶景を大量注入し食が6件未満に落ちると min(6) ガードで食ゲートが自己無効化し
         //   SHIBUYA SKY等が上位化する回帰(2026-07-21実測)を断つ。食0件の稀ケースだけ元のまま(空回避)。
         if (isFoodMood && !isDestinationFood) {
-          const fk = recommendations.filter(r =>
-            isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t)));
+          const isFoodRec = (r: { title?: string; tags?: string[] }) =>
+            isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t));
+          const fk = recommendations.filter(isFoodRec);
           if (fk.length >= 1) recommendations = fk;
+          // 展望台等の非飲食を全除去した結果が薄い(<8)時は、SBプール(supabaseRecs)の飲食で近い順に補充。
+          //   映えfreeWordが展望台/絶景を大量注入し最終15件の食が数件に落ちる(実測n=2)件数回復。距離capは近め/食で*1.2。
+          if (recommendations.length < 8) {
+            const _kmv = (r: { distanceKm?: number; distanceText?: string }): number =>
+              typeof r.distanceKm === "number" ? r.distanceKm
+                : (parseFloat((r.distanceText ?? "").match(/([\d.]+)\s*km/)?.[1] ?? "") || 9999);
+            const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+              ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
+            const _inSet = new Set(recommendations.map(r => r.title ?? ""));
+            const _more = supabaseRecs.filter(r =>
+              isFoodRec(r) && !_inSet.has(r.title ?? "")
+              && _kmv(r) <= _capKm * 1.2
+              && !SENSITIVE_UNFIT_RE.test((r.title ?? "").trim()) && !GENZ_NOISE_RE.test((r.title ?? "").trim()));
+            _more.sort((a, b) => _kmv(a) - _kmv(b));
+            if (_more.length) recommendations = [...recommendations, ..._more].slice(0, 15);
+          }
         }
         // ④ vibe検索時は動物カフェを1件までに(映え/チル等で猫/犬/カピバラカフェが上位を占領するのを抑制)。
         {
