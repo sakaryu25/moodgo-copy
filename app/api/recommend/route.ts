@@ -6132,7 +6132,7 @@ function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | nu
 const VIBE_LEXICON: Array<{ key: string; re: RegExp; boost: RegExp; derank: RegExp; unfit?: RegExp }> = [
   { key: "映え", re: /映え|ばえ|フォトジェニック|フォトスポット|インスタ映え|映えスイーツ|映えカフェ|かわいい|可愛い/i,
     boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|ヒルズ|タワー|展望|ビュー|view|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|トゥンカロン|ハットグ|ベーカリー|bakery/i,
-    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック/i,
+    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|うさぎ|フクロウ|ハリネズミ|爬虫類/i,
     unfit: /慰霊|慰霊碑|慰霊像|忠魂|殉難|遭難|災害|震災|戦没|平和祈念|自習室|試験場|運転免許|職業安定所|ハローワーク|税務署/i },
   { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ/i,
     boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|チーズ|明洞|カフェ|白基調/i,
@@ -9246,12 +9246,14 @@ async function handleRecommend(request: Request) {
             recommendations = [...recommendations].sort((a, b) => vibeTier(a) - vibeTier(b));
           }
         }
-        // ③ 飲食気分のfreeWord経路リーク是正: お腹すいたは非飲食(展望台/慰霊/図書館/家電等)を除外(0件回避)。
-        //   freeWordテキスト一致やキュレーション注入が食ゲートを迂回して混入(実測: お腹すいた×映えでSHIBUYA SKY)を断つ。
+        // ③ 飲食気分のfreeWord経路リーク是正: お腹すいたは非飲食(展望台/慰霊/図書館/家電等)を除外。
+        //   お腹すいた=飲食のみ は不変条件のためハードに適用する(食が1件でもあれば非飲食を全除去)。
+        //   映えfreeWordが展望台/絶景を大量注入し食が6件未満に落ちると min(6) ガードで食ゲートが自己無効化し
+        //   SHIBUYA SKY等が上位化する回帰(2026-07-21実測)を断つ。食0件の稀ケースだけ元のまま(空回避)。
         if (isFoodMood && !isDestinationFood) {
           const fk = recommendations.filter(r =>
             isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t)));
-          if (fk.length >= Math.min(6, recommendations.length)) recommendations = fk;
+          if (fk.length >= 1) recommendations = fk;
         }
         // ④ vibe検索時は動物カフェを1件までに(映え/チル等で猫/犬/カピバラカフェが上位を占領するのを抑制)。
         {
