@@ -34,7 +34,7 @@ import { hasUnread } from '@/lib/notifications';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { getMyHash } from '@/lib/myIdentity';
-import { earnedPhotoBadges, nextPhotoBadge, photoBadgeTitle, type PhotoBadgeTier } from '@/lib/photoBadges';
+import { BADGE_CATS, badgeCategoryLabel, badgeTitle, computeBadges, nearestNextBadge, type BadgeProgress } from '@/lib/badges';
 import type { Recommendation } from '@/types/app';
 import {
   useSettings, hydrateSettings, setLang, saveProfile, unblockPlace, clearBlocked, setAccountType,
@@ -58,7 +58,14 @@ const T = {
     myPosts: '自分の投稿',
     badges: 'バッジ',
     recentSpots: '最近チェックしたスポット',
-    allBadges: 'すべてのバッジ',
+    allBadges: 'バッジ図鑑',
+    visitedList: '行った！スポット',
+    emptyVisitedTitle: '行った！スポットはまだありません',
+    emptyVisitedSub: '気になったスポットで「行った！」を押すとここに集まります',
+    spotHint: (n: number, name: string) => `あと${n}スポットで「${name}」バッジGET`,
+    travelHint: (n: number, name: string) => `あと${n}県めぐって「${name}」バッジGET`,
+    earnedOn: (d: string) => `${d} 達成`,
+    hintGoHome: 'ホームでスポットを探す',
     checkedSpots: 'チェックしたスポット',
     postCta: '投稿する',
     emptyPostsTitle: 'まだ投稿がありません',
@@ -96,7 +103,14 @@ const T = {
     myPosts: 'My posts',
     badges: 'Badges',
     recentSpots: 'Recently viewed spots',
-    allBadges: 'All badges',
+    allBadges: 'Badge collection',
+    visitedList: 'Visited spots',
+    emptyVisitedTitle: 'No visited spots yet',
+    emptyVisitedSub: 'Tap "Been here!" on a spot to collect it here',
+    spotHint: (n: number, name: string) => `${n} more spot${n === 1 ? '' : 's'} for the “${name}” badge`,
+    travelHint: (n: number, name: string) => `${n} more prefecture${n === 1 ? '' : 's'} for the “${name}” badge`,
+    earnedOn: (d: string) => `Earned ${d}`,
+    hintGoHome: 'Find spots on Home',
     checkedSpots: 'Viewed spots',
     postCta: 'Post',
     emptyPostsTitle: 'No posts yet',
@@ -173,10 +187,16 @@ function statusLabel(status: string | null | undefined, lang: 'ja' | 'en'): stri
   return null;
 }
 
-// 住所→都道府県（短い場所表記）
+// 住所→都道府県（短い場所表記）。
+//   ⚠ Google形式「日本、〒…」の生住所は .{2,3}県 が直前の読点等を巻き込むため、
+//     前置きを除去してから判定（lib/badges.tsのprefOf・サーバーtoPrefと同じ正規化）
 function prefOf(addr?: string): string {
-  const m = (addr ?? '').match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
-  return m ? m[1].replace(/[都府県]$/, '') : '';
+  const a = (addr ?? '')
+    .replace(/^日本[、,]\s*/, '')
+    .replace(/〒?\s*\d{3}-?\d{4}\s*/, '')
+    .trim();
+  const m = a.match(/(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+  return m ? m[1].replace(/[都道府県]$/, '').replace(/^[、,\s]+/, '') : '';
 }
 // スポット記録→詳細画面へ（既存 /place を利用）
 function openSpot(x: SpotLogItem) {
@@ -208,8 +228,8 @@ export default function ProfileTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'profile' | 'other'>('other');
-  // 「>」の全件サブビュー（タブ内オーバーレイ）
-  const [subView, setSubView] = useState<null | 'posts' | 'badges' | 'viewed'>(null);
+  // 「>」の全件サブビュー（タブ内オーバーレイ）。badges=バッジ図鑑 / visited=行った！スポット一覧
+  const [subView, setSubView] = useState<null | 'posts' | 'badges' | 'viewed' | 'visited'>(null);
 
   // #14: プロフィールタブを再タップ → サブビュー/設定を閉じてスクロール先頭へ（振り出し）
   const scrollRef = useRef<ScrollView>(null);
@@ -242,8 +262,9 @@ export default function ProfileTab() {
       }).then((r) => r.json());
       const p = d?.profile;
       if (!p) return;
-      // 承認済み公開投稿数＝写真投稿バッジの判定に使う（他人プロフィールと同じ真実 postCount）
-      if (typeof p.postCount === 'number') setPhotoPostCount(p.postCount);
+      // 承認済み公開投稿数＝写真投稿バッジの判定に使う（他人プロフィールと同じ真実 postCount）。
+      // 取得失敗時に獲得済み写真バッジが図鑑で0/N（未獲得）に見えないようキャッシュも更新
+      if (typeof p.postCount === 'number') { setPhotoPostCount(p.postCount); saveJSON('moodgo-photo-postcount-v1', p.postCount); }
       setAccountType(typeof p.accountType === 'string' ? p.accountType : '');
       const cur = getSettings();
       if (!cur.nickname.trim() && typeof p.name === 'string' && p.name.trim()) saveNickname(p.name.trim());
@@ -283,6 +304,14 @@ export default function ProfileTab() {
   // 詳細(/place)を見た瞬間・行った！トグル時に即時反映する。プロフィールは blur したまま
   //   裏に残るため focus 再取得を待たず、記録更新の通知で最近チェック/バッジを再読込する。
   useEffect(() => subscribeSpotLog(() => { loadLogs(); }), [loadLogs]);
+
+  // 写真投稿数はオフライン/取得失敗時にキャッシュで初期化（獲得済み写真バッジの0/N化を防ぐ。
+  //   サーバー取得成功時は loadProfile が上書き＆キャッシュ更新）
+  useEffect(() => {
+    loadJSON<number>('moodgo-photo-postcount-v1', 0).then((v) => {
+      if (v > 0) setPhotoPostCount((cur) => (cur > 0 ? cur : v));
+    }).catch(() => {});
+  }, []);
 
   // 通知の未読ドット（フォーカス毎に軽くチェック）
   const [notifUnread, setNotifUnread] = useState(false);
@@ -344,10 +373,16 @@ export default function ProfileTab() {
   const tileCellFull  = Math.floor((W - SIDE * 2 - GAP * 2) / 3) - 1;         // サブビュー3列
   const badgeCellFull = Math.floor((W - SIDE * 2 - GAP * 3) / 4) - 1;         // サブビュー4列（少数は中央揃え）
 
-  // 写真投稿バッジ（承認済み公開投稿数から算出）＋ 次に狙える段階（収集導線用）
-  const earnedPhotos = earnedPhotoBadges(photoPostCount);
-  const nextPhoto = nextPhotoBadge(photoPostCount);
-  const badgeTotal = earnedPhotos.length + badges.length;   // バッジ総数（空判定に使用）
+  // バッジ図鑑（行った！ログ＋写真投稿数から全バッジの獲得/進捗を計算）
+  //   カードは「獲得済み(新しい順)→未獲得(達成間近順)」の4枚。空状態は出ない
+  //   （0進捗でも未獲得バッジのシルエットが並ぶ＝次に狙うものが常に見える）。
+  const badgeStates = computeBadges(badges, photoPostCount);
+  const earnedBadges = badgeStates.filter((b) => b.earned)
+    .sort((a, b) => String(b.earnedAt ?? '').localeCompare(String(a.earnedAt ?? '')));
+  const lockedBadges = badgeStates.filter((b) => !b.earned)
+    .sort((a, b) => (b.count / b.def.need) - (a.count / a.def.need) || a.def.need - b.def.need);
+  const cardBadges = [...earnedBadges, ...lockedBadges].slice(0, 4);
+  const nextBadge = nearestNextBadge(badgeStates);
 
   // ── 部品 ────────────────────────────────────────────────────────────────
   const CardHeader = ({ icon, title, onMore }: { icon: React.ReactNode; title: string; onMore?: () => void }) => (
@@ -397,59 +432,65 @@ export default function ProfileTab() {
     );
   };
 
-  const BadgeItem = ({ item, size }: { item: SpotLogItem; size: number }) => {
+  // バッジ図鑑タイル。獲得済み=グラデリング＋色つきアイコン＋達成日 /
+  // 未獲得=破線リング＋淡色アイコン＋進捗（2/5＋ミニバー）。空状態を作らない核。
+  const BadgeTile = ({ bp, size, onPress }: { bp: BadgeProgress; size: number; onPress?: () => void }) => {
     // 4列表示でもセル幅に円が収まるよう、リング径をセル幅に追従（上限70）
     const ring = Math.min(70, size - 4);
     const wrapD = ring - 6;
     const imgD = ring - 12;
-    return (
-      <TouchableOpacity onPress={() => openSpot(item)} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}>
-        <View style={[s.badgeRing, { width: ring, height: ring }]}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[s.badgeRingGrad, { width: ring, height: ring, borderRadius: ring / 2 }]}>
-            <View style={[s.badgeImgWrap, { width: wrapD, height: wrapD, borderRadius: wrapD / 2 }]}>
-              {item.photoUrl ? (
-                <Image source={{ uri: item.photoUrl }} style={[s.badgeImg, { width: imgD, height: imgD, borderRadius: imgD / 2 }]} contentFit="cover" transition={200} />
-              ) : (
+    const Icon = bp.def.Icon;
+    const pct = Math.min(1, bp.count / bp.def.need);
+    const body = (
+      <>
+        {bp.earned ? (
+          <View style={[s.badgeRing, { width: ring, height: ring }]}>
+            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={[s.badgeRingGrad, { width: ring, height: ring, borderRadius: ring / 2 }]}>
+              <View style={[s.badgeImgWrap, { width: wrapD, height: wrapD, borderRadius: wrapD / 2 }]}>
                 <View style={[s.badgeImg, s.badgePh, { width: imgD, height: imgD, borderRadius: imgD / 2 }]}>
-                  <Award size={20} color={BLUE} strokeWidth={1.8} />
+                  <Icon size={Math.round(imgD * 0.44)} color="#7C3AED" strokeWidth={1.9} />
                 </View>
-              )}
-            </View>
-          </LinearGradient>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
-            <Award size={10} color="#fff" strokeWidth={2.4} />
-          </LinearGradient>
-        </View>
-        <Text style={s.badgeName} numberOfLines={1}>{item.title}</Text>
-        <Text style={s.badgeDate}>{new Date(item.at).getMonth() + 1}/{new Date(item.at).getDate()} {t.achieved}</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  // 写真投稿バッジ（行った！バッジと同じリング/メダル体裁・中央は写真の代わりにlucideアイコン）
-  const PhotoBadgeItem = ({ tier, size }: { tier: PhotoBadgeTier; size: number }) => {
-    const ring = Math.min(70, size - 4);
-    const wrapD = ring - 6;
-    const imgD = ring - 12;
-    const Icon = tier.Icon;
-    return (
-      <TouchableOpacity onPress={() => router.push('/post')} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}>
-        <View style={[s.badgeRing, { width: ring, height: ring }]}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[s.badgeRingGrad, { width: ring, height: ring, borderRadius: ring / 2 }]}>
-            <View style={[s.badgeImgWrap, { width: wrapD, height: wrapD, borderRadius: wrapD / 2 }]}>
-              <View style={[s.badgeImg, s.badgePh, { width: imgD, height: imgD, borderRadius: imgD / 2 }]}>
-                <Icon size={Math.round(imgD * 0.44)} color={BLUE} strokeWidth={1.9} />
               </View>
+            </LinearGradient>
+            <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
+              <Award size={10} color="#fff" strokeWidth={2.4} />
+            </LinearGradient>
+          </View>
+        ) : (
+          <View style={[s.badgeLockedRing, { width: ring, height: ring, borderRadius: ring / 2 }]}>
+            <Icon size={Math.round(imgD * 0.44)} color="#C2BDD6" strokeWidth={1.9} />
+          </View>
+        )}
+        <Text style={[s.badgeName, !bp.earned && s.badgeNameLocked]} numberOfLines={1}>
+          {badgeTitle(bp.def, settings.lang)}
+        </Text>
+        {bp.earned ? (
+          <Text style={s.badgeDate}>
+            {bp.earnedAt
+              ? t.earnedOn(`${new Date(bp.earnedAt).getMonth() + 1}/${new Date(bp.earnedAt).getDate()}`)
+              : t.achieved}
+          </Text>
+        ) : (
+          <>
+            <Text style={s.badgeDate}>{bp.count}/{bp.def.need}</Text>
+            <View style={[s.badgeBar, { width: ring }]}>
+              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={[s.badgeBarFill, { width: `${Math.round(pct * 100)}%` }]} />
             </View>
-          </LinearGradient>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.badgeMedal}>
-            <Award size={10} color="#fff" strokeWidth={2.4} />
-          </LinearGradient>
-        </View>
-        <Text style={s.badgeName} numberOfLines={1}>{photoBadgeTitle(tier, settings.lang)}</Text>
-        <Text style={s.badgeDate}>{t.photoCount(tier.need)}</Text>
+          </>
+        )}
+      </>
+    );
+    // VoiceOver: ラベルに獲得状態/進捗まで含める（子テキストはボタン化で読まれなくなるため）
+    const a11y = bp.earned
+      ? `${badgeTitle(bp.def, settings.lang)} ${t.achieved}`
+      : `${badgeTitle(bp.def, settings.lang)} ${bp.count}/${bp.def.need}`;
+    if (!onPress) return <View style={[s.badgeItem, { width: size }]}>{body}</View>;
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[s.badgeItem, { width: size }]}
+        accessibilityRole="button" accessibilityLabel={a11y}>
+        {body}
       </TouchableOpacity>
     );
   };
@@ -473,7 +514,10 @@ export default function ProfileTab() {
 
   // ── サブビュー（全件表示）────────────────────────────────────────────────
   const renderSubView = () => {
-    const title = subView === 'posts' ? t.myPosts : subView === 'badges' ? t.allBadges : t.checkedSpots;
+    const title = subView === 'posts' ? t.myPosts
+      : subView === 'badges' ? t.allBadges
+      : subView === 'visited' ? t.visitedList
+      : t.checkedSpots;
     return (
       <View style={[s.root, StyleSheet.absoluteFill]}>
         <AppBackground />
@@ -499,14 +543,27 @@ export default function ProfileTab() {
             )
           )}
           {subView === 'badges' && (
-            badgeTotal === 0 ? (
-              <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
-                sub={t.emptyBadgesSub} />
+            // バッジ図鑑: 系統ごとのセクション（未獲得もシルエット＋進捗で全件見せる）
+            <View style={{ gap: 4 }}>
+              {BADGE_CATS.map((cat) => (
+                <View key={cat}>
+                  <Text style={s.badgeCatLabel}>{badgeCategoryLabel(cat, settings.lang)}</Text>
+                  <View style={[s.grid, { gap: GAP }]}>
+                    {badgeStates.filter((bp) => bp.def.cat === cat).map((bp) => (
+                      <BadgeTile key={bp.def.key} bp={bp} size={badgeCellFull} />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+          {subView === 'visited' && (
+            badges.length === 0 ? (
+              <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyVisitedTitle}
+                sub={t.emptyVisitedSub} />
             ) : (
-              <View style={[s.grid, { gap: GAP, justifyContent: 'center' }]}>
-                {/* 4列×N・件数が少ないときは中央揃え（写真投稿バッジ→行った！バッジの順） */}
-                {earnedPhotos.map((tier) => <PhotoBadgeItem key={tier.key} tier={tier} size={badgeCellFull} />)}
-                {badges.map((b, i) => <BadgeItem key={`v-${b.title}-${i}`} item={b} size={badgeCellFull} />)}
+              <View style={{ gap: 4 }}>
+                {badges.map((b, i) => <ViewedRow key={`vv-${b.title}-${i}`} item={b} />)}
               </View>
             )
           )}
@@ -615,7 +672,7 @@ export default function ProfileTab() {
             </TouchableOpacity>
             <View style={s.statDivider} />
             <TouchableOpacity style={s.statCol} activeOpacity={0.7}
-              onPress={() => setSubView('badges')}
+              onPress={() => setSubView('visited')}
               accessibilityRole="button" accessibilityLabel={t.visitedA11y}>
               <Text style={s.statNum}>{badges.length}</Text>
               <Text style={s.statLabel}>{t.statVisited}</Text>
@@ -682,27 +739,32 @@ export default function ProfileTab() {
           )}
         </Animated.View>
 
-        {/* ── 🏅 バッジ（写真投稿バッジ＋行った！から生成） ── */}
+        {/* ── 🏅 バッジ図鑑（獲得済み→達成間近の順に4枚。空状態なし） ── */}
         <Animated.View style={[s.card, sectionStyle(2)]}>
           <CardHeader icon={<Award size={16} color="#F5A623" strokeWidth={2.2} />} title={t.badges}
             onMore={() => setSubView('badges')} />
-          {badgeTotal === 0 ? (
-            <Empty icon={<Award size={22} color={BLUE} strokeWidth={1.8} />} title={t.emptyBadgesTitle}
-              sub={t.emptyBadgesSub} />
-          ) : (
-            <View style={[s.grid, { gap: GAP }]}>
-              {[
-                ...earnedPhotos.map((tier) => <PhotoBadgeItem key={tier.key} tier={tier} size={badgeCell} />),
-                ...badges.map((b, i) => <BadgeItem key={`v-${b.title}-${i}`} item={b} size={badgeCell} />),
-              ].slice(0, 4)}
-            </View>
-          )}
-          {/* 収集導線: 次の段階までの控えめな一言＋投稿画面へ（派手にしない） */}
-          {nextPhoto && (
-            <TouchableOpacity onPress={() => router.push('/post')} activeOpacity={0.85} style={s.badgeHint}>
-              <Camera size={14} color={PINK} strokeWidth={2.2} />
+          <View style={[s.grid, { gap: GAP }]}>
+            {cardBadges.map((bp) => (
+              <BadgeTile key={bp.def.key} bp={bp} size={badgeCell} onPress={() => setSubView('badges')} />
+            ))}
+          </View>
+          {/* 収集導線: いちばん達成が近いバッジへの一言（写真系=投稿へ / それ以外=ホームで探す） */}
+          {nextBadge && (
+            <TouchableOpacity
+              onPress={() => router.push(nextBadge.def.cat === 'photo' ? '/post' : '/')}
+              activeOpacity={0.85} style={s.badgeHint}
+              accessibilityRole="button"
+              accessibilityLabel={nextBadge.def.cat === 'photo' ? t.postCta : t.hintGoHome}>
+              {nextBadge.def.cat === 'photo'
+                ? <Camera size={14} color={PINK} strokeWidth={2.2} />
+                : <Award size={14} color={PINK} strokeWidth={2.2} />}
               <Text style={s.badgeHintText} numberOfLines={2}>
-                {t.photoHint(nextPhoto.need - photoPostCount, photoBadgeTitle(nextPhoto, settings.lang))}
+                {/* 単位はカテゴリで変える: 写真=枚 / たび=県 / それ以外=スポット */}
+                {nextBadge.def.cat === 'photo'
+                  ? t.photoHint(nextBadge.def.need - nextBadge.count, badgeTitle(nextBadge.def, settings.lang))
+                  : nextBadge.def.cat === 'travel'
+                  ? t.travelHint(nextBadge.def.need - nextBadge.count, badgeTitle(nextBadge.def, settings.lang))
+                  : t.spotHint(nextBadge.def.need - nextBadge.count, badgeTitle(nextBadge.def, settings.lang))}
               </Text>
               <ChevronRight size={16} color={SUB} strokeWidth={2.2} />
             </TouchableOpacity>
@@ -883,7 +945,22 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff',
   },
   badgeName: { fontSize: 12.5, fontWeight: '800', color: INK, maxWidth: '92%' },
+  badgeNameLocked: { color: SUB },
   badgeDate: { fontSize: 11, fontWeight: '600', color: SUB, marginTop: 2 },
+  // 未獲得（図鑑のシルエット）: 破線リング＋淡い面＋進捗ミニバー
+  badgeLockedRing: {
+    alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+    borderWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(139,136,166,0.38)',
+    backgroundColor: '#F6F4FB',
+  },
+  badgeBar: {
+    height: 3.5, borderRadius: 2, backgroundColor: '#ECE9F5', marginTop: 4, overflow: 'hidden',
+  },
+  badgeBarFill: { height: '100%', borderRadius: 2 },
+  badgeCatLabel: {
+    fontSize: 12.5, fontWeight: '800', color: SUB, letterSpacing: 0.2,
+    marginTop: 14, marginBottom: 10, marginLeft: 2,
+  },
   // 収集導線（次の写真投稿バッジまでの控えめな一言＋投稿へ）
   badgeHint: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12,
