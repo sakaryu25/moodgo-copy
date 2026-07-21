@@ -6152,9 +6152,32 @@ function freewordVibe(fw: string): typeof VIBE_LEXICON[number] | null {
 // チェーン/買取リユースのブランド名(映え/穴場/サブカル/vibe文脈で末尾送り＝除去でなくderankで0件回避)。
 const CHAIN_BRAND_RE = /天下一品|餃子の王将|大阪王将|日高屋|幸楽苑|リンガーハット|吉野家|松屋(?:フーズ)?|すき家|なか卯|やよい軒|大戸屋|安安|牛角|叙々苑|さぼてん|和幸|わたみ|和民|白木屋|魚民|笑笑|千年の宴|鳥貴族|磯丸水産|スターバックス|スタバ|ドトール|タリーズ|エクセルシオール|サンマルク|星乃珈琲|コメダ|プロント|ベローチェ|ミスタードーナツ|マクドナルド|ケンタッキー|モスバーガー|ガスト|サイゼリヤ|ジョナサン|ロイヤルホスト|WEGO|RINKAN|セカンドストリート|2nd ?STREET|TreFacStyle|トレファク|ブックオフ|BOOK ?OFF|ハードオフ|大黒屋/i;
 // エリア名/駅名/施設館名/カテゴリ名だけの壊れPOI(スポットとして不適格＝除外)。
-const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|(?:^|[^ぁ-ん])(?:大阪駅|東京駅|名古屋駅|博多駅|新大久保駅|渋谷駅)$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
+const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|[一-龥ァ-ヶーｦ-ﾟ]{2,6}駅$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
 
+// Z世代トーン整形(2026-07-21): LLMが否定制約を破って残す「おじさん語彙」を決定的に言い換える。
+//   文法を壊さない語句単位の安全な置換のみ(具体→汎用の順)。ジューシー/こってり等は10-20代も使う実写語のため残す。
+const REASON_TONE_SWAPS: Array<[RegExp, string]> = [
+  [/贅沢な(?:ひととき|時間|ランチ|ディナー)/g, "特別な時間"],
+  [/を堪能できる/g, "を楽しめる"], [/を堪能して/g, "を楽しんで"], [/を堪能する/g, "を味わう"],
+  [/堪能でき(?=る|ます)/g, "楽しめ"], [/堪能/g, "満喫"],
+  [/が絶品/g, "が評判"], [/絶品の/g, "人気の"], [/絶品/g, "人気"],
+  [/舌鼓を打(?:てる|てます|ちたい)?/g, "味わえる"],
+  [/自慢の逸品/g, "人気の一品"], [/逸品/g, "一品"],
+  [/食欲をそそる/g, "おいしそうな"], [/食欲そそる/g, "おいしそうな"],
+  [/深夜の満足感/g, "満足感"], [/地元で愛される味/g, "評判の味"],
+];
+function sanitizeReasonTone(s?: string): string {
+  let t = (s ?? "");
+  if (!t) return t;
+  for (const [re, rep] of REASON_TONE_SWAPS) t = t.replace(re, rep);
+  return t;
+}
 function dedupeReasons<T extends { reason?: string; aiReason?: string }>(recs: T[]): T[] {
+  // ①トーン整形(おじさん語彙の言い換え) → ②重複定型の言い換え、の順で適用。
+  for (const r of recs) {
+    if (typeof r.reason === "string") r.reason = sanitizeReasonTone(r.reason);
+    if (typeof r.aiReason === "string") r.aiReason = sanitizeReasonTone(r.aiReason);
+  }
   const seen = new Map<string, number>();
   for (const r of recs) {
     const key = (r.reason ?? "").trim();
