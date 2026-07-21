@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Clock, MapPin, MessagesSquare } from 'lucide-react-native';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -30,6 +30,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AiChatFab from './AiChatFab';
 import CommunityFeed from './CommunityFeed';
 import PuniPressable from './PuniPressable';
+import { MOODS } from './QuizFlow';
+import { apiFetch } from '@/lib/api';
+import { loadJSON, saveJSON } from '@/lib/storage';
+import { useSettings } from '@/lib/settingsStore';
 import Svg, {
   Defs,
   G,
@@ -201,7 +205,7 @@ type Props = {
   profileGender: string;
   lang: 'ja' | 'en';
   onStart: () => void;
-  onStartWithMood?: (moodKey: string) => void;  // （旧）気分ショートカット用・現在未使用
+  onStartWithMood?: (moodKey: string) => void;  // 気分チップの1タップ開始（気分選択済みでstep2から）
   onShowFeatured: () => void;
   onShowHistory?: () => void;  // 履歴サブ画面を開く（NativeTabs移行で履歴をタブから外したため）
   onOpenAiChat: () => void;    // AI相談を開く（旧・設定ギアの位置＝右上のグラデボタン）
@@ -209,10 +213,57 @@ type Props = {
   scrollRef?: React.RefObject<ScrollView | null>;  // ホームタブ再タップで最上部へ戻すため親から握る
 };
 
+// ホームに並べる気分チップ（QuizFlowのMOODSからキー一致で選抜＝クイズ側の定義とズレない）。
+//   6個: 定番の気分を横スクロールで。英語ラベルだけここで補う（MOODSはja専用のため）
+const HOME_MOOD_CHIP_KEYS: Array<{ key: string; labelEn: string }> = [
+  { key: 'お腹すいた',   labelEn: 'Hungry' },
+  { key: 'まったり',     labelEn: 'Chill' },
+  { key: '自然',         labelEn: 'Nature' },
+  { key: '楽しみたい',   labelEn: 'Have fun' },
+  { key: 'ドライブ',     labelEn: 'Drive' },
+  { key: '時間潰し',     labelEn: 'Kill time' },
+];
+const HOME_MOOD_CHIPS = HOME_MOOD_CHIP_KEYS
+  .map(({ key, labelEn }) => ({ mood: MOODS.find((m) => m.key === key)!, labelEn }))
+  .filter((c) => c.mood);
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki, scrollRef }: Props) {
+export default function HomeView({ lang, onStart, onStartWithMood, onShowFeatured, onShowHistory, onOpenAiChat, onOpenTsubuyaki, scrollRef }: Props) {
   const insets = useSafeAreaInsets();
+  const { profilePrefecture } = useSettings();
+
+  // ── 特集バナーのAPI連動（本番のhero特集タイトル/画像を表示。失敗時は従来の固定バナー）──
+  //   キャッシュ即表示→裏で最新化（プロフィール等と同じパターン）。
+  const [featBanner, setFeatBanner] = useState<{ id: string; title: string; image: string } | null>(null);
+  useEffect(() => {
+    let active = true;
+    const strip = (v?: string) => String(v ?? '').replace(/[都府県]$/, '');
+    (async () => {
+      try {
+        const cached = await loadJSON<{ id: string; title: string; image: string } | null>('moodgo-home-featured-banner-v1', null);
+        if (active && cached?.title) setFeatBanner(cached);
+      } catch { /* noop */ }
+      try {
+        const d = await apiFetch('/api/featured-pages').then((r) => r.json());
+        if (!active || !Array.isArray(d?.data)) return;
+        const pages = (d.data as Array<Record<string, any>>).filter((p) => p.slot_type !== 'hidden');
+        const heroes = pages.filter((p) => (p.slot_type ?? 'hero') === 'hero');
+        const myPref = strip(profilePrefecture);
+        // 自分の県のhero → 全国hero → 先頭hero → 先頭ページ（無ければ固定バナーのまま）
+        const pick =
+          (myPref && heroes.find((p) => strip(p.scope_key || p.prefecture) === myPref)) ||
+          heroes.find((p) => (p.scope_key || p.prefecture) === '全国') ||
+          heroes[0] || pages[0] || null;
+        if (pick && pick.banner_title) {
+          const next = { id: String(pick.id), title: String(pick.banner_title), image: String(pick.banner_image_url ?? '') };
+          setFeatBanner(next);
+          saveJSON('moodgo-home-featured-banner-v1', next);
+        }
+      } catch { /* 取得失敗はキャッシュ/固定バナーのまま */ }
+    })();
+    return () => { active = false; };
+  }, [profilePrefecture]);
 
   // START ボタンのプレスアニメ
 
@@ -313,10 +364,32 @@ export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory,
             </View>
           </PuniPressable>
 
-          {/* ── Featured card ── */}
+          {/* ── 気分チップ（1タップで気分選択済みスタート＝常連の最短導線）── */}
+          {onStartWithMood && (
+            <View style={s.moodChipsWrap}>
+              <Text style={s.moodChipsLabel}>
+                {lang === 'en' ? 'or jump in with a mood' : 'いまの気分でサクッと'}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.moodChipsRow}>
+                {HOME_MOOD_CHIPS.map(({ mood, labelEn }) => {
+                  const Icon = mood.Icon;
+                  return (
+                    <PuniPressable key={mood.key} style={s.moodChip}
+                      onPress={() => onStartWithMood(mood.key)}>
+                      <Icon size={14} color={PURPLE} strokeWidth={2.2} />
+                      <Text style={s.moodChipText}>{lang === 'en' ? labelEn : mood.label}</Text>
+                    </PuniPressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* ── Featured card（本番のhero特集を表示・取得失敗時は従来の固定バナー）── */}
           <View style={s.featuredCard}>
             <ImageBackground
-              source={require('../assets/images/home-featured.png')}
+              source={featBanner?.image ? { uri: featBanner.image } : require('../assets/images/home-featured.png')}
               style={s.featuredBg}
               imageStyle={{ borderRadius: 20 }}
               resizeMode="cover"
@@ -327,16 +400,23 @@ export default function HomeView({ lang, onStart, onShowFeatured, onShowHistory,
               >
                 <View style={s.featuredContent}>
                   <Text style={s.featuredLabel}>今月のMoodGo特集 ──</Text>
-                  <Text style={s.featuredTitle}>
-                    {lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
+                  <Text style={s.featuredTitle} numberOfLines={3}>
+                    {featBanner?.title
+                      ? featBanner.title
+                      : lang === 'en' ? "Check this month's\nmood picks" : '今月の気分特集を\nチェックしよう'}
                   </Text>
                   <PuniPressable
                     style={s.featuredBtn}
                     containerStyle={{ alignSelf: 'flex-start' }}
-                    onPress={onShowFeatured}
+                    onPress={() => {
+                      if (featBanner?.id) router.push(`/feature/page/${featBanner.id}` as never);
+                      else onShowFeatured();
+                    }}
                   >
                     <Text style={s.featuredBtnText}>
-                      {lang === 'en' ? "See what's inside →" : '何があるか見てみる　→'}
+                      {featBanner?.id
+                        ? (lang === 'en' ? 'Read the feature →' : '特集を読む　→')
+                        : (lang === 'en' ? "See what's inside →" : '何があるか見てみる　→')}
                     </Text>
                   </PuniPressable>
                 </View>
@@ -418,7 +498,24 @@ const s = StyleSheet.create({
   },
 
   // START（上下の余白を広めにして窮屈さを解消）
-  startWrap: { marginTop: 16, marginBottom: 44 },
+  startWrap: { marginTop: 16, marginBottom: 18 },
+
+  // 気分チップ（STARTの下・1タップ開始）。STARTの主役感を奪わない控えめな白ピル
+  moodChipsWrap: { marginBottom: 30 },
+  moodChipsLabel: {
+    fontSize: 11.5, fontWeight: '700', color: '#9A93B5', textAlign: 'center',
+    marginBottom: 10, letterSpacing: 0.3,
+  },
+  moodChipsRow: { gap: 8, paddingHorizontal: 2 },
+  moodChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderWidth: 1, borderColor: 'rgba(90,90,120,0.1)',
+    shadowColor: '#1A0A2E', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  moodChipText: { fontSize: 13, fontWeight: '700', color: '#2A2440' },
 
   // ── シャドウ専用レイヤー ──
   // iOS では shadow + overflow:hidden を同じViewに書けないため分離。

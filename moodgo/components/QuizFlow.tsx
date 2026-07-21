@@ -66,7 +66,8 @@ type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWid
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon; dark?: boolean }[] = [
+// ホームの気分チップ(HomeView)からも参照＝キーのズレを構造的に防ぐためexport
+export const MOODS: { key: string; label: string; sub: string; Icon: LucideIcon; dark?: boolean }[] = [
   { key: 'お腹すいた', label: 'お腹すいた', sub: '絶品グルメ',  Icon: UtensilsCrossed },
   { key: 'まったり',   label: 'まったり',   sub: '癒やし',      Icon: Coffee },
   { key: '自然',       label: '自然',       sub: '絶景',        Icon: Leaf },
