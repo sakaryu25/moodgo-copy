@@ -9127,12 +9127,26 @@ async function handleRecommend(request: Request) {
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
+        // ⚠一時デバッグ: freeWordジャンル横断在庫が各段でどこまで生き残るかを可視化（?_debug or answers._debug時のみ）。
+        let _debug: Record<string, unknown> | undefined;
+        if ((answers as { _debug?: boolean })._debug) {
+          const _fgd = freewordGenreRule(answers.freeWord ?? "");
+          const cnt = (arr: Array<{ name?: string | null; title?: string; tags?: string[] | null }>) =>
+            !_fgd ? 0 : arr.filter(r => _fgd.pos.test((r.name ?? r.title ?? "")) || (r.tags ?? []).some(t => _fgd.tags.includes(t))).length;
+          _debug = {
+            fg: _fgd?.key ?? null, noDropdownDD: _noDropdownDD, hasLocation,
+            sbResultsTotal: sbResults.length, sbResultsGenre: cnt(sbResults),
+            sbPoolCappedGenre: cnt(sbPoolCapped), scoredPoolGenre: cnt(scoredPool),
+            supabaseRecsGenre: cnt(supabaseRecs), recommendationsGenre: cnt(recommendations),
+          };
+        }
         return json({
           recommendations,
           source: "supabase",
           searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
+          ...(_debug ? { _debug } : {}),
           warning: hasLocation
             ? widenedWarning
             : "現在地未使用のため、距離順ではない場合があります。",
