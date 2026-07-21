@@ -7094,9 +7094,16 @@ async function handleRecommend(request: Request) {
         const jikanTop = jikanHits.filter(jOk).filter(pl => !jikanUnfit(pl))
           .sort((a, b) => (a.distanceM ?? 9e9) - (b.distanceM ?? 9e9)).slice(0, 5);
         jikanTop.forEach(pl => jUsed.add(pl.name));
-        // ② 残り: 距離内プールから補充。時間潰し向き(FRIENDLY)を先頭に寄せ、不足分だけ他カテゴリで埋める（各層ランダム）。UNFITは除外。
+        // ② 残り: 距離内プールから補充。投稿/adminキュレーション(source∈user/admin/manual)を最優先に寄せる
+        //   (ユーザー要望2026-07-21「投稿+adminを積極転載」)＝#時間潰し(jikanTop)に続き、curated→FRIENDLY→他 の順で埋める。各層ランダム。UNFIT除外。
         const jRestPool = poolHits.filter(pl => jOk(pl) && !jUsed.has(pl.name) && !jikanUnfit(pl));
-        const jRest = [...jShuffle(jRestPool.filter(jikanFriendly)), ...jShuffle(jRestPool.filter(pl => !jikanFriendly(pl)))];
+        const jIsCur = (r: JRow) => { const s = ((r as { source?: string }).source ?? "").toLowerCase(); return s === "user" || s === "admin" || s === "manual"; };
+        const jRest = [
+          ...jShuffle(jRestPool.filter(pl => jIsCur(pl) && jikanFriendly(pl))),
+          ...jShuffle(jRestPool.filter(pl => jIsCur(pl) && !jikanFriendly(pl))),
+          ...jShuffle(jRestPool.filter(pl => !jIsCur(pl) && jikanFriendly(pl))),
+          ...jShuffle(jRestPool.filter(pl => !jIsCur(pl) && !jikanFriendly(pl))),
+        ];
         const jTake = jRest.slice(0, Math.max(0, 15 - jikanTop.length));
         const toJikanRec = (r: JRow, isJikan: boolean) => {
           const googlePlaceId = r.id && !r.id.startsWith("sb-") ? r.id : undefined;
@@ -9186,7 +9193,6 @@ async function handleRecommend(request: Request) {
           searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
-          ...((answers as { _debug?: boolean })._debug ? { _debug: { curatedInResult: recommendations.filter(_isCurT).length, curatedInPool: _curTitles.size } } : {}),
           warning: hasLocation
             ? widenedWarning
             : "現在地未使用のため、距離順ではない場合があります。",
