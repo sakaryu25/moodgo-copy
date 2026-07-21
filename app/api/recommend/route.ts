@@ -7660,9 +7660,23 @@ async function handleRecommend(request: Request) {
         //   最終純度フィルタで再び弾かれて0件化する事故を防ぐ。ddTag(絶叫/心霊等)も従来どおり許可。
         const poolGenreOk = (r: { name?: string | null; tags?: string[] | null }): boolean =>
           dbGenreOk(r) || (!!ddTag && (r.tags ?? []).includes(ddTag));
-        const scoredPool = isProprietaryOnly
+        const scoredPoolBase = isProprietaryOnly
           ? sbPoolCapped.filter(poolGenreOk)
           : (hasGenreRule ? sbPoolCapped.filter(poolGenreOk) : sbPoolCapped);
+        // freeWord横断在庫の救済: Change1で気分ゲート越しに取得した在庫(古着=#ショッピング/#古着・ヴィンテージ 等)は、
+        //   freeWordがeffectiveDeepDiveを昇格させると poolGenreOk(ジャンル名正規表現)が“店名不一致”で落としてしまう
+        //   （leaf/token 等は名前に古着を含まない）。freeWordジャンル該当(名前肯定語 or ジャンルタグ)を scoredPool に戻す
+        //   ＝supabaseRecsに乗り、最終ジャンル引き上げ(Change2)で拾える。明示ドロップダウン深掘り時は救済しない。
+        const scoredPool = (() => {
+          if (!_noDropdownDD) return scoredPoolBase;
+          const _fg = freewordGenreRule(answers.freeWord ?? "");
+          if (!_fg) return scoredPoolBase;
+          const inPool = new Set(scoredPoolBase.map(r => r.name));
+          const rescued = sbPoolCapped.filter(r =>
+            !inPool.has(r.name) &&
+            (_fg.pos.test(r.name ?? "") || (r.tags ?? []).some(t => _fg.tags.includes(t))));
+          return rescued.length ? [...scoredPoolBase, ...rescued] : scoredPoolBase;
+        })();
         const scored = scoredPool
           .map(r => ({
             ...r,
