@@ -7677,6 +7677,12 @@ async function handleRecommend(request: Request) {
             (_fg.pos.test(r.name ?? "") || (r.tags ?? []).some(t => _fg.tags.includes(t))));
           return rescued.length ? [...scoredPoolBase, ...rescued] : scoredPoolBase;
         })();
+        // freeWordジャンル一致は「打った言葉そのもの」なので _niceScore を強ブーストして sbTakeCount(30)の
+        //   足切りを確実に通す。古着(=#ショッピング)は niceTags/curated 加点が無く低スコアで30位圏外に落ち、
+        //   scored→supabaseRecs で全滅していた(古着@下北沢0件の真因・debug実測 scoredPool18→supabaseRecs0)。
+        const _fgScore = _noDropdownDD ? freewordGenreRule(answers.freeWord ?? "") : null;
+        const _isFgMatch = (r: { name?: string | null; tags?: string[] | null }) =>
+          !!_fgScore && (_fgScore.pos.test(r.name ?? "") || (r.tags ?? []).some(t => _fgScore.tags.includes(t)));
         const scored = scoredPool
           .map(r => ({
             ...r,
@@ -7686,6 +7692,7 @@ async function handleRecommend(request: Request) {
               //   持たないデータ外れ値(実測: PACHA CRAFT BEER TACOS等がtags=nullで全ジャンルrank2固定)なので加点しない。
               + (isCuratedSource(r.source) && (r.tags?.length ?? 0) > 0 ? 5 : 0)
               + ((r as { semanticSim?: number | null }).semanticSim ?? 0) * 3  // ③ 意味一致が強い候補を上位化(AI失敗時の表示8件/写真補完先に確実に乗せる)
+              + (_isFgMatch(r) ? 8 : 0)  // freeWordジャンル一致=打った言葉そのもの。足切り(30)を確実に通す
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
           }))
           .sort((a, b) => b._niceScore - a._niceScore)
