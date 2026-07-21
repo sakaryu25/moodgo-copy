@@ -5457,7 +5457,7 @@ ${answers.companion ? `- 同行者: ${answers.companion}\n` : ""}${ragBlock}${fb
 # 各スポットの出力ルール
 - name: 検索でヒットする正式な店舗・施設名（支店名まで。例「スターバックス 横浜マリンタワー店」）
 - query: Google Mapsで一意に特定できる検索語（必ず「${geoAnchor} 」＋正式店名 の形）
-- reason: 「要望のどこに、なぜ合うのか」を具体的に40〜70字で。ユーザー属性や要望のキーワードに触れる。アプリ名や「AI相談」等のメタ表現は書かない。実際の特徴（料理・雰囲気・立地・価格など）を述べる。
+- reason: 「要望のどこに、なぜ合うのか」を具体的に40〜70字で。ユーザー属性や要望のキーワードに触れる。アプリ名や「AI相談」等のメタ表現は書かない。実際の特徴（料理・雰囲気・立地・価格など）を述べる。【トーン】読み手は10〜20代。「こってり・ジューシー・絶品・贅沢なひととき・地元で愛される味・堪能・舌鼓・自慢の逸品」等のクセの強い/おじさんっぽい言い回しは避け、20代が読んで自然でフラットな今っぽい言葉にする。
 
 # 出力（このJSONのみ。前後に文章を付けない）
 {"places": [{"name": "正式店名", "query": "${geoAnchor} 正式店名", "reason": "要望に合う具体的な理由(40〜70字)"}], "interpretation": {"partySize": 人数(不明なら0), "genres": ["読み取ったジャンル"], "vibes": ["雰囲気・条件"]}}`;
@@ -5717,6 +5717,8 @@ async function generateSupabaseReasons(
 ・料理ジャンルがあれば必ず触れる（例: 寿司なら「新鮮なネタ」、そばなら「手打ちそば」、ラーメンなら「こだわりの一杯」のように具体的に）。
 ・「特別なひととき」「特別な時間」のような全店共通の抽象表現は禁止。同じ言い回しを2店以上で使い回さないこと。
 ・同伴者の観点（恋人=雰囲気、友達=賑わい、一人=リフレッシュ）は味付け程度に留め、主役は店の固有情報にすること。
+・【トーン】20代が読んで自然でフラットな言葉に。「こってり・ジューシー・絶品・贅沢なひととき・深夜の満足感・地元で愛される味・堪能・一杯」などクセの強い/おじさんっぽい言い回しは使わない。誇張や「！」の多用も避け、落ち着いた一言に。
+・希望に「映え・韓国っぽ・チル・レトロ・エモ」等があれば、料理より内装・雰囲気・世界観・写真の撮りやすさに触れる。
 JSON: {"reasons": {"スポット名": "推薦理由文", ...}}`,
         },
         { role: "user", content: spotList },
@@ -5847,6 +5849,8 @@ function scheduleMoodBlurbGeneration(
 ・必ずスポット名を入れ、「〜がおすすめ！」のように前向きに誘う。
 ・その気分（${phrase}）にどう応えてくれるかを具体的に。例:「大自然の中でゆっくりできる、マザー牧場がおすすめ！」
 ・タグから雰囲気を自然に推測してよいが、誇張や嘘は避ける。断定的な営業文句にしない。
+・【トーン】読み手は10〜20代。20代が読んで自然でフラットな言葉に。「こってり・ジューシー・絶品・贅沢なひととき・深夜の満足感・地元で愛される味・堪能・食欲そそる・舌鼓・一杯・自慢の逸品」などクセの強い/おじさんっぽい言い回しや、感嘆符の連発は使わない。落ち着いた今っぽい一言に。
+・映え/韓国っぽ/チル/レトロ/エモ系の希望なら、料理より内装・雰囲気・世界観・写真の撮りやすさに触れる。
 JSON: {"blurbs": {"スポット名": "一言", ...}}`,
           },
           { role: "user", content: list },
@@ -6123,7 +6127,57 @@ function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | nu
   return null;
 }
 
+// ── Z世代vibe辞書(2026-07-21 55人監査): freeWordが映え/韓国っぽ/チル/レトロ等の"界隈"を指す時、
+//   boost=世界観一致を前方へ / derank=飯屋/施設/チェーンを後方へ / unfit=その文脈で完全に除外(0件回避付き)。
+const VIBE_LEXICON: Array<{ key: string; re: RegExp; boost: RegExp; derank: RegExp; unfit?: RegExp }> = [
+  { key: "映え", re: /映え|ばえ|フォトジェニック|フォトスポット|インスタ映え|映えスイーツ|映えカフェ|かわいい|可愛い/i,
+    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|ヒルズ|タワー|展望|ビュー|view|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|トゥンカロン|ハットグ|ベーカリー|bakery/i,
+    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|capybara|うさぎ|フクロウ|ハリネズミ|爬虫類|cat ?cafe|dog ?cafe|animal ?cafe|動物園|水族館/i,
+    unfit: /慰霊|慰霊碑|慰霊像|忠魂|殉難|遭難|災害|震災|戦没|平和祈念|自習室|試験場|運転免許|職業安定所|ハローワーク|税務署/i },
+  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ/i,
+    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|チーズ|明洞|カフェ|白基調/i,
+    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$|サウナ|銭湯|レディス|エステ|マッサージ|ネイル|美容室|美容院|ヘアサロン|クリニック|病院/i },
+  { key: "チル", re: /チル|chill|ゆるっと|落ち着け|癒され|ひとり時間|ぼっち|静かに過ご/i,
+    boost: /カフェ|cafe|喫茶|珈琲|coffee|純喫茶|サウナ|銭湯|の湯|湯処|ブック|book|テラス|庭園|garden|静/i,
+    derank: /カラオケ|パチンコ|ゲーセン|ゲームセンター|百貨店|デパート|ドンキ|ドン・キホーテ|フードコート|量販|家電|ヨドバシ|ビックカメラ|コンカフェ|コンセプトカフェ|メイドカフェ|ガールズバー|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|フクロウ|カピバラ|capybara|cat ?cafe|dog ?cafe|ミュージアム|遊園地|動物園|水族館|ズー|zooパーク|zoo ?park/i },
+  { key: "レトロ", re: /レトロ|純喫茶|昭和レトロ|エモ|ノスタル|ヴィンテージ喫茶|喫茶店/i,
+    boost: /喫茶|珈琲|coffee|純喫茶|クリームソーダ|プリン|レトロ|昭和|茶房|茶寮|ソーダ/i,
+    derank: /スターバックス|スタバ|ドトール|タリーズ|コメダ|エクセルシオール|サンマルク|プロント|ベローチェ/i },
+];
+function freewordVibe(fw: string): typeof VIBE_LEXICON[number] | null {
+  const t = (fw || "").trim(); if (!t) return null;
+  for (const v of VIBE_LEXICON) if (v.re.test(t)) return v;
+  return null;
+}
+// チェーン/買取リユースのブランド名(映え/穴場/サブカル/vibe文脈で末尾送り＝除去でなくderankで0件回避)。
+const CHAIN_BRAND_RE = /天下一品|餃子の王将|大阪王将|日高屋|幸楽苑|リンガーハット|吉野家|松屋(?:フーズ)?|すき家|なか卯|やよい軒|大戸屋|安安|牛角|叙々苑|さぼてん|和幸|わたみ|和民|白木屋|魚民|笑笑|千年の宴|鳥貴族|磯丸水産|スターバックス|スタバ|ドトール|タリーズ|エクセルシオール|サンマルク|星乃珈琲|コメダ|プロント|ベローチェ|ミスタードーナツ|マクドナルド|ケンタッキー|モスバーガー|ガスト|サイゼリヤ|ジョナサン|ロイヤルホスト|WEGO|RINKAN|セカンドストリート|2nd ?STREET|TreFacStyle|トレファク|ブックオフ|BOOK ?OFF|ハードオフ|大黒屋/i;
+// エリア名/駅名/施設館名/カテゴリ名だけの壊れPOI(スポットとして不適格＝除外)。
+const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|[一-龥ァ-ヶーｦ-ﾟ]{2,6}駅$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
+
+// Z世代トーン整形(2026-07-21): LLMが否定制約を破って残す「おじさん語彙」を決定的に言い換える。
+//   文法を壊さない語句単位の安全な置換のみ(具体→汎用の順)。ジューシー/こってり等は10-20代も使う実写語のため残す。
+const REASON_TONE_SWAPS: Array<[RegExp, string]> = [
+  [/贅沢な(?:ひととき|時間|ランチ|ディナー)/g, "特別な時間"],
+  [/を堪能できる/g, "を楽しめる"], [/を堪能して/g, "を楽しんで"], [/を堪能する/g, "を味わう"],
+  [/堪能でき(?=る|ます)/g, "楽しめ"], [/堪能/g, "満喫"],
+  [/が絶品/g, "が評判"], [/絶品の/g, "人気の"], [/絶品/g, "人気"],
+  [/舌鼓を打(?:てる|てます|ちたい)?/g, "味わえる"],
+  [/自慢の逸品/g, "人気の一品"], [/逸品/g, "一品"],
+  [/食欲をそそる/g, "おいしそうな"], [/食欲そそる/g, "おいしそうな"],
+  [/深夜の満足感/g, "満足感"], [/地元で愛される味/g, "評判の味"],
+];
+function sanitizeReasonTone(s?: string): string {
+  let t = (s ?? "");
+  if (!t) return t;
+  for (const [re, rep] of REASON_TONE_SWAPS) t = t.replace(re, rep);
+  return t;
+}
 function dedupeReasons<T extends { reason?: string; aiReason?: string }>(recs: T[]): T[] {
+  // ①トーン整形(おじさん語彙の言い換え) → ②重複定型の言い換え、の順で適用。
+  for (const r of recs) {
+    if (typeof r.reason === "string") r.reason = sanitizeReasonTone(r.reason);
+    if (typeof r.aiReason === "string") r.aiReason = sanitizeReasonTone(r.aiReason);
+  }
   const seen = new Map<string, number>();
   for (const r of recs) {
     const key = (r.reason ?? "").trim();
@@ -6187,7 +6241,8 @@ function buildSpecificReason(name: string, tags: string[], address?: string | nu
   const type =
     /(神社|大社|神宮|八幡宮?|稲荷|天満宮)/.test(name) ? "神社" :
     /(寺|院|大師|不動尊)$/.test(name) ? "お寺" :
-    /(城$|城跡|城址)/.test(name) ? "城" :
+    // 「城」判定は飲食/喫茶名の誤爆を除外(例: 高級喫茶 古城 → 城ではない)。
+    (/(城跡|城址)/.test(name) || (/城$/.test(name) && !/(喫茶|カフェ|珈琲|coffee|cafe|茶房|茶寮|レストラン|食堂|亭|居酒屋|バル|ダイニング|酒場|焼肉|寿司|鮨)/i.test(name))) ? "城" :
     /(公園|緑地)$/.test(name) ? "公園" :
     /(滝|渓谷|峡)$/.test(name) ? "自然スポット" :
     /(湖|沼|池|湿原)$/.test(name) ? "水辺スポット" :
@@ -6200,7 +6255,7 @@ function buildSpecificReason(name: string, tags: string[], address?: string | nu
     /水族館$/.test(name) ? "水族館" :
     /(動物園|牧場)$/.test(name) ? "動物園・牧場" :
     /(展望台|タワー|ヒルズ)/.test(name) ? "展望スポット" :
-    /(カフェ|珈琲|coffee|cafe)/i.test(name) ? "カフェ" :
+    /(カフェ|珈琲|coffee|cafe|喫茶|茶房|茶寮)/i.test(name) ? "カフェ" :
     /(ラーメン|らーめん|中華そば)/.test(name) ? "ラーメン店" :
     t.has("お腹すいた") || t.has("ご当地グルメ") ? "グルメスポット" :
     t.has("カフェスイーツ") ? "カフェ" :
@@ -6219,7 +6274,7 @@ function buildSpecificReason(name: string, tags: string[], address?: string | nu
     t.has("まったりしたい") ? "のんびりゆったり過ごせます。" :
     t.has("わいわい楽しみたい") ? "みんなでわいわい楽しめます。" :
     t.has("体動かしたい") ? "体を動かしてリフレッシュできます。" :
-    (t.has("ご当地グルメ") || t.has("お腹すいた")) ? "地元で愛される味が楽しめます。" :
+    (t.has("ご当地グルメ") || t.has("お腹すいた")) ? "評判のグルメが味わえます。" :
     t.has("鑑賞") ? "見ごたえのある展示が楽しめます。" :
     (t.has("ショッピング") || t.has("お土産ギフト") || t.has("古着") || t.has("服アクセサリー") || t.has("雑貨インテリア") || t.has("コスメ美容")) ? "お気に入りをゆっくり探せます。" :
     t.has("道の駅") ? "ご当地の味やお土産が揃います。" :
@@ -7941,7 +7996,7 @@ async function handleRecommend(request: Request) {
 8. 上位が似た場所に偏らないよう適度な多様性も保つ。ただし合致が低い場所を多様性のために上げない。
 9. テーマ・希望と「明らかに噛み合わない／場違い」な候補があれば reject に番号を入れる（例: 絶景を求める検索での市役所・オフィスビル、静かに過ごしたいでの繁華街の喧騒店、自然を求める検索でのパチンコ店）。ただし保守的に——少しでも合う可能性があるものは入れない。判断に迷うものも入れない。該当が無ければ空配列にする。
 10. さらに order 上位15件の各候補に、その人の文脈（気分・深掘り・希望・過去の好み・同行者）に「なぜ合うか」を1行で書く（25〜45字・具体的に・自然な口調で「〜がおすすめ！」等の体言止め可・その人の選択に寄せる。例「大自然の中で静かにゆっくりできる、マザー牧場がおすすめ！」「一人でも落ち着いて作業できる、窓際席が良い」）。汎用の紹介文でなく"この人・この気分に効く一言"にする。reject した番号には書かない。
-   ⚠一行理由の注意: (a)全候補に同じ言い回し（「深夜も」「静かに」等）を機械的に付けない＝場所ごとに違う具体を書く。(b)時間帯（深夜/夜/朝）に触れるのは、その場所が実際にその時間帯に楽しめる場合のみ。滝・展望台・公園・自然・寺社・城など日中前提の屋外スポットに夜間の言及をしない（「夜の滝」等の事実矛盾を避ける）。(c)タグや説明に無い属性（海沿い等）を推測で足さない。
+   ⚠一行理由の注意: (a)全候補に同じ言い回し（「深夜も」「静かに」等）を機械的に付けない＝場所ごとに違う具体を書く。(b)時間帯（深夜/夜/朝）に触れるのは、その場所が実際にその時間帯に楽しめる場合のみ。滝・展望台・公園・自然・寺社・城など日中前提の屋外スポットに夜間の言及をしない（「夜の滝」等の事実矛盾を避ける）。(c)タグや説明に無い属性（海沿い等）を推測で足さない。(d)【トーン】読み手は10〜20代。「こってり・ジューシー・絶品・贅沢なひととき・深夜の満足感・地元で愛される味・堪能・舌鼓・食欲そそる・自慢の逸品・一杯」などクセの強い/おじさんっぽい言い回しや感嘆符の連発は避け、20代が読んで自然でフラットな今っぽい言葉にする。映え/韓国っぽ/チル/レトロ/エモ系の希望なら、料理より内装・雰囲気・世界観・写真の撮りやすさに触れる。
 
 出力は {"order":[全番号を1回ずつ], "reject":[場違いな番号のみ・無ければ空], "reasons":{"番号":"その人向けの1行理由"}} のみをJSONで。order には全番号を必ず1回ずつ含める（rejectした番号も order には残す）。reasons は order 上位15件のみでよい。` },
                   { role: "user", content: `${ctxLine}${personaLine ? "\n【この人について】" + personaLine : ""}\n各候補【番号: 名前｜住所｜距離｜タグ｜説明｜評価】:\n${cand}` },
@@ -9188,6 +9243,97 @@ async function handleRecommend(request: Request) {
             if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
             recommendations = _merged.slice(0, 15);
           }
+        }
+        // ── 55人Z世代監査(2026-07-21)の是正: 壊れPOI除去 → freeWord vibe再ランク → 飲食freeWord経路の食ゲート。
+        // ① エリア名/駅/カテゴリ名だけの壊れPOIを除去(0件回避)。
+        {
+          const kept = recommendations.filter(r => !BROKEN_POI_RE.test((r.title ?? "").trim()));
+          if (kept.length > 0) recommendations = kept;
+        }
+        // ② freeWordがvibe(映え/韓国っぽ/チル/レトロ)を指す時: 界隈UNFIT除外＋世界観を前方/飯屋チェーンを後方へ
+        //   (安定ソートなので各層内の距離順は維持)。「打った言葉が無視される/おじさんチェーン混入」の是正。
+        {
+          const vb = freewordVibe(answers.freeWord ?? "");
+          if (vb) {
+            if (vb.unfit) {
+              const uk = recommendations.filter(r => !vb.unfit!.test((r.title ?? "").trim()));
+              if (uk.length >= Math.min(6, recommendations.length)) recommendations = uk;
+            }
+            const vibeTier = (r: { title?: string; tags?: string[] }) => {
+              const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
+              // ⚠derankは名前のみで判定する。タグの #動物カフェ/#犬カフェ/#猫カフェ は admin取込の一括誤付与が
+              //   全国2600件超(81%が普通のカフェ)で信頼できず、タグderankだと正常なカフェを大量に後方送りしてしまう。
+              //   真の動物カフェ/コンカフェ/施設は名前に語が出るためnameだけで十分。boostはタグも見る(#流行りカフェ等は有効)。
+              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;    // 飯屋/施設/チェーン=後方
+              if (vb.boost.test(nm) || vb.boost.test(tg)) return 0;          // 世界観一致=前方
+              return 1;
+            };
+            recommendations = [...recommendations].sort((a, b) => vibeTier(a) - vibeTier(b));
+          }
+        }
+        // ③ 飲食気分のfreeWord経路リーク是正: お腹すいたは非飲食(展望台/慰霊/図書館/家電等)を除外。
+        //   お腹すいた=飲食のみ は不変条件のためハードに適用する(食が1件でもあれば非飲食を全除去)。
+        //   映えfreeWordが展望台/絶景を大量注入し食が6件未満に落ちると min(6) ガードで食ゲートが自己無効化し
+        //   SHIBUYA SKY等が上位化する回帰(2026-07-21実測)を断つ。食0件の稀ケースだけ元のまま(空回避)。
+        if (isFoodMood && !isDestinationFood) {
+          const isFoodRec = (r: { title?: string; tags?: string[] }) =>
+            isRestaurantName(r.title ?? "") || tagsAreFood(r.tags ?? []) || (r.tags ?? []).some(t => ["#お腹すいた", "#カフェスイーツ", "#韓国", "#流行りカフェ"].includes(t));
+          const fk = recommendations.filter(isFoodRec);
+          if (fk.length >= 1) recommendations = fk;
+          // 展望台等の非飲食を全除去した結果が薄い(<8)時は、SBプール(supabaseRecs)の飲食で近い順に補充。
+          //   映えfreeWordが展望台/絶景を大量注入し最終15件の食が数件に落ちる(実測n=2)件数回復。距離capは近め/食で*1.2。
+          if (recommendations.length < 8) {
+            const _kmv = (r: { distanceKm?: number; distanceText?: string }): number =>
+              typeof r.distanceKm === "number" ? r.distanceKm
+                : (parseFloat((r.distanceText ?? "").match(/([\d.]+)\s*km/)?.[1] ?? "") || 9999);
+            const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+              ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
+            const _inSet = new Set(recommendations.map(r => r.title ?? ""));
+            const _more = supabaseRecs.filter(r =>
+              isFoodRec(r) && !_inSet.has(r.title ?? "")
+              && _kmv(r) <= _capKm * 1.2
+              && !SENSITIVE_UNFIT_RE.test((r.title ?? "").trim()) && !GENZ_NOISE_RE.test((r.title ?? "").trim()));
+            _more.sort((a, b) => _kmv(a) - _kmv(b));
+            if (_more.length) recommendations = [...recommendations, ..._more].slice(0, 15);
+          }
+          // 食ゲート/補充で②のvibe並びが崩れるため、vibe時はチェーン/非映えを末尾へ再降格(安定ソート)。
+          const _vbF = freewordVibe(answers.freeWord ?? "");
+          if (_vbF) {
+            const _tier = (r: { title?: string; tags?: string[] }) => {
+              const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
+              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;   // derankは名前のみ(誤タグ汚染回避・上記②と同方針)
+              if (_vbF.boost.test(nm) || _vbF.boost.test(tg)) return 0;
+              return 1;
+            };
+            recommendations = [...recommendations].sort((a, b) => _tier(a) - _tier(b));
+          }
+        }
+        // ④ vibe検索時は動物カフェを1件までに(映え/チル等で猫/犬/カピバラカフェが上位を占領するのを抑制)。
+        //   ⚠判定は名前のみ。#動物カフェ等のタグは admin取込の一括誤付与2600件超で信頼できず、
+        //   タグ判定だと普通のカフェを動物カフェ扱いで間引いてしまう(真の動物カフェは名前に語が出る)。
+        {
+          const vb2 = freewordVibe(answers.freeWord ?? "");
+          if (vb2) {
+            const ANIMAL_CAFE_RE = /動物カフェ|猫カフェ|ねこカフェ|ネコカフェ|犬カフェ|いぬカフェ|ドッグカフェ|dog ?cafe|cat ?cafe|フクロウカフェ|うさぎカフェ|カピバラ|ハリネズミ|爬虫類|モモンガ|momonga|capybara|アニマルカフェ/i;
+            let seen = 0;
+            const capped = recommendations.filter(r => {
+              if (ANIMAL_CAFE_RE.test(r.title ?? "")) { seen++; return seen <= 1; }
+              return true;
+            });
+            if (capped.length >= Math.min(6, recommendations.length)) recommendations = capped;
+          }
+        }
+        // ⑤ 表記ゆれ重複の最終畳み込み(Ragtag×3/Desert Snow×2/ヨプ王豚×2等): 正規化名が一致 or 接頭辞(≥5字)一致で1件に。
+        {
+          const norm = (t: string) => (t ?? "").normalize("NFKC").toLowerCase().replace(/[\s　'’".,・\-]+/g, "");
+          const kept: typeof recommendations = [];
+          for (const r of recommendations) {
+            const n = norm(r.title ?? "");
+            if (n.length < 3) { kept.push(r); continue; }
+            const dup = kept.some(k => { const kn = norm(k.title ?? ""); if (kn.length < 3) return false; return kn === n || (n.length >= 5 && kn.length >= 5 && (n.startsWith(kn) || kn.startsWith(n))); });
+            if (!dup) kept.push(r);
+          }
+          if (kept.length >= Math.min(8, recommendations.length)) recommendations = kept;
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
