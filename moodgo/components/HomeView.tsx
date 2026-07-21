@@ -296,8 +296,8 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
             <Tagline lang={lang} />
             <Text style={s.heroSub}>
               {lang === 'en'
-                ? 'AI suggests the perfect spot for your vibe.'
-                : 'AIがあなたの気分にぴったりの場所を提案します'}
+                ? 'We find the perfect spot for your vibe.'
+                : 'あなたの気分にぴったりの場所を提案します'}
             </Text>
           </View>
 
