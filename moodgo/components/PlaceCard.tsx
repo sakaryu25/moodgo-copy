@@ -17,7 +17,7 @@ import { showToast } from '@/lib/toast';
 import { addSpotPhoto, useSpotPhotos } from '@/lib/spotPhotos';
 import { sendEngagement } from '@/lib/engagement';
 import { copyPlaceName } from '@/lib/clipboard';
-import { genrePlaceholder } from '@/lib/genrePlaceholder';
+import MoodPlaceholderBg from '@/components/MoodPlaceholderBg';
 import { userHoursOpenNow } from '@/lib/openHours';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -380,7 +380,6 @@ export default function PlaceCard({
 
   // 写真募集CTAスライド。placement=lead(先頭・無料写真無し)/tail(末尾・無料写真有り)。心霊は暗いトーン。スライド幅で描画。
   const renderPhotoCta = (placement: 'lead' | 'tail') => {
-    const gp = genrePlaceholder(item.tags);
     if (spooky) return (
       <LinearGradient colors={['#2A1A45', '#160C28', '#0C0718']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
         style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder]}>
@@ -392,18 +391,19 @@ export default function PlaceCard({
         </TouchableOpacity>
       </LinearGradient>
     );
+    // 気分/ジャンル別の映えグラデ＋ボケ玉あしらい＋アイコン＋ラベルの装飾カード(実在店の偽写真は作らない)。
+    //   スポットidをseedにバリアント固定＝スポットごとに一貫、全体では多彩。写真投稿CTAを兼ねる。
     return (
-      <LinearGradient colors={['#F7F2FF', '#EDE4FF']} start={{ x: 0.15, y: 0 }} end={{ x: 0.85, y: 1 }}
-        style={[{ width: photoWidth, height: compact ? 150 : 220 }, s.photoPlaceholder, s.contribBright]}>
-        {placement === 'lead' && gp ? <Text style={s.phGenreEmoji}>{gp.emoji}</Text> : <Camera size={30} color="#8A6BF0" strokeWidth={1.9} />}
-        <Text style={s.phInviteTitle}>{placement === 'lead' ? '一番乗りで1枚どうぞ' : 'あなたの1枚も、この場所に'}</Text>
-        <Text style={s.phInviteSub}>{placement === 'lead' ? 'あなたの写真が、この場所の顔になります📸' : '違う角度・季節・時間帯の写真が魅力を伝えます'}</Text>
-        <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
-          <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
-            {uploading ? <ActivityIndicator color="#fff" size="small" /> : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
-          </LinearGradient>
-        </TouchableOpacity>
-      </LinearGradient>
+      <MoodPlaceholderBg
+        tags={item.tags}
+        seed={String(item.supabaseId ?? item.title ?? '')}
+        width={photoWidth}
+        height={compact ? 150 : 220}
+        compact={compact}
+        placement={placement}
+        uploading={uploading}
+        onAddPhoto={handleAddPhoto}
+      />
     );
   };
 
@@ -457,20 +457,7 @@ export default function PlaceCard({
         ) : hasGalleryImages ? (
           // photoWidth 計測前の一瞬: leadCTAはCTA、無料写真ありは先頭写真（Googleは出さない）
           leadCTA ? (
-            <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
-              {(() => { const p = genrePlaceholder(item.tags); return p
-                ? <Text style={s.phGenreEmoji}>{p.emoji}</Text>
-                : <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />; })()}
-              <Text style={s.phInviteTitle}>一番乗りで1枚どうぞ</Text>
-              <Text style={s.phInviteSub}>あなたの写真が、この場所の顔になります📸</Text>
-              <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
-                <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
-                  {uploading
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+            <MoodPlaceholderBg tags={item.tags} seed={String(item.supabaseId ?? item.title ?? '')} width={photoWidth} height={compact ? 150 : 220} compact={compact} placement="lead" uploading={uploading} onAddPhoto={handleAddPhoto} />
           ) : (
             <TouchableOpacity activeOpacity={0.92} onPress={() => { if (onPressDetail) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressDetail(); } else { setViewerIdx(0); } }}>
               <Image source={{ uri: galleryPhotos[0] }} style={s.photo} contentFit="cover" transition={300} onError={() => onImgError(galleryPhotos[0])} />
@@ -489,21 +476,8 @@ export default function PlaceCard({
             </TouchableOpacity>
           </LinearGradient>
         ) : (
-          // 写真なし: 投稿を促す招待プレースホルダー（「最初の1枚」＝写真追加の入口。帯は残し下部グラデだけ消す）
-          <View style={[s.photo, s.photoPlaceholder, s.phClean]}>
-            {(() => { const p = genrePlaceholder(item.tags); return p
-              ? <Text style={s.phGenreEmoji}>{p.emoji}</Text>
-              : <Camera size={38} color="#B9AEE6" strokeWidth={1.7} />; })()}
-            <Text style={s.phInviteTitle}>一番乗りで1枚どうぞ</Text>
-            <Text style={s.phInviteSub}>あなたの写真が、この場所の顔になります📸</Text>
-            <TouchableOpacity onPress={handleAddPhoto} disabled={uploading} activeOpacity={0.85} style={s.phInviteBtn}>
-              <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.phInviteBtnGrad}>
-                {uploading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <><Camera size={13} color="#fff" strokeWidth={2.3} /><Text style={s.phInviteBtnText}>写真を追加</Text></>}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+          // 写真なし: 気分/ジャンル別の装飾プレースホルダー＋写真投稿CTA（「最初の1枚」の入口）
+          <MoodPlaceholderBg tags={item.tags} seed={String(item.supabaseId ?? item.title ?? '')} width={photoWidth} height={compact ? 150 : 220} compact={compact} placement="lead" uploading={uploading} onAddPhoto={handleAddPhoto} />
         )}
 
         {/* 下部グラデ（可読性用）— 現在スライドが画像の時だけ。CTA/招待枠には出さない（"スライドバー"消し）*/}

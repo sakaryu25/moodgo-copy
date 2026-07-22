@@ -4069,6 +4069,33 @@ async function ltCachePut(key: string, data: unknown, ttlMs: number = LT_CACHE_T
     );
   } catch { /* 無視 */ }
 }
+// ── 投稿/手厳選(source∈user/manual)の全件をメモリキャッシュ(10分)──────────────────────────
+//   密集エリアで find_nearby_places(気分タグ)がlimitに埋もれて投稿/厳選を取りこぼす問題の回避。
+//   featured は全国でも数百件と小さいので、全件をメモリに持ち各検索は距離で近傍を絞る(=確実に最寄りが取れる)。
+let _featuredPlacesCache: { at: number; rows: Array<Record<string, unknown>> } | null = null;
+let _featuredLoading = false;
+// ⚠source_type は未索引で、この in() は521k行のseq scanで**約12秒**かかる(実測)。ホットパスでawaitすると
+//   コールドスタート時に60sゲートウェイtimeoutを起こす(サウナ検索が0件になる回帰・2026-07-22監査で発覚)。
+//   → 非同期リフレッシュに変更: キャッシュ有効なら即返す。失効/未取得なら**古い値(or空)を即返し**、
+//     裏でリフレッシュだけ走らせる(ホットパスをブロックしない)。索引 add-source-type-index.sql 適用後は
+//     クエリが速くなり初回もすぐ埋まる。
+function loadFeaturedPlaces(): Array<Record<string, unknown>> {
+  const now = Date.now();
+  const fresh = _featuredPlacesCache && now - _featuredPlacesCache.at < 10 * 60 * 1000;
+  if (!fresh && !_featuredLoading && supabase) {
+    _featuredLoading = true;
+    const sb = supabase;
+    void (async () => {
+      try {
+        const { data } = await sb.from("places")
+          .select("id,name,address,lat,lng,google_place_id,tags,description,rating,rating_count,open_hours,nearest_station,source_type,hotpepper_url,image_urls,photo_url")
+          .in("source_type", ["user", "manual"]).eq("is_active", true).limit(5000);
+        _featuredPlacesCache = { at: Date.now(), rows: (data ?? []) as Array<Record<string, unknown>> };
+      } catch { /* 失敗時は次回再試行 */ } finally { _featuredLoading = false; }
+    })();
+  }
+  return _featuredPlacesCache?.rows ?? [];
+}
 // enr: キャッシュの形（部分的でよい。あるフィールドだけ利用）
 type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[]; checked?: boolean };
 
@@ -6113,7 +6140,9 @@ const FREEWORD_GENRE: Array<{ re: RegExp; key: string; pos: RegExp; tags: string
     pos: /雑貨|インテリア|zakka|生活|ヴィレッジヴァンガード|ヴィレヴァン|ロフト|LOFT|ハンズ|家具|フランフラン|Francfranc|文具|ステーショナリー|セレクト/i, tags: ["#雑貨・インテリア"] },
   { re: /海沿い|海辺|海岸|ビーチ|オーシャン|シーサイド|beach|海が見え/i, key: "海辺",
     pos: /海|ビーチ|beach|海岸|海辺|浜|マリン|オーシャン|岬|漁港|シーサイド|ベイ|渚|なぎさ|サンビーチ|海浜/i, tags: ["#海辺", "#海辺カフェ"] },
-  { re: /絶景|フォトスポット|フォトジェニック|映えスポット|パノラマ/i, key: "絶景",
+  // ⚠フォトスポット/フォトジェニックはここ(絶景=展望台/夜景)に入れない。Z世代の「フォトスポット」は
+  //   映えカフェ/スイーツ意図で、展望台在庫を引くと世界観が壊れる(監査)。→ 映えvibeに回す。
+  { re: /絶景|パノラマ|山頂の景色|大パノラマ/i, key: "絶景",
     pos: /絶景|展望|パノラマ|ビュー|view|タワー|丘|山頂|岬|渓谷|滝|ダム|大橋|フォト|スカイ|テラス|ヒルズ/i, tags: ["#絶景スポット", "#展望台", "#夜景"] },
   // ⚠カフェタグは admin 過剰付与で汚染(Hello Kitty等ランドマークが#海辺カフェ/#癒しカフェ等を6個保持)。
   //   4,873件が名前にカフェを含むので、汚染タグは使わず名前肯定語のみで絞る=ランドマーク混入を断つ。
@@ -6131,12 +6160,14 @@ function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | nu
 //   boost=世界観一致を前方へ / derank=飯屋/施設/チェーンを後方へ / unfit=その文脈で完全に除外(0件回避付き)。
 const VIBE_LEXICON: Array<{ key: string; re: RegExp; boost: RegExp; derank: RegExp; unfit?: RegExp }> = [
   { key: "映え", re: /映え|ばえ|フォトジェニック|フォトスポット|インスタ映え|映えスイーツ|映えカフェ|かわいい|可愛い/i,
-    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|ヒルズ|タワー|展望|ビュー|view|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|トゥンカロン|ハットグ|ベーカリー|bakery/i,
-    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|capybara|うさぎ|フクロウ|ハリネズミ|爬虫類|cat ?cafe|dog ?cafe|animal ?cafe|動物園|水族館/i,
+    // ⚠展望/タワー/ビュー は入れない(bare「映え」で展望台/夜景に流れ量産型ギャル/Y2Kの映えカフェ世界観が壊れる・監査で発覚)。
+    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|白基調|トゥンカロン|ハットグ|ベーカリー|bakery/i,
+    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|capybara|うさぎ|フクロウ|ハリネズミ|爬虫類|cat ?cafe|dog ?cafe|animal ?cafe|動物園|水族館|展望|夜景|大聖堂|結婚式|ウェディング|チャペル/i,
     unfit: /慰霊|慰霊碑|慰霊像|忠魂|殉難|遭難|災害|震災|戦没|平和祈念|自習室|試験場|運転免許|職業安定所|ハローワーク|税務署/i },
-  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ/i,
-    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|チーズ|明洞|カフェ|白基調/i,
-    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$|サウナ|銭湯|レディス|エステ|マッサージ|ネイル|美容室|美容院|ヘアサロン|クリニック|病院/i },
+  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ|韓国カフェ/i,
+    // ⚠カフェは入れない(韓国っぽ/センイル/韓国カフェは"カフェ"意図。汎用カフェ(SOMPO美術館カフェ等)が#1化するのを防ぐ)。韓国シグナル要求。
+    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|明洞|白基調|オルチャン/i,
+    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$|サウナ|銭湯|レディス|エステ|マッサージ|ネイル|美容室|美容院|ヘアサロン|クリニック|病院|焼肉|ホルモン|居酒屋|食堂|厨房|チキン|参鶏湯|スンドゥブ|タッカルビ|サムギョプ|コプチャン|ソルロンタン|プルコギ|冷麺/i },
   { key: "チル", re: /チル|chill|ゆるっと|落ち着け|癒され|ひとり時間|ぼっち|静かに過ご/i,
     boost: /カフェ|cafe|喫茶|珈琲|coffee|純喫茶|サウナ|銭湯|の湯|湯処|ブック|book|テラス|庭園|garden|静/i,
     derank: /カラオケ|パチンコ|ゲーセン|ゲームセンター|百貨店|デパート|ドンキ|ドン・キホーテ|フードコート|量販|家電|ヨドバシ|ビックカメラ|コンカフェ|コンセプトカフェ|メイドカフェ|ガールズバー|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|フクロウ|カピバラ|capybara|cat ?cafe|dog ?cafe|ミュージアム|遊園地|動物園|水族館|ズー|zooパーク|zoo ?park/i },
@@ -6152,6 +6183,10 @@ function freewordVibe(fw: string): typeof VIBE_LEXICON[number] | null {
 // チェーン/買取リユースのブランド名(映え/穴場/サブカル/vibe文脈で末尾送り＝除去でなくderankで0件回避)。
 const CHAIN_BRAND_RE = /天下一品|餃子の王将|大阪王将|日高屋|幸楽苑|リンガーハット|吉野家|松屋(?:フーズ)?|すき家|なか卯|やよい軒|大戸屋|安安|牛角|叙々苑|さぼてん|和幸|わたみ|和民|白木屋|魚民|笑笑|千年の宴|鳥貴族|磯丸水産|スターバックス|スタバ|ドトール|タリーズ|エクセルシオール|サンマルク|星乃珈琲|コメダ|プロント|ベローチェ|ミスタードーナツ|マクドナルド|ケンタッキー|モスバーガー|ガスト|サイゼリヤ|ジョナサン|ロイヤルホスト|WEGO|RINKAN|セカンドストリート|2nd ?STREET|TreFacStyle|トレファク|ブックオフ|BOOK ?OFF|ハードオフ|大黒屋/i;
 // エリア名/駅名/施設館名/カテゴリ名だけの壊れPOI(スポットとして不適格＝除外)。
+// 展望台/夜景/絶景の"信頼できる"タグ。界隈カフェvibe(映え/韓国っぽ/チル/レトロ)では展望台/夜景ビルを後方送りに使う。
+const SCENIC_VIBE_TAG_RE = /#夜景|#展望台|#絶景スポット/;
+// オフィス/施設名など界隈vibeに完全に場違いなもの(Google Japan がbare映えで#3化・監査)。
+const OFFICE_NOISE_RE = /Google Japan|オフィス|本社ビル|ヘッドオフィス|(?:株式会社|有限会社).{0,12}(?:オフィス|本社|支社)?$|セントグレース大聖堂|大聖堂|結婚式場|チャペル/i;
 const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|[一-龥ァ-ヶーｦ-ﾟ]{2,6}駅$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
 
 // Z世代トーン整形(2026-07-21): LLMが否定制約を破って残す「おじさん語彙」を決定的に言い換える。
@@ -6473,7 +6508,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       //   ※source=admin等（source_type NULLの旧SB行含む）も対象＝カラオケ等の偏りを実際に間引く。
       const overBrand = brand.length >= 3 && bc >= BRAND_CAP;
       const overSub   = sub !== "" && sub !== requestedSub && sc >= SUBCAT_CAP;
-      if (overBrand || overSub) { overflow.push(r); continue; }
+      // 投稿(user)/手厳選(manual)は同サブカテcapを免除＝「投稿＋手厳選を最大8」を同カテ(例:韓国カフェ8軒)でも達成する。
+      const _isFeatRow = (() => { const s = (((r as { _rawSource?: string })._rawSource) ?? "").toLowerCase(); return s === "user" || s === "manual"; })();
+      if ((overBrand || overSub) && !_isFeatRow) { overflow.push(r); continue; }
       if (brand.length >= 3) brandCnt.set(brand, bc + 1);
       if (sub) subCnt.set(sub, sc + 1);
       kept.push(r);
@@ -7423,6 +7460,46 @@ async function handleRecommend(request: Request) {
         }
       }
 
+      // ── 投稿(user)/手厳選(manual)を確実にプールへ合流（「投稿・厳選を優先して最大8」の保証・2026-07-22）──
+      //   本経路の最寄りfetch(limit20)は密集エリアで少し離れた投稿/厳選を取りこぼし、後段の8転載予約が
+      //   supabaseRecs 由来のため届かなかった(実測: まったり@新大久保で投稿カフェ0件・枠は近所の寺/銭湯adminで充填)。
+      //   ⚠source∈(user/manual)＝投稿と手厳選のみを別取得(admin一括取込の寺/銭湯は対象外＝遠方混入を防ぐ)。
+      //   気分タグ(sbMustTags)取得で気分適合を自動担保＋距離厳守(近め=hardcap圏内/遠出=遠リング)で近い順を壊さない。
+      if (hasLocation) {
+        try {
+          const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
+          // ⚠source∈(user/manual)の全件(数百)から距離で近傍を絞る。find_nearby_places(気分タグ)は
+          //   密集エリアで limit に埋もれ投稿/厳選を取りこぼす(実測: #まったりしたい300件にSeoul Cafeが入らない)。
+          const _feat = loadFeaturedPlaces();  // 同期(裏で非同期リフレッシュ・ホットパスをブロックしない)
+          const _lat0 = answers.originLat ?? 0, _lng0 = answers.originLng ?? 0;
+          const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
+          const _hav = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+            const R = 6371, toR = (d: number) => d * Math.PI / 180;
+            const s1 = Math.sin(toR(bLat - aLat) / 2), s2 = Math.sin(toR(bLng - aLng) / 2);
+            return 2 * R * Math.asin(Math.min(1, Math.sqrt(s1 * s1 + Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * s2 * s2)));
+          };
+          const _have = new Set(sbResults.map(r => r.name));
+          const _cand: Array<{ row: Record<string, unknown>; km: number }> = [];
+          for (const row of _feat) {
+            const rlat = row.lat as number | null, rlng = row.lng as number | null;
+            if (typeof rlat !== "number" || typeof rlng !== "number") continue;
+            const nm = (row.name as string) ?? "";
+            if (!nm || _have.has(nm)) continue;
+            const tags = (row.tags as string[]) ?? [];
+            if (realMoodTag && !tags.includes(realMoodTag)) continue;   // 気分適合(投稿/厳選も気分一致だけ混ぜる)
+            const km = _hav(_lat0, _lng0, rlat, rlng);
+            if (km < sbMinRadiusKm) continue;                            // 遠出バイアス尊重
+            if (sbMinRadiusKm === 0 ? km > _featCapKm : km > sbRadiusKm) continue;  // 近め=hardcap圏内/遠出=半径内
+            _cand.push({ row, km });
+          }
+          _cand.sort((a, b) => a.km - b.km);
+          for (const { row, km } of _cand.slice(0, 16)) {
+            sbResults.push(nearbyRowToPlaceResponse({ ...row, distance_m: km * 1000 } as unknown as Parameters<typeof nearbyRowToPlaceResponse>[0], answers.transport ?? "車"));
+            _have.add(row.name as string);
+          }
+        } catch { /* 投稿/厳選の合流失敗は通常候補で続行 */ }
+      }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
@@ -7761,6 +7838,9 @@ async function handleRecommend(request: Request) {
               // 手動追加スポットを大きく優先。ただしタグ空(null/[])は「埋もれ防止すべきジャンル信号」を
               //   持たないデータ外れ値(実測: PACHA CRAFT BEER TACOS等がtags=nullで全ジャンルrank2固定)なので加点しない。
               + (isCuratedSource(r.source) && (r.tags?.length ?? 0) > 0 ? 5 : 0)
+              // 投稿(user)/手厳選(manual)は写真/評価が無くスコアが低いが、必ず候補上位(top30=supabaseRecs)へ
+              //   通して後段の「最大8転載」予約に届かせる(ユーザー指定「投稿＋手厳選を優先」2026-07-22)。
+              + ((r.source === "user" || r.source === "manual") && (r.tags?.length ?? 0) > 0 ? 60 : 0)
               + ((r as { semanticSim?: number | null }).semanticSim ?? 0) * 3  // ③ 意味一致が強い候補を上位化(AI失敗時の表示8件/写真補完先に確実に乗せる)
               + (_isFgMatch(r) ? 8 : 0)  // freeWordジャンル一致=打った言葉そのもの。足切り(30)を確実に通す
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
@@ -9211,38 +9291,50 @@ async function handleRecommend(request: Request) {
         //   ・距離は壊さない: 近め/食=hardcap圏内のcuratedのみ／遠出=遠リング側のcuratedのみ補充し、近めは近い順に再整列。
         //   ・freeWordジャンル固定時(古着等)は既に該当店で満たされ該当curatedも上位なのでスキップ(ジャンルロック維持)。
         //   ・8はターゲット(下限)であって上限cではない＝自前DBが自然に8超でも間引かない。
-        const _curSrc = (r: { _rawSource?: string }) => {
-          const s = (r._rawSource ?? "").toLowerCase();
-          return s === "user" || s === "admin" || s === "manual";
-        };
-        const _curTitles = new Set(supabaseRecs.filter(_curSrc).map(r => r.title ?? "").filter(Boolean));
-        const _isCurT = (r: { title?: string }) => _curTitles.has(r.title ?? "");
+        const _srcOf = (r: { _rawSource?: string }) => (r._rawSource ?? "").toLowerCase();
+        const _isFeat = (r: { _rawSource?: string }) => { const s = _srcOf(r); return s === "user" || s === "manual"; };
+        const _isCur = (r: { _rawSource?: string }) => { const s = _srcOf(r); return s === "user" || s === "admin" || s === "manual"; };
         const _fgActive = !hasDropdownDeepDive && !!freewordGenreRule(answers.freeWord ?? "");
-        if (!_fgActive && recommendations.filter(_isCurT).length < 8) {
+        if (!_fgActive) {
           const _km = (r: { distanceKm?: number; distanceText?: string }): number | null => {
             if (typeof r.distanceKm === "number") return r.distanceKm;
             const m = (r.distanceText ?? "").match(/([\d.]+)\s*km/);
             return m ? parseFloat(m[1]) : null;
           };
+          const _near = (r: { distanceKm?: number; distanceText?: string }) => _km(r) ?? 9e9;
           const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
           const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
             const km = _km(r);
             if (km == null) return true;
-            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
-            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
+            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のみ
+            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のみ(近場で汚さない)
           };
-          const _inSet = new Set(recommendations.map(r => r.title ?? ""));
-          const _need = 8 - recommendations.filter(_isCurT).length;
-          const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
-          if (_extra.length) {
-            const _curNow = recommendations.filter(_isCurT);
-            const _nonCur = recommendations.filter(r => !_isCurT(r));
-            const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
-            let _merged = [..._curNow, ..._extra, ..._keptNon];
-            if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
-            recommendations = _merged.slice(0, 15);
-          }
+          // 「投稿/手厳選を優先して最大8」(ユーザー指定2026-07-22): まず featured(投稿>手厳選)を最大8件、
+          //   非featuredを落として確保。次に余枠があれば admin一括取込も curated枠として補充(featuredの後)。
+          //   投稿/手厳選は niceScore 強ブースト＋サブカテcap免除で supabaseRecs に必ず載る→ここで確実に確保できる。
+          const _pull = (
+            want: (r: { title?: string; _rawSource?: string }) => boolean,
+            keep: (r: { title?: string; _rawSource?: string }) => boolean,
+            need: number,
+            tier?: (r: { _rawSource?: string }) => number,
+          ) => {
+            if (need <= 0) return;
+            const inSet = new Set(recommendations.map(r => r.title ?? ""));
+            const extra = supabaseRecs
+              .filter(r => want(r) && !inSet.has(r.title ?? "") && _distOk(r))
+              .sort((a, b) => (tier ? tier(a) - tier(b) : 0) || (_near(a) - _near(b)))
+              .slice(0, need);
+            if (!extra.length) return;
+            const now = recommendations.filter(keep);
+            const others = recommendations.filter(r => !keep(r));
+            const keptOthers = others.slice(0, Math.max(0, 15 - now.length - extra.length)); // 15を保つぶんだけ非対象を残す(落としすぎない)
+            let merged = [...now, ...extra, ...keptOthers];
+            if (minRadiusKm === 0) merged = [...merged].sort((a, b) => _near(a) - _near(b)); // 近め/食=近い順を再担保
+            recommendations = merged.slice(0, 15);
+          };
+          _pull(_isFeat, _isFeat, 8 - recommendations.filter(_isFeat).length, (r) => _srcOf(r) === "user" ? 0 : 1);          // ①投稿/手厳選を8まで
+          _pull((r) => _isCur(r) && !_isFeat(r), _isCur, 8 - recommendations.filter(_isCur).length);                       // ②余枠にadmin一括
         }
         // ── 55人Z世代監査(2026-07-21)の是正: 壊れPOI除去 → freeWord vibe再ランク → 飲食freeWord経路の食ゲート。
         // ① エリア名/駅/カテゴリ名だけの壊れPOIを除去(0件回避)。
@@ -9261,10 +9353,10 @@ async function handleRecommend(request: Request) {
             }
             const vibeTier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              // ⚠derankは名前のみで判定する。タグの #動物カフェ/#犬カフェ/#猫カフェ は admin取込の一括誤付与が
-              //   全国2600件超(81%が普通のカフェ)で信頼できず、タグderankだと正常なカフェを大量に後方送りしてしまう。
-              //   真の動物カフェ/コンカフェ/施設は名前に語が出るためnameだけで十分。boostはタグも見る(#流行りカフェ等は有効)。
-              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;    // 飯屋/施設/チェーン=後方
+              // ⚠derankは基本 名前のみ判定(#動物カフェ等のタグは admin一括誤付与2600件で信頼不可)。
+              //   ただし #夜景/#展望台/#絶景スポット は信頼できる正確なタグなので、界隈カフェvibe(映え/韓国っぽ/チル/レトロ)
+              //   では展望台/夜景ビルを後方送り(監査: bare映え・チル・フォトで梅田展望ビル/オフィス/絶景が場違い上位化)。
+              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm) || SCENIC_VIBE_TAG_RE.test(tg) || OFFICE_NOISE_RE.test(nm)) return 2;  // 飯屋/施設/チェーン/展望台/オフィス=後方
               if (vb.boost.test(nm) || vb.boost.test(tg)) return 0;          // 世界観一致=前方
               return 1;
             };
@@ -9301,7 +9393,7 @@ async function handleRecommend(request: Request) {
           if (_vbF) {
             const _tier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;   // derankは名前のみ(誤タグ汚染回避・上記②と同方針)
+              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm) || SCENIC_VIBE_TAG_RE.test(tg)) return 2;   // derankは名前のみ(誤タグ回避)＋展望台タグ
               if (_vbF.boost.test(nm) || _vbF.boost.test(tg)) return 0;
               return 1;
             };
