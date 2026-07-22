@@ -9410,15 +9410,9 @@ async function handleRecommend(request: Request) {
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
-        const _isFeatSrc = (s?: string) => ["user", "manual"].includes((s ?? "").toLowerCase());
         return json({
           recommendations,
           source: "supabase",
-          _dbg2: {
-            featSb: (sbResults as unknown as Array<{ name?: string; source?: string }>).filter(r => _isFeatSrc(r.source)).map(r => r.name ?? "").slice(0, 25),
-            featPool: (supabaseRecs as unknown as Array<{ title?: string; _rawSource?: string }>).filter(r => _isFeatSrc(r._rawSource)).map(r => r.title ?? "").slice(0, 25),
-            featRec: recommendations.filter(r => _isFeatSrc((r as unknown as { _rawSource?: string })._rawSource)).map(r => r.title ?? ""),
-          },
           searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
