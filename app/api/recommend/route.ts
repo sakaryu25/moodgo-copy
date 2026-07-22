@@ -6489,7 +6489,9 @@ function createFinalizeHelpers(ctx: FinalizeContext) {
       //   ※source=admin等（source_type NULLの旧SB行含む）も対象＝カラオケ等の偏りを実際に間引く。
       const overBrand = brand.length >= 3 && bc >= BRAND_CAP;
       const overSub   = sub !== "" && sub !== requestedSub && sc >= SUBCAT_CAP;
-      if (overBrand || overSub) { overflow.push(r); continue; }
+      // 投稿(user)/手厳選(manual)は同サブカテcapを免除＝「投稿＋手厳選を最大8」を同カテ(例:韓国カフェ8軒)でも達成する。
+      const _isFeatRow = (() => { const s = (((r as { _rawSource?: string })._rawSource) ?? "").toLowerCase(); return s === "user" || s === "manual"; })();
+      if ((overBrand || overSub) && !_isFeatRow) { overflow.push(r); continue; }
       if (brand.length >= 3) brandCnt.set(brand, bc + 1);
       if (sub) subCnt.set(sub, sc + 1);
       kept.push(r);
@@ -7817,6 +7819,9 @@ async function handleRecommend(request: Request) {
               // 手動追加スポットを大きく優先。ただしタグ空(null/[])は「埋もれ防止すべきジャンル信号」を
               //   持たないデータ外れ値(実測: PACHA CRAFT BEER TACOS等がtags=nullで全ジャンルrank2固定)なので加点しない。
               + (isCuratedSource(r.source) && (r.tags?.length ?? 0) > 0 ? 5 : 0)
+              // 投稿(user)/手厳選(manual)は写真/評価が無くスコアが低いが、必ず候補上位(top30=supabaseRecs)へ
+              //   通して後段の「最大8転載」予約に届かせる(ユーザー指定「投稿＋手厳選を優先」2026-07-22)。
+              + ((r.source === "user" || r.source === "manual") && (r.tags?.length ?? 0) > 0 ? 60 : 0)
               + ((r as { semanticSim?: number | null }).semanticSim ?? 0) * 3  // ③ 意味一致が強い候補を上位化(AI失敗時の表示8件/写真補完先に確実に乗せる)
               + (_isFgMatch(r) ? 8 : 0)  // freeWordジャンル一致=打った言葉そのもの。足切り(30)を確実に通す
               + Math.random() * 0.3,  // 乱数を小さくして品質差が埋もれないようにする
@@ -9267,44 +9272,50 @@ async function handleRecommend(request: Request) {
         //   ・距離は壊さない: 近め/食=hardcap圏内のcuratedのみ／遠出=遠リング側のcuratedのみ補充し、近めは近い順に再整列。
         //   ・freeWordジャンル固定時(古着等)は既に該当店で満たされ該当curatedも上位なのでスキップ(ジャンルロック維持)。
         //   ・8はターゲット(下限)であって上限cではない＝自前DBが自然に8超でも間引かない。
-        const _curSrc = (r: { _rawSource?: string }) => {
-          const s = (r._rawSource ?? "").toLowerCase();
-          return s === "user" || s === "admin" || s === "manual";
-        };
-        const _curTitles = new Set(supabaseRecs.filter(_curSrc).map(r => r.title ?? "").filter(Boolean));
-        const _isCurT = (r: { title?: string }) => _curTitles.has(r.title ?? "");
+        const _srcOf = (r: { _rawSource?: string }) => (r._rawSource ?? "").toLowerCase();
+        const _isFeat = (r: { _rawSource?: string }) => { const s = _srcOf(r); return s === "user" || s === "manual"; };
+        const _isCur = (r: { _rawSource?: string }) => { const s = _srcOf(r); return s === "user" || s === "admin" || s === "manual"; };
         const _fgActive = !hasDropdownDeepDive && !!freewordGenreRule(answers.freeWord ?? "");
-        if (!_fgActive && recommendations.filter(_isCurT).length < 8) {
+        if (!_fgActive) {
           const _km = (r: { distanceKm?: number; distanceText?: string }): number | null => {
             if (typeof r.distanceKm === "number") return r.distanceKm;
             const m = (r.distanceText ?? "").match(/([\d.]+)\s*km/);
             return m ? parseFloat(m[1]) : null;
           };
+          const _near = (r: { distanceKm?: number; distanceText?: string }) => _km(r) ?? 9e9;
           const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
           const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
             const km = _km(r);
             if (km == null) return true;
-            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
-            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
+            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のみ
+            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のみ(近場で汚さない)
           };
-          const _inSet = new Set(recommendations.map(r => r.title ?? ""));
-          const _need = 8 - recommendations.filter(_isCurT).length;
-          // 投稿(user)＞手厳選(manual)＞admin一括取込 の順で優先。同層は近い順。
-          //   ＝「投稿・手厳選を優先して最大8」(ユーザー指定2026-07-22)。misc adminより投稿/映え厳選が先に埋まる。
-          const _tierOf = (r: { _rawSource?: string }) => { const s = (r._rawSource ?? "").toLowerCase(); return s === "user" ? 0 : s === "manual" ? 1 : 2; };
-          const _extra = supabaseRecs
-            .filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r))
-            .sort((a, b) => (_tierOf(a) - _tierOf(b)) || ((_km(a) ?? 9e9) - (_km(b) ?? 9e9)))
-            .slice(0, _need);
-          if (_extra.length) {
-            const _curNow = recommendations.filter(_isCurT);
-            const _nonCur = recommendations.filter(r => !_isCurT(r));
-            const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
-            let _merged = [..._curNow, ..._extra, ..._keptNon];
-            if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
-            recommendations = _merged.slice(0, 15);
-          }
+          // 「投稿/手厳選を優先して最大8」(ユーザー指定2026-07-22): まず featured(投稿>手厳選)を最大8件、
+          //   非featuredを落として確保。次に余枠があれば admin一括取込も curated枠として補充(featuredの後)。
+          //   投稿/手厳選は niceScore 強ブースト＋サブカテcap免除で supabaseRecs に必ず載る→ここで確実に確保できる。
+          const _pull = (
+            want: (r: { title?: string; _rawSource?: string }) => boolean,
+            keep: (r: { title?: string; _rawSource?: string }) => boolean,
+            need: number,
+            tier?: (r: { _rawSource?: string }) => number,
+          ) => {
+            if (need <= 0) return;
+            const inSet = new Set(recommendations.map(r => r.title ?? ""));
+            const extra = supabaseRecs
+              .filter(r => want(r) && !inSet.has(r.title ?? "") && _distOk(r))
+              .sort((a, b) => (tier ? tier(a) - tier(b) : 0) || (_near(a) - _near(b)))
+              .slice(0, need);
+            if (!extra.length) return;
+            const now = recommendations.filter(keep);
+            const others = recommendations.filter(r => !keep(r));
+            const keptOthers = others.slice(0, Math.max(0, others.length - extra.length)); // 保持対象外の末尾を落として15維持
+            let merged = [...now, ...extra, ...keptOthers];
+            if (minRadiusKm === 0) merged = [...merged].sort((a, b) => _near(a) - _near(b)); // 近め/食=近い順を再担保
+            recommendations = merged.slice(0, 15);
+          };
+          _pull(_isFeat, _isFeat, 8 - recommendations.filter(_isFeat).length, (r) => _srcOf(r) === "user" ? 0 : 1);          // ①投稿/手厳選を8まで
+          _pull((r) => _isCur(r) && !_isFeat(r), _isCur, 8 - recommendations.filter(_isCur).length);                       // ②余枠にadmin一括
         }
         // ── 55人Z世代監査(2026-07-21)の是正: 壊れPOI除去 → freeWord vibe再ランク → 飲食freeWord経路の食ゲート。
         // ① エリア名/駅/カテゴリ名だけの壊れPOIを除去(0件回避)。
