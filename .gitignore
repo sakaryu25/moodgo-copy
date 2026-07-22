@@ -16,3 +16,4 @@ moodgo/.env
 
 # トークンを含むローカル専用スクリプト（コミット禁止）
 scripts/github-edit.sh
+tsconfig.tsbuildinfo
