@@ -85,18 +85,21 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Number(searchParams.get("limit") ?? "300"), 1000);
 
   // 座標なし OR 住所不完全 の active スポット（両問題を1リストに統合）
-  let query = supabase.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true);
+  const query = supabase.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true);
   const incompleteEqs = ["日本", "日本国", ...PREFS, ...PREFS.map((p) => `日本、${p}`)];
   const orExpr = ["lat.is.null", "lng.is.null", "address.is.null", ...incompleteEqs.map((v) => `address.eq."${v}"`)].join(",");
-  query = query.or(orExpr);
-  if (q) query = query.ilike("name", `%${q}%`);
-  const { data, error } = await query.order("name").limit(limit);
+  // ⚠order は id(主キー索引)。name順は未索引ソートで全一致を並べ替え→statement timeout(実測・画面の「日本」検索が固まる原因)。
+  //   名前検索(q)も SQL の ilike+OR が重くタイムアウトするため、取得後にクライアント側(このルート内)で名前を絞り込む。
+  const { data, error } = await query.or(orExpr).order("id").limit(q ? 800 : limit);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  const rows = ((data ?? []) as Row[]).map((r) => ({
+  let rows = ((data ?? []) as Row[]).map((r) => ({
     ...r,
     noCoord: r.lat == null || r.lng == null,
     badAddr: isIncompleteAddr(r.address),
   }));
+  if (q) rows = rows.filter((r) => String(r.name ?? "").includes(q) || String(r.address ?? "").includes(q));
+  rows.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ja"));  // 表示は名前順(≤800件のJSソートは軽い)
+  rows = rows.slice(0, limit);
   return NextResponse.json({ ok: true, count: rows.length, places: rows });
 }
 
@@ -136,7 +139,7 @@ export async function POST(req: NextRequest) {
   if (action === "auto-batch") {
     const incompleteEqs = ["日本", "日本国", ...PREFS, ...PREFS.map((p) => `日本、${p}`)];
     const orExpr = ["lat.is.null", "lng.is.null", "address.is.null", ...incompleteEqs.map((v) => `address.eq."${v}"`)].join(",");
-    const { data } = await db.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true).or(orExpr).order("name").limit(25);
+    const { data } = await db.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true).or(orExpr).order("id").limit(25);  // order id=主キー索引(name順はtimeout)
     const rows = (data ?? []) as Row[];
     let filled = 0;
     for (const row of rows) { if (await autoFill(db, row)) filled++; }
