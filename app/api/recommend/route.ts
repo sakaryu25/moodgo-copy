@@ -9309,7 +9309,7 @@ async function handleRecommend(request: Request) {
             if (!extra.length) return;
             const now = recommendations.filter(keep);
             const others = recommendations.filter(r => !keep(r));
-            const keptOthers = others.slice(0, Math.max(0, others.length - extra.length)); // 保持対象外の末尾を落として15維持
+            const keptOthers = others.slice(0, Math.max(0, 15 - now.length - extra.length)); // 15を保つぶんだけ非対象を残す(落としすぎない)
             let merged = [...now, ...extra, ...keptOthers];
             if (minRadiusKm === 0) merged = [...merged].sort((a, b) => _near(a) - _near(b)); // 近め/食=近い順を再担保
             recommendations = merged.slice(0, 15);
