@@ -7423,6 +7423,36 @@ async function handleRecommend(request: Request) {
         }
       }
 
+      // ── 投稿(user)/手厳選(manual)を確実にプールへ合流（「投稿・厳選を優先して最大8」の保証・2026-07-22）──
+      //   本経路の最寄りfetch(limit20)は密集エリアで少し離れた投稿/厳選を取りこぼし、後段の8転載予約が
+      //   supabaseRecs 由来のため届かなかった(実測: まったり@新大久保で投稿カフェ0件・枠は近所の寺/銭湯adminで充填)。
+      //   ⚠source∈(user/manual)＝投稿と手厳選のみを別取得(admin一括取込の寺/銭湯は対象外＝遠方混入を防ぐ)。
+      //   気分タグ(sbMustTags)取得で気分適合を自動担保＋距離厳守(近め=hardcap圏内/遠出=遠リング)で近い順を壊さない。
+      if (hasLocation) {
+        try {
+          const { findNearbyPlacesRaw, nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
+          const _featTags = sbMustTags.length ? sbMustTags : sbFallbackTags;
+          const _featRows = await findNearbyPlacesRaw(
+            answers.originLat ?? 0, answers.originLng ?? 0,
+            Math.round(sbRadiusKm * 1000), _featTags, 200, Math.round(sbMinRadiusKm * 1000),
+          ).catch(() => [] as Awaited<ReturnType<typeof findNearbyPlacesRaw>>);
+          const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
+          const _isFeat = (s?: string | null) => { const v = (s ?? "").toLowerCase(); return v === "user" || v === "manual"; };
+          const _have = new Set(sbResults.map(r => r.name));
+          let _fAdded = 0;
+          for (const row of _featRows) {
+            if (!_isFeat(row.source_type)) continue;
+            if (_have.has(row.name)) continue;
+            const km = (row.distance_m ?? 0) / 1000;
+            if (km < sbMinRadiusKm) continue;                          // 遠出バイアス尊重(近すぎる投稿を遠出検索に混ぜない)
+            if (sbMinRadiusKm === 0 && km > _featCapKm * 1.2) continue; // 近め: hardcap圏内のみ(遠い投稿/厳選を混ぜない=近い順を壊さない)
+            sbResults.push(nearbyRowToPlaceResponse(row, answers.transport ?? "車"));
+            _have.add(row.name); _fAdded++;
+            if (_fAdded >= 16) break;
+          }
+        } catch { /* 投稿/厳選の合流失敗は通常候補で続行 */ }
+      }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
@@ -9234,7 +9264,13 @@ async function handleRecommend(request: Request) {
           };
           const _inSet = new Set(recommendations.map(r => r.title ?? ""));
           const _need = 8 - recommendations.filter(_isCurT).length;
-          const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
+          // 投稿(user)＞手厳選(manual)＞admin一括取込 の順で優先。同層は近い順。
+          //   ＝「投稿・手厳選を優先して最大8」(ユーザー指定2026-07-22)。misc adminより投稿/映え厳選が先に埋まる。
+          const _tierOf = (r: { _rawSource?: string }) => { const s = (r._rawSource ?? "").toLowerCase(); return s === "user" ? 0 : s === "manual" ? 1 : 2; };
+          const _extra = supabaseRecs
+            .filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r))
+            .sort((a, b) => (_tierOf(a) - _tierOf(b)) || ((_km(a) ?? 9e9) - (_km(b) ?? 9e9)))
+            .slice(0, _need);
           if (_extra.length) {
             const _curNow = recommendations.filter(_isCurT);
             const _nonCur = recommendations.filter(r => !_isCurT(r));
