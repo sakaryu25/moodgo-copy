@@ -9378,16 +9378,9 @@ async function handleRecommend(request: Request) {
         }
         // 説明文の完全重複を最終段で潰す(2026-07-20 監査#1): 同一vibe定型文が2件目以降で出たら言い換えに差し替え。
         recommendations = dedupeReasons(recommendations);
-        const _dbgCur = (arr: Array<{ title?: string; name?: string; _rawSource?: string; source?: string }>) =>
-          arr.filter(r => ["user", "admin", "manual"].includes(((r._rawSource ?? r.source) ?? "").toLowerCase())).map(r => r.title ?? r.name ?? "");
         return json({
           recommendations,
           source: "supabase",
-          _dbg: {
-            poolCur: _dbgCur(supabaseRecs),
-            sbResCur: _dbgCur(sbResults as unknown as Array<{ name?: string; source?: string }>),
-            recCur: _dbgCur(recommendations),
-          },
           searchId,
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
