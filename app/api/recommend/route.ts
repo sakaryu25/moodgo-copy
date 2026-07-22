@@ -7431,10 +7431,12 @@ async function handleRecommend(request: Request) {
       if (hasLocation) {
         try {
           const { findNearbyPlacesRaw, nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
-          const _featTags = sbMustTags.length ? sbMustTags : sbFallbackTags;
+          // ⚠気分タグで取得する。sbMustTags は素の気分検索では空(気分タグがniceToHaveへ降格)なので、
+          //   realMoodTag(=#まったりしたい 等)を明示的に使う。深掘り時は深掘りタグで絞る。
+          const _featTags = deepDiveTags.length > 0 ? deepDiveTags : (realMoodTag ? [realMoodTag] : []);
           const _featRows = await findNearbyPlacesRaw(
             answers.originLat ?? 0, answers.originLng ?? 0,
-            Math.round(sbRadiusKm * 1000), _featTags, 200, Math.round(sbMinRadiusKm * 1000),
+            Math.round(sbRadiusKm * 1000), _featTags, 300, Math.round(sbMinRadiusKm * 1000),
           ).catch(() => [] as Awaited<ReturnType<typeof findNearbyPlacesRaw>>);
           const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
@@ -7445,8 +7447,8 @@ async function handleRecommend(request: Request) {
             if (!_isFeat(row.source_type)) continue;
             if (_have.has(row.name)) continue;
             const km = (row.distance_m ?? 0) / 1000;
-            if (km < sbMinRadiusKm) continue;                          // 遠出バイアス尊重(近すぎる投稿を遠出検索に混ぜない)
-            if (sbMinRadiusKm === 0 && km > _featCapKm * 1.2) continue; // 近め: hardcap圏内のみ(遠い投稿/厳選を混ぜない=近い順を壊さない)
+            if (km < sbMinRadiusKm) continue;                    // 遠出バイアス尊重(近すぎる投稿を遠出検索に混ぜない)
+            if (sbMinRadiusKm === 0 && km > _featCapKm) continue; // 近め: hardcap圏内のみ(遠い投稿/厳選を混ぜない=近い順を壊さない)
             sbResults.push(nearbyRowToPlaceResponse(row, answers.transport ?? "車"));
             _have.add(row.name); _fAdded++;
             if (_fAdded >= 16) break;
