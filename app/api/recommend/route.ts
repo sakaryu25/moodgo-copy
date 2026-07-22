@@ -7423,32 +7423,6 @@ async function handleRecommend(request: Request) {
         }
       }
 
-      // ── 投稿/adminキュレーションを確実にプールへ合流（「最大8転載」の保証・2026-07-22）─────────
-      //   本経路の最寄りfetch(limit20)は密集エリアで少し離れたcurated(source=user/admin/manual)を取りこぼし、
-      //   後段の「最大8転載」予約は supabaseRecs 由来のため届かなかった（実測: まったり@新大久保で投稿カフェ8件が0件）。
-      //   ここで気分タグ(sbMustTags)で source∈curated を広め(limit200)に別取得しプールへ合流＝確実に候補化する。
-      //   タグ取得なので気分適合は自動担保（#お腹すいた検索に#まったり投稿は入らない）。遠出バイアス(sbMinRadiusKm)尊重。
-      if (hasLocation) {
-        try {
-          const { findNearbyPlacesRaw, nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
-          const curTags = sbMustTags.length ? sbMustTags : sbFallbackTags;
-          const curRows = await findNearbyPlacesRaw(
-            answers.originLat ?? 0, answers.originLng ?? 0,
-            Math.round(sbRadiusKm * 1000), curTags, 200, Math.round(sbMinRadiusKm * 1000),
-          ).catch(() => [] as Awaited<ReturnType<typeof findNearbyPlacesRaw>>);
-          const isCur = (s?: string | null) => { const v = (s ?? "").toLowerCase(); return v === "user" || v === "admin" || v === "manual"; };
-          const have = new Set(sbResults.map(r => r.name));
-          let added = 0;
-          for (const row of curRows) {
-            if (!isCur(row.source_type)) continue;
-            if (have.has(row.name)) continue;
-            if (((row.distance_m ?? 0) / 1000) < sbMinRadiusKm) continue;  // 遠出バイアス尊重
-            sbResults.push(nearbyRowToPlaceResponse(row, answers.transport ?? "車"));
-            have.add(row.name); added++;
-            if (added >= 24) break;   // 8転載＋下流フィルタ/多様化cap の減耗ぶんの余地
-          }
-        } catch { /* curated合流失敗は通常候補で続行 */ }
-      }
 
       // ── 自由ワード/絞り込み: Supabaseのテキスト一致スポットを候補に合流 ──────────────
       //   気分タグ検索とは別軸で、freeWord/refinement の語に合う実在DBスポットを拾い、
@@ -9244,45 +9218,30 @@ async function handleRecommend(request: Request) {
         const _curTitles = new Set(supabaseRecs.filter(_curSrc).map(r => r.title ?? "").filter(Boolean));
         const _isCurT = (r: { title?: string }) => _curTitles.has(r.title ?? "");
         const _fgActive = !hasDropdownDeepDive && !!freewordGenreRule(answers.freeWord ?? "");
-        if (!_fgActive) {
+        if (!_fgActive && recommendations.filter(_isCurT).length < 8) {
           const _km = (r: { distanceKm?: number; distanceText?: string }): number | null => {
             if (typeof r.distanceKm === "number") return r.distanceKm;
             const m = (r.distanceText ?? "").match(/([\d.]+)\s*km/);
             return m ? parseFloat(m[1]) : null;
           };
-          const _near = (r: { distanceKm?: number; distanceText?: string }) => _km(r) ?? 9e9;
-          const _curN = recommendations.filter(_isCurT).length;
-          if (_curN < 8) {
-            // 下限: curated(投稿/admin)を8件まで確保。プールに合流済みのcuratedを距離OK内で引き上げる。
-            const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
-              ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
-            const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
-              const km = _km(r);
-              if (km == null) return true;
-              if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
-              return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
-            };
-            const _inSet = new Set(recommendations.map(r => r.title ?? ""));
-            const _need = 8 - _curN;
-            const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
-            if (_extra.length) {
-              const _curNow = recommendations.filter(_isCurT);
-              const _nonCur = recommendations.filter(r => !_isCurT(r));
-              const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
-              let _merged = [..._curNow, ..._extra, ..._keptNon];
-              if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => _near(a) - _near(b)); // 近め/食=近い順を再担保
-              recommendations = _merged.slice(0, 15);
-            }
-          } else if (_curN > 8) {
-            // 上限「最大8」: 非curatedで残り枠を埋められる時だけ、curatedを近い順で8件にトリム(薄い時は温存)。
-            const _cur = recommendations.filter(_isCurT);
-            const _non = recommendations.filter(r => !_isCurT(r));
-            if (_non.length >= 7) {
-              const _keptCur = [..._cur].sort((a, b) => _near(a) - _near(b)).slice(0, 8);
-              let _m = [..._keptCur, ..._non];
-              if (minRadiusKm === 0) _m = [..._m].sort((a, b) => _near(a) - _near(b));
-              recommendations = _m.slice(0, 15);
-            }
+          const _capKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
+            ? DIST_HARDCAP_KM[answers.distanceFeeling] : radiusKm;
+          const _distOk = (r: { distanceKm?: number; distanceText?: string }) => {
+            const km = _km(r);
+            if (km == null) return true;
+            if (isFoodMood || minRadiusKm === 0) return km <= _capKm * 1.2;   // 近め/食: hardcap圏内のcuratedのみ
+            return km >= minRadiusKm * 0.85;                                  // 遠出: 遠リング側のcuratedのみ(近場で汚さない)
+          };
+          const _inSet = new Set(recommendations.map(r => r.title ?? ""));
+          const _need = 8 - recommendations.filter(_isCurT).length;
+          const _extra = supabaseRecs.filter(r => _curSrc(r) && !_inSet.has(r.title ?? "") && _distOk(r)).slice(0, _need);
+          if (_extra.length) {
+            const _curNow = recommendations.filter(_isCurT);
+            const _nonCur = recommendations.filter(r => !_isCurT(r));
+            const _keptNon = _nonCur.slice(0, Math.max(0, _nonCur.length - _extra.length)); // 非curated末尾を落として15維持
+            let _merged = [..._curNow, ..._extra, ..._keptNon];
+            if (minRadiusKm === 0) _merged = [..._merged].sort((a, b) => (_km(a) ?? 9e9) - (_km(b) ?? 9e9)); // 近め/食=近い順を再担保
+            recommendations = _merged.slice(0, 15);
           }
         }
         // ── 55人Z世代監査(2026-07-21)の是正: 壊れPOI除去 → freeWord vibe再ランク → 飲食freeWord経路の食ゲート。
