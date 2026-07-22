@@ -4069,6 +4069,22 @@ async function ltCachePut(key: string, data: unknown, ttlMs: number = LT_CACHE_T
     );
   } catch { /* 無視 */ }
 }
+// ── 投稿/手厳選(source∈user/manual)の全件をメモリキャッシュ(10分)──────────────────────────
+//   密集エリアで find_nearby_places(気分タグ)がlimitに埋もれて投稿/厳選を取りこぼす問題の回避。
+//   featured は全国でも数百件と小さいので、全件をメモリに持ち各検索は距離で近傍を絞る(=確実に最寄りが取れる)。
+let _featuredPlacesCache: { at: number; rows: Array<Record<string, unknown>> } | null = null;
+async function loadFeaturedPlaces(): Promise<Array<Record<string, unknown>>> {
+  if (!supabase) return [];
+  const now = Date.now();
+  if (_featuredPlacesCache && now - _featuredPlacesCache.at < 10 * 60 * 1000) return _featuredPlacesCache.rows;
+  try {
+    const { data } = await supabase.from("places")
+      .select("id,name,address,lat,lng,google_place_id,tags,description,rating,rating_count,open_hours,nearest_station,source_type,hotpepper_url,image_urls,photo_url")
+      .in("source_type", ["user", "manual"]).eq("is_active", true).limit(5000);
+    _featuredPlacesCache = { at: now, rows: (data ?? []) as Array<Record<string, unknown>> };
+    return _featuredPlacesCache.rows;
+  } catch { return _featuredPlacesCache?.rows ?? []; }
+}
 // enr: キャッシュの形（部分的でよい。あるフィールドだけ利用）
 type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[]; checked?: boolean };
 
@@ -7430,28 +7446,36 @@ async function handleRecommend(request: Request) {
       //   気分タグ(sbMustTags)取得で気分適合を自動担保＋距離厳守(近め=hardcap圏内/遠出=遠リング)で近い順を壊さない。
       if (hasLocation) {
         try {
-          const { findNearbyPlacesRaw, nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
-          // ⚠気分タグで取得する。sbMustTags は素の気分検索では空(気分タグがniceToHaveへ降格)なので、
-          //   realMoodTag(=#まったりしたい 等)を明示的に使う。深掘り時は深掘りタグで絞る。
-          const _featTags = deepDiveTags.length > 0 ? deepDiveTags : (realMoodTag ? [realMoodTag] : []);
-          const _featRows = await findNearbyPlacesRaw(
-            answers.originLat ?? 0, answers.originLng ?? 0,
-            Math.round(sbRadiusKm * 1000), _featTags, 300, Math.round(sbMinRadiusKm * 1000),
-          ).catch(() => [] as Awaited<ReturnType<typeof findNearbyPlacesRaw>>);
+          const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
+          // ⚠source∈(user/manual)の全件(数百)から距離で近傍を絞る。find_nearby_places(気分タグ)は
+          //   密集エリアで limit に埋もれ投稿/厳選を取りこぼす(実測: #まったりしたい300件にSeoul Cafeが入らない)。
+          const _feat = await loadFeaturedPlaces();
+          const _lat0 = answers.originLat ?? 0, _lng0 = answers.originLng ?? 0;
           const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
-          const _isFeat = (s?: string | null) => { const v = (s ?? "").toLowerCase(); return v === "user" || v === "manual"; };
+          const _hav = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+            const R = 6371, toR = (d: number) => d * Math.PI / 180;
+            const s1 = Math.sin(toR(bLat - aLat) / 2), s2 = Math.sin(toR(bLng - aLng) / 2);
+            return 2 * R * Math.asin(Math.min(1, Math.sqrt(s1 * s1 + Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * s2 * s2)));
+          };
           const _have = new Set(sbResults.map(r => r.name));
-          let _fAdded = 0;
-          for (const row of _featRows) {
-            if (!_isFeat(row.source_type)) continue;
-            if (_have.has(row.name)) continue;
-            const km = (row.distance_m ?? 0) / 1000;
-            if (km < sbMinRadiusKm) continue;                    // 遠出バイアス尊重(近すぎる投稿を遠出検索に混ぜない)
-            if (sbMinRadiusKm === 0 && km > _featCapKm) continue; // 近め: hardcap圏内のみ(遠い投稿/厳選を混ぜない=近い順を壊さない)
-            sbResults.push(nearbyRowToPlaceResponse(row, answers.transport ?? "車"));
-            _have.add(row.name); _fAdded++;
-            if (_fAdded >= 16) break;
+          const _cand: Array<{ row: Record<string, unknown>; km: number }> = [];
+          for (const row of _feat) {
+            const rlat = row.lat as number | null, rlng = row.lng as number | null;
+            if (typeof rlat !== "number" || typeof rlng !== "number") continue;
+            const nm = (row.name as string) ?? "";
+            if (!nm || _have.has(nm)) continue;
+            const tags = (row.tags as string[]) ?? [];
+            if (realMoodTag && !tags.includes(realMoodTag)) continue;   // 気分適合(投稿/厳選も気分一致だけ混ぜる)
+            const km = _hav(_lat0, _lng0, rlat, rlng);
+            if (km < sbMinRadiusKm) continue;                            // 遠出バイアス尊重
+            if (sbMinRadiusKm === 0 ? km > _featCapKm : km > sbRadiusKm) continue;  // 近め=hardcap圏内/遠出=半径内
+            _cand.push({ row, km });
+          }
+          _cand.sort((a, b) => a.km - b.km);
+          for (const { row, km } of _cand.slice(0, 16)) {
+            sbResults.push(nearbyRowToPlaceResponse({ ...row, distance_m: km * 1000 } as unknown as Parameters<typeof nearbyRowToPlaceResponse>[0], answers.transport ?? "車"));
+            _have.add(row.name as string);
           }
         } catch { /* 投稿/厳選の合流失敗は通常候補で続行 */ }
       }
