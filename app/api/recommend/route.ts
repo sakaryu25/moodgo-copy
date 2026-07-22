@@ -4073,17 +4073,28 @@ async function ltCachePut(key: string, data: unknown, ttlMs: number = LT_CACHE_T
 //   密集エリアで find_nearby_places(気分タグ)がlimitに埋もれて投稿/厳選を取りこぼす問題の回避。
 //   featured は全国でも数百件と小さいので、全件をメモリに持ち各検索は距離で近傍を絞る(=確実に最寄りが取れる)。
 let _featuredPlacesCache: { at: number; rows: Array<Record<string, unknown>> } | null = null;
-async function loadFeaturedPlaces(): Promise<Array<Record<string, unknown>>> {
-  if (!supabase) return [];
+let _featuredLoading = false;
+// ⚠source_type は未索引で、この in() は521k行のseq scanで**約12秒**かかる(実測)。ホットパスでawaitすると
+//   コールドスタート時に60sゲートウェイtimeoutを起こす(サウナ検索が0件になる回帰・2026-07-22監査で発覚)。
+//   → 非同期リフレッシュに変更: キャッシュ有効なら即返す。失効/未取得なら**古い値(or空)を即返し**、
+//     裏でリフレッシュだけ走らせる(ホットパスをブロックしない)。索引 add-source-type-index.sql 適用後は
+//     クエリが速くなり初回もすぐ埋まる。
+function loadFeaturedPlaces(): Array<Record<string, unknown>> {
   const now = Date.now();
-  if (_featuredPlacesCache && now - _featuredPlacesCache.at < 10 * 60 * 1000) return _featuredPlacesCache.rows;
-  try {
-    const { data } = await supabase.from("places")
-      .select("id,name,address,lat,lng,google_place_id,tags,description,rating,rating_count,open_hours,nearest_station,source_type,hotpepper_url,image_urls,photo_url")
-      .in("source_type", ["user", "manual"]).eq("is_active", true).limit(5000);
-    _featuredPlacesCache = { at: now, rows: (data ?? []) as Array<Record<string, unknown>> };
-    return _featuredPlacesCache.rows;
-  } catch { return _featuredPlacesCache?.rows ?? []; }
+  const fresh = _featuredPlacesCache && now - _featuredPlacesCache.at < 10 * 60 * 1000;
+  if (!fresh && !_featuredLoading && supabase) {
+    _featuredLoading = true;
+    const sb = supabase;
+    void (async () => {
+      try {
+        const { data } = await sb.from("places")
+          .select("id,name,address,lat,lng,google_place_id,tags,description,rating,rating_count,open_hours,nearest_station,source_type,hotpepper_url,image_urls,photo_url")
+          .in("source_type", ["user", "manual"]).eq("is_active", true).limit(5000);
+        _featuredPlacesCache = { at: Date.now(), rows: (data ?? []) as Array<Record<string, unknown>> };
+      } catch { /* 失敗時は次回再試行 */ } finally { _featuredLoading = false; }
+    })();
+  }
+  return _featuredPlacesCache?.rows ?? [];
 }
 // enr: キャッシュの形（部分的でよい。あるフィールドだけ利用）
 type EnrichCacheVal = { photoUrls?: string[]; weekday?: string[]; periods?: GooglePeriod[]; checked?: boolean };
@@ -6129,7 +6140,9 @@ const FREEWORD_GENRE: Array<{ re: RegExp; key: string; pos: RegExp; tags: string
     pos: /雑貨|インテリア|zakka|生活|ヴィレッジヴァンガード|ヴィレヴァン|ロフト|LOFT|ハンズ|家具|フランフラン|Francfranc|文具|ステーショナリー|セレクト/i, tags: ["#雑貨・インテリア"] },
   { re: /海沿い|海辺|海岸|ビーチ|オーシャン|シーサイド|beach|海が見え/i, key: "海辺",
     pos: /海|ビーチ|beach|海岸|海辺|浜|マリン|オーシャン|岬|漁港|シーサイド|ベイ|渚|なぎさ|サンビーチ|海浜/i, tags: ["#海辺", "#海辺カフェ"] },
-  { re: /絶景|フォトスポット|フォトジェニック|映えスポット|パノラマ/i, key: "絶景",
+  // ⚠フォトスポット/フォトジェニックはここ(絶景=展望台/夜景)に入れない。Z世代の「フォトスポット」は
+  //   映えカフェ/スイーツ意図で、展望台在庫を引くと世界観が壊れる(監査)。→ 映えvibeに回す。
+  { re: /絶景|パノラマ|山頂の景色|大パノラマ/i, key: "絶景",
     pos: /絶景|展望|パノラマ|ビュー|view|タワー|丘|山頂|岬|渓谷|滝|ダム|大橋|フォト|スカイ|テラス|ヒルズ/i, tags: ["#絶景スポット", "#展望台", "#夜景"] },
   // ⚠カフェタグは admin 過剰付与で汚染(Hello Kitty等ランドマークが#海辺カフェ/#癒しカフェ等を6個保持)。
   //   4,873件が名前にカフェを含むので、汚染タグは使わず名前肯定語のみで絞る=ランドマーク混入を断つ。
@@ -6147,12 +6160,14 @@ function freewordGenreRule(freeWord: string): typeof FREEWORD_GENRE[number] | nu
 //   boost=世界観一致を前方へ / derank=飯屋/施設/チェーンを後方へ / unfit=その文脈で完全に除外(0件回避付き)。
 const VIBE_LEXICON: Array<{ key: string; re: RegExp; boost: RegExp; derank: RegExp; unfit?: RegExp }> = [
   { key: "映え", re: /映え|ばえ|フォトジェニック|フォトスポット|インスタ映え|映えスイーツ|映えカフェ|かわいい|可愛い/i,
-    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|ヒルズ|タワー|展望|ビュー|view|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|トゥンカロン|ハットグ|ベーカリー|bakery/i,
-    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|capybara|うさぎ|フクロウ|ハリネズミ|爬虫類|cat ?cafe|dog ?cafe|animal ?cafe|動物園|水族館/i,
+    // ⚠展望/タワー/ビュー は入れない(bare「映え」で展望台/夜景に流れ量産型ギャル/Y2Kの映えカフェ世界観が壊れる・監査で発覚)。
+    boost: /カフェ|cafe|café|coffee|珈琲|スイーツ|パンケーキ|パフェ|クレープ|タルト|ケーキ|ドーナツ|プリン|フォト|テラス|ルーフ|フラワー|garden|ガーデン|ネオン|ソーダ|フルーツ|韓国|白基調|トゥンカロン|ハットグ|ベーカリー|bakery/i,
+    derank: /天下一品|王将|安安|和幸|吉野家|松屋|すき家|大衆|定食|居酒屋|そば|うどん|ラーメン|らーめん|牛丼|ホルモン|銀行|郵便局|役所|図書館|自習|区民|市民|会館|センター$|病院|クリニック|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|カピバラ|capybara|うさぎ|フクロウ|ハリネズミ|爬虫類|cat ?cafe|dog ?cafe|animal ?cafe|動物園|水族館|展望|夜景|大聖堂|結婚式|ウェディング|チャペル/i,
     unfit: /慰霊|慰霊碑|慰霊像|忠魂|殉難|遭難|災害|震災|戦没|平和祈念|自習室|試験場|運転免許|職業安定所|ハローワーク|税務署/i },
-  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ/i,
-    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|チーズ|明洞|カフェ|白基調/i,
-    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$|サウナ|銭湯|レディス|エステ|マッサージ|ネイル|美容室|美容院|ヘアサロン|クリニック|病院/i },
+  { key: "韓国っぽ", re: /韓国っぽ|韓国風|コリアン|センイル|ハングル|オルチャン|韓国系|韓国スイーツ|韓国カフェ/i,
+    // ⚠カフェは入れない(韓国っぽ/センイル/韓国カフェは"カフェ"意図。汎用カフェ(SOMPO美術館カフェ等)が#1化するのを防ぐ)。韓国シグナル要求。
+    boost: /韓国|コリア|センイル|ソウル|ハングル|トゥンカロン|ホットク|ハットグ|明洞|白基調|オルチャン/i,
+    derank: /和食|中華|そば|うどん|寺|神社|大師|博物館|資料館|競技場|会館|センター$|サウナ|銭湯|レディス|エステ|マッサージ|ネイル|美容室|美容院|ヘアサロン|クリニック|病院|焼肉|ホルモン|居酒屋|食堂|厨房|チキン|参鶏湯|スンドゥブ|タッカルビ|サムギョプ|コプチャン|ソルロンタン|プルコギ|冷麺/i },
   { key: "チル", re: /チル|chill|ゆるっと|落ち着け|癒され|ひとり時間|ぼっち|静かに過ご/i,
     boost: /カフェ|cafe|喫茶|珈琲|coffee|純喫茶|サウナ|銭湯|の湯|湯処|ブック|book|テラス|庭園|garden|静/i,
     derank: /カラオケ|パチンコ|ゲーセン|ゲームセンター|百貨店|デパート|ドンキ|ドン・キホーテ|フードコート|量販|家電|ヨドバシ|ビックカメラ|コンカフェ|コンセプトカフェ|メイドカフェ|ガールズバー|動物カフェ|猫カフェ|ねこカフェ|犬カフェ|フクロウ|カピバラ|capybara|cat ?cafe|dog ?cafe|ミュージアム|遊園地|動物園|水族館|ズー|zooパーク|zoo ?park/i },
@@ -6168,6 +6183,8 @@ function freewordVibe(fw: string): typeof VIBE_LEXICON[number] | null {
 // チェーン/買取リユースのブランド名(映え/穴場/サブカル/vibe文脈で末尾送り＝除去でなくderankで0件回避)。
 const CHAIN_BRAND_RE = /天下一品|餃子の王将|大阪王将|日高屋|幸楽苑|リンガーハット|吉野家|松屋(?:フーズ)?|すき家|なか卯|やよい軒|大戸屋|安安|牛角|叙々苑|さぼてん|和幸|わたみ|和民|白木屋|魚民|笑笑|千年の宴|鳥貴族|磯丸水産|スターバックス|スタバ|ドトール|タリーズ|エクセルシオール|サンマルク|星乃珈琲|コメダ|プロント|ベローチェ|ミスタードーナツ|マクドナルド|ケンタッキー|モスバーガー|ガスト|サイゼリヤ|ジョナサン|ロイヤルホスト|WEGO|RINKAN|セカンドストリート|2nd ?STREET|TreFacStyle|トレファク|ブックオフ|BOOK ?OFF|ハードオフ|大黒屋/i;
 // エリア名/駅名/施設館名/カテゴリ名だけの壊れPOI(スポットとして不適格＝除外)。
+// 展望台/夜景/絶景の"信頼できる"タグ。界隈カフェvibe(映え/韓国っぽ/チル/レトロ)では展望台/夜景ビルを後方送りに使う。
+const SCENIC_VIBE_TAG_RE = /#夜景|#展望台|#絶景スポット/;
 const BROKEN_POI_RE = /^(?:梅田|難波|なんば|心斎橋|天王寺|渋谷|新宿|池袋|原宿|表参道|下北沢|吉祥寺|中崎町|堀江|三宮|栄|天神)$|[一-龥ァ-ヶーｦ-ﾟ]{2,6}駅$|コリアンタウン$|(?:^|の)交差点$|スクランブル交差点$|^(?:蕎麦屋|そば屋|ラーメン屋|定食屋|居酒屋|焼肉屋|カフェ|喫茶店|パン屋|花屋|本屋|美容室|理容室|コンビニ|うどん屋)$|軟式(?:野球場|球場)|^(?:Used Clothing|Dog|Cat|Shop|Store|Cafe|Restaurant|Bar|Vintage)$|(?:こども|子供|ちびっこ)?遊び場$|^屋上(?:広場|庭園)?(?:\s?\d+F)?$|^\d+F$/;
 
 // Z世代トーン整形(2026-07-21): LLMが否定制約を破って残す「おじさん語彙」を決定的に言い換える。
@@ -7451,7 +7468,7 @@ async function handleRecommend(request: Request) {
           const { nearbyRowToPlaceResponse } = await import("@/lib/spatial-search");
           // ⚠source∈(user/manual)の全件(数百)から距離で近傍を絞る。find_nearby_places(気分タグ)は
           //   密集エリアで limit に埋もれ投稿/厳選を取りこぼす(実測: #まったりしたい300件にSeoul Cafeが入らない)。
-          const _feat = await loadFeaturedPlaces();
+          const _feat = loadFeaturedPlaces();  // 同期(裏で非同期リフレッシュ・ホットパスをブロックしない)
           const _lat0 = answers.originLat ?? 0, _lng0 = answers.originLng ?? 0;
           const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
@@ -9334,10 +9351,10 @@ async function handleRecommend(request: Request) {
             }
             const vibeTier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              // ⚠derankは名前のみで判定する。タグの #動物カフェ/#犬カフェ/#猫カフェ は admin取込の一括誤付与が
-              //   全国2600件超(81%が普通のカフェ)で信頼できず、タグderankだと正常なカフェを大量に後方送りしてしまう。
-              //   真の動物カフェ/コンカフェ/施設は名前に語が出るためnameだけで十分。boostはタグも見る(#流行りカフェ等は有効)。
-              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;    // 飯屋/施設/チェーン=後方
+              // ⚠derankは基本 名前のみ判定(#動物カフェ等のタグは admin一括誤付与2600件で信頼不可)。
+              //   ただし #夜景/#展望台/#絶景スポット は信頼できる正確なタグなので、界隈カフェvibe(映え/韓国っぽ/チル/レトロ)
+              //   では展望台/夜景ビルを後方送り(監査: bare映え・チル・フォトで梅田展望ビル/オフィス/絶景が場違い上位化)。
+              if (vb.derank.test(nm) || CHAIN_BRAND_RE.test(nm) || SCENIC_VIBE_TAG_RE.test(tg)) return 2;  // 飯屋/施設/チェーン/展望台=後方
               if (vb.boost.test(nm) || vb.boost.test(tg)) return 0;          // 世界観一致=前方
               return 1;
             };
@@ -9374,7 +9391,7 @@ async function handleRecommend(request: Request) {
           if (_vbF) {
             const _tier = (r: { title?: string; tags?: string[] }) => {
               const nm = r.title ?? ""; const tg = (r.tags ?? []).join(" ");
-              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm)) return 2;   // derankは名前のみ(誤タグ汚染回避・上記②と同方針)
+              if (_vbF.derank.test(nm) || CHAIN_BRAND_RE.test(nm) || SCENIC_VIBE_TAG_RE.test(tg)) return 2;   // derankは名前のみ(誤タグ回避)＋展望台タグ
               if (_vbF.boost.test(nm) || _vbF.boost.test(tg)) return 0;
               return 1;
             };
