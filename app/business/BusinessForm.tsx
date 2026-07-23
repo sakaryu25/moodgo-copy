@@ -3,12 +3,12 @@
 //   送信先は既存 POST /api/suggestions（multipart・画像アップロード・NGワード・IPレート制限つき）。
 //   source='business' で送る＝サーバー側で必ず status='pending'（admin審査後に検索へ掲載）。
 //   タグは検索側の正本 lib/predefined-tags.ts から直接import＝検索にそのまま効く値だけを選ばせる。
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { TAG_CATEGORIES } from "@/lib/predefined-tags";
+import { MOOD_DEEP_DIVE } from "@/lib/mood-deepdive";
 
 const MOOD_TAGS = TAG_CATEGORIES.find((c) => c.key === "mood")?.tags ?? [];
 const BUDGET_TAGS = (TAG_CATEGORIES.find((c) => c.key === "budget")?.tags ?? []).filter((t) => t !== "#未定");
-const FOOD_TAGS = TAG_CATEGORIES.find((c) => c.key === "foodGenre")?.tags ?? [];
 
 const input: React.CSSProperties = {
   width: "100%",
@@ -47,7 +47,7 @@ export default function BusinessForm() {
   const [station, setStation] = useState("");
   const [description, setDescription] = useState("");
   const [moods, setMoods] = useState<string[]>([]);
-  const [foods, setFoods] = useState<string[]>([]);
+  const [deep, setDeep] = useState<string[]>([]);   // 深掘りタグ（#こってりラーメン 等・投稿と同じ）
   const [budget, setBudget] = useState("");
   const [hours, setHours] = useState("");
   const [tel, setTel] = useState("");
@@ -58,10 +58,28 @@ export default function BusinessForm() {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [errMsg, setErrMsg] = useState("");
 
-  const toggle = (list: string[], set: (v: string[]) => void, tag: string, max: number) => {
-    if (list.includes(tag)) set(list.filter((t) => t !== tag));
-    else if (list.length < max) set([...list, tag]);
+  // 選んだ気分の深掘り(サブジャンル)候補を L1＋L2 フラットで（投稿画面と同じ体験・重複排除）
+  const deepOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string }[] = [];
+    for (const m of moods) {
+      for (const o of MOOD_DEEP_DIVE[m] ?? []) {
+        if (!seen.has(o.key)) { seen.add(o.key); out.push(o); }
+      }
+    }
+    return out;
+  }, [moods]);
+
+  // 気分を外したら、その気分にしか無かった深掘りタグも自動で外す（迷子タグを残さない）
+  const toggleMood = (tag: string) => {
+    const next = moods.includes(tag) ? moods.filter((t) => t !== tag) : moods.length < 3 ? [...moods, tag] : moods;
+    setMoods(next);
+    const validKeys = new Set<string>();
+    for (const m of next) for (const o of MOOD_DEEP_DIVE[m] ?? []) validKeys.add("#" + o.key);
+    setDeep((prev) => prev.filter((t) => validKeys.has(t)));
   };
+  const toggleDeep = (tag: string) =>
+    setDeep((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
 
   const emailOk = /.+@.+\..+/.test(email.trim());
   const canSend =
@@ -88,7 +106,9 @@ export default function BusinessForm() {
       fd.set("contact", contactParts.join(" / "));
       fd.set("posterName", spotName.trim());
       fd.set("source", "business");   // ← サーバーで必ずpending(admin審査)になる
-      fd.set("autoTags", JSON.stringify([...moods, ...foods, ...(budget ? [budget] : [])]));
+      // 深掘りタグは今の気分に有効なものだけ送る（気分を外した後の迷子タグを除外）
+      const validDeep = deep.filter((t) => deepOptions.some((o) => "#" + o.key === t));
+      fd.set("autoTags", JSON.stringify([...moods, ...validDeep, ...(budget ? [budget] : [])]));
       for (const f of files.slice(0, 3)) fd.append("images", f);
       const res = await fetch("/api/suggestions", { method: "POST", body: fd });
       const d = await res.json().catch(() => null);
@@ -134,24 +154,28 @@ export default function BusinessForm() {
       </label>
 
       <label style={label}>どんな気分に合う？<span style={req}>必須</span>
-        <p style={hint}>最大3つ。選んだ気分の検索結果に表示されやすくなります</p>
+        <p style={hint}>最大3つ。選んだ気分で探しているユーザーの検索結果に表示されやすくなります</p>
       </label>
       <div style={chipWrap}>
         {MOOD_TAGS.map((tag) => (
-          <TagChip key={tag} tag={tag} on={moods.includes(tag)}
-            onToggle={() => toggle(moods, setMoods, tag, 3)} />
+          <TagChip key={tag} tag={tag} on={moods.includes(tag)} onToggle={() => toggleMood(tag)} />
         ))}
       </div>
 
-      <label style={label}>料理ジャンル（飲食店の場合）
-        <p style={hint}>最大2つ</p>
-      </label>
-      <div style={chipWrap}>
-        {FOOD_TAGS.map((tag) => (
-          <TagChip key={tag} tag={tag} on={foods.includes(tag)}
-            onToggle={() => toggle(foods, setFoods, tag, 2)} />
-        ))}
-      </div>
+      {/* 深掘り: 選んだ気分に応じてサブジャンル候補を表示（投稿画面と同じ体験）*/}
+      {deepOptions.length > 0 && (
+        <>
+          <label style={label}>もっと具体的に（ジャンル・雰囲気）
+            <p style={hint}>当てはまるものを選ぶと、より狙った検索に表示されます（任意・複数可）</p>
+          </label>
+          <div style={chipWrap}>
+            {deepOptions.map((o) => {
+              const tag = "#" + o.key;
+              return <TagChip key={o.key} tag={o.label} on={deep.includes(tag)} onToggle={() => toggleDeep(tag)} />;
+            })}
+          </div>
+        </>
+      )}
 
       <label style={label}>予算帯（1人あたり）</label>
       <div style={chipWrap}>
