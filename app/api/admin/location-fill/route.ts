@@ -95,13 +95,16 @@ async function autoFill(db: NonNullable<typeof supabase>, row: Row): Promise<{ l
 }
 
 // 1テーブルから補完対象を取得（名前カラムを name に正規化・テーブル未作成は空）
-async function fetchIncomplete(db: NonNullable<typeof supabase>, table: TableKey, limit: number): Promise<Row[]> {
+//   after を渡すと id > after だけ返す(keyset)＝一括補完で「直せない先頭行」を飛ばして前進できる。
+async function fetchIncomplete(db: NonNullable<typeof supabase>, table: TableKey, limit: number, after = ""): Promise<Row[]> {
   const cfg = TABLES[table];
   try {
-    const { data, error } = await db.from(table)
+    let query = db.from(table)
       .select(`id, ${cfg.nameCol}, address, lat, lng, ${cfg.tagCol}`)
       .eq(cfg.active[0], cfg.active[1] as never)
-      .or(incompleteOrExpr()).order("id").limit(limit);
+      .or(incompleteOrExpr());
+    if (after) query = query.gt("id", after);
+    const { data, error } = await query.order("id").limit(limit);
     if (error) return [];
     return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
       id: String(r.id), name: String(r[cfg.nameCol] ?? ""),
@@ -191,16 +194,23 @@ export async function POST(req: NextRequest) {
   }
 
   // 一括 自動補完（1呼び出し=3テーブル各25件・コスト/タイムアウト対策。クライアントがdoneまで再呼び出し）。
-  //   3テーブルを毎回処理＝1テーブルの補完不能行が他テーブルの進行をブロックしない。
+  //   ⚠ keyset(id>after)で毎回「続き」を処理する＝直せない行を飛ばして前進し、各行を1回だけ試行。
+  //   これが無いと補完不能な先頭行を毎回取り直し、後続の直せる行に永久に到達できない（＝1200件で回り続ける不具合）。
   if (action === "auto-batch") {
-    let processed = 0, filled = 0;
+    const inCursors: Record<string, string> = (body?.cursors && typeof body.cursors === "object") ? body.cursors : {};
+    let processed = 0, filled = 0, more = false;
+    const cursors: Record<string, string> = {};
     for (const t of TABLE_KEYS) {
-      const rows = await fetchIncomplete(db, t, 25);
+      const after = typeof inCursors[t] === "string" ? inCursors[t] : "";
+      const rows = await fetchIncomplete(db, t, 25, after);
       processed += rows.length;
       for (const row of rows) { if (await autoFill(db, row)) filled++; }
+      // 直せた/直せないに関わらず、取得した末尾idまでカーソルを進める（次回はその先を処理）
+      cursors[t] = rows.length ? rows[rows.length - 1].id : after;
+      if (rows.length === 25) more = true;   // フルページ＝まだ続きがある可能性
     }
-    // done: 全テーブルで対象が尽きた or この回で1件も改善できなかった（補完不能行だけ残った＝無限ループ回避）
-    return NextResponse.json({ ok: true, processed, filled, done: processed === 0 || filled === 0 });
+    // done: どのテーブルもフルページを返さなかった＝1パス完了（補完不能行は飛ばし済み）
+    return NextResponse.json({ ok: true, processed, filled, cursors, done: !more });
   }
 
   return NextResponse.json({ ok: false, error: "action は auto | auto-batch | save" }, { status: 400 });

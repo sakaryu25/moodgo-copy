@@ -335,12 +335,16 @@ function LocationFillPanel({ secret }: { secret: string }) {
   const runBatch = async () => {
     setBatch({ running: true, filled: 0, processed: 0 });
     let filled = 0, processed = 0, guard = 0;
-    while (guard++ < 60) {
-      const d = await post({ action: "auto-batch" });
+    // keyset カーソルをテーブル別に持ち回り＝直せない行を飛ばして最後まで前進（1クリックで全件1パス）。
+    // guard は「万一 done が来ない時」の安全網（3000回×75件＝22万件までは1パス完走できる）。
+    let cursors: Record<string, string> = {};
+    while (guard++ < 3000) {
+      const d = await post({ action: "auto-batch", cursors });
       if (!d?.ok) break;
       filled += d.filled ?? 0; processed += d.processed ?? 0;
+      if (d.cursors) cursors = d.cursors;
       setBatch({ running: true, filled, processed });
-      if (d.done || (d.processed ?? 0) === 0) break;
+      if (d.done) break;
     }
     setBatch({ running: false, filled, processed });
     load(q);
