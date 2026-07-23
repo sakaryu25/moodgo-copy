@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Clock, MapPin, MessagesSquare } from 'lucide-react-native';
 import { GlassView } from 'expo-glass-effect';
 import { LIQUID_GLASS } from './GlassSurface';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Dimensions,
@@ -220,9 +220,14 @@ const HOME_MOOD_CHIP_KEYS: Array<{ key: string; labelEn: string }> = [
   { key: 'ドライブ',     labelEn: 'Drive' },
   { key: '時間潰し',     labelEn: 'Kill time' },
 ];
-const HOME_MOOD_CHIPS = HOME_MOOD_CHIP_KEYS
-  .map(({ key, labelEn }) => ({ mood: MOODS.find((m) => m.key === key)!, labelEn }))
-  .filter((c) => c.mood);
+// ⚠ MOODS は './QuizFlow' からの import。間接的な循環importでモジュール初期化時に undefined に
+//   なり得る（起動時クラッシュ "Cannot read property 'find' of undefined" @<global> の原因）。
+//   モジュール直下では計算せず、コンポーネント内(レンダー時=全モジュール評価後)で useMemo 経由で組む。
+function buildHomeMoodChips() {
+  return HOME_MOOD_CHIP_KEYS
+    .map(({ key, labelEn }) => ({ mood: (MOODS ?? []).find((m) => m.key === key)!, labelEn }))
+    .filter((c) => c.mood);
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -230,6 +235,9 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
   const insets = useSafeAreaInsets();
 
   // START ボタンのプレスアニメ
+
+  // ホーム気分チップ（MOODS依存＝レンダー時に組む＝モジュール初期化順クラッシュを回避）
+  const HOME_MOOD_CHIPS = useMemo(buildHomeMoodChips, []);
 
   // フェードイン
   const fadeAnim = useRef(new Animated.Value(0)).current;
