@@ -167,6 +167,8 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
   const [log, setLog] = useState<string>("");
   const [stats, setStats] = useState<{ scanned: number; matched: number; applied: number }>({ scanned: 0, matched: 0, applied: 0 });
   const [running, setRunning] = useState(false);
+  // 一度作った Wikidata索引はメモリに保持＝DB取得でコケても5分の再取得が要らない（再実行が軽い）
+  const wdRef = useRef<Map<string, { lat: number; lon: number; url: string }[]> | null>(null);
 
   // Wikidata画像が付きやすい型（映え/自然/観光）。P31/P279*で下位種も拾う。
   const TYPES: [string, string][] = [
@@ -188,29 +190,36 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
     setRunning(true); setStats({ scanned: 0, matched: 0, applied: 0 }); setLog("");
     const append = (s: string) => setLog((prev) => (prev ? prev + "\n" : "") + s);
     try {
-      // ① Wikidata索引をブラウザで構築（query.wikidata.org はCORS許可済み）
-      setPhase("index");
-      const wd = new Map<string, WdRec[]>();
-      for (const [qid, label] of TYPES) {
-        const q = `SELECT ?itemLabel ?lat ?lon ?img WHERE { ?item wdt:P17 wd:Q17 . ?item wdt:P31/wdt:P279* wd:${qid} . ?item wdt:P18 ?img . ?item p:P625/psv:P625 [ wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon ] . ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel)="ja") } LIMIT 20000`;
-        let rows: Array<Record<string, { value: string }>> = [];
-        for (let a = 0; a < 3; a++) {
-          try {
-            const r = await fetch("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { Accept: "application/sparql-results+json" } });
-            if (!r.ok) { await sleep(3000 + a * 3000); continue; }
-            rows = (await r.json()).results.bindings; break;
-          } catch { await sleep(3000); }
+      // ① Wikidata索引をブラウザで構築（query.wikidata.org はCORS許可済み）。
+      //    既に作ってあれば再取得しない（DB取得でコケた後の再実行が数秒で済む）
+      let wd = wdRef.current;
+      if (!wd) {
+        setPhase("index");
+        wd = new Map<string, WdRec[]>();
+        for (const [qid, label] of TYPES) {
+          const q = `SELECT ?itemLabel ?lat ?lon ?img WHERE { ?item wdt:P17 wd:Q17 . ?item wdt:P31/wdt:P279* wd:${qid} . ?item wdt:P18 ?img . ?item p:P625/psv:P625 [ wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon ] . ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel)="ja") } LIMIT 20000`;
+          let rows: Array<Record<string, { value: string }>> = [];
+          for (let a = 0; a < 3; a++) {
+            try {
+              const r = await fetch("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { Accept: "application/sparql-results+json" } });
+              if (!r.ok) { await sleep(3000 + a * 3000); continue; }
+              rows = (await r.json()).results.bindings; break;
+            } catch { await sleep(3000); }
+          }
+          for (const b of rows) {
+            const nn = normName(b.itemLabel?.value ?? "");
+            if (!nn) continue;
+            if (!wd.has(nn)) wd.set(nn, []);
+            wd.get(nn)!.push({ lat: Number(b.lat.value), lon: Number(b.lon.value), url: commonsUrl(b.img.value) });
+          }
+          append(`索引 ${label}: ${rows.length}件（計 ${wd.size}名）`);
+          await sleep(1200);
         }
-        for (const b of rows) {
-          const nn = normName(b.itemLabel?.value ?? "");
-          if (!nn) continue;
-          if (!wd.has(nn)) wd.set(nn, []);
-          wd.get(nn)!.push({ lat: Number(b.lat.value), lon: Number(b.lon.value), url: commonsUrl(b.img.value) });
-        }
-        append(`索引 ${label}: ${rows.length}件（計 ${wd.size}名）`);
-        await sleep(1200);
+        wdRef.current = wd;
+        append(`Wikidata索引: ${wd.size}名（保持済み・以降の再実行では再取得しません）`);
+      } else {
+        append(`Wikidata索引: ${wd.size}名（保持分を再利用）`);
       }
-      append(`Wikidata索引: ${wd.size}名`);
 
       // ② 写真なしスポットをページングで取得→ 名前+座標(≤2km)一致で照合 → 付与
       setPhase("scan");
@@ -219,8 +228,14 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
         const u = new URL("/api/admin/photo-harvest", window.location.origin);
         u.searchParams.set("secret", secret); u.searchParams.set("limit", "500");
         if (cursor) u.searchParams.set("cursor", cursor);
-        const d = await fetch(u.toString()).then((r) => r.json());
-        if (!d?.ok) { append(`取得エラー: ${d?.error ?? "?"}`); break; }
+        const resp = await fetch(u.toString());
+        const d = await resp.json().catch(() => null);
+        if (!d?.ok) {
+          // 401=認証。索引はメモリに残るので、再ログイン→再実行で索引取得なしに続行できる
+          if (resp.status === 401) append("認証エラー：admin画面を再読み込みしてログインし直し、もう一度このボタンを押してください（索引は保持済み＝取り直し不要）。");
+          else append(`取得エラー: ${d?.error ?? resp.status}`);
+          break;
+        }
         const places: Array<{ id: string; name: string; lat: number | null; lng: number | null }> = d.places ?? [];
         scanned += places.length;
         const updates: { id: string; url: string }[] = [];
