@@ -107,8 +107,13 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   const [fItems, setFItems] = useState<FeedItem[]>([]);
   const [fLoading, setFLoading] = useState(false);
   const [followingCount, setFollowingCount] = useState<number | null>(null);
+  // サブフィード（フォロー中/キーワード/@ID）の取得失敗。メインの loadError と同様に
+  // 「投稿がありません」と区別して再試行を出すためのフラグ（アクティブなモードは常に1つ）
+  const [subError, setSubError] = useState(false);
+  const [subNonce, setSubNonce] = useState(0);   // キーワード/@IDの再試行トリガー
   const loadFollowing = useCallback(async () => {
     setFLoading(true);
+    setSubError(false);
     try {
       const deviceId = await getDeviceId();
       const res = await apiFetch('/api/following-feed', {
@@ -120,7 +125,7 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         setFItems(Array.isArray(d?.items) ? d.items : []);
         setFollowingCount(typeof d?.following === 'number' ? d.following : null);
       }
-    } catch { if (isMounted.current) setFItems([]); }
+    } catch { if (isMounted.current) { setFItems([]); setSubError(true); } }
     finally { if (isMounted.current) setFLoading(false); }
   }, []);
   useEffect(() => {
@@ -137,16 +142,17 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     if (!kw) { setKItems([]); setKLoading(false); return; }
     let cancelled = false;
     setKLoading(true);
+    setSubError(false);
     (async () => {
       try {
         const res = await apiFetch(`/api/community-feed?limit=60&q=${encodeURIComponent(kw)}`);
         const d = await res.json();
         if (!cancelled && isMounted.current) setKItems(Array.isArray(d?.items) ? d.items : []);
-      } catch { if (!cancelled && isMounted.current) setKItems([]); }
+      } catch { if (!cancelled && isMounted.current) { setKItems([]); setSubError(true); } }
       finally { if (!cancelled && isMounted.current) setKLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [full, kw]);
+  }, [full, kw, subNonce]);
 
   // @ID絞り込み（full: 検索UIは親ヘッダー・ここは取得のみ）
   useEffect(() => {
@@ -154,16 +160,17 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
     if (!posterHandle) { setUItems([]); setULoading(false); return; }
     let cancelled = false;
     setULoading(true);
+    setSubError(false);
     (async () => {
       try {
         const res = await apiFetch(`/api/community-feed?limit=60&posterHandle=${encodeURIComponent(posterHandle)}`);
         const d = await res.json();
         if (!cancelled && isMounted.current) setUItems(Array.isArray(d?.items) ? d.items : []);
-      } catch { if (!cancelled && isMounted.current) setUItems([]); }
+      } catch { if (!cancelled && isMounted.current) { setUItems([]); setSubError(true); } }
       finally { if (!cancelled && isMounted.current) setULoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [full, posterHandle]);
+  }, [full, posterHandle, subNonce]);
 
   // 初回ロード（再試行ボタンからも呼ぶ）。エラーは空状態と区別して loadError に立てる。
   //   前回の先頭ページ(端末キャッシュ)があれば即表示し、裏で最新を取得して置き換える。
@@ -356,9 +363,15 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
   }, [displayPosts]);
   // 気分絞り込みだけで0件（投稿自体はある）→ 専用の空メッセージ
   const moodEmpty = full && !!moodTag && gridPosts.length > 0 && displayPosts.length === 0;
-  // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）
-  const showError = !loading && !uLoading && !kLoading && !fLoading && loadError
-    && !(full && posterHandle) && !searching && !followingMode;
+  // エラーは「まだ投稿がありません」と別扱い（実際は投稿があるのに無いと断言しない）。
+  //   サブフィード（フォロー中/キーワード/@ID）の失敗も同じエラーUIに合流させる
+  const activeSubFailed = subError
+    && ((full && posterHandle) ? uItems.length === 0
+      : searching ? kItems.length === 0
+      : followingMode ? fItems.length === 0
+      : false);
+  const showError = !loading && !uLoading && !kLoading && !fLoading
+    && ((loadError && !(full && posterHandle) && !searching && !followingMode) || activeSubFailed);
   const showEmpty = !loading && !uLoading && !kLoading && !fLoading && !showError
     && ((full && posterHandle) ? uItems.length === 0
       : searching ? kItems.length === 0
@@ -439,11 +452,16 @@ export default function CommunityFeed({ full, sortMode: propSort, coords: propCo
         <View style={s.loadingWrap}><ActivityIndicator color={PURPLE} size="small" /></View>
       )}
 
-      {/* 取得失敗（空状態とは区別し、再試行導線を出す）*/}
+      {/* 取得失敗（空状態とは区別し、再試行導線を出す）。再試行は失敗したソースを再実行 */}
       {showError && (
         <View style={s.loadingWrap}>
           <Text style={{ color: '#9CA3AF', fontSize: 13, marginBottom: 12 }}>読み込めませんでした</Text>
-          <TouchableOpacity style={s.retryBtn} activeOpacity={0.7} onPress={() => loadInitial(true)}>
+          <TouchableOpacity style={s.retryBtn} activeOpacity={0.7}
+            onPress={() => {
+              if (followingMode) loadFollowing();
+              else if (searching || (full && posterHandle)) setSubNonce((n) => n + 1);
+              else loadInitial(true);
+            }}>
             <Text style={s.retryText}>再試行</Text>
           </TouchableOpacity>
         </View>

@@ -181,6 +181,7 @@ export default function UserProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);   // 通信失敗（空プロフィール描画を防ぐ）
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -214,7 +215,10 @@ export default function UserProfileScreen() {
         setFollowerCount(d.profile.followerCount ?? 0);
         setIsMe(!!d.profile.isMe);
       }
-    } catch { /* 空表示 */ }
+    } catch {
+      // 通信失敗＝空プロフィールを描かずエラー表示へ（下の !profile 分岐）
+      if (isMounted.current) setLoadFailed(true);
+    }
     finally { if (isMounted.current) setLoading(false); }
   }, [posterId]);
 
@@ -372,6 +376,23 @@ export default function UserProfileScreen() {
 
       {loading ? (
         <View style={[s.center, { paddingTop: insets.top + 120 }]}><ActivityIndicator color={BRAND} size="small" /></View>
+      ) : !profile ? (
+        /* 通信失敗 or プロフィール取得不可（空の骨組みプロフィールを描かない） */
+        <View style={[s.center, { paddingTop: insets.top + 120 }]}>
+          <Text style={{ color: '#888', fontSize: 13.5 }}>
+            {loadFailed ? '読み込めませんでした' : 'ユーザーが見つかりませんでした'}
+          </Text>
+          {loadFailed && (
+            <Pressable onPress={() => { setLoading(true); setLoadFailed(false); loadProfile(); }}
+              style={{ marginTop: 14 }} accessibilityRole="button" accessibilityLabel="再試行">
+              <Text style={{ color: BRAND, fontWeight: '800' }}>再試行</Text>
+            </Pressable>
+          )}
+          <Pressable onPress={() => router.back()} style={{ marginTop: 14 }}
+            accessibilityRole="button" accessibilityLabel="戻る">
+            <Text style={{ color: BRAND, fontWeight: '800' }}>戻る</Text>
+          </Pressable>
+        </View>
       ) : (
         <Animated.ScrollView
           style={{ opacity: fade }}

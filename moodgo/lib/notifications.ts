@@ -24,22 +24,23 @@ export type Notice = {
   commentText?: string;   // コメント/返信/メンションの本文（何とコメントしたか）
 };
 
-export type LoadedNotifications = { items: Notice[]; unread: Set<string> };
+export type LoadedNotifications = { items: Notice[]; unread: Set<string>; failed?: boolean };
 
 /** 同一イベントを一意に識別する安定キー（type＋時刻＋相手＋対象）。 */
 export function noticeKey(n: Notice): string {
   return `${n.type}|${n.at}|${n.actorId ?? ''}|${n.targetId ?? ''}`;
 }
 
+// ⚠ 失敗時はthrow（握りつぶさない）。「通信失敗」を「通知0件」と区別できるようにするため。
+//   呼び出し側: loadNotifications=failedフラグに変換 / hasUnread=falseに丸める。
 export async function fetchNotifications(limit = 50): Promise<Notice[]> {
-  try {
-    const deviceId = await getDeviceId();
-    const d = await apiFetch('/api/notifications', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, limit }),
-    }).then((r) => r.json());
-    return d?.ok && Array.isArray(d.items) ? d.items : [];
-  } catch { return []; }
+  const deviceId = await getDeviceId();
+  const d = await apiFetch('/api/notifications', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId, limit }),
+  }).then((r) => r.json());
+  if (!d?.ok || !Array.isArray(d.items)) throw new Error('notifications fetch failed');
+  return d.items;
 }
 
 type ReadMap = Record<string, string>;
@@ -72,7 +73,14 @@ async function getLastSeen(): Promise<string> {
  * 画面を開いた＝表示分は既読、という従来の「開いたら既読」挙動を per-通知で厳密化したもの。
  */
 export async function loadNotifications(limit = 50): Promise<LoadedNotifications> {
-  const [raw, readMap, lastSeen] = await Promise.all([fetchNotifications(limit), loadReadMap(), getLastSeen()]);
+  let raw: Notice[];
+  const [readMap, lastSeen] = await Promise.all([loadReadMap(), getLastSeen()]);
+  try {
+    raw = await fetchNotifications(limit);
+  } catch {
+    // 通信失敗＝「通知はありません」と誤表示しない（画面側でエラー＋再試行を出す）
+    return { items: [], unread: new Set(), failed: true };
+  }
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
   const unread = new Set<string>();
@@ -105,9 +113,12 @@ export async function loadNotifications(limit = 50): Promise<LoadedNotifications
   return { items, unread };
 }
 
-/** 未読があるか（readMap に無い＝一度も見ていない通知が直近に存在するか）。ベルのドット用。 */
+/** 未読があるか（readMap に無い＝一度も見ていない通知が直近に存在するか）。ベルのドット用。
+ *  取得失敗は「未読なし」に丸める（ドットは飾りのためエラーUI不要）。 */
 export async function hasUnread(): Promise<boolean> {
-  const [raw, readMap, lastSeen] = await Promise.all([fetchNotifications(8), loadReadMap(), getLastSeen()]);
+  let raw: Notice[];
+  const [readMap, lastSeen] = await Promise.all([loadReadMap(), getLastSeen()]);
+  try { raw = await fetchNotifications(8); } catch { return false; }
   return raw.some((n) => {
     if (!n.at) return false;
     const key = noticeKey(n);

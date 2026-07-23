@@ -43,6 +43,9 @@ const T = {
     title: '通知',
     emptyTitle: '通知はまだありません',
     emptySub: '投稿へのいいね・コメント・行った！やフォローがここに届きます',
+    loadFailed: '読み込めませんでした',
+    loadFailedSub: '通信環境を確認して、もう一度お試しください',
+    retry: '再試行',
     someone: '誰か',
     spot: 'スポット',
     // 表示専用のメッセージ組み立て（type値そのものは翻訳しない）
@@ -57,6 +60,9 @@ const T = {
     title: 'Notifications',
     emptyTitle: 'No notifications yet',
     emptySub: "Likes, comments, been-heres and follows will show up here",
+    loadFailed: "Couldn't load",
+    loadFailedSub: 'Check your connection and try again',
+    retry: 'Retry',
     someone: 'Someone',
     spot: 'spot',
     followText: (who: string) => `${who} followed you`,
@@ -75,8 +81,21 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<Notice[]>([]);
   const [unread, setUnread] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);   // 通信失敗（空状態と区別・再試行導線）
   const [scrolled, setScrolled] = useState(false);
   const isMounted = useRef(true);
+
+  // 取得＋既読管理（今回未表示分は unread に入り、その場だけドット表示。既読3日超は除外済み）
+  const load = async () => {
+    setLoading(true);
+    setLoadError(false);
+    const { items: list, unread: fresh, failed } = await loadNotifications(50);
+    if (!isMounted.current) return;
+    setItems(list);
+    setUnread(fresh);
+    setLoadError(!!failed);
+    setLoading(false);
+  };
 
   useEffect(() => {
     isMounted.current = true;
@@ -84,15 +103,9 @@ export default function NotificationsScreen() {
     // 許可リクエスト＋トークン登録を行う（起動時の無文脈ダイアログを避ける審査対策方針）。
     // 拒否済み/シミュレータ/Expo Goでは内部で無害にno-op。
     registerForPushNotificationsAsync().catch(() => {});
-    (async () => {
-      // 取得＋既読管理（今回未表示分は unread に入り、その場だけドット表示。既読3日超は除外済み）
-      const { items: list, unread: fresh } = await loadNotifications(50);
-      if (!isMounted.current) return;
-      setItems(list);
-      setUnread(fresh);
-      setLoading(false);
-    })();
+    load();
     return () => { isMounted.current = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openNotice = (n: Notice) => {
@@ -120,6 +133,17 @@ export default function NotificationsScreen() {
       >
         {loading ? (
           <View style={s.center}><ActivityIndicator color={MP.MAIN} size="small" /></View>
+        ) : loadError ? (
+          /* 取得失敗（「通知はまだありません」と誤認させず再試行を出す） */
+          <View style={s.center}>
+            <View style={s.emptyIcon}><Bell size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
+            <Text style={s.emptyTitle}>{t.loadFailed}</Text>
+            <Text style={s.emptySub}>{t.loadFailedSub}</Text>
+            <TouchableOpacity onPress={load} style={s.retryBtn} activeOpacity={0.85}
+              accessibilityRole="button" accessibilityLabel={t.retry}>
+              <Text style={s.retryText}>{t.retry}</Text>
+            </TouchableOpacity>
+          </View>
         ) : items.length === 0 ? (
           <View style={s.center}>
             <View style={s.emptyIcon}><Bell size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
@@ -184,6 +208,11 @@ const s = StyleSheet.create({
   },
   emptyTitle: { fontSize: 14.5, fontWeight: '800', color: MP.INK },
   emptySub: { fontSize: 12, fontWeight: '500', color: MP.SUB, textAlign: 'center' },
+  retryBtn: {
+    marginTop: 10, paddingHorizontal: 22, paddingVertical: 9, borderRadius: 999,
+    backgroundColor: 'rgba(155,107,255,0.1)',
+  },
+  retryText: { fontSize: 13, fontWeight: '800', color: MP.MAIN },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

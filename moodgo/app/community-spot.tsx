@@ -68,6 +68,8 @@ type Spot = {
 const T = {
   ja: {
     notFound: 'スポットが見つかりませんでした',
+    loadFailed: '読み込めませんでした',
+    retry: '再試行',
     back: '戻る',
     menuA11y: 'メニュー（共有・編集・削除など）',
     userPhotos: '利用者の写真',
@@ -117,6 +119,8 @@ const T = {
   },
   en: {
     notFound: 'Spot not found',
+    loadFailed: "Couldn't load",
+    retry: 'Retry',
     back: 'Back',
     menuA11y: 'Menu (share, edit, delete, etc.)',
     userPhotos: 'User photos',
@@ -196,6 +200,9 @@ export default function CommunitySpotScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [spot, setSpot] = useState<Spot | null>(null);
   const [loading, setLoading] = useState(true);
+  // 通信失敗（notFound=削除済みと区別して再試行を出す）。retryNonceで再取得をトリガー
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [photoW, setPhotoW] = useState(0);
   // 投稿へのいいね＋投稿者プロフィールシート
@@ -228,6 +235,7 @@ export default function CommunitySpotScreen() {
   // フォーカスの度に再取得＝編集(公開範囲/名前等)から戻ると即その投稿に反映される
   useFocusEffect(useCallback(() => {
     (async () => {
+      setLoadFailed(false);
       try {
         const vh = await getMyHash().catch(() => '');
         const res = await apiFetch(`/api/community-spot?id=${id}${vh ? `&viewerHash=${encodeURIComponent(vh)}` : ''}`);
@@ -271,9 +279,9 @@ export default function CommunitySpotScreen() {
             } catch { /* noop */ }
           }
         }
-      } catch { /* ignore */ } finally { setLoading(false); }
+      } catch { setLoadFailed(true); } finally { setLoading(false); }
     })();
-  }, [id]));
+  }, [id, retryNonce]));
 
   // 右下ハート＝この投稿への「いいね」専用（楽観更新・失敗時ロールバック）。
   //   場所の保存（お気に入り）は場所詳細のハートに分離＝ハートの意味を画面間で統一（2026-07-11）。
@@ -409,9 +417,16 @@ export default function CommunitySpotScreen() {
     return <View style={[s.root, s.center, { paddingTop: insets.top }]}><ActivityIndicator color={PURPLE} size="large" /></View>;
   }
   if (!spot) {
+    // 通信失敗と「投稿が存在しない(削除済み等)」は別物として表示（誤って消えたと思わせない）
     return (
       <View style={[s.root, s.center, { paddingTop: insets.top }]}>
-        <Text style={{ color: '#888' }}>{t.notFound}</Text>
+        <Text style={{ color: '#888' }}>{loadFailed ? t.loadFailed : t.notFound}</Text>
+        {loadFailed && (
+          <TouchableOpacity onPress={() => { setLoading(true); setRetryNonce((n) => n + 1); }} style={{ marginTop: 16 }}
+            accessibilityRole="button" accessibilityLabel={t.retry}>
+            <Text style={{ color: PURPLE, fontWeight: '800' }}>{t.retry}</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}><Text style={{ color: PURPLE, fontWeight: '800' }}>{t.back}</Text></TouchableOpacity>
       </View>
     );

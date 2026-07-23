@@ -34,6 +34,9 @@ const T = {
     allShown: 'すべて表示しました',
     emptyNone: 'まだ投稿がありません',
     emptyCategory: 'このカテゴリの投稿はありません',
+    loadFailed: '読み込めませんでした',
+    loadFailedSub: '通信環境を確認して、もう一度お試しください',
+    retry: '再試行',
     a11yNew: '新しく投稿する',
     post: '投稿する',
   },
@@ -42,6 +45,9 @@ const T = {
     allShown: 'You’ve reached the end',
     emptyNone: 'No posts yet',
     emptyCategory: 'No posts in this category',
+    loadFailed: "Couldn't load",
+    loadFailedSub: 'Check your connection and try again',
+    retry: 'Retry',
     a11yNew: 'Create a new post',
     post: 'Post',
   },
@@ -67,6 +73,8 @@ export default function MyPostsScreen() {
 
   const [posts, setPosts] = useState<MyPost[]>([]);
   const [loading, setLoading] = useState(true);
+  // 通信失敗を「まだ投稿がありません」と誤認させない（キャッシュも無い時だけ立てる）
+  const [loadError, setLoadError] = useState(false);
 
   const [category, setCategory] = useState<Category>('すべて');
   const [sortKey, setSortKey] = useState<SortKey>('popular');
@@ -83,6 +91,7 @@ export default function MyPostsScreen() {
 
   const loadAll = useCallback(async () => {
     // 前回の投稿一覧を即表示（スピナーを出さない）→ 裏で最新を取得して置き換え
+    setLoadError(false);
     const cached = await loadJSON<MyPost[]>(MY_POSTS_CACHE_KEY, []);
     if (!isMounted.current) return;
     if (Array.isArray(cached) && cached.length > 0) { setPosts(cached); setLoading(false); }
@@ -97,7 +106,10 @@ export default function MyPostsScreen() {
         setPosts(data.items);
         saveJSON(MY_POSTS_CACHE_KEY, data.items);
       }
-    } catch { if (isMounted.current && cached.length === 0) setPosts([]); }
+    } catch {
+      // キャッシュ無し＋取得失敗＝「投稿が消えた」ように見せない（エラー表示＋再試行へ）
+      if (isMounted.current && cached.length === 0) { setPosts([]); setLoadError(true); }
+    }
     finally { if (isMounted.current) setLoading(false); }
   }, []);
 
@@ -184,6 +196,17 @@ export default function MyPostsScreen() {
                 <Text style={s.endText}>{t.allShown}</Text>
               )}
             </>
+          ) : loadError ? (
+            /* 取得失敗（空状態と区別し、再試行導線を出す） */
+            <View style={s.emptyWrap}>
+              <View style={s.emptyIcon}><PenLine size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
+              <Text style={s.emptyTitle}>{t.loadFailed}</Text>
+              <Text style={{ fontSize: 12, color: MP.SUB, marginTop: 2 }}>{t.loadFailedSub}</Text>
+              <TouchableOpacity onPress={() => { setLoading(true); loadAll(); }} style={s.emptyBtn} activeOpacity={0.85}
+                accessibilityRole="button" accessibilityLabel={t.retry}>
+                <Text style={s.emptyBtnText}>{t.retry}</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View style={s.emptyWrap}>
               <View style={s.emptyIcon}><PenLine size={22} color={MP.MAIN} strokeWidth={1.8} /></View>
