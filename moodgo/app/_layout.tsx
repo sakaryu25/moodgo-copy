@@ -43,11 +43,17 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          {/* 右スワイプで前のページへ戻る（全Stackページ共通）。
-              iOS標準の左端エッジ発火に固定＝意図した時だけ反応する“硬め”の操作感。
-              以前の全面(fullScreen=どこでも反応)は誤爆が多く「感度が緩い」ため取りやめ。
-              エッジ発火はどのページでも有効なので「ほぼ全ページで右スワイプ」を満たす。 */}
-          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: false }} />
+          {/* 右スワイプで前のページへ戻る（ほぼ全Stackページ共通）。
+              fullScreenGestureEnabled=true＝画面のどこからでも右へスワイプすれば1つ前へ戻れる（ユーザー要望2026-07-22）。
+              ただし写真を横スワイプするカルーセル系の詳細ページは、横スクロールとの誤爆を防ぐため
+              下で個別に fullScreenGestureEnabled:false（左端エッジのみ）へ固定する。
+              ※place は自前の <Stack.Screen>（animation:'none'）でエッジ固定済みなのでここには列挙しない。 */}
+          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }}>
+            <Stack.Screen name="community-spot" options={{ fullScreenGestureEnabled: false }} />
+            <Stack.Screen name="feature-spot" options={{ fullScreenGestureEnabled: false }} />
+            <Stack.Screen name="books/[bookId]" options={{ fullScreenGestureEnabled: false }} />
+            <Stack.Screen name="feature/spot/[id]" options={{ fullScreenGestureEnabled: false }} />
+          </Stack>
           {/* 検索クイズ/結果のルート直下オーバーレイ（旧・全画面Modalの置換）。Stackの上に重ね、
               /place遷移中は自身がopacity0で退避＝裏の/placeが即前面化しホームのチラつきが出ない。 */}
           <ResultsPortalOutlet />
