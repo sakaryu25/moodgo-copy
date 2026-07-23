@@ -3875,14 +3875,17 @@ export default function AdminPage() {
                 const selCand = selectedCandidate[s.id];
                 const tags = editableTags[s.id] ?? s.auto_tags ?? [];
 
-                // 公開状態は2値運用（approved=公開 / それ以外=非公開）。pendingは即時公開化以前の旧投稿。
+                // 公開状態は2値運用（approved=公開 / それ以外=非公開）。pendingは即時公開化以前の旧投稿、
+                //   または企業の掲載申請(source='business'・審査必須)。後者は「旧」ではないので区別する。
                 const isPublic = s.status === "approved";
-                const isLegacyPending = s.status === "pending";
+                const isBusiness = s.source === "business";
+                const isPendingReview = s.status === "pending";
+                const isLegacyPending = isPendingReview && !isBusiness;
                 const today = new Date().toISOString().slice(0, 10);
                 const isLimited = !!(s.available_from || s.available_until);
                 const isExpired = !!(s.available_until && s.available_until < today);
                 return (
-                  <div key={s.id} style={{ ...card, marginBottom: "16px", borderLeft: `4px solid ${isPublic ? "#18794e" : isLegacyPending ? "#ffbf67" : "#9ca3af"}` }}>
+                  <div key={s.id} style={{ ...card, marginBottom: "16px", borderLeft: `4px solid ${isPublic ? "#18794e" : isBusiness && isPendingReview ? "#7c3aed" : isLegacyPending ? "#ffbf67" : "#9ca3af"}` }}>
                     {/* ヘッダー */}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                       <div>
@@ -3895,6 +3898,14 @@ export default function AdminPage() {
                           }}>
                             {isPublic ? "🟢 公開中" : isLegacyPending ? "⏳ 非公開（旧・承認待ち）" : "🚫 非公開"}
                           </span>
+                          {isBusiness && (
+                            <span style={{
+                              display: "inline-block", padding: "3px 10px", borderRadius: "999px",
+                              fontSize: "11px", fontWeight: 900, background: "#ede9fe", color: "#6d28d9",
+                            }}>
+                              🏪 企業の掲載申請{isPendingReview ? "（審査待ち）" : ""}
+                            </span>
+                          )}
                           {isLimited && (
                             <span style={{
                               display: "inline-block", padding: "3px 10px", borderRadius: "999px",

@@ -25,6 +25,56 @@ async function autoTagFacility(
   return [];
 }
 
+// ── 住所/名前 → 座標（Google Text Search）─────────────────────────────────────
+//   座標が無い投稿は検索(40km判定)にも地図にも出ないため、名前＋住所からジオコードする。
+//   住所を基準点にし、名前検索が住所から500m超なら別店とみなして住所座標を採用（誤紐付け防止）。
+//   企業掲載申請(POST source='business')と管理者承認(PATCH status='approved')で共用。
+type GeocodeResult = { lat: number; lng: number; googlePlaceName?: string; googlePlaceId?: string };
+async function geocodeSpot(name: string, addr: string): Promise<GeocodeResult | null> {
+  const gKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+  if (!gKey || (!name && !addr)) return null;
+  type GPlace = { location?: { latitude?: number; longitude?: number }; displayName?: { text?: string }; id?: string };
+  const searchOnce = async (textQuery: string): Promise<GPlace | null> => {
+    try {
+      const gr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": gKey,
+          "X-Goog-FieldMask": "places.location,places.displayName,places.formattedAddress,places.id",
+        },
+        body: JSON.stringify({ textQuery, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
+        signal: AbortSignal.timeout(7000),
+      });
+      const gd = await gr.json().catch(() => null);
+      return gd?.places?.[0] ?? null;
+    } catch { return null; }
+  };
+  const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+  const addrPlace = addr ? await searchOnce(addr) : null;
+  const namePlace = name ? await searchOnce([name, addr].filter(Boolean).join(" ")) : null;
+  const aLoc = addrPlace?.location, nLoc = namePlace?.location;
+  const nameOk = !!(
+    typeof nLoc?.latitude === "number" && typeof nLoc?.longitude === "number" &&
+    (!(typeof aLoc?.latitude === "number" && typeof aLoc?.longitude === "number") ||
+      distM(aLoc.latitude!, aLoc.longitude!, nLoc.latitude, nLoc.longitude) <= 500)
+  );
+  const chosen = nameOk ? namePlace : addrPlace;
+  const loc = chosen?.location;
+  if (typeof loc?.latitude !== "number" || typeof loc?.longitude !== "number") return null;
+  const out: GeocodeResult = { lat: loc.latitude, lng: loc.longitude };
+  if (nameOk && namePlace) {
+    if (namePlace.displayName?.text) out.googlePlaceName = namePlace.displayName.text;
+    if (namePlace.id) out.googlePlaceId = namePlace.id;
+  }
+  return out;
+}
+
 export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ ok: false, error: "Supabase未設定" }, { status: 503 });
@@ -194,6 +244,21 @@ export async function POST(request: Request) {
     //     リスクがあるため即公開せず、必ずadmin審査(pending)を通してから掲載する。
     const status = source === "business" ? "pending" : "approved";
 
+    // 企業の掲載申請は住所のみ（座標なし）で届く。承認後に検索(40km判定)・地図へ出すには座標が
+    //   必須なので、この時点で住所からジオコードしておく（管理者の承認導線に座標解決が無いため）。
+    //   ⚠ 失敗しても投稿自体は続行（admin が場所編集タブで座標を手当てできる）。
+    let googlePlaceName: string | null = null;
+    let googlePlaceId: string | null = null;
+    if (source === "business" && lat == null && lng == null) {
+      const g = await geocodeSpot(spotName.trim(), (address ?? "").trim());
+      if (g) {
+        lat = g.lat;
+        lng = g.lng;
+        googlePlaceName = g.googlePlaceName ?? null;
+        googlePlaceId = g.googlePlaceId ?? null;
+      }
+    }
+
     // コアペイロード（必ず存在するカラムのみ）
     const corePayload = {
       spot_name: spotName.trim(),
@@ -206,6 +271,8 @@ export async function POST(request: Request) {
       status,
       station_info: stationInfo?.trim() || null,
       google_maps_uri: manualMapUrl?.trim() || null,
+      google_place_name: googlePlaceName,   // ジオコードで住所と整合した時のみ（admin GET/PATCHと同じ列）
+      google_place_id: googlePlaceId,
       source: source || "user",
       auto_tags: autoTags,
     };
@@ -373,60 +440,15 @@ export async function PATCH(request: Request) {
           .eq("id", id)
           .single();
         if (row && (row.lat == null || row.lng == null)) {
-          const gKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
           const name = (row.google_place_name ?? row.spot_name ?? "").trim();
           const addr = (row.address ?? "").trim();
-
-          type GPlace = {
-            location?: { latitude?: number; longitude?: number };
-            displayName?: { text?: string };
-            id?: string;
-          };
-          const searchOnce = async (textQuery: string): Promise<GPlace | null> => {
-            const gr = await fetch("https://places.googleapis.com/v1/places:searchText", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Goog-Api-Key": gKey,
-                "X-Goog-FieldMask": "places.location,places.displayName,places.formattedAddress,places.id",
-              },
-              body: JSON.stringify({ textQuery, languageCode: "ja", regionCode: "JP", pageSize: 1 }),
-              signal: AbortSignal.timeout(7000),
-            });
-            const gd = await gr.json().catch(() => null);
-            return gd?.places?.[0] ?? null;
-          };
-          const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-            const R = 6371000, toR = Math.PI / 180;
-            const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
-            const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
-            return 2 * R * Math.asin(Math.sqrt(h));
-          };
-
-          if (gKey && (name || addr)) {
-            // 住所を基準点にする。名前のテキスト検索は同名の別店（例: 別地域の "Chill Spot"）に
-            // 飛ぶことがあるため、住所から500m超の名前検索結果は捨てて住所の座標を使う。
-            const addrPlace = addr ? await searchOnce(addr) : null;
-            const namePlace = name ? await searchOnce([name, addr].filter(Boolean).join(" ")) : null;
-            const aLoc = addrPlace?.location, nLoc = namePlace?.location;
-            const nameOk = !!(
-              typeof nLoc?.latitude === "number" && typeof nLoc?.longitude === "number" &&
-              (!(typeof aLoc?.latitude === "number" && typeof aLoc?.longitude === "number") ||
-                distM(aLoc.latitude!, aLoc.longitude!, nLoc.latitude, nLoc.longitude) <= 500)
-            );
-            const chosen = nameOk ? namePlace : addrPlace;
-            const loc = chosen?.location;
-            if (typeof loc?.latitude === "number" && typeof loc?.longitude === "number") {
-              updatePayload.lat = loc.latitude;
-              updatePayload.lng = loc.longitude;
-              // 名前一致が住所と整合した時だけGoogle名/IDを紐付ける（別店の情報を保存しない）
-              if (nameOk && namePlace) {
-                if (!row.google_place_name && namePlace.displayName?.text) {
-                  updatePayload.google_place_name = namePlace.displayName.text;
-                }
-                if (namePlace.id) updatePayload.google_place_id = namePlace.id;
-              }
-            }
+          const g = await geocodeSpot(name, addr);
+          if (g) {
+            updatePayload.lat = g.lat;
+            updatePayload.lng = g.lng;
+            // 名前一致が住所と整合した時だけGoogle名/IDを紐付ける（別店の情報を保存しない）
+            if (!row.google_place_name && g.googlePlaceName) updatePayload.google_place_name = g.googlePlaceName;
+            if (g.googlePlaceId) updatePayload.google_place_id = g.googlePlaceId;
           }
         }
       } catch { /* ジオコード失敗でも承認自体は続行 */ }
