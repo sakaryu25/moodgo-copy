@@ -3664,6 +3664,7 @@ export default function AdminPage() {
             { key: "mood-logs", label: "📝 moodログ管理" },
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
+            { key: "suggestions", label: "🏪 企業掲載・投稿管理" },
             { key: "account-type", label: "アカウント種別" },
           ] as const).map((t) => (
             <button
@@ -3863,9 +3864,10 @@ export default function AdminPage() {
           ) : (
             <>
               <div style={{ background: "#f0f7ff", border: "1px solid #cfe3ff", borderRadius: "12px", padding: "12px 16px", marginBottom: "16px", fontSize: "12.5px", color: "#3b5b8a", lineHeight: 1.7 }}>
-                ここは「全国みんなの穴場」への<b>新スポット投稿</b>の管理です。投稿は<b>即時公開</b>（NGワードは投稿時に自動ブロック）。
-                問題のある投稿は「非公開にする」（可逆）か「完全に削除」で対応してください。
-                既存スポットへの口コミ（Moodログ）は<b>📝 moodログ管理</b>タブ、通報対応は<b>⚠ 不適切報告</b>タブへ。
+                🏪 <b>企業の掲載申請</b>（Webの/businessフォーム）は<b>審査待ち</b>で溜まります。内容を確認し、
+                タグを整えてから「公開」で検索・地図に反映してください（住所から座標は自動解決済み）。
+                ユーザーの穴場投稿は<b>即時公開</b>（NGワードは投稿時に自動ブロック）で、問題があれば「非公開」か「完全に削除」。
+                既存スポットへの口コミ（Moodログ）は<b>📝 moodログ管理</b>、通報対応は<b>⚠ 不適切報告</b>タブへ。
               </div>
               {suggestions.length === 0 ? (
                 <div style={{ ...card, textAlign: "center", padding: "40px", opacity: 0.6 }}>まだ投稿がありません</div>
