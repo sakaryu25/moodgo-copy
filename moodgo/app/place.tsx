@@ -54,6 +54,7 @@ import { addViewedLog } from '@/lib/spotLog';
 import { genrePlaceholder } from '@/lib/genrePlaceholder';
 import { useSettings, type Lang } from '@/lib/settingsStore';
 import { useMyIdentity } from '@/lib/myIdentity';
+import { cleanAddress } from '@/lib/address';
 import type { Recommendation, FavoriteItem } from '@/types/app';
 
 const GRAD: [string, string, string] = ['#F472B6', '#C084FC', '#60A5FA'];
@@ -154,8 +155,11 @@ const T = {
 // ── 住所からエリア名（市区町村）を抽出 ────────────────────────────────────────
 function extractAreaName(address: string | null | undefined): string | null {
   if (!address) return null;
-  // 郵便番号を除去
-  const cleaned = address.replace(/〒\d{3}-\d{4}\s*/, '').trim();
+  // 「日本、」国名と郵便番号を除去（Google形式「日本、〒…」で市区町村を取りこぼさないように）
+  const cleaned = address
+    .replace(/^日本[、,]\s*/, '')
+    .replace(/〒?\s*\d{3}-?\d{4}\s*/, '')
+    .trim();
   // 都道府県の後の市区町村を取得（例: "東京都品川区" → "品川区"）
   const m = cleaned.match(/[都道府県]([^\s\d０-９]+?[市区町村郡])/);
   if (m) return m[1];
@@ -839,7 +843,8 @@ export default function PlaceDetailPage() {
   }
 
   // APIデータを優先、なければ rec のデータにフォールバック
-  const areaName = extractAreaName(extra.loaded ? (extra.address || rec.address) : rec.address);
+  const rawAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
+  const areaName = extractAreaName(rawAddress);
   const displayRating = extra.loaded ? (extra.rating ?? rec.rating) : rec.rating;
   const baseRatingCount = extra.loaded ? (extra.userRatingCount ?? rec.userRatingCount) : rec.userRatingCount;
   const displayUserRatingCount = (baseRatingCount ?? 0) + ratingDelta;  // MoodGo評価を押すたびに『○○件の評価』が増える
@@ -849,7 +854,8 @@ export default function PlaceDetailPage() {
   const priceDisplay = priceCount > 0 && priceAvg
     ? (priceCount >= 2 ? `${priceAvg}（${priceCount}人の平均）` : priceAvg)
     : (extra.loaded ? displayPriceLevel : null);
-  const displayAddress = extra.loaded ? (extra.address || rec.address) : rec.address;
+  // 「日本、〒…」の国名/郵便番号や"日本"だけは住所行から除去（サーバーはverbatim保存のため表示で整形）
+  const displayAddress = cleanAddress(rawAddress);
   // mapUrl: APIの正しいURL（2枚目のページ）を優先、なければrecのAI生成URL
   const displayMapUrl = (extra.loaded && extra.mapUrl) ? extra.mapUrl : rec.mapUrl;
   // 営業時間: APIデータ優先。ロード前のみ rec のデータを暫定表示

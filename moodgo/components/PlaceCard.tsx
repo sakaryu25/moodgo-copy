@@ -19,6 +19,7 @@ import { sendEngagement } from '@/lib/engagement';
 import { copyPlaceName } from '@/lib/clipboard';
 import MoodPlaceholderBg from '@/components/MoodPlaceholderBg';
 import { userHoursOpenNow } from '@/lib/openHours';
+import { cleanAddress } from '@/lib/address';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -637,10 +638,10 @@ export default function PlaceCard({
           ) : null}
         </View>
 
-        {/* 住所（長押しでコピー） */}
-        {item.address ? (
+        {/* 住所（長押しでコピー）。「日本、〒…」の国名/郵便番号や"日本"だけは表示から除去 */}
+        {cleanAddress(item.address) ? (
           <Text style={[s.address, darkTheme && s.textDimDark]} numberOfLines={2}
-            onLongPress={() => copyPlaceName(item.address)} suppressHighlighting>{item.address}</Text>
+            onLongPress={() => copyPlaceName(cleanAddress(item.address))} suppressHighlighting>{cleanAddress(item.address)}</Text>
         ) : null}
 
         {/* 現在地からの所要（車で何分か）— マスト表示 */}

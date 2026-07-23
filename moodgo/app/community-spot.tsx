@@ -30,6 +30,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { markFeedStale } from '@/lib/feedRefresh';
+import { cleanAddress } from '@/lib/address';
 import PhotoViewer from '@/components/PhotoViewer';
 import ReportModal from '@/components/ReportModal';
 import AppActionSheet from '@/components/AppActionSheet';
@@ -521,12 +522,12 @@ export default function CommunitySpotScreen() {
           ) : null}
 
           {/* 場所エリアチップ */}
-          {spot.address ? (
+          {cleanAddress(spot.address) ? (
             <View style={s.areaChip}>
               <MapPin size={13} color={PURPLE} strokeWidth={2.2} />
               {/* 下の住所欄と同じ住所を全文表示（固定文字数で切ると番地が欠けて別住所に見える） */}
               <Text style={s.areaChipText} numberOfLines={1} ellipsizeMode="tail">
-                {spot.address.replace(/^日本[、,]\s*/, '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '')}
+                {cleanAddress(spot.address)}
               </Text>
             </View>
           ) : null}
@@ -699,7 +700,7 @@ export default function CommunitySpotScreen() {
           {/* ── 情報カード（検索結果の場所詳細と同じ意匠: アイコン＋値・行の上罫線で区切り）── */}
           <View style={s.infoCard}>
             {/* 順番: 住所 → 営業時間 → 金額(みんなの平均) → 最寄駅 → 電話 → web → Instagram（場所詳細と統一）*/}
-            {spot.address ? <InfoRow Icon={MapPin} value={spot.address} /> : null}
+            {cleanAddress(spot.address) ? <InfoRow Icon={MapPin} value={cleanAddress(spot.address)} /> : null}
             {/* 営業時間。⚠ 曜日:時刻でsplitしない（「10:00〜23:00」を割る旧バグ回避）＝行そのまま表示 */}
             {spot.openingHoursText ? (
               <View style={[s.infoRow, spot.address ? s.infoRowBorder : null]}>
