@@ -231,8 +231,8 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
         const resp = await fetch(u.toString());
         const d = await resp.json().catch(() => null);
         if (!d?.ok) {
-          // 401=認証。索引はメモリに残るので、再ログイン→再実行で索引取得なしに続行できる
-          if (resp.status === 401) append("認証エラー：admin画面を再読み込みしてログインし直し、もう一度このボタンを押してください（索引は保持済み＝取り直し不要）。");
+          // 401=認証。保存済みsecretが古い可能性大＝右上「🔓ログアウト」で入れ直し（再読み込みでは直らない）。索引はメモリに残るので再実行で取り直し不要。
+          if (resp.status === 401) append("認証エラー：保存されているsecretが古い可能性があります。右上の「🔓ログアウト」を押してから正しいパスワードで入り直し、もう一度このボタンを押してください（索引は保持済み＝取り直し不要）。");
           else append(`取得エラー: ${d?.error ?? resp.status}`);
           break;
         }
@@ -375,8 +375,8 @@ function LocationFillPanel({ secret }: { secret: string }) {
         <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === "Enter") load(q); }} placeholder="名前で絞り込み（Enter）" style={{ ...inp, flex: 1 }} />
         <button onClick={() => load(q)} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#9B6BFF", color: "#fff", fontWeight: 700, cursor: "pointer" }}>検索</button>
       </div>
-      {msg && <div style={{ color: "#dc2626", fontWeight: 700, marginBottom: 10 }}>{msg}</div>}
-      {busy ? <div style={{ opacity: 0.5, padding: 20 }}>読み込み中…</div> : rows.length === 0 ? (
+      {msg && <div style={{ color: "#dc2626", fontWeight: 700, marginBottom: 10 }}>{msg}{/Unauthorized|認証/.test(msg) && <span style={{ fontWeight: 500 }}>（右上「🔓ログアウト」→正しいパスワードで入り直してください）</span>}</div>}
+      {busy ? <div style={{ opacity: 0.5, padding: 20 }}>読み込み中…</div> : msg ? null : rows.length === 0 ? (
         <div style={{ opacity: 0.55, padding: 20 }}>補完が必要なスポットはありません 🎉</div>
       ) : rows.map(r => {
         const e = edit[r.id] ?? { lat: "", lng: "", address: "" };
@@ -3780,8 +3780,25 @@ export default function AdminPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#fdf8f9", padding: "24px 16px", fontFamily: font, color: "#4a3034" }}>
       <div style={{ maxWidth: "860px", margin: "0 auto" }}>
-        <h1 style={{ fontSize: "26px", fontWeight: 900, marginBottom: "4px" }}>MoodGo 管理ダッシュボード</h1>
-        <p style={{ fontSize: "13px", opacity: 0.65, marginBottom: "20px" }}>全ユーザーのフィードバックを集計してAIの学習に活用しています</p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+          <div>
+            <h1 style={{ fontSize: "26px", fontWeight: 900, marginBottom: "4px" }}>MoodGo 管理ダッシュボード</h1>
+            <p style={{ fontSize: "13px", opacity: 0.65, marginBottom: "20px" }}>全ユーザーのフィードバックを集計してAIの学習に活用しています</p>
+          </div>
+          {/* secretが古くなった時の唯一の逃げ道：保存済みsecretを消して入れ直す（再読み込みでは直らない） */}
+          <button
+            onClick={() => {
+              try { localStorage.removeItem("moodgo-admin-secret"); localStorage.removeItem("moodgo_admin"); } catch { /* ignore */ }
+              setAdminSecret("");
+              setPasswordInput("");
+              setAuthed(false);
+            }}
+            title="保存済みのsecretを消してログイン画面に戻ります（認証エラーが続く時に）"
+            style={{ ...btnBase, flexShrink: 0, height: "34px", padding: "0 14px", background: "#fff", color: "#9b7080", border: "1px solid #ead7db", fontSize: "12px", fontWeight: 700 }}
+          >
+            🔓 ログアウト
+          </button>
+        </div>
 
         <div style={{ display: "flex", gap: "10px", marginBottom: "24px", flexWrap: "wrap" }}>
           {([
