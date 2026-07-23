@@ -162,9 +162,10 @@ interface VitalityStats {
 
 // 📍 位置情報補完: 座標なし OR 住所不完全 のスポットを双方向(住所↔座標)で一括補完。完全住所形式に統一。
 function LocationFillPanel({ secret }: { secret: string }) {
-  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; noCoord: boolean; badAddr: boolean };
+  type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; noCoord: boolean; badAddr: boolean; table?: string };
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);   // 補完対象の真の総数（進捗把握用）
+  const [byTable, setByTable] = useState<Record<string, number> | null>(null);   // テーブル別内訳
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string>("");
@@ -179,7 +180,7 @@ function LocationFillPanel({ secret }: { secret: string }) {
       u.searchParams.set("secret", secret); u.searchParams.set("limit", "300");
       if (kw) u.searchParams.set("q", kw);
       const d = await fetch(u.toString()).then(r => r.json());
-      if (d?.ok) { setRows(d.places ?? []); if (!kw) setTotal(typeof d.total === "number" ? d.total : null); }
+      if (d?.ok) { setRows(d.places ?? []); if (!kw) { setTotal(typeof d.total === "number" ? d.total : null); setByTable(d.byTable ?? null); } }
       else setMsg(d?.error ?? "取得に失敗しました");
     } catch { setMsg("取得に失敗しました"); }
     setBusy(false);
@@ -188,21 +189,21 @@ function LocationFillPanel({ secret }: { secret: string }) {
 
   const post = (b: Record<string, unknown>) => fetch("/api/admin/location-fill", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, ...b }) }).then(r => r.json());
 
-  const autoOne = async (id: string) => {
-    setRowBusy(id); setMsg("");
-    const d = await post({ action: "auto", placeId: id });
-    if (d?.ok) { setRows(prev => prev.filter(r => r.id !== id)); }
+  const autoOne = async (row: Row) => {
+    setRowBusy(row.id); setMsg("");
+    const d = await post({ action: "auto", placeId: row.id, table: row.table ?? "places" });
+    if (d?.ok) { setRows(prev => prev.filter(r => r.id !== row.id)); }
     else setMsg(d?.error ?? "補完できませんでした");
     setRowBusy("");
   };
-  const saveOne = async (id: string) => {
-    const e = edit[id]; if (!e) return;
-    setRowBusy(id);
-    const body: Record<string, unknown> = { action: "save", placeId: id };
+  const saveOne = async (row: Row) => {
+    const e = edit[row.id]; if (!e) return;
+    setRowBusy(row.id);
+    const body: Record<string, unknown> = { action: "save", placeId: row.id, table: row.table ?? "places" };
     if (e.lat.trim()) body.lat = Number(e.lat); if (e.lng.trim()) body.lng = Number(e.lng);
     if (e.address.trim()) body.address = e.address.trim();
     const d = await post(body);
-    if (d?.ok) setRows(prev => prev.filter(r => r.id !== id)); else setMsg(d?.error ?? "保存に失敗");
+    if (d?.ok) setRows(prev => prev.filter(r => r.id !== row.id)); else setMsg(d?.error ?? "保存に失敗");
     setRowBusy("");
   };
   const runBatch = async () => {
@@ -226,7 +227,13 @@ function LocationFillPanel({ secret }: { secret: string }) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>📍 位置情報補完</h2>
         <span style={{ fontSize: 12, color: "#9ca3af" }}>
-          {total != null ? <>要補完 <b style={{ color: "#e5484d", fontSize: 14 }}>{total.toLocaleString()}</b> 件（表示{rows.length}件）</> : <>座標登録＋住所補完を統一（{rows.length}件）</>}
+          {total != null ? (
+            <>要補完 <b style={{ color: "#e5484d", fontSize: 14 }}>{total.toLocaleString()}</b> 件（表示{rows.length}件）
+              {byTable && <span style={{ marginLeft: 6, fontSize: 11 }}>
+                {(["places", "suggestions", "curated_spots"] as const).filter((t) => byTable[t]).map((t) => `${t.replace("_", " ")}:${byTable[t]}`).join(" / ")}
+              </span>}
+            </>
+          ) : <>座標登録＋住所補完を統一（{rows.length}件）</>}
         </span>
         <span style={{ marginLeft: "auto" }} />
         <button onClick={() => load(q)} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E3D8F5", background: "#fff", color: "#7C3AED", fontWeight: 700, cursor: "pointer" }}>🔄 再読み込み</button>
@@ -251,17 +258,18 @@ function LocationFillPanel({ secret }: { secret: string }) {
           <div key={r.id} style={card}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <b style={{ fontSize: 14, color: "#1A0A2E" }}>{r.name}</b>
+              {r.table && r.table !== "places" && <span style={{ fontSize: 10.5, background: "#EDE9FE", color: "#6D28D9", borderRadius: 6, padding: "2px 7px", fontWeight: 800 }}>{r.table === "suggestions" ? "投稿/掲載申請" : "キュレーション"}</span>}
               {r.noCoord && <span style={{ fontSize: 10.5, background: "#FEF3C7", color: "#B45309", borderRadius: 6, padding: "2px 7px", fontWeight: 800 }}>座標なし</span>}
               {r.badAddr && <span style={{ fontSize: 10.5, background: "#FEE2E2", color: "#DC2626", borderRadius: 6, padding: "2px 7px", fontWeight: 800 }}>住所不完全</span>}
               <span style={{ marginLeft: "auto" }} />
-              <button onClick={() => autoOne(r.id)} disabled={rowBusy === r.id} style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "#7C3AED", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{rowBusy === r.id ? "補完中…" : "⚡ 自動補完"}</button>
+              <button onClick={() => autoOne(r)} disabled={rowBusy === r.id} style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "#7C3AED", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{rowBusy === r.id ? "補完中…" : "⚡ 自動補完"}</button>
             </div>
             <div style={{ fontSize: 11.5, color: "#9ca3af", margin: "4px 0 8px" }}>現在: {r.address || "(住所なし)"} ／ 座標 {r.lat != null ? `${r.lat}, ${r.lng}` : "なし"}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 2fr auto", gap: 8, alignItems: "center" }}>
               <input placeholder="緯度(lat)" value={e.lat} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, lat: ev.target.value } }))} style={inp} />
               <input placeholder="経度(lng)" value={e.lng} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, lng: ev.target.value } }))} style={inp} />
               <input placeholder="住所（例: 神奈川県横浜市金沢区富岡東1-44-11）" value={e.address} onChange={ev => setEdit(p => ({ ...p, [r.id]: { ...e, address: ev.target.value } }))} style={inp} />
-              <button onClick={() => saveOne(r.id)} disabled={rowBusy === r.id} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>💾 保存</button>
+              <button onClick={() => saveOne(r)} disabled={rowBusy === r.id} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>💾 保存</button>
             </div>
           </div>
         );

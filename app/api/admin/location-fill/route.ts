@@ -45,7 +45,24 @@ async function forwardGeocode(query: string): Promise<{ lat: number; lng: number
   try { return await forwardFree(q); } catch { return null; }
 }
 
-type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null };
+type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; table?: TableKey };
+
+// 補完対象の3テーブル。検索プールは places(メイン)＋suggestions(承認済み投稿/企業掲載)＋
+//   curated_spots(タグ別キュレーション)の合算なので、住所「日本」もこの3つに散らばる。
+//   各テーブルで名前カラムと「表示中」判定条件が違うため、ここで吸収して統一的に補完する。
+type TableKey = "places" | "suggestions" | "curated_spots";
+const TABLES: Record<TableKey, { nameCol: string; tagCol: string; active: [string, unknown] }> = {
+  places:        { nameCol: "name",      tagCol: "tags",      active: ["is_active", true] },
+  suggestions:   { nameCol: "spot_name", tagCol: "auto_tags", active: ["status", "approved"] },
+  curated_spots: { nameCol: "name",      tagCol: "tags",      active: ["is_active", true] },
+};
+const TABLE_KEYS = Object.keys(TABLES) as TableKey[];
+
+// 補完対象の or 条件（座標なし OR 住所が空/日本/都道府県だけ）。全テーブル共通。
+function incompleteOrExpr(): string {
+  const eqs = ["日本", "日本国", ...PREFS, ...PREFS.map((p) => `日本、${p}`)];
+  return ["lat.is.null", "lng.is.null", "address.is.null", ...eqs.map((v) => `address.eq."${v}"`)].join(",");
+}
 
 // 1件を双方向補完（座標なし→forward / 住所不完全→reverse）。戻り値=更新後の値 or null
 async function autoFill(db: NonNullable<typeof supabase>, row: Row): Promise<{ lat: number | null; lng: number | null; address: string } | null> {
@@ -72,9 +89,43 @@ async function autoFill(db: NonNullable<typeof supabase>, row: Row): Promise<{ l
   if (lat != null && lng != null && (row.lat == null || row.lng == null)) { patch.lat = lat; patch.lng = lng; }
   if (address && address !== (row.address ?? "") && !isIncompleteAddr(address)) patch.address = address;
   if (Object.keys(patch).length === 0) return null;   // 何も改善できなかった
-  const { error } = await db.from("places").update(patch).eq("id", row.id);
+  const { error } = await db.from(row.table ?? "places").update(patch).eq("id", row.id);
   if (error) return null;
   return { lat, lng, address };
+}
+
+// 1テーブルから補完対象を取得（名前カラムを name に正規化・テーブル未作成は空）
+async function fetchIncomplete(db: NonNullable<typeof supabase>, table: TableKey, limit: number): Promise<Row[]> {
+  const cfg = TABLES[table];
+  try {
+    const { data, error } = await db.from(table)
+      .select(`id, ${cfg.nameCol}, address, lat, lng, ${cfg.tagCol}`)
+      .eq(cfg.active[0], cfg.active[1] as never)
+      .or(incompleteOrExpr()).order("id").limit(limit);
+    if (error) return [];
+    return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
+      id: String(r.id), name: String(r[cfg.nameCol] ?? ""),
+      address: (r.address as string | null) ?? null,
+      lat: (r.lat as number | null) ?? null, lng: (r.lng as number | null) ?? null,
+      tags: (r[cfg.tagCol] as string[] | null) ?? null, table,
+    }));
+  } catch { return []; }
+}
+
+// 全テーブルの補完対象「真の総数」（テーブル別内訳つき）
+async function countIncompleteAll(db: NonNullable<typeof supabase>): Promise<{ total: number; byTable: Record<string, number> }> {
+  const byTable: Record<string, number> = {};
+  let total = 0;
+  for (const table of TABLE_KEYS) {
+    const cfg = TABLES[table];
+    try {
+      const { count } = await db.from(table).select("id", { count: "exact", head: true })
+        .eq(cfg.active[0], cfg.active[1] as never).or(incompleteOrExpr());
+      byTable[table] = count ?? 0;
+      total += count ?? 0;
+    } catch { byTable[table] = 0; }
+  }
+  return { total, byTable };
 }
 
 export async function GET(req: NextRequest) {
@@ -84,32 +135,21 @@ export async function GET(req: NextRequest) {
   const q = (searchParams.get("q") ?? "").trim().replace(/[,%()*]/g, "").slice(0, 60);
   const limit = Math.min(Number(searchParams.get("limit") ?? "300"), 1000);
 
-  // 座標なし OR 住所不完全 の active スポット（両問題を1リストに統合）
-  const query = supabase.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true);
-  const incompleteEqs = ["日本", "日本国", ...PREFS, ...PREFS.map((p) => `日本、${p}`)];
-  const orExpr = ["lat.is.null", "lng.is.null", "address.is.null", ...incompleteEqs.map((v) => `address.eq."${v}"`)].join(",");
-  // ⚠order は id(主キー索引)。name順は未索引ソートで全一致を並べ替え→statement timeout(実測・画面の「日本」検索が固まる原因)。
-  //   名前検索(q)も SQL の ilike+OR が重くタイムアウトするため、取得後にクライアント側(このルート内)で名前を絞り込む。
-  const { data, error } = await query.or(orExpr).order("id").limit(q ? 800 : limit);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  let rows = ((data ?? []) as Row[]).map((r) => ({
-    ...r,
-    noCoord: r.lat == null || r.lng == null,
-    badAddr: isIncompleteAddr(r.address),
-  }));
+  // 座標なし OR 住所不完全 のスポットを3テーブル(places/suggestions/curated_spots)から取得して統合。
+  //   ⚠order は id(主キー索引)。name順は未索引ソートで statement timeout(実測)＝JSソートで対応。
+  const per = q ? 800 : limit;
+  const all: Row[] = [];
+  for (const table of TABLE_KEYS) all.push(...await fetchIncomplete(supabase, table, per));
+  let rows = all.map((r) => ({ ...r, noCoord: r.lat == null || r.lng == null, badAddr: isIncompleteAddr(r.address) }));
   if (q) rows = rows.filter((r) => String(r.name ?? "").includes(q) || String(r.address ?? "").includes(q));
-  rows.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ja"));  // 表示は名前順(≤800件のJSソートは軽い)
+  rows.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ja"));  // 表示は名前順(軽い)
   rows = rows.slice(0, limit);
 
-  // 補完対象の「真の総数」（count専用の head:true。limitで頭打ちにならず進捗が分かる）。
-  //   名前絞り込み(q)時は取得済みlistの件数のみ返す（全件count は q に対応しないため）。
+  // 補完対象の「真の総数」（3テーブル合算・テーブル別内訳つき）。名前絞り込み時は取得済みの件数のみ。
   let total: number | null = null;
-  if (!q) {
-    const { count } = await supabase.from("places").select("id", { count: "exact", head: true })
-      .eq("is_active", true).or(orExpr);
-    total = count ?? null;
-  }
-  return NextResponse.json({ ok: true, count: rows.length, total, places: rows });
+  let byTable: Record<string, number> | undefined;
+  if (!q) { const c = await countIncompleteAll(supabase); total = c.total; byTable = c.byTable; }
+  return NextResponse.json({ ok: true, count: rows.length, total, byTable, places: rows });
 }
 
 export async function POST(req: NextRequest) {
@@ -118,6 +158,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   if (body?.secret !== ADMIN_SECRET) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   const action = String(body?.action ?? "");
+
+  // どのテーブルの行かを body.table で受ける（未指定は places＝旧クライアント互換）
+  const table: TableKey = TABLE_KEYS.includes(body?.table) ? body.table : "places";
+  const cfg = TABLES[table];
 
   // 手動保存（座標 and/or 住所）
   if (action === "save") {
@@ -128,7 +172,7 @@ export async function POST(req: NextRequest) {
     if (typeof body.lng === "number" && Number.isFinite(body.lng)) patch.lng = body.lng;
     if (typeof body.address === "string" && body.address.trim()) patch.address = body.address.trim().slice(0, 300);
     if (Object.keys(patch).length === 0) return NextResponse.json({ ok: false, error: "変更なし" }, { status: 400 });
-    const { error } = await db.from("places").update(patch).eq("id", id);
+    const { error } = await db.from(table).update(patch).eq("id", id);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, patch });
   }
@@ -137,22 +181,26 @@ export async function POST(req: NextRequest) {
   if (action === "auto") {
     const id = String(body?.placeId ?? "").trim();
     if (!id) return NextResponse.json({ ok: false, error: "placeId必須" }, { status: 400 });
-    const { data } = await db.from("places").select("id, name, address, lat, lng, tags").eq("id", id).maybeSingle();
+    const { data } = await db.from(table).select(`id, ${cfg.nameCol}, address, lat, lng, ${cfg.tagCol}`).eq("id", id).maybeSingle();
     if (!data) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-    const r = await autoFill(db, data as Row);
+    const d = data as unknown as Record<string, unknown>;
+    const row: Row = { id: String(d.id), name: String(d[cfg.nameCol] ?? ""), address: (d.address as string | null) ?? null, lat: (d.lat as number | null) ?? null, lng: (d.lng as number | null) ?? null, tags: null, table };
+    const r = await autoFill(db, row);
     if (!r) return NextResponse.json({ ok: false, error: "補完できませんでした（名前/住所から特定不可）" }, { status: 200 });
     return NextResponse.json({ ok: true, ...r });
   }
 
-  // 一括 自動補完（1呼び出し=最大25件・コスト/タイムアウト対策。クライアントがdoneまで再呼び出し）
+  // 一括 自動補完（1呼び出し=3テーブル各25件・コスト/タイムアウト対策。クライアントがdoneまで再呼び出し）。
+  //   3テーブルを毎回処理＝1テーブルの補完不能行が他テーブルの進行をブロックしない。
   if (action === "auto-batch") {
-    const incompleteEqs = ["日本", "日本国", ...PREFS, ...PREFS.map((p) => `日本、${p}`)];
-    const orExpr = ["lat.is.null", "lng.is.null", "address.is.null", ...incompleteEqs.map((v) => `address.eq."${v}"`)].join(",");
-    const { data } = await db.from("places").select("id, name, address, lat, lng, tags").eq("is_active", true).or(orExpr).order("id").limit(25);  // order id=主キー索引(name順はtimeout)
-    const rows = (data ?? []) as Row[];
-    let filled = 0;
-    for (const row of rows) { if (await autoFill(db, row)) filled++; }
-    return NextResponse.json({ ok: true, processed: rows.length, filled, done: rows.length < 25 });
+    let processed = 0, filled = 0;
+    for (const t of TABLE_KEYS) {
+      const rows = await fetchIncomplete(db, t, 25);
+      processed += rows.length;
+      for (const row of rows) { if (await autoFill(db, row)) filled++; }
+    }
+    // done: 全テーブルで対象が尽きた or この回で1件も改善できなかった（補完不能行だけ残った＝無限ループ回避）
+    return NextResponse.json({ ok: true, processed, filled, done: processed === 0 || filled === 0 });
   }
 
   return NextResponse.json({ ok: false, error: "action は auto | auto-batch | save" }, { status: 400 });
