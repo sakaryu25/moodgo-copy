@@ -49,6 +49,9 @@ export default function RootLayout() {
               下で個別に fullScreenGestureEnabled:false（左端エッジのみ）へ固定する。
               ※place は自前の <Stack.Screen>（animation:'none'）でエッジ固定済みなのでここには列挙しない。 */}
           <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }}>
+            {/* 根の(tabs)＝ホーム等のタブ画面は「戻る先」が無い。ここでスワイプ戻ると GO_BACK が
+                どのnavigatorにも処理されず警告になるため、タブ根はスワイプ戻る自体を無効化する。 */}
+            <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
             <Stack.Screen name="community-spot" options={{ fullScreenGestureEnabled: false }} />
             <Stack.Screen name="feature-spot" options={{ fullScreenGestureEnabled: false }} />
             <Stack.Screen name="books/[bookId]" options={{ fullScreenGestureEnabled: false }} />
