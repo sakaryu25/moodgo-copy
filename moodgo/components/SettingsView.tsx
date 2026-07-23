@@ -6,7 +6,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { Camera, Check, ChevronRight, EyeOff, FileText, Globe, Lock, Mail, MapPin, Navigation, ShieldCheck, Trash2, UserRound } from 'lucide-react-native';
+import { Camera, Check, ChevronRight, EyeOff, FileText, Globe, Lock, Mail, MapPin, Navigation, ShieldCheck, Store, Trash2, UserRound } from 'lucide-react-native';
 import { router, type Href } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -19,7 +19,7 @@ import Svg, {
 } from 'react-native-svg';
 import { getDeviceId } from '@/lib/abtest';
 import { useSettings, saveProfileExtras, saveNickname, saveIconUrl, saveHandle } from '@/lib/settingsStore';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_BASE } from '@/lib/api';
 import { FAVORITES_KEY, HISTORY_KEY, FEEDBACK_KEY, PENDING_VISITED_KEY, BLOCKED_PLACES_KEY, BLOCKED_USERS_KEY, PROFILE_KEY } from '@/lib/storage';
 import IMESafeTextInput from '@/components/IMESafeTextInput';
 import AppBackground from './AppBackground';
@@ -888,9 +888,20 @@ export default function SettingsView({
                 <Text style={s.linkRowText}>{lang === 'ja' ? '利用規約' : 'Terms of Service'}</Text>
                 <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { onClose(); router.push('/contact' as Href); }} style={s.linkRow} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { onClose(); router.push('/contact' as Href); }} style={[s.linkRow, s.linkRowBorder]} activeOpacity={0.7}>
                 <Mail size={17} color={PURPLE} strokeWidth={2} />
                 <Text style={s.linkRowText}>{lang === 'ja' ? 'お問い合わせ' : 'Contact'}</Text>
+                <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
+              </TouchableOpacity>
+              {/* お店・企業の掲載申請（Webフォーム/businessをSafariで開く）。オーナーがユーザーとして
+                  アプリを触っていて「うちも載せたい」と思った時の入口 */}
+              <TouchableOpacity
+                onPress={() => { Linking.openURL(`${API_BASE}/business`).catch(() => {}); }}
+                style={s.linkRow} activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={lang === 'ja' ? 'お店・企業の方はこちら' : 'For businesses'}>
+                <Store size={17} color={PURPLE} strokeWidth={2} />
+                <Text style={s.linkRowText}>{lang === 'ja' ? 'お店・企業の方はこちら（掲載申請）' : 'For businesses (get listed)'}</Text>
                 <ChevronRight size={16} color="#C4B5FD" strokeWidth={2} />
               </TouchableOpacity>
             </View>
