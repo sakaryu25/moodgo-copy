@@ -164,6 +164,7 @@ interface VitalityStats {
 function LocationFillPanel({ secret }: { secret: string }) {
   type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; noCoord: boolean; badAddr: boolean };
   const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState<number | null>(null);   // 補完対象の真の総数（進捗把握用）
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string>("");
@@ -178,7 +179,8 @@ function LocationFillPanel({ secret }: { secret: string }) {
       u.searchParams.set("secret", secret); u.searchParams.set("limit", "300");
       if (kw) u.searchParams.set("q", kw);
       const d = await fetch(u.toString()).then(r => r.json());
-      if (d?.ok) setRows(d.places ?? []); else setMsg(d?.error ?? "取得に失敗しました");
+      if (d?.ok) { setRows(d.places ?? []); if (!kw) setTotal(typeof d.total === "number" ? d.total : null); }
+      else setMsg(d?.error ?? "取得に失敗しました");
     } catch { setMsg("取得に失敗しました"); }
     setBusy(false);
   }, [secret]);
@@ -223,7 +225,9 @@ function LocationFillPanel({ secret }: { secret: string }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900 }}>📍 位置情報補完</h2>
-        <span style={{ fontSize: 12, color: "#9ca3af" }}>座標登録＋住所補完を統一（{rows.length}件）</span>
+        <span style={{ fontSize: 12, color: "#9ca3af" }}>
+          {total != null ? <>要補完 <b style={{ color: "#e5484d", fontSize: 14 }}>{total.toLocaleString()}</b> 件（表示{rows.length}件）</> : <>座標登録＋住所補完を統一（{rows.length}件）</>}
+        </span>
         <span style={{ marginLeft: "auto" }} />
         <button onClick={() => load(q)} disabled={busy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E3D8F5", background: "#fff", color: "#7C3AED", fontWeight: 700, cursor: "pointer" }}>🔄 再読み込み</button>
         <button onClick={runBatch} disabled={batch.running || busy} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#ffbf67,#ff8f7f)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>

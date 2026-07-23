@@ -100,7 +100,16 @@ export async function GET(req: NextRequest) {
   if (q) rows = rows.filter((r) => String(r.name ?? "").includes(q) || String(r.address ?? "").includes(q));
   rows.sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "ja"));  // 表示は名前順(≤800件のJSソートは軽い)
   rows = rows.slice(0, limit);
-  return NextResponse.json({ ok: true, count: rows.length, places: rows });
+
+  // 補完対象の「真の総数」（count専用の head:true。limitで頭打ちにならず進捗が分かる）。
+  //   名前絞り込み(q)時は取得済みlistの件数のみ返す（全件count は q に対応しないため）。
+  let total: number | null = null;
+  if (!q) {
+    const { count } = await supabase.from("places").select("id", { count: "exact", head: true })
+      .eq("is_active", true).or(orExpr);
+    total = count ?? null;
+  }
+  return NextResponse.json({ ok: true, count: rows.length, total, places: rows });
 }
 
 export async function POST(req: NextRequest) {
