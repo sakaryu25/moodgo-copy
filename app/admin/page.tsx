@@ -160,6 +160,117 @@ interface VitalityStats {
 // ─── DB統計パネル ──────────────────────────────────────────────────────────────
 
 
+// 📷 Wikimedia写真の一括付与。重いWikidata SPARQL取得をブラウザで行い(タイムアウト回避)、
+//   写真なしスポットに名前+座標(≤2km)一致でCommons画像(CC/PD)を付与する。まずDRYで件数確認→付与。
+function PhotoHarvestPanel({ secret }: { secret: string }) {
+  const [phase, setPhase] = useState<"idle" | "index" | "scan" | "done">("idle");
+  const [log, setLog] = useState<string>("");
+  const [stats, setStats] = useState<{ scanned: number; matched: number; applied: number }>({ scanned: 0, matched: 0, applied: 0 });
+  const [running, setRunning] = useState(false);
+
+  // Wikidata画像が付きやすい型（映え/自然/観光）。P31/P279*で下位種も拾う。
+  const TYPES: [string, string][] = [
+    ["Q22698", "公園"], ["Q34038", "滝"], ["Q8502", "山"], ["Q23397", "湖"], ["Q23413", "城"],
+    ["Q1107656", "庭園"], ["Q167346", "植物園"], ["Q845945", "神社"], ["Q44539", "寺"],
+    ["Q33506", "博物館"], ["Q207694", "美術館"], ["Q2680521", "水族館"], ["Q43501", "動物園"],
+    ["Q40080", "海岸"], ["Q194195", "遊園地"], ["Q570116", "観光地"], ["Q12518", "塔"],
+    ["Q177380", "温泉"], ["Q46831", "山地"], ["Q4022", "川"],
+  ];
+  const normName = (s: string) => (s || "").normalize("NFKC").replace(/[\s　]/g, "").replace(/[（(].*?[)）]/g, "").replace(/店$|本店$/, "").toLowerCase();
+  const commonsUrl = (imgVal: string) => `https://commons.wikimedia.org/wiki/Special:FilePath/${imgVal.split("/").pop()}?width=800`;
+  const haversine = (a: number, b: number, c: number, d: number) => { const R = 6371, r = Math.PI / 180; const dLat = (c - a) * r, dLon = (d - b) * r; const x = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  type WdRec = { lat: number; lon: number; url: string };
+
+  const run = async (apply: boolean) => {
+    if (running) return;
+    setRunning(true); setStats({ scanned: 0, matched: 0, applied: 0 }); setLog("");
+    const append = (s: string) => setLog((prev) => (prev ? prev + "\n" : "") + s);
+    try {
+      // ① Wikidata索引をブラウザで構築（query.wikidata.org はCORS許可済み）
+      setPhase("index");
+      const wd = new Map<string, WdRec[]>();
+      for (const [qid, label] of TYPES) {
+        const q = `SELECT ?itemLabel ?lat ?lon ?img WHERE { ?item wdt:P17 wd:Q17 . ?item wdt:P31/wdt:P279* wd:${qid} . ?item wdt:P18 ?img . ?item p:P625/psv:P625 [ wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon ] . ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel)="ja") } LIMIT 20000`;
+        let rows: Array<Record<string, { value: string }>> = [];
+        for (let a = 0; a < 3; a++) {
+          try {
+            const r = await fetch("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { Accept: "application/sparql-results+json" } });
+            if (!r.ok) { await sleep(3000 + a * 3000); continue; }
+            rows = (await r.json()).results.bindings; break;
+          } catch { await sleep(3000); }
+        }
+        for (const b of rows) {
+          const nn = normName(b.itemLabel?.value ?? "");
+          if (!nn) continue;
+          if (!wd.has(nn)) wd.set(nn, []);
+          wd.get(nn)!.push({ lat: Number(b.lat.value), lon: Number(b.lon.value), url: commonsUrl(b.img.value) });
+        }
+        append(`索引 ${label}: ${rows.length}件（計 ${wd.size}名）`);
+        await sleep(1200);
+      }
+      append(`Wikidata索引: ${wd.size}名`);
+
+      // ② 写真なしスポットをページングで取得→ 名前+座標(≤2km)一致で照合 → 付与
+      setPhase("scan");
+      let cursor = "", scanned = 0, matched = 0, applied = 0;
+      for (let page = 0; page < 2000; page++) {
+        const u = new URL("/api/admin/photo-harvest", window.location.origin);
+        u.searchParams.set("secret", secret); u.searchParams.set("limit", "500");
+        if (cursor) u.searchParams.set("cursor", cursor);
+        const d = await fetch(u.toString()).then((r) => r.json());
+        if (!d?.ok) { append(`取得エラー: ${d?.error ?? "?"}`); break; }
+        const places: Array<{ id: string; name: string; lat: number | null; lng: number | null }> = d.places ?? [];
+        scanned += places.length;
+        const updates: { id: string; url: string }[] = [];
+        for (const p of places) {
+          const cand = wd.get(normName(p.name));
+          if (!cand || typeof p.lat !== "number" || typeof p.lng !== "number") continue;
+          const hit = cand.find((c) => haversine(p.lat!, p.lng!, c.lat, c.lon) <= 2);
+          if (hit) updates.push({ id: p.id, url: hit.url });
+        }
+        matched += updates.length;
+        if (apply && updates.length) {
+          const res = await fetch("/api/admin/photo-harvest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret, action: "apply", updates }) }).then((r) => r.json());
+          applied += res?.applied ?? 0;
+        }
+        setStats({ scanned, matched, applied });
+        cursor = d.nextCursor ?? "";
+        if (d.done || !cursor) break;
+      }
+      append(apply ? `完了: ${scanned}件走査 / ${matched}件マッチ / ${applied}件に写真付与` : `[DRY] ${scanned}件走査 / ${matched}件マッチ（「付与を実行」で書き込み）`);
+      setPhase("done");
+    } catch (e) {
+      append(`エラー: ${String(e)}`);
+    } finally { setRunning(false); }
+  };
+
+  const btn: React.CSSProperties = { padding: "10px 18px", borderRadius: 8, border: "none", color: "#fff", fontWeight: 800, cursor: running ? "default" : "pointer", opacity: running ? 0.5 : 1 };
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 900 }}>📷 Wikimedia写真の一括付与</h2>
+      <p style={{ fontSize: 12.5, color: "#6b7280", margin: "0 0 12px", lineHeight: 1.7 }}>
+        写真のない自然・観光・絶景スポットに、<b>Wikimedia Commons</b>（CC/パブリックドメイン）の写真を
+        名前＋座標一致で付与します。飲食店はWikidata画像がほぼ無いため対象外（ユーザー投稿で増やします）。<br />
+        Wikidataの取得はこの画面（ブラウザ）で行うため、タブを閉じずにお待ちください（数分）。
+      </p>
+      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <button onClick={() => run(false)} disabled={running} style={{ ...btn, background: "#9B6BFF" }}>{running && phase !== "done" ? "実行中…" : "① まず件数を確認（DRY）"}</button>
+        <button onClick={() => run(true)} disabled={running} style={{ ...btn, background: "linear-gradient(135deg,#ffbf67,#ff8f7f)" }}>② 付与を実行</button>
+      </div>
+      {(running || phase === "done") && (
+        <div style={{ background: "#fff", border: "1px solid #f0e9fb", borderRadius: 12, padding: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#1A0A2E", marginBottom: 6 }}>
+            {phase === "index" ? "Wikidata取得中…" : phase === "scan" ? "照合中…" : "完了"} ／ 走査 {stats.scanned} ・ マッチ {stats.matched} ・ 付与 {stats.applied}
+          </div>
+          <pre style={{ margin: 0, fontSize: 11.5, color: "#6b7280", whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto" }}>{log}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 📍 位置情報補完: 座標なし OR 住所不完全 のスポットを双方向(住所↔座標)で一括補完。完全住所形式に統一。
 function LocationFillPanel({ secret }: { secret: string }) {
   type Row = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; tags: string[] | null; noCoord: boolean; badAddr: boolean; table?: string };
@@ -1480,7 +1591,7 @@ export default function AdminPage() {
   useEffect(() => {
     try { const saved = localStorage.getItem("moodgo-admin-secret"); if (saved) { setAdminSecret(saved); setAuthed(true); } } catch { /* ignore */ }
   }, []);
-  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights" | "location-fill">("stats");
+  const [tab, setTab] = useState<"stats" | "suggestions" | "add-spot" | "import" | "visited" | "reports" | "mood_ratings" | "geocode" | "merge" | "retag" | "vitality" | "db-stats" | "metrics" | "mood-logs" | "server-errors" | "pending-spots" | "address-fill" | "account-type" | "place-edit" | "insights" | "location-fill" | "photo-harvest">("stats");
   // ── 🛠 場所編集タブ: 名前検索→名前/住所/座標/営業時間/最寄り駅/タグ/値段/写真/公開状態を直接編集（報告対応用）──
   type PeRow = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; open_hours: string | null; nearest_station: string | null; is_active: boolean | null; source_type: string | null; google_place_id: string | null; tags: string[] | null; budget: string | null; close_day: string | null; image_urls: string[] | null; photo_url: string | null; rating: number | null; rating_count: number | null };
   type PeSignals = { photos: number; posts: number; ratings: number; engagement: number };
@@ -3677,6 +3788,7 @@ export default function AdminPage() {
             { key: "server-errors", label: "🐞 サーバーエラー" },
             { key: "pending-spots", label: "🆕 新スポット承認" },
             { key: "suggestions", label: "🏪 企業掲載・投稿管理" },
+            { key: "photo-harvest", label: "📷 写真一括付与" },
             { key: "account-type", label: "アカウント種別" },
           ] as const).map((t) => (
             <button
@@ -7588,6 +7700,7 @@ export default function AdminPage() {
         {tab === "insights" && <LearningInsightsPanel secret={adminSecret} />}
 
         {tab === "location-fill" && <LocationFillPanel secret={adminSecret} />}
+        {tab === "photo-harvest" && <PhotoHarvestPanel secret={adminSecret} />}
 
         {/* ── 🛠 場所編集タブ ───────────────────────────────────────── */}
         {tab === "place-edit" && (
