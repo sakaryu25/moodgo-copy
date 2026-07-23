@@ -85,7 +85,8 @@ if (!toInsert.length) { console.log('投入対象なし'); process.exit(0); }
 
 // 5) insert (batches of 200)
 const now = new Date().toISOString();
-const base = { source_type: 'admin', is_active: true, tag_source: 'curated', tags_reviewed: true, source_license: 'curated-web-2026-07-national', created_at: now, updated_at: now };
+// ⚠ featured転載は source_type IN (user,manual) のみ拾う（add-source-type-index.sql準拠）→ manual必須。
+const base = { source_type: 'manual', is_active: true, tag_source: 'curated', tags_reviewed: true, source_license: 'curated-web-2026-07-national2', created_at: now, updated_at: now };
 const inserted = [];
 for (let i = 0; i < toInsert.length; i += 200) {
   const chunk = toInsert.slice(i, i + 200).map(r => ({ ...base, name: r.name, address: r.address, lat: r.lat, lng: r.lng, tags: r.tags, description: r.description, area: r.city }));

@@ -237,7 +237,12 @@ export default function ProfileTab() {
 
   // ── 入場アニメーション（Fade + TranslateY20 の Stagger・iOS的Spring）──────────
   const anims = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
+  const didEntrance = useRef(false);
   const playEntrance = useCallback(() => {
+    // 入場アニメは初回マウント時のみ。2回目以降のフォーカス（詳細/バッジから戻る等）で opacity0 に
+    //   リセット再生すると一瞬全体が消えて“白くちらつく”ため、以降は現状（表示済み）を維持する。
+    if (didEntrance.current) return;
+    didEntrance.current = true;
     anims.forEach((a) => a.setValue(0));
     Animated.stagger(70, anims.map((a) =>
       Animated.spring(a, { toValue: 1, useNativeDriver: true, damping: 15, stiffness: 130, mass: 0.9 }),
@@ -292,6 +297,7 @@ export default function ProfileTab() {
         saveJSON('moodgo-my-posts-cache-v1', data.items);
       }
     } catch { /* 前回表示のまま */ }
+    finally { setLoading(false); }   // 初回(キャッシュ無し)でも必ずローディング解除
   }, []);
 
   // バッジ(行った！)・最近チェック（端末ローカル記録）
@@ -351,11 +357,9 @@ export default function ProfileTab() {
       loadFollows();
       hasUnread().then(setNotifUnread).catch(() => {});
       playEntrance();
-      (async () => {
-        setLoading(true);
-        await loadPosts();
-        setLoading(false);
-      })();
+      // 投稿は前回分を保持したまま裏で最新化する（setLoading(true)しない＝再フォーカスで
+      //   一瞬空になって“白くちらつく”のを防ぐ。初回のローディングは初期state=trueで担保）。
+      loadPosts();
     }, [loadProfile, loadPosts, loadLogs, loadFollows, playEntrance]),
   );
 

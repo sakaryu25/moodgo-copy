@@ -43,11 +43,15 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          {/* 右スワイプで前のページへ戻る（全Stackページ共通）。
-              iOS標準の左端エッジ発火に固定＝意図した時だけ反応する“硬め”の操作感。
-              以前の全面(fullScreen=どこでも反応)は誤爆が多く「感度が緩い」ため取りやめ。
-              エッジ発火はどのページでも有効なので「ほぼ全ページで右スワイプ」を満たす。 */}
-          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: false }} />
+          {/* 右スワイプで前のページへ戻る（ほぼ全Stackページ共通・ユーザー要望2026-07-22）。
+              fullScreenGestureEnabled=true＝画面のどこからでも右へスワイプすれば1つ前へ戻れる。
+              写真カルーセルの詳細ページ(place/community-spot等)も対象＝横スワイプは各カルーセルが
+              優先的にジェスチャを消費するので「写真送り」と「戻る」は基本両立する。 */}
+          <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }}>
+            {/* 根の(tabs)＝ホーム等のタブ画面は「戻る先」が無い。ここでスワイプ戻ると GO_BACK が
+                どのnavigatorにも処理されず警告になるため、タブ根はスワイプ戻る自体を無効化する。 */}
+            <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+          </Stack>
           {/* 検索クイズ/結果のルート直下オーバーレイ（旧・全画面Modalの置換）。Stackの上に重ね、
               /place遷移中は自身がopacity0で退避＝裏の/placeが即前面化しホームのチラつきが出ない。 */}
           <ResultsPortalOutlet />
