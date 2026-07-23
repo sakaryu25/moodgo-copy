@@ -190,7 +190,9 @@ export async function POST(request: Request) {
     //   ＝完了画面の「すぐ表示されます」に反して手動承認まで誰にも見えないバグだった。
     //   NGワードは上でPOST自体を400にしているため、通過した投稿はそのまま公開してよい。
     //   pending/hidden は admin が個別に非公開へ落とすための状態として残す。
-    const status = "approved";
+    //   ⚠ 例外: 企業の掲載申請(source='business'・Webの/businessフォーム)は宣伝・虚偽の
+    //     リスクがあるため即公開せず、必ずadmin審査(pending)を通してから掲載する。
+    const status = source === "business" ? "pending" : "approved";
 
     // コアペイロード（必ず存在するカラムのみ）
     const corePayload = {

@@ -67,6 +67,15 @@ export default function HomePage() {
         発生した画面をあわせてお知らせいただけるとスムーズです。
       </p>
 
+      <h2 style={h2}>お店・企業の方へ</h2>
+      <p style={p}>
+        掲載・情報修正のご依頼、店舗アカウント（認証バッジ）、広告・スポンサー掲載のご相談は
+        専用窓口からお願いします。
+      </p>
+      <p style={p}>
+        <a href="/business" style={link}>お店・企業向けお問い合わせはこちら →</a>
+      </p>
+
       <h2 style={h2}>規約・ポリシー</h2>
       <ul style={ul}>
         <li><a href="/terms" style={link}>利用規約</a></li>
