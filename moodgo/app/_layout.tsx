@@ -43,19 +43,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ErrorBoundary>
-          {/* 右スワイプで前のページへ戻る（ほぼ全Stackページ共通）。
-              fullScreenGestureEnabled=true＝画面のどこからでも右へスワイプすれば1つ前へ戻れる（ユーザー要望2026-07-22）。
-              ただし写真を横スワイプするカルーセル系の詳細ページは、横スクロールとの誤爆を防ぐため
-              下で個別に fullScreenGestureEnabled:false（左端エッジのみ）へ固定する。
-              ※place は自前の <Stack.Screen>（animation:'none'）でエッジ固定済みなのでここには列挙しない。 */}
+          {/* 右スワイプで前のページへ戻る（ほぼ全Stackページ共通・ユーザー要望2026-07-22）。
+              fullScreenGestureEnabled=true＝画面のどこからでも右へスワイプすれば1つ前へ戻れる。
+              写真カルーセルの詳細ページ(place/community-spot等)も対象＝横スワイプは各カルーセルが
+              優先的にジェスチャを消費するので「写真送り」と「戻る」は基本両立する。 */}
           <Stack screenOptions={{ headerShown: false, gestureEnabled: true, fullScreenGestureEnabled: true }}>
             {/* 根の(tabs)＝ホーム等のタブ画面は「戻る先」が無い。ここでスワイプ戻ると GO_BACK が
                 どのnavigatorにも処理されず警告になるため、タブ根はスワイプ戻る自体を無効化する。 */}
             <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="community-spot" options={{ fullScreenGestureEnabled: false }} />
-            <Stack.Screen name="feature-spot" options={{ fullScreenGestureEnabled: false }} />
-            <Stack.Screen name="books/[bookId]" options={{ fullScreenGestureEnabled: false }} />
-            <Stack.Screen name="feature/spot/[id]" options={{ fullScreenGestureEnabled: false }} />
           </Stack>
           {/* 検索クイズ/結果のルート直下オーバーレイ（旧・全画面Modalの置換）。Stackの上に重ね、
               /place遷移中は自身がopacity0で退避＝裏の/placeが即前面化しホームのチラつきが出ない。 */}
