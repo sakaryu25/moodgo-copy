@@ -7478,8 +7478,18 @@ async function handleRecommend(request: Request) {
           //   ⚠距離フィルタしない＝大阪のスタバ投稿でも東京の検索で支店展開できる（全国補完の要）。最大3チェーン。
           try {
             const { detectChain } = await import("@/lib/chain-detect");
+            // 種の元データ: featuredキャッシュ(_feat)が暖まっていればそれを、サーバーレスのコールドで空なら
+            //   直接軽量クエリ(source_type索引あり・name/tagsのみ・数百行)にフォールバック＝コールドでも確実に検出。
+            let chainRows: Array<Record<string, unknown>> = _feat;
+            if (chainRows.length === 0 && supabase) {
+              try {
+                const { data } = await supabase.from("places").select("name,tags")
+                  .in("source_type", ["user", "manual"]).eq("is_active", true).limit(5000);
+                chainRows = (data ?? []) as Array<Record<string, unknown>>;
+              } catch { /* 失敗時は空のまま */ }
+            }
             const _cseen = new Set<string>();
-            for (const row of _feat) {
+            for (const row of chainRows) {
               if (chainSeeds.length >= 3) break;
               const tags = (row.tags as string[]) ?? [];
               if (realMoodTag && !tags.includes(realMoodTag)) continue;   // 気分適合のチェーンだけ展開
