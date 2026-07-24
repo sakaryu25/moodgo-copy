@@ -7460,6 +7460,8 @@ async function handleRecommend(request: Request) {
         }
       }
 
+      // チェーン投稿→検索時に「検索した人の近くの支店」を全国展開する種（この気分に合うチェーンのみ・スキーマ変更なし）。
+      const chainSeeds: Array<{ query: string; tags: string[] }> = [];
       // ── 投稿(user)/手厳選(manual)を確実にプールへ合流（「投稿・厳選を優先して最大8」の保証・2026-07-22）──
       //   本経路の最寄りfetch(limit20)は密集エリアで少し離れた投稿/厳選を取りこぼし、後段の8転載予約が
       //   supabaseRecs 由来のため届かなかった(実測: まったり@新大久保で投稿カフェ0件・枠は近所の寺/銭湯adminで充填)。
@@ -7471,6 +7473,19 @@ async function handleRecommend(request: Request) {
           // ⚠source∈(user/manual)の全件(数百)から距離で近傍を絞る。find_nearby_places(気分タグ)は
           //   密集エリアで limit に埋もれ投稿/厳選を取りこぼす(実測: #まったりしたい300件にSeoul Cafeが入らない)。
           const _feat = loadFeaturedPlaces();  // 同期(裏で非同期リフレッシュ・ホットパスをブロックしない)
+          // チェーン投稿の検出（種）: この気分(realMoodTag)に合う投稿/厳選のうちチェーン店を種に採る。
+          //   ⚠距離フィルタしない＝大阪のスタバ投稿でも東京の検索で支店展開できる（全国補完の要）。最大3チェーン。
+          try {
+            const { detectChain } = await import("@/lib/chain-detect");
+            const _cseen = new Set<string>();
+            for (const row of _feat) {
+              if (chainSeeds.length >= 3) break;
+              const tags = (row.tags as string[]) ?? [];
+              if (realMoodTag && !tags.includes(realMoodTag)) continue;   // 気分適合のチェーンだけ展開
+              const def = detectChain(row.name as string);
+              if (def && !_cseen.has(def.key)) { _cseen.add(def.key); chainSeeds.push({ query: def.query, tags }); }
+            }
+          } catch { /* チェーン検出失敗は無視 */ }
           const _lat0 = answers.originLat ?? 0, _lng0 = answers.originLng ?? 0;
           const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
@@ -8690,6 +8705,87 @@ async function handleRecommend(request: Request) {
             recommendations = [...adminRecs, ...rest].slice(0, Math.max(15, adminRecs.length));
             console.log(`[recommend] 期間限定転載(admin)注入: ${adminRecs.length}件 (mood=${answers.mood})`);
           }
+        }
+
+        // ── チェーン投稿の全国支店を「検索した人の近く」にライブ展開（無料Yahoo優先・各支店の実データ）──
+        //   投稿されたチェーン(chainSeeds)ごとに現在地周辺の支店をYahooローカルサーチ(無料)で取得。
+        //   支店の店名/住所/URL/座標は各支店の実データ。写真は表示する支店だけGoogleでライブ取得(保存しない=規約OK)。
+        //   ⚠永続保存しない=DB肥大なし。ブランドcap(finalizeで最大2/チェーン)で溢れ防止。心霊/位置なしは対象外。
+        if (chainSeeds.length > 0 && hasLocation && !isProprietaryOnly) {
+          try {
+            const _tc = getTimeContext();
+            const _oLat = answers.originLat!, _oLng = answers.originLng!;
+            const _existing = new Set(recommendations.map(r => normalizeName(r.title ?? "")));
+            const chainRecs: Rec[] = [];
+            for (const seed of chainSeeds.slice(0, 3)) {
+              if (chainRecs.length >= 4) break;
+              let items: Awaited<ReturnType<typeof fetchYahooLocalSearch>> = [];
+              try { items = await fetchYahooLocalSearch(_oLat, _oLng, radiusKm, seed.query, answers, _tc); } catch { items = []; }
+              // 近い順に最大2支店/チェーン（座標が取れ・半径内・未出のみ）。
+              const withKm = items
+                .map(it => ({ it, km: it.location ? haversineMeters(_oLat, _oLng, it.location.latitude, it.location.longitude) / 1000 : Infinity }))
+                .filter(x => Number.isFinite(x.km) && x.km <= radiusKm && !_existing.has(normalizeName(x.it.title)))
+                .sort((a, b) => a.km - b.km)
+                .slice(0, 2);
+              for (const { it, km } of withKm) {
+                _existing.add(normalizeName(it.title));
+                // 写真: 支店ごとにGoogleでライブ取得(保存しない)。無ければ空＝装飾プレースホルダ表示。
+                let imgs: string[] = [];
+                if (apiKey && !RECOMMEND_DISABLE_GOOGLE) {
+                  try {
+                    const pr = await gfetch("https://places.googleapis.com/v1/places:searchText", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.photos" },
+                      body: JSON.stringify({ textQuery: it.address ? `${it.title} ${it.address}` : it.title, languageCode: "ja", pageSize: 1 }),
+                      cache: "no-store", signal: AbortSignal.timeout(5000),
+                    });
+                    if (pr.ok) {
+                      const pd = await pr.json().catch(() => null);
+                      const photos = (pd?.places?.[0]?.photos ?? []) as Array<{ name: string }>;
+                      imgs = photos.slice(0, 8).map(p => buildPhotoProxyUrl(p.name)).filter(Boolean);
+                    }
+                  } catch { /* 写真補完失敗は装飾PHで代替 */ }
+                }
+                chainRecs.push({
+                  title: it.title,
+                  address: it.address ?? "",
+                  photoUrl: imgs[0] ?? "",
+                  photoUrls: imgs,
+                  rating: it.rating ?? null,
+                  userRatingCount: it.userRatingCount ?? null,
+                  openNow: undefined,
+                  openingHoursText: it.openingHoursText || undefined,
+                  mapUrl: it.mapUrl ?? "",
+                  googleMapsUrl: it.mapUrl ?? "",
+                  reason: pickReason(it.title, seed.tags, it.address ?? null, undefined),
+                  features: seed.tags.slice(0, 5),
+                  distanceText: formatDistTextFromKm(km, answers.transport),
+                  distanceKm: km,
+                  lat: it.location?.latitude,
+                  lng: it.location?.longitude,
+                  durationText: "",
+                  stationText: "",
+                  vibe: "", budget: "", time: "",
+                  priceLevel: undefined,
+                  placeId: undefined,
+                  supabaseId: undefined,
+                  source: "admin",   // 実在店＝通常カード表示（"Google検索"ラベルは付けない）
+                  isUserSpot: false,
+                  hasUserPhotos: false,
+                  userPhotoCount: 0,
+                  routesByMode: undefined,
+                } as Rec);
+              }
+            }
+            if (chainRecs.length > 0) {
+              // 上位の地元スポットは残しつつ、チェーン支店を中盤(4番以降)へ差し込む（先頭独占を防ぐ）。
+              const _ckeys = new Set(chainRecs.map(c => normalizeName(c.title ?? "")));
+              const _rest = recommendations.filter(r => !_ckeys.has(normalizeName(r.title ?? "")));
+              const _head = _rest.slice(0, 4), _tail = _rest.slice(4);
+              recommendations = [..._head, ...chainRecs, ..._tail].slice(0, Math.max(15, _head.length + chainRecs.length));
+              console.log(`[recommend] チェーン支店ライブ展開: ${chainRecs.length}件 (seeds=${chainSeeds.map(s => s.query).join(",")})`);
+            }
+          } catch { /* チェーン展開失敗は通常結果で続行 */ }
         }
 
         // ── 承認済みユーザーブログ投稿の注入（source=blog_post / 「ユーザー投稿」バッジ）──────
