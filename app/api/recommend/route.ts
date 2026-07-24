@@ -3158,7 +3158,8 @@ async function fetchYahooLocalSearch(
   radiusKm: number,
   keyword: string,
   answers: Answers,
-  timeCtx: ReturnType<typeof getTimeContext>
+  timeCtx: ReturnType<typeof getTimeContext>,
+  openOnly: boolean = true,   // false=閉店中も返す（チェーン支店展開用：深夜でも近くの支店を出す）
 ): Promise<ScoredItem[]> {
   if (RECOMMEND_DISABLE_GOOGLE) return [];   // 規約対応: 外部検索オフ時はYahoo検索も停止
   const apiKey = process.env.YAHOO_LOCAL_SEARCH_API_KEY;
@@ -3172,7 +3173,7 @@ async function fetchYahooLocalSearch(
       results: "20",
       sort: "score",
       output: "json",
-      open: "now",
+      ...(openOnly ? { open: "now" } : {}),
       ...(keyword ? { query: keyword } : {}),
     });
     const res = await fetch(
@@ -8720,7 +8721,7 @@ async function handleRecommend(request: Request) {
             for (const seed of chainSeeds.slice(0, 3)) {
               if (chainRecs.length >= 4) break;
               let items: Awaited<ReturnType<typeof fetchYahooLocalSearch>> = [];
-              try { items = await fetchYahooLocalSearch(_oLat, _oLng, radiusKm, seed.query, answers, _tc); } catch { items = []; }
+              try { items = await fetchYahooLocalSearch(_oLat, _oLng, radiusKm, seed.query, answers, _tc, false); } catch { items = []; }  // openOnly=false: 深夜でも近くの支店を出す
               // 近い順に最大2支店/チェーン（座標が取れ・半径内・未出のみ）。
               const withKm = items
                 .map(it => ({ it, km: it.location ? haversineMeters(_oLat, _oLng, it.location.latitude, it.location.longitude) / 1000 : Infinity }))
