@@ -7463,7 +7463,6 @@ async function handleRecommend(request: Request) {
 
       // チェーン投稿→検索時に「検索した人の近くの支店」を全国展開する種（この気分に合うチェーンのみ・スキーマ変更なし）。
       const chainSeeds: Array<{ query: string; tags: string[] }> = [];
-      const _chainDbg: Record<string, unknown> = { seeds: 0, yahoo: -1, built: 0, disG: RECOMMEND_DISABLE_GOOGLE };  // ⚠一時デバッグ(検証後削除)
       // ── 投稿(user)/手厳選(manual)を確実にプールへ合流（「投稿・厳選を優先して最大8」の保証・2026-07-22）──
       //   本経路の最寄りfetch(limit20)は密集エリアで少し離れた投稿/厳選を取りこぼし、後段の8転載予約が
       //   supabaseRecs 由来のため届かなかった(実測: まったり@新大久保で投稿カフェ0件・枠は近所の寺/銭湯adminで充填)。
@@ -7497,8 +7496,7 @@ async function handleRecommend(request: Request) {
               const def = detectChain(row.name as string);
               if (def && !_cseen.has(def.key)) { _cseen.add(def.key); chainSeeds.push({ query: def.query, tags }); }
             }
-            _chainDbg.seeds = chainSeeds.length; _chainDbg.q = chainSeeds.map(s => s.query); _chainDbg.rows = chainRows.length;  // ⚠一時デバッグ
-          } catch (e) { _chainDbg.detErr = String(e).slice(0, 80); /* チェーン検出失敗は無視 */ }
+          } catch { /* チェーン検出失敗は無視 */ }
           const _lat0 = answers.originLat ?? 0, _lng0 = answers.originLng ?? 0;
           const _featCapKm = (answers.distanceFeeling && DIST_HARDCAP_KM[answers.distanceFeeling] != null)
             ? DIST_HARDCAP_KM[answers.distanceFeeling] : sbRadiusKm;
@@ -8734,7 +8732,6 @@ async function handleRecommend(request: Request) {
               if (chainRecs.length >= 4) break;
               let items: Awaited<ReturnType<typeof fetchYahooLocalSearch>> = [];
               try { items = await fetchYahooLocalSearch(_oLat, _oLng, radiusKm, seed.query, answers, _tc, false); } catch { items = []; }  // openOnly=false: 深夜でも近くの支店を出す
-              _chainDbg.yahoo = ((_chainDbg.yahoo as number) < 0 ? 0 : (_chainDbg.yahoo as number)) + items.length;  // ⚠一時デバッグ
               // 近い順に最大2支店/チェーン（座標が取れ・半径内・未出のみ）。
               const withKm = items
                 .map(it => ({ it, km: it.location ? haversineMeters(_oLat, _oLng, it.location.latitude, it.location.longitude) / 1000 : Infinity }))
@@ -8792,7 +8789,6 @@ async function handleRecommend(request: Request) {
                 } as Rec);
               }
             }
-            _chainDbg.built = chainRecs.length;  // ⚠一時デバッグ
             if (chainRecs.length > 0) {
               // 上位の地元スポットは残しつつ、チェーン支店を中盤(4番以降)へ差し込む（先頭独占を防ぐ）。
               const _ckeys = new Set(chainRecs.map(c => normalizeName(c.title ?? "")));
@@ -8801,7 +8797,7 @@ async function handleRecommend(request: Request) {
               recommendations = [..._head, ...chainRecs, ..._tail].slice(0, Math.max(15, _head.length + chainRecs.length));
               console.log(`[recommend] チェーン支店ライブ展開: ${chainRecs.length}件 (seeds=${chainSeeds.map(s => s.query).join(",")})`);
             }
-          } catch (e) { _chainDbg.expErr = String(e).slice(0, 100); /* チェーン展開失敗は通常結果で続行 */ }
+          } catch { /* チェーン展開失敗は通常結果で続行 */ }
         }
 
         // ── 承認済みユーザーブログ投稿の注入（source=blog_post / 「ユーザー投稿」バッジ）──────
@@ -9545,7 +9541,6 @@ async function handleRecommend(request: Request) {
           recommendations,
           source: "supabase",
           searchId,
-          _chainDbg,   // ⚠一時デバッグ(検証後削除)
           usedAI: !!process.env.OPENAI_API_KEY,
           widenedSearch,
           warning: hasLocation
