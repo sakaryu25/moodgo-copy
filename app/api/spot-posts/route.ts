@@ -293,6 +293,24 @@ export async function POST(req: Request) {
           }
         }
       }
+      // ── 場所名の変更を、紐づく場所(places.name)と写真(spot_photos.place_name)にも反映 ──
+      //   ⚠ 名前変更で places.name / spot_photos.place_name が旧名のままだと、場所詳細/検索が
+      //     新名で写真を照合できず「写真が初期化」される（ユーザー報告2026-07-25）。
+      //   places.name は自分で作った穴場(source_type:user)のみ更新（共有Google/admin placeは壊さない）。
+      //   spot_photos は place_id が user place の時だけ揃える＋この投稿分(post_id)は常に揃える(自分の写真)。
+      if (placeName) {
+        const { data: post3 } = await db.from("spot_posts").select("place_id").eq("id", postId).maybeSingle();
+        const pid3 = (post3 as { place_id?: string } | null)?.place_id;
+        if (pid3) {
+          const { data: pl3 } = await db.from("places").select("source_type").eq("id", pid3).maybeSingle();
+          const isUserPlace = String((pl3 as { source_type?: string } | null)?.source_type ?? "") === "user";
+          if (isUserPlace) {
+            await db.from("places").update({ name: placeName }).eq("id", pid3).then(() => {}, () => {});
+            await db.from("spot_photos").update({ place_name: placeName }).eq("place_id", pid3).then(() => {}, () => {});
+          }
+        }
+        await db.from("spot_photos").update({ place_name: placeName }).eq("post_id", postId).then(() => {}, () => {});
+      }
       return NextResponse.json({ ok: true, updated: true });
     } catch (e) {
       return NextResponse.json({ ok: false, error: String((e as { message?: string })?.message ?? e) }, { status: 500 });
