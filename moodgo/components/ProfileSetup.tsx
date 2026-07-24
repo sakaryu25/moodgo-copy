@@ -186,6 +186,8 @@ export default function ProfileSetup({ onDone }: Props) {
         <ScrollView
           contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40 }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* ロゴ */}
           <View style={s.logoWrap}>

@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import { Ban, Check, Flag, Info, MoreHorizontal, ShieldAlert, Store } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IMESafeTextInput from '@/components/IMESafeTextInput';
@@ -126,7 +126,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
     //   「常時マウント＋visible=false始まりのトグル」なので安全。呼び出し側で
     //   {show && <ReportModal visible … />} のような条件付きマウントに変えないこと。
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close}>
-      <View style={s.overlay}>
+      <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={close} />
         <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={s.handle} />
@@ -197,7 +197,7 @@ export default function ReportModal({ visible, spotName, spotAddress, suggestion
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

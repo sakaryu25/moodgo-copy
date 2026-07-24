@@ -6,6 +6,8 @@ import {
   Alert,
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -814,7 +816,7 @@ export default function ResultsView(props: Props) {
 
       {/* Report modal */}
       {reportingSpot && (
-        <View style={s.modalOverlay}>
+        <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>{t.reportTitle}</Text>
             <Text style={s.modalSpotName}>{reportingSpot.title}</Text>
@@ -861,7 +863,7 @@ export default function ResultsView(props: Props) {
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       )}
     </View>
   );

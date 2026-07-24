@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { X } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -193,7 +193,13 @@ export default function PhotoViewer({ visible, photos, initialIdx, onClose, post
                       }
                     }}
                   >
-                    <Image source={{ uri }} style={{ width: SW, height: SH }} contentFit="contain" transition={180} />
+                    <View style={{ width: SW, height: SH }}>
+                      {/* 読込中スピナー（画像がフェードインして覆う）。大画像で真っ黒のままを防ぐ */}
+                      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]} pointerEvents="none">
+                        <ActivityIndicator color="rgba(255,255,255,0.85)" />
+                      </View>
+                      <Image source={{ uri }} style={{ width: SW, height: SH }} contentFit="contain" transition={180} />
+                    </View>
                   </ScrollView>
                 ))}
               </ScrollView>

@@ -4,7 +4,7 @@
 // また行きたい・リアクション（いいね/参考になった/また行きたい）・通報を表示。
 // 「Moodログを投稿」ボタンは mood-log 画面へ遷移（スポット情報をparamsで渡す）。
 import React, { useCallback, useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { MessageCirclePlus, ThumbsUp, Sparkles, Flag } from 'lucide-react-native';
@@ -180,6 +180,10 @@ export default function MoodLogSection(
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {loading && posts.length === 0 && (
+        <View style={s.empty}><ActivityIndicator color="#9B6BFF" /></View>
+      )}
 
       {!loading && posts.length === 0 && (
         <TouchableOpacity onPress={goPost} activeOpacity={0.8} style={s.empty}>
