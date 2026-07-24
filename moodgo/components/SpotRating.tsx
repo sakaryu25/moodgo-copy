@@ -117,7 +117,7 @@ export default function SpotRating({ placeId, placeName, mood, companion, subCat
         <Text style={s.label}>{t.yourRating}</Text>
         <View style={s.stars}>
           {[1, 2, 3, 4, 5].map(n => (
-            <TouchableOpacity key={n} onPress={() => setSelected(n)} hitSlop={{ top: 6, bottom: 6, left: 2, right: 2 }} activeOpacity={0.7}>
+            <TouchableOpacity key={n} onPress={() => setSelected(n)} hitSlop={{ top: 8, bottom: 8, left: 7, right: 7 }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`${n}`}>
               <Star size={26} color="#F59E0B" fill={n <= selected ? '#F59E0B' : 'transparent'} strokeWidth={1.8} />
             </TouchableOpacity>
           ))}

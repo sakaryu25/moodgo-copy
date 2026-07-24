@@ -4,7 +4,7 @@
 // 拡大は1.03までに抑える（それ以上はラスタライズ引き伸ばしで文字が荒れる）
 import * as Haptics from 'expo-haptics';
 import React, { useRef } from 'react';
-import { Animated, Insets, Pressable, StyleProp, ViewStyle } from 'react-native';
+import { AccessibilityProps, Animated, Insets, Pressable, StyleProp, ViewStyle } from 'react-native';
 
 type Props = {
   onPress?: () => void;
@@ -16,9 +16,9 @@ type Props = {
   containerStyle?: StyleProp<ViewStyle>;
   hitSlop?: Insets | number;
   children: React.ReactNode;
-};
+} & Pick<AccessibilityProps, 'accessible' | 'accessibilityLabel' | 'accessibilityHint' | 'accessibilityRole' | 'accessibilityState'>;
 
-export default function PuniPressable({ onPress, disabled, haptic = true, style, containerStyle, hitSlop, children }: Props) {
+export default function PuniPressable({ onPress, disabled, haptic = true, style, containerStyle, hitSlop, children, ...a11y }: Props) {
   const sx = useRef(new Animated.Value(1)).current;
   const sy = useRef(new Animated.Value(1)).current;
 
@@ -36,7 +36,7 @@ export default function PuniPressable({ onPress, disabled, haptic = true, style,
   };
 
   const handlePress = () => {
-    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onPress?.();
   };
 
@@ -48,6 +48,7 @@ export default function PuniPressable({ onPress, disabled, haptic = true, style,
       disabled={disabled}
       hitSlop={hitSlop}
       style={containerStyle}
+      {...a11y}
     >
       <Animated.View style={[style, { transform: [{ scaleX: sx }, { scaleY: sy }] }]}>
         {children}

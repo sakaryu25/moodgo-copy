@@ -171,6 +171,9 @@ export default function AiChatFab({ onPress, bottomNavHeight = 80, variant = 'ai
         styles.wrap,
         { transform: pan.getTranslateTransform() },
       ]}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={label ?? (variant === 'post' ? '投稿' : 'AI相談')}
       {...panResponder.panHandlers}
     >
       {/* ラベル（ボタンと連動して動く） */}

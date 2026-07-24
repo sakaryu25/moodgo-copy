@@ -4,6 +4,7 @@
  *   ・横スワイプ or 「次へ」、最後に「はじめる」→ onDone()
  *   ・どのスライドからでも「スキップ」で即終了
  */
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Compass, MapPinned, Sparkles } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
@@ -61,7 +62,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     <View style={[s.root, { paddingTop: insets.top }]}>
       {/* スキップ */}
       <View style={s.topBar}>
-        <TouchableOpacity onPress={onDone} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); onDone(); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} accessibilityRole="button" accessibilityLabel="スキップ">
           <Text style={s.skip}>スキップ</Text>
         </TouchableOpacity>
       </View>
@@ -95,7 +96,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
       {/* 次へ / はじめる */}
       <View style={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 24 }}>
-        <TouchableOpacity onPress={next} activeOpacity={0.88} style={s.ctaWrap}>
+        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); next(); }} activeOpacity={0.88} style={s.ctaWrap} accessibilityRole="button" accessibilityLabel={page >= last ? 'はじめる' : '次へ'}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.cta}>
             <Text style={s.ctaText}>{page >= last ? 'はじめる' : '次へ'}</Text>
           </LinearGradient>

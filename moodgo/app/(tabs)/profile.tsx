@@ -600,13 +600,13 @@ export default function ProfileTab() {
       >
         {/* ── ヘッダー：左ベル(通知)＋中央タイトル＋右ギア ── */}
         <View style={s.headerRow}>
-          <PuniPressable onPress={() => { setNotifUnread(false); router.push('/notifications'); }} style={s.glassBtn}>
+          <PuniPressable onPress={() => { setNotifUnread(false); router.push('/notifications'); }} style={s.glassBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="通知">
             <Bell size={18} color={INK} strokeWidth={2} />
             {notifUnread && <View style={s.notifDot} />}
           </PuniPressable>
           <Text style={s.pageTitle}>{t.pageTitle}</Text>
           <PuniPressable onPress={() => { setSettingsSection('other'); setShowSettings(true); }}
-            style={s.glassBtn}>
+            style={s.glassBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="設定">
             <SettingsIcon size={19} color={INK} strokeWidth={2} />
           </PuniPressable>
         </View>
@@ -628,7 +628,7 @@ export default function ProfileTab() {
                 </View>
               </LinearGradient>
               <PuniPressable onPress={() => { setSettingsSection('profile'); setShowSettings(true); }}
-                style={s.cameraBadge}>
+                style={s.cameraBadge} hitSlop={8} accessibilityRole="button" accessibilityLabel="プロフィール写真を変更">
                 <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.cameraBadgeGrad}>
                   <Camera size={13} color="#fff" strokeWidth={2.2} />
                 </LinearGradient>

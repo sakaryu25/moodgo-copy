@@ -14,6 +14,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -831,7 +832,7 @@ export default function PostScreen() {
     <View style={s.root}>
       <AppBackground />
       <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[s.head, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><ArrowLeft size={22} color="#fff" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={lang === 'ja' ? '戻る' : 'Back'}><ArrowLeft size={22} color="#fff" /></TouchableOpacity>
         <Text style={s.headTitle} numberOfLines={1}>{editMode ? t.editTitle : t.postTitle}</Text>
       </LinearGradient>
       {done ? (
@@ -1135,7 +1136,7 @@ export default function PostScreen() {
                 {!thumbLoaded[im.uri] && (
                   <View style={s.thumbLoading}><ActivityIndicator size="small" color="#9B6BFF" /></View>
                 )}
-                <TouchableOpacity style={s.thumbX} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
+                <TouchableOpacity style={s.thumbX} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={lang === 'ja' ? '写真を削除' : 'Remove photo'} onPress={() => setImages(prev => prev.filter((_, j) => j !== i))}><X size={13} color="#fff" /></TouchableOpacity>
               </View>
             ))}
             {/* 枚数上限なし＝追加ボタンは常時表示（横4列で折り返す） */}
@@ -1183,7 +1184,7 @@ export default function PostScreen() {
           <Text style={s.note}>{t.licenseNote}</Text>
           </>)}
 
-          <TouchableOpacity style={[s.submitWrap, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting} activeOpacity={0.85}>
+          <TouchableOpacity style={[s.submitWrap, submitting && { opacity: 0.6 }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); submit(); }} disabled={submitting} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={submitting ? t.sending : editMode ? t.updateBtn : t.postBtn}>
             <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.submit}>
               <Send size={17} color="#fff" strokeWidth={2.4} />
               <Text style={s.submitText}>{submitting ? t.sending : editMode ? t.updateBtn : t.postBtn}</Text>

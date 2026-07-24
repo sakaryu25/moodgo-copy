@@ -189,7 +189,7 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
         if (hi !== hoverRef.current) {
           hoverRef.current = hi;
           setHover(hi);
-          Haptics.selectionAsync(); // タブをまたぐたびにカチッ
+          Haptics.selectionAsync().catch(() => {}); // タブをまたぐたびにカチッ
         } else if (hover === null) {
           setHover(hi);
         }
@@ -203,11 +203,11 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
         if (!wasDrag) {
           // タップ
           if (hi === idxRef.current) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
             resetRef.current?.(TABS[hi].key);
             druun(1.2, 0.85); // その場でぷるん
           } else {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
             changeRef.current(TABS[hi].key); // 着地アニメは useEffect 側
           }
           return;
@@ -283,7 +283,16 @@ export default function TabBar({ homeView, onChangeView, onReset, insets }: Prop
         {TABS.map(({ key, Icon, label }, i) => {
           const lit = i === litIdx;
           return (
-            <View key={key} style={s.tab} pointerEvents="none">
+            <View
+              key={key}
+              style={s.tab}
+              pointerEvents="none"
+              accessible
+              accessibilityRole="tab"
+              accessibilityState={{ selected: lit }}
+              accessibilityLabel={label}
+              onAccessibilityTap={() => changeRef.current(key)}
+            >
               <Icon active={lit} />
               <Text style={[s.label, { color: lit ? ACTIVE : INACTIVE }]} numberOfLines={1}>
                 {label}

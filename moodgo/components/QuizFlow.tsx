@@ -13,6 +13,7 @@
  * Layout: back circle · gradient progress dots · title · scroll · fixed gradient Next
  */
 
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Activity, BookOpen,
@@ -788,10 +789,13 @@ function MoodCard({ label, sub, Icon, active, onPress, index, cardWidth = CW3, d
     }}>
       <Animated.View style={{ transform: [{ scale: pressScale }, { scaleX: puniX }, { scaleY: puniY }] }}>
         <TouchableOpacity
-          onPress={onPress}
+          onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }}
           onPressIn={pIn}
           onPressOut={pOut}
           activeOpacity={1}
+          accessibilityRole="button"
+          accessibilityState={{ selected: active }}
+          accessibilityLabel={sub ? `${label} ${sub}` : label}
           style={[mc.card, dark && mc.cardDark, active && (dark ? mc.cardActiveDark : mc.cardActive)]}
         >
           {active && (
@@ -898,7 +902,8 @@ function OptionCard({ label, sub, hint, Icon, active, onPress, width, height, in
   return (
     <Animated.View style={{ width, height, opacity: entryOp, transform: [{ translateY: entryY }, { scale: entryScale }] }}>
       <Animated.View style={{ flex: 1, transform: [{ scale: pressScale }, { scaleX: puniX }, { scaleY: puniY }] }}>
-        <TouchableOpacity onPress={onPress} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
+        <TouchableOpacity onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }} onPressIn={pIn} onPressOut={pOut} activeOpacity={1}
+          accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={sub ? `${label} ${sub}` : label}
           style={[oc.card, { width, height }, active && oc.cardActive]}>
           {active && <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={oc.fill} />}
           {active && <View style={oc.badge}><Check size={10} color="#fff" strokeWidth={3} /></View>}

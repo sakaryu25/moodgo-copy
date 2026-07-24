@@ -263,7 +263,7 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
         <View />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {onShowHistory && (
-            <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowHistory}>
+            <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onShowHistory} hitSlop={8} accessibilityRole="button" accessibilityLabel={lang === 'en' ? 'History' : '履歴'}>
               {LIQUID_GLASS && (
                 <GlassView
                   glassEffectStyle="regular"
@@ -275,7 +275,7 @@ export default function HomeView({ lang, onStart, onStartWithMood, onShowFeature
             </PuniPressable>
           )}
           {/* つぶやき（GroupsView）を開く。設定ギアは撤去（設定はプロフィールタブへ） */}
-          <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onOpenTsubuyaki}>
+          <PuniPressable style={[s.settingsBtn, LIQUID_GLASS && s.glassChip]} onPress={onOpenTsubuyaki} hitSlop={8} accessibilityRole="button" accessibilityLabel={lang === 'en' ? 'Chatter' : 'つぶやき'}>
             {LIQUID_GLASS && (
               <GlassView
                 glassEffectStyle="regular"

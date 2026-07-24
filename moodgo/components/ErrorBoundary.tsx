@@ -2,6 +2,7 @@
 // やさしいフォールバック画面＋「もう一度試す」を表示。捕捉したエラーは監視へ送る。
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { reportError } from '@/lib/crashReporting';
 
@@ -35,7 +36,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         <Text style={s.sub}>
           ご迷惑をおかけします。{'\n'}「もう一度試す」を押すか、アプリを再起動してください。
         </Text>
-        <TouchableOpacity onPress={this.reset} activeOpacity={0.85} style={{ marginTop: 26, width: 220 }}>
+        <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); this.reset(); }} activeOpacity={0.85} style={{ marginTop: 26, width: 220 }} accessibilityRole="button" accessibilityLabel="もう一度試す">
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.btn}>
             <Text style={s.btnText}>もう一度試す</Text>
           </LinearGradient>

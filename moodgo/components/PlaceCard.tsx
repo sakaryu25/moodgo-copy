@@ -531,12 +531,16 @@ export default function PlaceCard({
       {/* ハートボタン — カード右上（写真の有無に関わらず常に表示） */}
       <TouchableOpacity
         onPress={() => {
-          Haptics.impactAsync(isFavorited ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium);
+          Haptics.impactAsync(isFavorited ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
           pulseHeart();
           onToggleFavorite();
         }}
         style={s.favBtn}
         activeOpacity={0.9}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isFavorited }}
+        accessibilityLabel={lang === 'ja' ? (isFavorited ? 'お気に入り解除' : 'お気に入りに追加') : (isFavorited ? 'Remove favorite' : 'Add favorite')}
       >
         <Animated.View style={{ transform: [{ scale: heartScale }] }}>
           <Heart

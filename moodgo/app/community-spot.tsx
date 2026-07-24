@@ -316,6 +316,7 @@ export default function CommunitySpotScreen() {
   };
   const openMap = () => {
     if (!spot) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     // 名前＋住所で検索＝Googleの店舗リスティング(営業時間/口コミ)に着地する。
     // 座標はopenMaps側でcenterヒントに使われ、同名別店への誤着地を近傍優先で防ぐ（2026-07-14）。
     openInGoogleMaps({
@@ -466,7 +467,9 @@ export default function CommunitySpotScreen() {
           <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent']} style={s.topScrim} pointerEvents="none" />
 
           {/* 戻る / 共有 */}
-          <TouchableOpacity onPress={() => router.back()} style={[s.circleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => router.back()} style={[s.circleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button" accessibilityLabel={t.back}>
             <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
           <TouchableOpacity onPress={openMenu} style={[s.circleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}

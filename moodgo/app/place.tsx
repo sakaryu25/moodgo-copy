@@ -893,18 +893,24 @@ export default function PlaceDetailPage() {
       {/* ── フローティングボタン ── */}
       <View style={[s.topBtns, { top: insets.top + 10 }]}>
         <TouchableOpacity
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); router.back(); }}
           style={s.overlayBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={lang === 'ja' ? '戻る' : 'Back'}
         >
           <ArrowLeft size={18} color="#fff" strokeWidth={2.5} />
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity onPress={() => setReportOpen(true)} style={s.overlayBtn} activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button" accessibilityLabel="情報の間違いを報告">
             <Flag size={16} color="#fff" strokeWidth={2.2} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleShare} style={s.overlayBtn} activeOpacity={0.85}>
+          <TouchableOpacity onPress={handleShare} style={s.overlayBtn} activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button" accessibilityLabel={lang === 'ja' ? '共有' : 'Share'}>
             <Share2 size={18} color="#fff" strokeWidth={2} />
           </TouchableOpacity>
         </View>

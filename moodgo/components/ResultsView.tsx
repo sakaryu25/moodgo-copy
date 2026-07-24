@@ -1,4 +1,5 @@
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useEffect } from 'react';
 import {
@@ -432,7 +433,7 @@ export default function ResultsView(props: Props) {
           </View>
           <View style={s.navRight}>
             {onShuffle && !isLoading && (
-              <PuniPressable onPress={onShuffle} style={s.shuffleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <PuniPressable onPress={onShuffle} style={s.shuffleBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={lang === 'ja' ? 'シャッフル' : 'Shuffle'}>
                 <Shuffle size={20} color={BRAND} strokeWidth={2} />
               </PuniPressable>
             )}
@@ -493,7 +494,10 @@ export default function ResultsView(props: Props) {
                 return (
                   <TouchableOpacity
                     key={mode}
-                    onPress={() => setResultSort(mode)}
+                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setResultSort(mode); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={label}
                     style={[s.controlChip, dark && s.controlChipDark, active && s.controlChipActive]}
                     activeOpacity={0.75}
                   >
@@ -513,7 +517,10 @@ export default function ResultsView(props: Props) {
 
               {/* 営業中フィルター */}
               <TouchableOpacity
-                onPress={() => setOpenNowOnly((v) => !v)}
+                onPress={() => { Haptics.selectionAsync().catch(() => {}); setOpenNowOnly((v) => !v); }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: openNowOnly }}
+                accessibilityLabel={t.filterOpenNow}
                 style={[s.controlChip, dark && s.controlChipDark, openNowOnly && s.controlChipOpenActive]}
                 activeOpacity={0.75}
               >
