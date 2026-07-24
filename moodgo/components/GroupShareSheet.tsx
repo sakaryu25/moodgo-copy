@@ -10,6 +10,7 @@
  *   Modal をやめ、_layout の最前面に置くツリー内の絶対配置オーバーレイで表示する。
  *   spot===null 時は null を返すため、閉じている間はタッチを一切ブロックしない。
  */
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check, MapPin, MessageCircle, X } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
@@ -63,12 +64,14 @@ export default function GroupShareSheet() {
       .start(() => { setSpot(null); suppressResultsOverlay(false); });  // シートを閉じたら結果Modalを再表示
   };
 
-  const toggle = (gid: string) =>
+  const toggle = (gid: string) => {
+    Haptics.selectionAsync().catch(() => {});
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(gid)) next.delete(gid); else next.add(gid);
       return next;
     });
+  };
 
   // 選んだ全グループへ一括転送
   const handleForward = async () => {
@@ -115,7 +118,7 @@ export default function GroupShareSheet() {
 
           {/* ヘッダー */}
           <View style={s.header}>
-            <PuniPressable onPress={close} style={s.closeBtn}>
+            <PuniPressable onPress={close} style={s.closeBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="閉じる">
               <X size={18} color="#7C3AED" strokeWidth={2.5} />
             </PuniPressable>
             <Text style={s.title}>送信先を選択</Text>

@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import {
@@ -358,7 +359,7 @@ function DetailView({
 
       {/* この気分・条件でもう一度検索（handleResearch を呼ぶ実装済み機能へ接続）*/}
       {onResearch ? (
-        <TouchableOpacity style={s.reSearchBtn} activeOpacity={0.85} onPress={() => onResearch(item)}>
+        <TouchableOpacity style={s.reSearchBtn} activeOpacity={0.85} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onResearch(item); }} accessibilityRole="button" accessibilityLabel={t.reSearch}>
           <LinearGradient colors={GRAD} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.reSearchGrad}>
             <RefreshCw size={16} color="#fff" strokeWidth={2.4} />
             <Text style={s.reSearchText}>{t.reSearch}</Text>

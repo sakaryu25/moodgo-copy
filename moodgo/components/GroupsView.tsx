@@ -789,6 +789,7 @@ export default function GroupsView({ resetKey = 0, onChatOpenChange, favorites =
   // 気分チップ・ひとことのどちらか一方でも入っていれば送信できる
   const handlePost = async () => {
     if (!active || (!selMood && !comment.trim()) || posting) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const trimmed = comment.trim();
     // 不適切語のクライアント側フィルタ（サーバー側でも再チェック）
     if (findNgWord(trimmed)) { Alert.alert(t.postBlockedTitle, t.postBlockedMsg); return; }

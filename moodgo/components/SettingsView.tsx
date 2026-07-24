@@ -541,7 +541,7 @@ export default function SettingsView({
             <View style={s.card}>
               {/* アイコン（タップで写真を設定） */}
               <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                <PuniPressable onPress={handlePickIcon} disabled={iconBusy} style={s.avatarWrap}>
+                <PuniPressable onPress={handlePickIcon} disabled={iconBusy} style={s.avatarWrap} accessibilityRole="button" accessibilityLabel="プロフィール写真を変更">
                   {iconUrl ? (
                     <Image source={{ uri: iconUrl }} style={s.avatarImg} />
                   ) : (

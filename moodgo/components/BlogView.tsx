@@ -413,10 +413,12 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
             </LinearGradient>
           )}
           <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent']} style={s.csTopScrim} pointerEvents="none" />
-          <TouchableOpacity onPress={onBack} style={[s.csCircleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}>
+          <TouchableOpacity onPress={onBack} style={[s.csCircleBtn, { top: insets.top + 6, left: 14 }]} activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={lang === 'en' ? 'Back' : '戻る'}>
             <ChevronLeft size={22} color="#1A0A2E" strokeWidth={2.5} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { const next = !saved; setSaved(next); react('save', !next).then((ok) => { if (!ok) setSaved(!next); }); }} style={[s.csCircleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); const next = !saved; setSaved(next); react('save', !next).then((ok) => { if (!ok) setSaved(!next); }); }} style={[s.csCircleBtn, { top: insets.top + 6, right: 14 }]} activeOpacity={0.85}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityState={{ selected: saved }} accessibilityLabel={lang === 'en' ? 'Save' : '保存'}>
             <Bookmark size={18} color={saved ? CS_PINK : '#1A0A2E'} fill={saved ? CS_PINK : 'transparent'} strokeWidth={2.4} />
           </TouchableOpacity>
           {photos.length > 0 ? <View style={s.csCounter}><Text style={s.csCounterText}>{page + 1} / {photos.length}</Text></View> : null}
@@ -535,7 +537,8 @@ export function DetailView({ post, onBack, onSearchMood }: { post: Detail; onBac
       </ScrollView>
 
       {/* 参考になった FAB */}
-      <TouchableOpacity onPress={() => { const next = !helped; setHelped(next); react('helpful', !next).then((ok) => { if (!ok) setHelped(!next); }); }} style={[s.csFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}>
+      <TouchableOpacity onPress={() => { Haptics.impactAsync(helped ? Haptics.ImpactFeedbackStyle.Light : Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); const next = !helped; setHelped(next); react('helpful', !next).then((ok) => { if (!ok) setHelped(!next); }); }} style={[s.csFab, { bottom: insets.bottom + 18 }]} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityState={{ selected: helped }} accessibilityLabel={lang === 'en' ? 'Helpful' : '参考になった'}>
         <Heart size={24} color={CS_PINK} fill={helped ? CS_PINK : 'transparent'} strokeWidth={2.4} />
       </TouchableOpacity>
     </View>
