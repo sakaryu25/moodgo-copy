@@ -31,6 +31,7 @@ import { useMyIdentity, resolvePoster, getMyHash } from '@/lib/myIdentity';
 import { setSelectedPlace } from '@/lib/selectedPlace';
 import { markFeedStale } from '@/lib/feedRefresh';
 import { cleanAddress } from '@/lib/address';
+import { formatOpeningHours, isOpenNowFromText } from '@/lib/openingHours';
 import PhotoViewer from '@/components/PhotoViewer';
 import ReportModal from '@/components/ReportModal';
 import AppActionSheet from '@/components/AppActionSheet';
@@ -704,23 +705,34 @@ export default function CommunitySpotScreen() {
           <View style={s.infoCard}>
             {/* 順番: 住所 → 営業時間 → 金額(みんなの平均) → 最寄駅 → 電話 → web → Instagram（場所詳細と統一）*/}
             {cleanAddress(spot.address) ? <InfoRow Icon={MapPin} value={cleanAddress(spot.address)} /> : null}
-            {/* 営業時間。⚠ 曜日:時刻でsplitしない（「10:00〜23:00」を割る旧バグ回避）＝行そのまま表示 */}
-            {spot.openingHoursText ? (
-              <View style={[s.infoRow, spot.address ? s.infoRowBorder : null]}>
-                <View style={s.infoIconWrap}><Clock size={15} color="#C084FC" strokeWidth={2} /></View>
-                <View style={{ flex: 1 }}>
-                  {spot.openingHoursText.split('\n').map((line, i) => (
-                    <Text key={i} style={[s.infoText, { paddingTop: i === 0 ? 0 : 2 }]}>{line}</Text>
-                  ))}
-                </View>
-                {spot.openNow != null && (
-                  <View style={[s.openBadge, !spot.openNow && s.closedBadge]}>
-                    <View style={[s.openDot, !spot.openNow && { backgroundColor: '#EF4444' }]} />
-                    <Text style={[s.openText, !spot.openNow && { color: '#EF4444' }]}>{spot.openNow ? t.open : t.closed}</Text>
+            {/* 営業時間。場所詳細(place.tsx)と見え方を統一＝同時間帯の曜日をグループ化＋営業中/閉店中バッジ。
+                openNowが不明な投稿はテキストから現在の営業/閉店を推定してバッジを出す。 */}
+            {spot.openingHoursText ? (() => {
+              const hoursRows = formatOpeningHours(spot.openingHoursText);
+              const grouped = hoursRows.some((r) => r.label);
+              const openNow = spot.openNow != null ? spot.openNow : isOpenNowFromText(spot.openingHoursText);
+              return (
+                <View style={[s.infoRow, spot.address ? s.infoRowBorder : null]}>
+                  <View style={s.infoIconWrap}><Clock size={15} color="#C084FC" strokeWidth={2} /></View>
+                  <View style={{ flex: 1 }}>
+                    {grouped ? hoursRows.map((r, i) => (
+                      <View key={i} style={[s.hoursRow, r.isToday && s.hoursRowToday]}>
+                        <Text style={[s.ohDay, r.isToday && s.hoursDayToday]}>{r.label}</Text>
+                        <Text style={[s.ohTime, r.isToday && s.hoursDayToday]}>{r.time}</Text>
+                      </View>
+                    )) : hoursRows.map((r, i) => (
+                      <Text key={i} style={[s.infoText, { paddingTop: i === 0 ? 0 : 2 }]}>{r.time}</Text>
+                    ))}
                   </View>
-                )}
-              </View>
-            ) : null}
+                  {openNow != null && (
+                    <View style={[s.openBadge, !openNow && s.closedBadge]}>
+                      <View style={[s.openDot, !openNow && { backgroundColor: '#EF4444' }]} />
+                      <Text style={[s.openText, !openNow && { color: '#EF4444' }]}>{openNow ? t.open : t.closed}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })() : null}
             {priceDisplay ? <InfoRow Icon={Wallet} value={priceDisplay} border={!!(spot.address || spot.openingHoursText)} /> : null}
             {spot.stationText ? <InfoRow Icon={Train} value={spot.stationText} border={!!(spot.address || spot.openingHoursText || priceDisplay)} /> : null}
             {spot.phone ? <InfoRow Icon={Phone} value={spot.phone} link onPress={() => Linking.openURL(`tel:${spot.phone}`)} border={!!(spot.address || spot.openingHoursText || priceDisplay || spot.stationText)} /> : null}
@@ -1011,6 +1023,12 @@ const s = StyleSheet.create({
   infoRowBorder: { borderTopWidth: 1, borderTopColor: 'rgba(192,132,252,0.08)' },
   infoIconWrap: { width: 30, height: 30, borderRadius: 9, backgroundColor: 'rgba(192,132,252,0.1)', alignItems: 'center', justifyContent: 'center' },
   infoText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, paddingTop: 4 },
+  // 営業時間のグループ行（場所詳細と統一: 曜日=左・時刻=右）
+  hoursRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 2.5 },
+  hoursRowToday: { backgroundColor: 'rgba(192,132,252,0.10)', borderRadius: 8, paddingHorizontal: 6, marginHorizontal: -4 },
+  ohDay: { fontSize: 13.5, fontWeight: '700', color: '#6B7280', minWidth: 90 },
+  ohTime: { fontSize: 13.5, fontWeight: '600', color: '#374151', textAlign: 'right', flex: 1 },
+  hoursDayToday: { color: '#9333EA' },
   infoLink: { color: '#7C3AED' },
   infoSubText: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
   igIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
