@@ -1894,11 +1894,21 @@ export default function FeatureScreen() {
     t.setValue(0);
     busyRef.current = false;
     setBusy(false);
+    // 自分のエリア（プロフィール都道府県）に戻す（ユーザー要望2026-07-25）。
+    //   手動で別エリアを選んだ状態(manualPickRef)を解除し、プロフィールの都道府県へ戻す。
+    //   未設定なら現在のエリアを維持（戻る先が無いため）。
+    manualPickRef.current = false;
+    const myPref = fullPrefToTab(settings.profilePrefecture || "");
+    if (myPref && PREF_TO_REGION[myPref]) {
+      setSelectedTab(myPref);
+      setSelectedRegion(PREF_TO_REGION[myPref] ?? "関東");
+    }
     if (stage === "content") {
       contentScrollRef.current?.scrollTo?.({ y: 0, animated: true });
       collapse.scrollY.setValue(0);   // 格納中のヘッダー帯を即座に開いた状態へ
     } else {
-      setStage("content");
+      setStage("content");           // 地図/県選択にいたら特集TOPへ戻す
+      collapse.scrollY.setValue(0);
     }
   });
 
