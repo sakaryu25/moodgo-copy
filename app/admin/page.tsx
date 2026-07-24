@@ -168,7 +168,9 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
   const [stats, setStats] = useState<{ scanned: number; matched: number; applied: number }>({ scanned: 0, matched: 0, applied: 0 });
   const [running, setRunning] = useState(false);
   // 一度作った Wikidata索引はメモリに保持＝DB取得でコケても5分の再取得が要らない（再実行が軽い）
-  const wdRef = useRef<Map<string, { lat: number; lon: number; url: string }[]> | null>(null);
+  //   索引は「名前→件」ではなく「約2km区画→件」の空間索引。名前が完全一致しなくても
+  //   近傍候補を数件に絞ってから緩い名前照合ができる＝マッチ率が桁違いに上がる。
+  const wdRef = useRef<{ grid: Map<string, WdRec[]>; count: number } | null>(null);
 
   // Wikidata画像が付きやすい型（映え/自然/観光）。P31/P279*で下位種も拾う。
   const TYPES: [string, string][] = [
@@ -179,11 +181,54 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
     ["Q177380", "温泉"], ["Q46831", "山地"], ["Q4022", "川"],
   ];
   const normName = (s: string) => (s || "").normalize("NFKC").replace(/[\s　]/g, "").replace(/[（(].*?[)）]/g, "").replace(/店$|本店$/, "").toLowerCase();
+  // 末尾の一般語を落とした「核」。例: 洗足池公園→洗足池。OSM名とWikidata名の「◯◯公園 vs ◯◯」
+  //   ズレを吸収する（これが無いと日本の地物名はほとんど一致しない）。最大2回まで落とす（例: ◯◯山公園）。
+  const CORE_TAIL = /(公園|緑地|庭園|植物園|動物園|水族館|美術館|博物館|記念館|資料館|神社|神宮|大社|八幡宮|東照宮|寺院|寺|城跡|城|温泉郷|温泉|海水浴場|海岸|渓谷|峡谷|高原|湿原|湖畔|湖|沼|池|滝|山地|山|岳|峠|川|橋|展望台|灯台|タワー|遊園地|牧場|農園|キャンプ場|道の駅|史跡|旧跡|跡)$/;
+  const coreName = (nn: string) => { let s = nn; for (let i = 0; i < 2; i++) { const t = s.replace(CORE_TAIL, ""); if (t.length < 2 || t === s) break; s = t; } return s; };
+  // 助詞・記号・ヶケのゆれを吸収（華厳の滝⇔華厳滝 / 鎌ヶ谷⇔鎌ケ谷）
+  const looseName = (nn: string) => nn.replace(/[のノ・･‐－―ー-]/g, "").replace(/[ヶケ]/g, "");
+  // 名前の派生形は必ずここで作る＝索引側と照合側でロジックがズレない
+  const mkNames = (label: string) => { const nn = normName(label); const core = coreName(nn); return { nn, ln: looseName(nn), core, lcore: looseName(core) }; };
   const commonsUrl = (imgVal: string) => `https://commons.wikimedia.org/wiki/Special:FilePath/${imgVal.split("/").pop()}?width=800`;
   const haversine = (a: number, b: number, c: number, d: number) => { const R = 6371, r = Math.PI / 180; const dLat = (c - a) * r, dLon = (d - b) * r; const x = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  type WdRec = { lat: number; lon: number; url: string };
+  type WdRec = { lat: number; lon: number; url: string; nn: string; ln: string; core: string; lcore: string };
+  // 約2.2km四方の区画キー。半径2kmを見るので周囲3×3区画を引けば漏れない。
+  const CELL = 0.02;
+  const nearRecs = (grid: Map<string, WdRec[]>, lat: number, lng: number): WdRec[] => {
+    const bx = Math.floor(lat / CELL), by = Math.floor(lng / CELL);
+    const out: WdRec[] = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const arr = grid.get(`${bx + dx}_${by + dy}`);
+      if (arr) for (const r of arr) out.push(r);
+    }
+    return out;
+  };
+  // 名前一致の段階（緩いほど距離条件を厳しく＝誤爆を防ぐ）。同点なら近い方を採用。
+  //   完全一致(≤2km) → 助詞ゆれ一致(≤2km) → 包含(≤1km) → 核一致(≤1km) → 核の前方一致(≤0.8km)
+  //   ⚠核の前方一致は3文字以上に限定。2文字に緩めると「青山公園→青山霊園」型の誤爆が出る（検証済み）。
+  //   nearMiss = 2km以内に候補はあるのに名前が合わなかった件数＝「名前照合の厳しさ」の実測値。
+  const pickMatch = (name: string, lat: number, lng: number, cands: WdRec[]) => {
+    const p = mkNames(name);
+    if (!p.nn) return { best: null as WdRec | null, nearMiss: false };
+    let best: WdRec | null = null, bestScore = -1, sawCand = false;
+    for (const c of cands) {
+      const d = haversine(lat, lng, c.lat, c.lon);
+      if (d > 2) continue;
+      sawCand = true;
+      let s = -1;
+      if (p.nn === c.nn) s = 100;
+      else if (p.ln === c.ln && p.ln.length >= 2) s = 95;
+      else if (d <= 1 && Math.min(p.ln.length, c.ln.length) >= 3 && (p.ln.includes(c.ln) || c.ln.includes(p.ln))) s = 80;
+      else if (d <= 1 && p.lcore.length >= 2 && p.lcore === c.lcore) s = 70;
+      else if (d <= 0.8 && Math.min(p.lcore.length, c.lcore.length) >= 3 && (p.lcore.startsWith(c.lcore) || c.lcore.startsWith(p.lcore))) s = 60;
+      if (s < 0) continue;
+      s -= d;
+      if (s > bestScore) { bestScore = s; best = c; }
+    }
+    return { best, nearMiss: sawCand && !best };
+  };
 
   const run = async (apply: boolean) => {
     if (running) return;
@@ -195,7 +240,8 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
       let wd = wdRef.current;
       if (!wd) {
         setPhase("index");
-        wd = new Map<string, WdRec[]>();
+        const grid = new Map<string, WdRec[]>();
+        let count = 0;
         for (const [qid, label] of TYPES) {
           const q = `SELECT ?itemLabel ?lat ?lon ?img WHERE { ?item wdt:P17 wd:Q17 . ?item wdt:P31/wdt:P279* wd:${qid} . ?item wdt:P18 ?img . ?item p:P625/psv:P625 [ wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon ] . ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel)="ja") } LIMIT 20000`;
           let rows: Array<Record<string, { value: string }>> = [];
@@ -209,21 +255,28 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
           for (const b of rows) {
             const nn = normName(b.itemLabel?.value ?? "");
             if (!nn) continue;
-            if (!wd.has(nn)) wd.set(nn, []);
-            wd.get(nn)!.push({ lat: Number(b.lat.value), lon: Number(b.lon.value), url: commonsUrl(b.img.value) });
+            const lat = Number(b.lat.value), lon = Number(b.lon.value);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            const k = `${Math.floor(lat / CELL)}_${Math.floor(lon / CELL)}`;
+            if (!grid.has(k)) grid.set(k, []);
+            grid.get(k)!.push({ lat, lon, url: commonsUrl(b.img.value), ...mkNames(b.itemLabel?.value ?? "") });
+            count++;
           }
-          append(`索引 ${label}: ${rows.length}件（計 ${wd.size}名）`);
+          append(`索引 ${label}: ${rows.length}件（計 ${count}件）`);
           await sleep(1200);
         }
+        wd = { grid, count };
         wdRef.current = wd;
-        append(`Wikidata索引: ${wd.size}名（保持済み・以降の再実行では再取得しません）`);
+        append(`Wikidata索引: ${count}件 / ${grid.size}区画（保持済み・以降の再実行では再取得しません）`);
       } else {
-        append(`Wikidata索引: ${wd.size}名（保持分を再利用）`);
+        append(`Wikidata索引: ${wd.count}件 / ${wd.grid.size}区画（保持分を再利用）`);
       }
 
       // ② 写真なしスポットをページングで取得→ 名前+座標(≤2km)一致で照合 → 付与
       setPhase("scan");
       let cursor = "", scanned = 0, matched = 0, applied = 0;
+      let withCoord = 0, nearMiss = 0;          // 診断: 座標あり件数 / 近くに候補はあるが名前不一致
+      const samples: string[] = [];              // 診断: 走査した名前の実例（名前の形を目で確認できる）
       for (let page = 0; page < 2000; page++) {
         const u = new URL("/api/admin/photo-harvest", window.location.origin);
         u.searchParams.set("secret", secret); u.searchParams.set("limit", "500");
@@ -240,10 +293,12 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
         scanned += places.length;
         const updates: { id: string; url: string }[] = [];
         for (const p of places) {
-          const cand = wd.get(normName(p.name));
-          if (!cand || typeof p.lat !== "number" || typeof p.lng !== "number") continue;
-          const hit = cand.find((c) => haversine(p.lat!, p.lng!, c.lat, c.lon) <= 2);
-          if (hit) updates.push({ id: p.id, url: hit.url });
+          if (samples.length < 8) samples.push(p.name);
+          if (typeof p.lat !== "number" || typeof p.lng !== "number") continue;
+          withCoord++;
+          const r = pickMatch(p.name, p.lat, p.lng, nearRecs(wd.grid, p.lat, p.lng));
+          if (r.best) updates.push({ id: p.id, url: r.best.url });
+          else if (r.nearMiss) nearMiss++;
         }
         matched += updates.length;
         if (apply && updates.length) {
@@ -254,7 +309,15 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
         cursor = d.nextCursor ?? "";
         if (d.done || !cursor) break;
       }
-      append(apply ? `完了: ${scanned}件走査 / ${matched}件マッチ / ${applied}件に写真付与` : `[DRY] ${scanned}件走査 / ${matched}件マッチ（「付与を実行」で書き込み）`);
+      // 診断つきの結果表示＝マッチ0でも「なぜ0なのか」がこの場で分かる
+      if (scanned === 0) {
+        append("走査0件：placesに「写真なし × 対象source」の行がありません（既に写真済み or source種別のズレ）。");
+      } else {
+        append(`走査 ${scanned}（座標あり ${withCoord} / 座標なし ${scanned - withCoord}）・マッチ ${matched}・近傍に候補はあるが名前不一致 ${nearMiss}`);
+        append(`走査した名前の例: ${samples.join(" / ")}`);
+        if (matched === 0 && nearMiss === 0 && withCoord > 0) append("→ 近傍2km以内にWikidata写真そのものが無い＝この方式では埋まりません（座標検索方式が必要）。");
+      }
+      append(apply ? `完了: ${applied}件に写真付与` : `[DRY] 書き込みなし（「② 付与を実行」で反映）`);
       setPhase("done");
     } catch (e) {
       append(`エラー: ${String(e)}`);
