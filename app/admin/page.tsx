@@ -849,7 +849,6 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
     { key: "ctrl", label: "改行・制御文字・文字化け" },
     { key: "web", label: "URL・メール・タグ" },
     { key: "doc", label: "文書・書類の断片" },
-    { key: "sentence", label: "文章になっている" },
     { key: "placeholder", label: "テスト・仮の名前" },
     { key: "long", label: "異常に長い(45字+)" },
   ] as const;
