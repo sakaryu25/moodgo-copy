@@ -8,9 +8,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://rtbdvokhsvvjxuvyqbxn.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0YmR2b2toc3Z2anh1dnlxYnhuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTg3MjM5MiwiZXhwIjoyMDkxNDQ4MzkyfQ.FJ9FpwF0KdWMfwaJausYfl0T1NWrT64MKW5ek-KHjx8";
-const GOOGLE_API_KEY = "AIzaSyCK4rfMKNGMlmaplLzfMfoLkNUtWN6KXko";
+// ⚠ 秘密情報はコードに直書きしない。環境変数から読む（未設定なら即エラー）。
+//   以前ここに service_role JWT と Google APIキーが直書きされていた＝git履歴に残るため
+//   該当キーは失効(ローテート)済みであること。実行時は環境変数を渡すこと:
+//   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... GOOGLE_API_KEY=... node scripts/import-entertainment.mjs
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY || !GOOGLE_API_KEY) {
+  console.error("✋ 環境変数が必要です: SUPABASE_URL / SUPABASE_SERVICE_KEY / GOOGLE_API_KEY");
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
