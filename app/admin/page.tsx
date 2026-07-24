@@ -843,6 +843,20 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
   const [facPreview, setFacPreview] = useState<{ total: number; byCat: FacByCat } | null>(null);
   const [facRunning, setFacRunning] = useState(false);
   const [facResult, setFacResult] = useState("");
+  // 名前ゴミ（壊れたデータ）掃除。cleanup-places の garbageNamesOnly を叩く。既定は「長さ」以外を選択。
+  const GARBAGE_CATS_UI = [
+    { key: "empty", label: "名前が空" },
+    { key: "ctrl", label: "改行・制御文字・文字化け" },
+    { key: "web", label: "URL・メール・タグ" },
+    { key: "doc", label: "文書・書類の断片" },
+    { key: "sentence", label: "文章になっている" },
+    { key: "placeholder", label: "テスト・仮の名前" },
+    { key: "long", label: "異常に長い(45字+)" },
+  ] as const;
+  const [garbCats, setGarbCats] = useState<Set<string>>(new Set(GARBAGE_CATS_UI.map(c => c.key).filter(k => k !== "long")));
+  const [garbPreview, setGarbPreview] = useState<{ total: number; byCat: FacByCat } | null>(null);
+  const [garbRunning, setGarbRunning] = useState(false);
+  const [garbResult, setGarbResult] = useState("");
   const [corpPreview, setCorpPreview] = useState<CorpPreview | null>(null);
   const [corpRunning, setCorpRunning] = useState(false);
   const [corpResult, setCorpResult] = useState("");
@@ -1183,6 +1197,111 @@ function VitalityCheckPanel({ secret }: { secret: string }) {
               </details>
             ))}
             {facPreview.total === 0 && <div style={{ color: "#68D391", fontWeight: 700 }}>削除対象はありません</div>}
+          </div>
+        )}
+      </div>
+
+      {/* 名前ゴミ（壊れたデータ）掃除 ── 認定書訳文 等の非スポット行を高精度で抽出して削除 */}
+      <div style={{ ...cardStyle, border: "1.5px solid #FC8181" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: 800, marginBottom: "8px" }}>🗑 名前ゴミ（壊れたデータ）を掃除</h3>
+        <p style={{ fontSize: "12.5px", opacity: 0.75, lineHeight: 1.7, marginBottom: "10px" }}>
+          取り込み事故で名前欄に文書断片・テスト文字列・URL・改行等が入った<b>データとして壊れた行</b>を全域から探します
+          （例: 「認定書訳文」）。実在スポットは残すよう高精度判定（図書館・証明写真機・和食＆鉄板などは対象外＝誤爆0で検証済み）。
+          まず<b>🔍調査（DRY）で件数と実例を確認</b>してから削除してください。<b>削除は元に戻せません。</b>
+        </p>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
+          {GARBAGE_CATS_UI.map(c => (
+            <label key={c.key} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12.5px", fontWeight: 700, background: garbCats.has(c.key) ? "#FED7D7" : "#F7FAFC", border: "1px solid #FC8181", borderRadius: "8px", padding: "5px 10px", cursor: "pointer" }}>
+              <input type="checkbox" checked={garbCats.has(c.key)}
+                onChange={() => setGarbCats(prev => { const n = new Set(prev); if (n.has(c.key)) n.delete(c.key); else n.add(c.key); return n; })} />
+              {c.label}{c.key === "long" && <span style={{ fontSize: "10.5px", color: "#C53030" }}>（誤爆余地あり・既定OFF）</span>}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            disabled={garbRunning || garbCats.size === 0}
+            onClick={async () => {
+              setGarbRunning(true); setGarbPreview(null); setGarbResult("");
+              const byCat: FacByCat = {};
+              let total = 0, scanned = 0;
+              let cursor: string | null = null;
+              try {
+                for (let i = 0; i < 40; i++) {
+                  const d: FacResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, garbageNamesOnly: true, dryRun: true, cats: [...garbCats], cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("調査失敗: " + (d.error ?? "不明")); return; }
+                  total += d.count ?? 0; scanned += d.scanned ?? 0;
+                  for (const [k, v] of Object.entries(d.byCat ?? {})) {
+                    if (!byCat[k]) byCat[k] = { label: v.label, count: 0, names: [] };
+                    byCat[k].count += v.count;
+                    for (const n of v.names) { if (byCat[k].names.length < 150) byCat[k].names.push(n); }
+                  }
+                  setGarbResult(`調査中… ${scanned.toLocaleString()}件走査 / ゴミ候補 ${total}件`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setGarbPreview({ total, byCat });
+                setGarbResult("");
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setGarbRunning(false); }
+            }}
+            style={{ ...btnBase3, background: "#fff", border: "1.5px solid #FC8181", color: "#C53030" }}
+          >
+            🔍 調査（DRY・削除しない）
+          </button>
+          <button
+            disabled={garbRunning || !garbPreview || garbPreview.total === 0}
+            onClick={async () => {
+              if (!garbPreview) return;
+              if (!confirm(`名前ゴミ ${garbPreview.total}件を完全に削除します。\n先に実例を確認しましたか？\nこの操作は元に戻せません。よろしいですか？`)) return;
+              setGarbRunning(true); setGarbResult("");
+              let deleted = 0, scanned = 0;
+              let cursor: string | null = null;
+              try {
+                for (let i = 0; i < 40; i++) {
+                  const d: FacResp = await fetch("/api/admin/cleanup-places", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ secret, garbageNamesOnly: true, dryRun: false, cats: [...garbCats], cursor: cursor ?? undefined }),
+                  }).then(r => r.json());
+                  if (!d.ok) { alert("エラー: " + (d.error ?? "不明")); break; }
+                  deleted += d.deleted ?? 0; scanned += d.scanned ?? 0;
+                  setGarbResult(`削除中… ${scanned.toLocaleString()}件走査 / ${deleted}件削除済み`);
+                  if (d.complete) break;
+                  cursor = d.nextCursor ?? null;
+                  if (!cursor) break;
+                }
+                setGarbResult(`✅ 名前ゴミ ${deleted}件を削除しました`);
+                setGarbPreview(null);
+                loadStats();
+              } catch (e) { alert("通信エラー: " + String(e)); }
+              finally { setGarbRunning(false); }
+            }}
+            style={{ ...btnBase3, background: (!garbPreview || garbPreview.total === 0) ? "#EDF2F7" : "#E53E3E", color: (!garbPreview || garbPreview.total === 0) ? "#A0AEC0" : "#fff" }}
+          >
+            🗑 削除を実行
+          </button>
+          {garbRunning && <span style={{ fontSize: "13px", fontWeight: 700, color: "#C53030" }}>{garbResult || "処理中…"}</span>}
+        </div>
+        {garbResult && !garbRunning && (
+          <div style={{ marginTop: "10px", fontSize: "13px", fontWeight: 800, color: "#276749" }}>{garbResult}</div>
+        )}
+        {garbPreview && (
+          <div style={{ marginTop: "12px", padding: "12px 14px", background: "#FFF5F5", border: "1px solid #FEB2B2", borderRadius: "10px", fontSize: "13px" }}>
+            <div style={{ fontWeight: 800, marginBottom: "6px" }}>ゴミ候補: 合計{garbPreview.total.toLocaleString()}件</div>
+            {Object.entries(garbPreview.byCat).filter(([, v]) => v.count > 0).map(([k, v]) => (
+              <details key={k} style={{ marginBottom: "6px" }}>
+                <summary style={{ fontWeight: 700, cursor: "pointer" }}>{v.label}: {v.count}件</summary>
+                <div style={{ maxHeight: "160px", overflowY: "auto", color: "#555", lineHeight: 1.8, paddingLeft: "12px", marginTop: "4px" }}>
+                  {v.names.map((n, i) => <div key={i}>・{n || "(空)"}</div>)}
+                  {v.count > v.names.length && <div style={{ color: "#999" }}>…ほか {v.count - v.names.length}件</div>}
+                </div>
+              </details>
+            ))}
+            {garbPreview.total === 0 && <div style={{ color: "#68D391", fontWeight: 700 }}>ゴミは見つかりませんでした 🎉</div>}
           </div>
         )}
       </div>

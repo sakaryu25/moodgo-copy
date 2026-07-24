@@ -144,6 +144,37 @@ function facilityJunkCat(name: string, sourceType: string | null | undefined, en
   return null;
 }
 
+// ── 名前ゴミ（データとして壊れた/非スポットの行）の判定 ──────────────────────────
+//   施設ノイズ(学校/病院=実在するが対象外)とは別。取り込み事故で名前欄に文書断片・
+//   テスト文字列・URL・改行等が入った「壊れたデータ」を高精度で拾う（例: 認定書訳文）。
+//   ⚠誤爆を避けるため各カテゴリは"名前欄にまず現れない"強い特徴のみ。長さ以外は部分一致でなく特徴一致。
+type GarbageCat = { key: string; label: string; test: (n: string) => boolean };
+const GARBAGE_CATS: GarbageCat[] = [
+  { key: "empty", label: "名前が空",
+    test: (n) => n.length === 0 },
+  { key: "ctrl", label: "改行・制御文字・文字化け",
+    test: (n) => /[\u0000-\u0008\u000B\u000C\u000E-\u001F\t\n\r]/.test(n) || /\uFFFD/.test(n) },
+  { key: "web", label: "URL・メール・HTMLタグ",
+    test: (n) => /(https?:\/\/|www\.[a-z]|\.co\.jp|<\/?[a-z][^>]*>|&(nbsp|amp|lt|gt);|[\w.+-]+@[\w-]+\.[a-z]{2,})/i.test(n) },
+  { key: "doc", label: "文書・書類の断片",
+    test: (n) => /(訳文|認定書|申請書|証明書|受給者証|領収書|契約書|議事録|報告書|同意書|誓約書|委任状|記入例|添付書類|個人情報|利用規約|プライバシーポリシー)/.test(n) },
+  { key: "sentence", label: "文章になっている",
+    test: (n) => /。/.test(n) || /(ください|ございます|いたします|お願いします|に関するお知らせ|受け付けて|申し込みは|できません|となります)/.test(n) },
+  { key: "placeholder", label: "テスト・仮の名前",
+    test: (n) => /^(テスト|test|サンプル|sample|ダミー|dummy|未設定|名称未設定|無題|undefined|null|n\/?a|不明|なし|xxx+|aaa+|あああ+)$/i.test(n) || /テスト投稿|サンプルデータ/.test(n) },
+  { key: "long", label: "異常に長い（45字以上）",
+    test: (n) => n.length >= 45 },
+];
+// 最初に一致したカテゴリを返す（空→制御→web→doc→文→仮→長さ の優先度）。enabled で対象を絞る。
+function garbageNameCat(name: string, enabled: Set<string>): string | null {
+  const n = (name ?? "").trim();
+  for (const c of GARBAGE_CATS) {
+    if (!enabled.has(c.key)) continue;
+    if (c.test(n)) return c.key;
+  }
+  return null;
+}
+
 function isSubFacility(address: string): boolean {
   // 商業・エンタメ系の大型施設に限定して「〇〇内」を検出
   // 公園・センター・ガーデン等の公共施設は除外（広場・展望台等は独立スポットとして有効）
@@ -277,6 +308,65 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true, dryRun, mode: "facilities",
+      count: found.length, deleted, scanned, complete,
+      nextCursor: complete ? null : cursorId,
+      byCat,
+    });
+  }
+
+  // ── 名前ゴミモード: 壊れたデータ(文書断片/テスト/URL/制御文字/空/超長文)を全域走査で抽出して削除 ──
+  //   走査方式は facilitiesOnly と同一（id昇順キーセット＋時間予算・判定は全てJS）。
+  //   body.cats で対象カテゴリを絞れる（省略時は長さ以外の全カテゴリ＝長さは誤爆余地があるので明示選択制）。
+  if (body.garbageNamesOnly === true) {
+    const startedAt = Date.now();
+    const TIME_BUDGET_MS = 35_000;
+    let cursorId = typeof body.cursor === "string" ? body.cursor : "";
+    // 既定は "long" を除く全カテゴリ（超長文だけは正規スポット名の可能性が残るので明示指定を要求）
+    const defaultCats = GARBAGE_CATS.map((c) => c.key).filter((k) => k !== "long");
+    const enabled = new Set<string>(
+      Array.isArray(body.cats) && body.cats.length > 0
+        ? body.cats.filter((c: unknown) => typeof c === "string")
+        : defaultCats,
+    );
+    const found: { id: string; name: string; cat: string }[] = [];
+    let scanned = 0;
+    let complete = false;
+
+    while (Date.now() - startedAt < TIME_BUDGET_MS) {
+      let q = supabase.from("places").select("id, name").order("id", { ascending: true }).limit(1000);
+      if (cursorId) q = q.gt("id", cursorId);
+      const { data, error } = await q;
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      const rows = (data ?? []) as { id: string; name: string }[];
+      if (rows.length === 0) { complete = true; break; }
+      scanned += rows.length;
+      for (const r of rows) {
+        const cat = garbageNameCat(r.name, enabled);
+        if (cat) found.push({ id: r.id, name: r.name ?? "", cat });
+      }
+      cursorId = rows[rows.length - 1].id;
+      if (rows.length < 1000) { complete = true; break; }
+    }
+
+    let deleted = 0;
+    if (!dryRun && found.length > 0) {
+      for (let i = 0; i < found.length; i += 1000) {
+        const chunk = found.slice(i, i + 1000).map((r) => r.id);
+        const { error: delErr } = await supabase.from("places").delete().in("id", chunk);
+        if (delErr) return NextResponse.json({ ok: false, error: delErr.message, deleted }, { status: 500 });
+        deleted += chunk.length;
+      }
+    }
+
+    const byCat: Record<string, { label: string; count: number; names: string[] }> = {};
+    for (const c of GARBAGE_CATS) byCat[c.key] = { label: c.label, count: 0, names: [] };
+    for (const f of found) {
+      byCat[f.cat].count++;
+      if (byCat[f.cat].names.length < 120) byCat[f.cat].names.push(f.name);
+    }
+
+    return NextResponse.json({
+      ok: true, dryRun, mode: "garbage",
       count: found.length, deleted, scanned, complete,
       nextCursor: complete ? null : cursorId,
       byCat,
