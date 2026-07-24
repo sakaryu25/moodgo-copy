@@ -193,7 +193,7 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
   const haversine = (a: number, b: number, c: number, d: number) => { const R = 6371, r = Math.PI / 180; const dLat = (c - a) * r, dLon = (d - b) * r; const x = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  type WdRec = { lat: number; lon: number; url: string; nn: string; ln: string; core: string; lcore: string };
+  type WdRec = { lat: number; lon: number; url: string; label: string; nn: string; ln: string; core: string; lcore: string };
   // 約2.2km四方の区画キー。半径2kmを見るので周囲3×3区画を引けば漏れない。
   const CELL = 0.02;
   const nearRecs = (grid: Map<string, WdRec[]>, lat: number, lng: number): WdRec[] => {
@@ -213,10 +213,12 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
     const p = mkNames(name);
     if (!p.nn) return { best: null as WdRec | null, nearMiss: false };
     let best: WdRec | null = null, bestScore = -1, sawCand = false;
+    let nearest: WdRec | null = null, nearestD = 99;   // 診断: 却下した中で最も近い候補
     for (const c of cands) {
       const d = haversine(lat, lng, c.lat, c.lon);
       if (d > 2) continue;
       sawCand = true;
+      if (d < nearestD) { nearestD = d; nearest = c; }
       let s = -1;
       if (p.nn === c.nn) s = 100;
       else if (p.ln === c.ln && p.ln.length >= 2) s = 95;
@@ -227,7 +229,7 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
       s -= d;
       if (s > bestScore) { bestScore = s; best = c; }
     }
-    return { best, nearMiss: sawCand && !best };
+    return { best, nearMiss: sawCand && !best, nearest, nearestD };
   };
 
   const run = async (apply: boolean) => {
@@ -259,7 +261,7 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
             const k = `${Math.floor(lat / CELL)}_${Math.floor(lon / CELL)}`;
             if (!grid.has(k)) grid.set(k, []);
-            grid.get(k)!.push({ lat, lon, url: commonsUrl(b.img.value), ...mkNames(b.itemLabel?.value ?? "") });
+            grid.get(k)!.push({ lat, lon, url: commonsUrl(b.img.value), label: b.itemLabel?.value ?? "", ...mkNames(b.itemLabel?.value ?? "") });
             count++;
           }
           append(`索引 ${label}: ${rows.length}件（計 ${count}件）`);
@@ -277,6 +279,7 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
       let cursor = "", scanned = 0, matched = 0, applied = 0;
       let withCoord = 0, nearMiss = 0;          // 診断: 座標あり件数 / 近くに候補はあるが名前不一致
       const samples: string[] = [];              // 診断: 走査した名前の実例（名前の形を目で確認できる）
+      const missSamples: string[] = [];          // 診断: 近傍不一致の実例「スポット名 ↔ 却下候補(距離)」
       for (let page = 0; page < 2000; page++) {
         const u = new URL("/api/admin/photo-harvest", window.location.origin);
         u.searchParams.set("secret", secret); u.searchParams.set("limit", "500");
@@ -298,7 +301,11 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
           withCoord++;
           const r = pickMatch(p.name, p.lat, p.lng, nearRecs(wd.grid, p.lat, p.lng));
           if (r.best) updates.push({ id: p.id, url: r.best.url });
-          else if (r.nearMiss) nearMiss++;
+          else if (r.nearMiss) {
+            nearMiss++;
+            // 却下例を実名で残す＝「本当は同じ場所なのに落ちた」のか「単に近くの別物」なのかを目視で判定できる
+            if (missSamples.length < 20 && r.nearest) missSamples.push(`${p.name} ↔ ${r.nearest.label}(${Math.round(r.nearestD * 1000)}m)`);
+          }
         }
         matched += updates.length;
         if (apply && updates.length) {
@@ -315,6 +322,7 @@ function PhotoHarvestPanel({ secret }: { secret: string }) {
       } else {
         append(`走査 ${scanned}（座標あり ${withCoord} / 座標なし ${scanned - withCoord}）・マッチ ${matched}・近傍に候補はあるが名前不一致 ${nearMiss}`);
         append(`走査した名前の例: ${samples.join(" / ")}`);
+        if (missSamples.length) append(`近傍不一致の実例（スポット ↔ 却下した候補）:\n  ・${missSamples.join("\n  ・")}`);
         if (matched === 0 && nearMiss === 0 && withCoord > 0) append("→ 近傍2km以内にWikidata写真そのものが無い＝この方式では埋まりません（座標検索方式が必要）。");
       }
       append(apply ? `完了: ${applied}件に写真付与` : `[DRY] 書き込みなし（「② 付与を実行」で反映）`);
