@@ -1409,6 +1409,7 @@ export function MagazineFeature({ page, onOpenSpot }: { page: FeaturedPageV2; on
 type FeatureContentViewProps = {
   currentPref: Tab;                 // ユーザー設定 or エリア変更で選んだ都道府県
   pages: FeaturedPageV2[];          // 公開中の全特集ページ（scope情報付き）
+  pagesLoaded: boolean;             // 特集ページ取得が完了したか（未完了は「準備中」でなくスケルトン表示）
   popularAreas: PopularArea[];      // 人気エリアカード
   onChangeArea: () => void;         // 「エリア変更」→ 日本地図ステージへ
   onSelectPref: (t: Tab) => void;   // 人気エリア(pref)タップ → 県切替
@@ -1539,7 +1540,7 @@ const csp = StyleSheet.create({
   cardImg: { width: 150, height: 110, borderRadius: 14 },
 });
 
-function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, onSelectPref, collapse, scrollRef }: FeatureContentViewProps) {
+function FeatureContentView({ currentPref, pages, pagesLoaded, popularAreas, onChangeArea, onSelectPref, collapse, scrollRef }: FeatureContentViewProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const region: Tab = PREF_TO_REGION[currentPref] ?? "関東";
@@ -1644,8 +1645,11 @@ function FeatureContentView({ currentPref, pages, popularAreas, onChangeArea, on
             </View>
           )}
         </Animated.View>
-      ) : (
+      ) : pagesLoaded ? (
         <ComingSoonPreview scope={activeScope} riseIn={riseIn} />
+      ) : (
+        // 取得中は「準備中」を出さず中立スケルトン（読込/失敗中の準備中フラッシュを防ぐ）
+        <Animated.View style={[ts.heroCard, { width: HERO_CARD_W, height: HERO_CARD_W * 0.62, alignSelf: "center", backgroundColor: "rgba(155,107,255,0.10)" }, riseIn(1)]} />
       )}
 
       {/* ── サブ特集カード2枚 ── */}
@@ -1840,6 +1844,7 @@ export default function FeatureScreen() {
   const [selectedRegion, setSelectedRegion] = useState<Tab>("関東");
   const [selectedTab, setSelectedTab] = useState<Tab>("神奈川");
   const [allPages, setAllPages] = useState<FeaturedPageV2[]>([]);
+  const [pagesLoaded, setPagesLoaded] = useState(false);   // 取得の成否確定フラグ（準備中フラッシュ回避）
   const [popularAreas, setPopularAreas] = useState<PopularArea[]>([]);
   const manualPickRef = useRef(false);   // 地図から手動選択したら設定都道府県での上書きを止める
 
@@ -1862,7 +1867,8 @@ export default function FeatureScreen() {
       .then(({ ok, data }: { ok: boolean; data: FeaturedPageV2[] }) => {
         if (ok && data?.length) setAllPages(data);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPagesLoaded(true));
     apiFetch("/api/popular-areas")
       .then((r) => r.json())
       .then(({ ok, data }: { ok: boolean; data: PopularArea[] }) => {
@@ -2118,6 +2124,7 @@ export default function FeatureScreen() {
         )}
         {stage === "content" && (
           <FeatureContentView
+            pagesLoaded={pagesLoaded}
             currentPref={selectedTab}
             pages={allPages}
             popularAreas={popularAreas}

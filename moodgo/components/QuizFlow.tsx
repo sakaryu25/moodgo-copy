@@ -34,7 +34,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import PuniPressable from './PuniPressable';
 import IMESafeTextInput from './IMESafeTextInput';
 import {
-  Animated, Dimensions, Easing, PanResponder,
+  Animated, Dimensions, Easing, Keyboard, PanResponder,
   Platform, ScrollView, StyleSheet, Text,
   TouchableOpacity, View,
 } from 'react-native';
@@ -973,6 +973,15 @@ function StepEntrance({ children, delay = 0 }: { children: React.ReactNode; dela
 
 export default function QuizFlow(props: Props) {
   const insets = useSafeAreaInsets();
+  // キーボード高を追跡し、絶対配置の「次へ」バーをキーボード上へ持ち上げる（自由ワード/エリア入力でCTAが隠れるのを防ぐ）
+  const [kbH, setKbH] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, (e) => setKbH(e.endCoordinates?.height ?? 0));
+    const s2 = Keyboard.addListener(hideEvt, () => setKbH(0));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   const {
     lang, step,
     selectedMood, onSelectMood,
@@ -1389,8 +1398,8 @@ export default function QuizFlow(props: Props) {
           </ScrollView>
         </Animated.View>
 
-        {/* Fixed Next button — ガラスバー（タブバーと同じ世界観） */}
-        <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        {/* Fixed Next button — ガラスバー（タブバーと同じ世界観）。キーボード表示中はその上へ持ち上げる */}
+        <View style={[s.bottomBar, { bottom: kbH, paddingBottom: kbH > 0 ? 12 : Math.max(insets.bottom, 20) }]}>
           <BlurView
             intensity={55}
             tint="light"
